@@ -1356,7 +1356,7 @@ const PROJECT = `
                 const menuNow = document.getElementById('context-menu');
                 const retroMenu = menuNow ? [...menuNow.children].map(e => e.textContent.replace(/\s+$/, '')).join('|') : '';
                 app.closeContextMenu();
-                out.retro = [cell.join(), stamped.join(), dots > 20 && soft === 0 && outside === 0, retroMenu.replace(/(Brush|Pencil)[A-Z]\|/g, "$1|") === "Brush|Soft round|Hard round|Pencil|Ink|Marker|Airbrush|Spray|Retro|Pixel pencil|Spray can|Stamp" ? 'menu' : retroMenu];
+                out.retro = [cell.join(), stamped.join(), dots > 20 && soft === 0 && outside === 0, retroMenu.replace(/(Brush|Pencil)[A-Z]\|/g, "$1|") === "Brush|Soft round|Hard round|Pencil|Ink|Marker|Airbrush|Spray|Retro|Pixel pencil|Spray can|Stamp|Yours|Your brush" ? 'menu' : retroMenu];
                 P.setTool('brush'); P.opts.size = 10; P.opts.density = 40;
                 // Heal and clone (paint-heal.js): clone copies from where
                 // Alt was clicked; heal copies its texture in the colours
@@ -1639,7 +1639,7 @@ const PROJECT = `
                 // The ⋯ menu's Select: invert (twice, back again), grow, shrink
                 const more = P.moreItems();
                 const sub = (n) => (more.find(i => i[0] === n) || [, []])[1];
-                out.menu = more.map(i => i[0]).join().startsWith('Image,Select,Layer,—,History,QuickShape') && typeof more.find(i => i[0].startsWith('QuickShape'))[3] === 'boolean' && sub('Select').some(i => i[0] === 'Invert') &&
+                out.menu = more.map(i => i[0]).join().startsWith('Image,Select,Layer,Brushes,—,History,QuickShape') && typeof more.find(i => i[0].startsWith('QuickShape'))[3] === 'boolean' && sub('Select').some(i => i[0] === 'Invert') &&
                     sub('Smoothing').map(i => i[0]).join() === 'Off,Some,More,Most' && sub('Pen pressure').filter(i => i[3]).map(i => i[0]).join() === 'Size';
                 const w0 = P.sel.box.w;
                 P.invertSelection();
@@ -1738,14 +1738,14 @@ const PROJECT = `
             JSON.stringify(r.canvas) === JSON.stringify({ big: [true, 440, 320, 440, 320, 40, 20, 440, true], painted: 255, turned: ['{"l":20,"t":40,"r":0,"b":0}', 320, 440, true, '{"l":40,"t":0,"r":0,"b":20}'], record: [400, 300, '{"l":40,"t":0,"r":0,"b":20}', '{"l":40,"t":0,"r":0,"b":20}', '#ffffff'], exported: [440, 320, '0,255,0', '255,255,255', '128,128,128'], onlyPhoto: [440, 320], cropping: true, cropped: [500, 320, 60, 'Crop'], undone: [440, 400, 400, true, true] }), JSON.stringify(r.canvas));
         check('paint: heal and clone: clone copies from the Alt-click (nothing without one); heal copies in the colours round it; spot heal fills a mark from round it; one undo each; their own slot; J and S', JSON.stringify(r.heal) === '[true,"true,0",true,"Clone stamp",true,true,"Spot heal",3,"Spot heal|Heal|Clone stamp|Dodge|Burn|Sponge|Blur|Sharpen|Smudge","spot-heal,heal,clone"]', JSON.stringify(r.heal));
         check('paint: tone and focus: dodge lightens, burn darkens, sponge takes colour out, blur softens an edge, sharpen crisps it, smudge drags a colour; in the Heal slot under Tone and Focus; one undo each', JSON.stringify(r.tone) === '[true,true,true,true,true,true,true,"Dodge|Burn|Sponge|Blur|Sharpen|Smudge","Spot heal|Heal|Clone stamp|Tone|Dodge|Burn|Sponge|Focus|Blur|Sharpen|Smudge",true]', JSON.stringify(r.tone));
-        check('paint: more brushes: hard and soft rounds; the marker darker where it crosses; ink thinner when fast; the airbrush builds as it\'s held; the block eraser square, E through the erasers; smoothing steadies a shaky line; a pen\'s pressure as opacity; all in the Brush slot', JSON.stringify(r.brushes) === '["true,true",true,true,true,true,true,"0,0,255","eraser-block,eraser-soft,eraser",true,true,"Brush|Soft round|Hard round|Pencil|Ink|Marker|Airbrush|Spray|Retro|Pixel pencil|Spray can|Stamp"]', JSON.stringify(r.brushes));
+        check('paint: more brushes: hard and soft rounds; the marker darker where it crosses; ink thinner when fast; the airbrush builds as it\'s held; the block eraser square, E through the erasers; smoothing steadies a shaky line; a pen\'s pressure as opacity; all in the Brush slot', JSON.stringify(r.brushes) === '["true,true",true,true,true,true,true,"0,0,255","eraser-block,eraser-soft,eraser",true,true,"Brush|Soft round|Hard round|Pencil|Ink|Marker|Airbrush|Spray|Retro|Pixel pencil|Spray can|Stamp|Yours|Your brush"]', JSON.stringify(r.brushes));
         check('paint: Retro: the pixel pencil fills one square of its grid; the stamp paints our star (not its corners); the spray can sprays hard dots inside its round; listed under Retro in the brush slot', JSON.stringify(r.retro) === '["255,255,0,0,0","255,0,255,0,Stamp",true,"menu"]', JSON.stringify(r.retro));
         check('paint: a pen\'s pressure sizes the brush', r.pressure && r.pressure[0] > 200 && r.pressure[1] === 0, String(r.pressure));
         check('paint: a new layer; a filled rectangle on it', r.layers && r.rect && r.rect[0][1] === 255 && r.rect[1] === 0, JSON.stringify(r));
         check('paint: the fill takes the photo\'s blue square, not beyond it; text is drawn', r.fill && r.fill[0][0] === 255 && r.fill[0][1] === 255 && r.fill[1] === 0 && r.text > 50, JSON.stringify(r));
         check('paint: the fill can fill the whole layer (only what\'s selected, with a selection), without the colour options; Ctrl+Z undoes it', r.wholeOpts && r.wholeSel && String(r.wholeSel[0]) === '255,0,255,255' && r.wholeSel[1] === 0 && String(r.whole) === '255,0,255,255,255,0,255,255' && r.wholeUndone, JSON.stringify([r.wholeOpts, r.wholeSel, r.whole, r.wholeUndone]));
         check('paint: a selection; Delete clears only inside it', r.selected && r.cleared[0] === 0 && r.cleared[1] === 255, JSON.stringify(r));
-        check('paint: the ⋯ menu has Image, Select and Layer (and History and QuickShape, ticked when on, Smoothing and Pen pressure); Invert, Grow and Shrink change the selection', r.menu && r.inverted && JSON.stringify(r.reshaped) === '[6,0]', JSON.stringify([r.menu, r.inverted, r.reshaped]));
+        check('paint: the ⋯ menu has Image, Select, Layer and Brushes (and History and QuickShape, ticked when on, Smoothing and Pen pressure); Invert, Grow and Shrink change the selection', r.menu && r.inverted && JSON.stringify(r.reshaped) === '[6,0]', JSON.stringify([r.menu, r.inverted, r.reshaped]));
         check('paint: the wand selects by colour; Move drags it, Enter puts it down', r.wand && r.moved[0] === 0 && r.moved[1][3] === 255 && r.notDone, JSON.stringify(r));
         check('paint: Done keeps it with the photo (layers in the project\'s folder), the file untouched', r.kept && r.files === 2 && r.fileSame, JSON.stringify(r));
         check('paint: shown painted; opened again, the layers come back', r.shown && r.shown[0][0] > 200 && r.shown[1][1] > 200 && r.shown[2][0] > 200 && r.reopened, JSON.stringify(r));
@@ -2165,6 +2165,83 @@ const PROJECT = `
         check('paint: with a select tool, arrows move the outline, not the pixels', JSON.stringify(r.outline) === '[10,20,255]', JSON.stringify(r));
         check('paint: with nothing to nudge, the arrows are left alone', r.leftAlone === true, JSON.stringify(r));
         check('paint keys: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- Paint: your own brushes (Define brush) ----
+    if (wanted('ownbrush')) {
+        console.log('paint: your own brushes (paint-editor.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const W = 400, H = 300;
+                const c = document.createElement('canvas'); c.width = W; c.height = H;
+                const cg = c.getContext('2d'); cg.fillStyle = '#ffffff'; cg.fillRect(0, 0, W, H);
+                // A black bar, 40 × 10, on white: what's dark becomes the tip
+                cg.fillStyle = '#000000'; cg.fillRect(30, 30, 40, 10);
+                await openProject('brushes', { 'p.png': await canvasBlob(c) });
+                localStorage.removeItem('jeditor.paintBrushes');
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                const names = [];
+                UI.prompt = async (o) => { names.push(o.title); return 'Bar'; };
+                // Nothing selected: said so, nothing kept
+                step = 'none';
+                out.noSel = await P.defineBrush() === null && !P.ownBrushes().length;
+                // What's selected → the tip, cropped to what's dark
+                step = 'define';
+                const m = P.newCanvas(); m.getContext('2d').fillRect(20, 20, 60, 30);
+                P.combineSelection(m, 'new');
+                const b = await P.defineBrush();
+                const kept = P.ownBrushes();
+                const tip = await new Promise(res => { const i = new Image(); i.onload = () => res([i.naturalWidth, i.naturalHeight]); i.src = kept[0].data; });
+                out.defined = [!!b, names[0], kept.length, kept[0].name, tip.join('x'), P.tool, P.opts.tip === b.id, P.opts.size];
+                // In ⋯ → Brushes and the Brush slot (under Yours); its tip along the top
+                step = 'menus';
+                const brushes = P.moreItems().find(i => i[0] === 'Brushes')[1];
+                out.menu = brushes.map(i => i[0]).join('|');
+                out.optTip = [...document.querySelectorAll('#paint-options select')].some(sl => [...sl.options].some(o => o.textContent === 'Bar'));
+                // Painting with it: the bar's shape, in the brush colour, wide not tall
+                step = 'paint';
+                P.deselect();
+                const l = P.layers[0], lg = l.canvas.getContext('2d', { willReadFrequently: true });
+                lg.clearRect(0, 0, P.W, P.H);
+                P.fg = '#00ff00'; P.opts.opacity = 100; P.opts.flow = 100; P.opts.size = 80;
+                await sleep(50);
+                const st = document.getElementById('paint-stage');
+                const at = (x, y) => { const sp = P.V().transformPoint(P.C.transformPoint({ x, y })); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                const pe = (type, x, y) => st.dispatchEvent(new PointerEvent(type, { ...at(x, y), pointerId: 1, bubbles: true, button: 0 }));
+                pe('pointerdown', 200, 150); pe('pointerup', 200, 150);
+                const a = (x, y) => lg.getImageData(x, y, 1, 1).data;
+                out.painted = [[...a(200, 150)].join(), a(235, 150)[3] > 0, a(200, 165)[3]];
+                // From a picture file: a see-through one gives its shape
+                step = 'file';
+                const f = document.createElement('canvas'); f.width = 50; f.height = 50;
+                const fg = f.getContext('2d'); fg.fillStyle = '#ffffff'; fg.beginPath(); fg.arc(25, 25, 20, 0, Math.PI * 2); fg.fill();
+                const b2 = await P.defineBrush(new File([await canvasBlob(f)], 'dot.png', { type: 'image/png' }));
+                const t2 = await new Promise(res => { const i = new Image(); i.onload = () => res([i.naturalWidth, i.naturalHeight]); i.src = P.ownBrushes()[1].data; });
+                out.fromFile = [!!b2, P.ownBrushes().length, t2.join('x')];
+                // Kept between sessions; deleted again
+                step = 'delete';
+                UI.confirm = async () => true;
+                await P.deleteBrush(b.id);
+                out.deleted = P.ownBrushes().map(x => x.name).join();
+                app.cancelPaint();
+                localStorage.removeItem('jeditor.paintBrushes');
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint brushes: nothing selected, nothing made', r.noSel, JSON.stringify(r));
+        check('paint brushes: made from what\'s selected, named and kept, cropped to what\'s dark; Your brush picked', r.defined && r.defined[0] && r.defined[1] === 'Name the brush' && r.defined[2] === 1 && r.defined[3] === 'Bar' && r.defined[4] === '40x10' && r.defined[5] === 'custom' && r.defined[6] && r.defined[7] === 40, JSON.stringify(r));
+        check('paint brushes: listed in ⋯ → Brushes (with Make and Delete) and as the Tip along the top', r.menu === 'Make a brush from what\'s selected…|Make a brush from a picture…|—|Bar|—|Delete a brush' && r.optTip, JSON.stringify(r));
+        check('paint brushes: it paints its shape in the brush colour', r.painted && r.painted[0] === '0,255,0,255' && r.painted[1] && r.painted[2] === 0, JSON.stringify(r));
+        check('paint brushes: from a see-through picture, its shape', r.fromFile && r.fromFile[0] && r.fromFile[1] === 2 && r.fromFile[2] === '40x40', JSON.stringify(r));
+        check('paint brushes: deleted again', r.deleted === 'Bar', JSON.stringify(r));
+        check('paint brushes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

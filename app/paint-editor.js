@@ -57,13 +57,13 @@ const PaintEditor = {
         tolerance: 32, contiguous: true, sampleAll: true, fillWhat: 'match', gaps: 0,
         lineWidth: 8, shapeFill: 'none', arrow: false,
         gradient: 'linear', gradTo: 'bg',
-        density: 40, range: 30, stamp: 'star', quickShape: true, history: false, aligned: true,
+        density: 40, range: 30, stamp: 'star', tip: '', quickShape: true, history: false, aligned: true,
         strength: 50, toneRange: 'mid', sponge: 'less',
         smoothing: 0, pressure: 'size',
         font: 'system-ui, sans-serif', fontSize: 72, bold: false, italic: false,
         sizeFor: 1500   // the long side of the layers the sizes were for
     },
-    BRUSHES: ['brush', 'soft-round', 'hard-round', 'pencil', 'ink', 'marker', 'airbrush', 'spray', 'eraser', 'eraser-block', 'eraser-soft', 'pixel', 'can', 'stamp', 'spot-heal', 'heal', 'clone', 'dodge', 'burn', 'sponge', 'blur', 'sharpen', 'smudge'],
+    BRUSHES: ['brush', 'soft-round', 'hard-round', 'pencil', 'ink', 'marker', 'airbrush', 'spray', 'eraser', 'eraser-block', 'eraser-soft', 'pixel', 'can', 'stamp', 'custom', 'spot-heal', 'heal', 'clone', 'dodge', 'burn', 'sponge', 'blur', 'sharpen', 'smudge'],
     // The healing tools (paint-heal.js does their pixels): they copy the
     // picture from somewhere else on it, not a colour
     RETOUCH: ['spot-heal', 'heal', 'clone'],
@@ -74,14 +74,14 @@ const PaintEditor = {
     // option's), whether they take the Flow option, and how much of it each
     // dab lays down when it builds up as it's held (airbrushes)
     FEEL: {
-        brush: { flow: true }, eraser: {},
+        brush: { flow: true }, eraser: {}, custom: { flow: true },
         'soft-round': { hard: 0, flow: true }, 'hard-round': { hard: 1, flow: true },
         ink: { hard: 0.92 }, marker: { hard: 0.8 },
         airbrush: { hard: 0, flow: true, build: 0.12 }, 'eraser-soft': { hard: 0, flow: true, build: 0.12 }
     },
     ERASERS: ['eraser', 'eraser-block', 'eraser-soft'],
     // Headings in a slot's menu, before the tool they're on
-    HEADINGS: { pixel: 'Retro', dodge: 'Tone', blur: 'Focus' },
+    HEADINGS: { pixel: 'Retro', custom: 'Yours', dodge: 'Tone', blur: 'Focus' },
     // The Retro set (inspired by MS Paint and Mario Paint; every picture
     // drawn for jEditor), listed under its own heading in the brush slot
     RETRO: ['pixel', 'can', 'stamp'],
@@ -215,6 +215,7 @@ const PaintEditor = {
         ['pixel', 'Pixel pencil: square pixels on a grid', '<path d="M3 3h6v6H3zM9 9h6v6H9zM15 15h6v6h-6z"/>'],
         ['can', 'Spray can: dots as it\'s held', '<path d="M6 9h6v12H6zM7 6h4v3H7zM12 7h2"/><path d="M17 5h.01M20 4h.01M19 8h.01M22 7h.01M18 11h.01M21 10h.01"/>'],
         ['stamp', 'Stamp: a little picture with each click', '<path d="M12 3l1.8 3.7 4 .6-2.9 2.8.7 4L12 12.2 8.4 14.1l.7-4-2.9-2.8 4-.6z"/><path d="M5 18h14v3H5z"/>'],
+        ['custom', 'Your brush: one you made (⋯ → Brushes)', '<path d="M4 20c3 0 5-2 5-5"/><path d="M9 15 19 5"/><path d="M14 4h.01M17 9h.01M20 12h.01M12 7h.01"/>'],
         ['eraser', 'Eraser (E)', '<path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4l10-10a1 1 0 0 1 1.4 0l5.6 5.6a1 1 0 0 1 0 1.4L13 19"/><path d="M22 21H7M5 11l9 9"/>'],
         ['eraser-block', 'Block eraser: a hard square (E)', '<rect x="5" y="5" width="14" height="14" rx="1"/><path d="M5 12h14" opacity=".5"/>'],
         ['eraser-soft', 'Soft eraser: takes off more as it\'s held (E)', '<circle cx="12" cy="12" r="8" stroke-dasharray="2 2"/><path d="M8 12h8"/>'],
@@ -246,7 +247,7 @@ const PaintEditor = {
     GROUPS: [
         ['move'],
         ['rect-select', 'ellipse-select', 'lasso', 'wand'],
-        ['brush', 'soft-round', 'hard-round', 'pencil', 'ink', 'marker', 'airbrush', 'spray', 'pixel', 'can', 'stamp'],
+        ['brush', 'soft-round', 'hard-round', 'pencil', 'ink', 'marker', 'airbrush', 'spray', 'pixel', 'can', 'stamp', 'custom'],
         ['eraser', 'eraser-block', 'eraser-soft'],
         ['spot-heal', 'heal', 'clone', 'dodge', 'burn', 'sponge', 'blur', 'sharpen', 'smudge'],
         ['fill', 'gradient', 'recolor'],
@@ -270,6 +271,7 @@ const PaintEditor = {
         pixel: ['size', 'opacity'],
         can: ['size', 'density', 'opacity'],
         stamp: ['stamp', 'size', 'opacity'],
+        custom: ['tip', 'size', 'opacity', 'flow'],
         eraser: ['size', 'hardness', 'opacity'],
         'spot-heal': ['size', 'hardness', 'sampleAll', 'opacity'],
         heal: ['size', 'hardness', 'aligned', 'sampleAll', 'opacity'],
@@ -314,6 +316,7 @@ const PaintEditor = {
         } catch (e) { /* private mode */ }
 
         this.buildTools();
+        this.loadTips();
         const bind = (id, fn) => this.el(id).addEventListener('click', (e) => { e.currentTarget.blur(); if (!this.busy) fn(); });
         bind('paint-undo', () => this.undo());
         bind('paint-redo', () => this.redo());
@@ -1067,6 +1070,13 @@ const PaintEditor = {
             if (k === 'gradTo') choose('To', 'gradTo', [['bg', 'Background colour'], ['clear', 'Nothing']]);
             if (k === 'font') choose('Font', 'font', this.FONTS);
             if (k === 'stamp') choose('Stamp', 'stamp', Object.entries(this.STAMP_NAMES));
+            if (k === 'tip') {
+                const own = this.ownBrushes();
+                if (own.length) {
+                    if (!own.some(b => b.id === o.tip)) o.tip = own[0].id;
+                    choose('Tip', 'tip', own.map(b => [b.id, b.name]));
+                }
+            }
         }
         const hint = document.createElement('span');
         hint.className = 'paint-opt paint-hint';
@@ -1085,6 +1095,7 @@ const PaintEditor = {
             pixel: 'Square pixels on a grid the brush\'s size, crisp at any zoom',
             can: 'Hold to spray: the longer it\'s held, the more dots',
             stamp: 'Click for a stamp; drag for a row of them',
+            custom: this.ownBrushes().length ? 'One of your own brushes; ⋯ → Brushes makes more' : 'Make one first: select part of the picture, then ⋯ → Brushes',
             'spot-heal': 'Paint over a mark or a speck: it\'s filled from what\'s round it',
             heal: this.healSrc ? 'Paint over what to hide: copied from the + mark, in the colours round it. Alt-click to copy from elsewhere' : 'Alt-click where to copy from, then paint over what to hide',
             ink: 'Thin when you go fast, thick when slow; with a pen, as hard as you press',
@@ -1936,6 +1947,7 @@ const PaintEditor = {
         // Pressure for opacity: each dab lighter, so where they overlap
         // along the stroke (about 2r / step of them) it comes to the pressure
         if (pr < 1 && t !== 'ink' && this.opts.pressure !== 'size') flow *= 1 - Math.pow(1 - pr, 0.09);
+        if (t === 'custom') { this.tipDab(g, p, prSize, colour, flow); return; }
         const rgb = this.rgb(colour);
         if (hard >= 0.99) {
             g.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${flow})`;
@@ -1949,6 +1961,217 @@ const PaintEditor = {
         g.arc(p.x, p.y, r, 0, Math.PI * 2);
         g.fill();
         this.grow({ x: p.x - r - 1, y: p.y - r - 1, w: 2 * r + 2, h: 2 * r + 2 });
+    },
+
+    // ---- Your brushes (like Photoshop's Define Brush) ----
+    // A tip made from part of the picture, or from a picture file: what's
+    // dark in it paints (or, where it's see-through, its shape), up to
+    // TIP_MAX across. Named and kept (localStorage), listed in ⋯ → Brushes
+    // and in the Brush slot as Your brush, with the tip chosen along the top
+
+    BRUSH_MAX: 24,
+    TIP_MAX: 256,
+
+    ownBrushes() {
+        try {
+            const v = JSON.parse(localStorage.getItem('jeditor.paintBrushes') || '[]');
+            if (Array.isArray(v)) return v.filter(b => b && typeof b.id === 'string' && typeof b.name === 'string' && /^data:image\/png;base64,/.test(b.data || '')).slice(0, this.BRUSH_MAX);
+        } catch (e) { /* private mode */ }
+        return [];
+    },
+
+    setOwnBrushes(list) {
+        try {
+            localStorage.setItem('jeditor.paintBrushes', JSON.stringify(list));
+        } catch (e) {
+            this.app.showToast('Couldn\'t keep the brush: there\'s no room left for it', 2500);
+            return false;
+        }
+        this.loadTips();
+        if (this.tool === 'custom') this.buildOptions();
+        return true;
+    },
+
+    // The tips, decoded once (a dab draws straight away)
+    loadTips() {
+        if (!this._tips) this._tips = new Map();
+        const own = this.ownBrushes();
+        for (const id of [...this._tips.keys()]) if (!own.some(b => b.id === id)) this._tips.delete(id);
+        for (const b of own) {
+            if (this._tips.has(b.id)) continue;
+            const img = new Image();
+            img.src = b.data;
+            this._tips.set(b.id, { img, tinted: null, colour: null });
+        }
+    },
+
+    // The tip in this colour (made again when the colour changes)
+    tinted(id, colour) {
+        if (!this._tips) this.loadTips();
+        const t = this._tips.get(id);
+        if (!t || !t.img.complete || !t.img.naturalWidth) return null;
+        if (t.tinted && t.colour === colour) return t.tinted;
+        const c = t.tinted || document.createElement('canvas');
+        c.width = t.img.naturalWidth;
+        c.height = t.img.naturalHeight;
+        const g = c.getContext('2d');
+        g.globalCompositeOperation = 'copy';
+        g.drawImage(t.img, 0, 0);
+        g.globalCompositeOperation = 'source-in';
+        g.fillStyle = colour;
+        g.fillRect(0, 0, c.width, c.height);
+        t.tinted = c;
+        t.colour = colour;
+        return c;
+    },
+
+    // One dab of the tip: Size is its long side
+    tipDab(g, p, prSize, colour, flow) {
+        const tip = this.tinted(this.opts.tip, colour);
+        if (!tip) return;
+        const s = Math.max(1, this.opts.size * prSize), k = s / Math.max(tip.width, tip.height);
+        const w = tip.width * k, h = tip.height * k;
+        g.save();
+        g.globalAlpha = Math.min(1, flow);
+        g.imageSmoothingQuality = 'high';
+        g.drawImage(tip, p.x - w / 2, p.y - h / 2, w, h);
+        g.restore();
+        this.grow({ x: p.x - w / 2 - 1, y: p.y - h / 2 - 1, w: w + 2, h: h + 2 });
+    },
+
+    // Pixels (a canvas) → a tip: black, its alpha what paints, cropped to
+    // what paints and made no more than TIP_MAX across. Null: nothing would
+    tipFrom(src) {
+        const W = src.width, H = src.height;
+        if (!W || !H) return null;
+        const px = src.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W, H).data;
+        // See-through somewhere: its shape paints; else what's dark does
+        let clear = 0;
+        for (let i = 3; i < px.length; i += 4) if (px[i] < 250) clear++;
+        const shape = clear > W * H * 0.01;
+        const a = new Uint8ClampedArray(W * H);
+        let x0 = W, y0 = H, x1 = -1, y1 = -1;
+        for (let y = 0, i = 0; y < H; y++) for (let x = 0; x < W; x++, i++) {
+            const j = i * 4, al = px[j + 3];
+            const lum = 0.2126 * px[j] + 0.7152 * px[j + 1] + 0.0722 * px[j + 2];
+            const v = shape ? al : Math.round((255 - lum) * al / 255);
+            a[i] = v;
+            if (v > 8) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        }
+        if (x1 < 0) return null;
+        const cw = x1 - x0 + 1, ch = y1 - y0 + 1;
+        const full = document.createElement('canvas');
+        full.width = cw;
+        full.height = ch;
+        const fg = full.getContext('2d');
+        const img = fg.createImageData(cw, ch);
+        for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) img.data[(y * cw + x) * 4 + 3] = a[(y + y0) * W + x + x0];
+        fg.putImageData(img, 0, 0);
+        const k = Math.min(1, this.TIP_MAX / Math.max(cw, ch));
+        if (k === 1) return full;
+        const out = document.createElement('canvas');
+        out.width = Math.max(1, Math.round(cw * k));
+        out.height = Math.max(1, Math.round(ch * k));
+        const og = out.getContext('2d');
+        og.imageSmoothingQuality = 'high';
+        og.drawImage(full, 0, 0, out.width, out.height);
+        full.width = full.height = 0;
+        return out;
+    },
+
+    // What's selected of the picture as it looks (the photo and the layers
+    // shown), cut to the selection's bounds
+    selectedPixels() {
+        if (!this.sel || !this.sel.box) return null;
+        const b = this.sel.box;
+        const c = document.createElement('canvas');
+        c.width = b.w;
+        c.height = b.h;
+        const g = c.getContext('2d', { willReadFrequently: true });
+        g.translate(-b.x, -b.y);
+        g.drawImage(this.photo, 0, 0, this.W, this.H);
+        for (const l of this.layers) {
+            if (l.hidden) continue;
+            g.globalAlpha = l.opacity;
+            g.globalCompositeOperation = l.blend;
+            g.drawImage(l.canvas, 0, 0);
+        }
+        g.globalAlpha = 1;
+        g.globalCompositeOperation = 'destination-in';
+        g.drawImage(this.sel.mask, 0, 0);
+        return c;
+    },
+
+    // ⋯ → Brushes → Make a brush: from what's selected, or a picture file
+    // (file: one handed in, as tests do; true: pick one)
+    async defineBrush(file = null) {
+        if (!this.ready || this.busy) return null;
+        const own = this.ownBrushes();
+        if (own.length >= this.BRUSH_MAX) { this.app.showToast(`Up to ${this.BRUSH_MAX} brushes: delete one in ⋯ → Brushes to make another`, 2500); return null; }
+        let src;
+        if (file) {
+            if (file === true) {
+                file = await new Promise((res) => {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = 'image/*';
+                    input.addEventListener('change', () => res(input.files[0] || null));
+                    input.click();
+                });
+                if (!file) return null;
+            }
+            try {
+                const bmp = await createImageBitmap(file);
+                src = document.createElement('canvas');
+                src.width = bmp.width;
+                src.height = bmp.height;
+                src.getContext('2d').drawImage(bmp, 0, 0);
+                bmp.close();
+            } catch (e) {
+                this.app.showToast(`Couldn't open ${file.name || 'that'} as a picture`, 2500);
+                return null;
+            }
+        } else {
+            if (this.float) this.commitFloat();
+            src = this.selectedPixels();
+            if (!src) { this.app.showToast('Select part of the picture first, or make one from a picture file', 2500); return null; }
+        }
+        const tip = this.tipFrom(src);
+        src.width = src.height = 0;
+        if (!tip) { this.app.showToast('Nothing in it to paint with: what\'s dark, or not see-through, paints', 2500); return null; }
+        const name = await UI.prompt({ title: 'Name the brush', input: { label: 'Name', value: `Brush ${own.length + 1}` }, ok: 'Keep' });
+        if (name === null) return null;
+        const b = { id: 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: (name.trim() || `Brush ${own.length + 1}`).slice(0, 40), data: tip.toDataURL('image/png') };
+        const size = Math.max(tip.width, tip.height);
+        tip.width = tip.height = 0;
+        if (!this.setOwnBrushes([...own, b])) return null;
+        this.opts.tip = b.id;
+        this.opts.size = Math.min(this.sizeMax(), Math.max(1, size));
+        this.setTool('custom');
+        this.remember();
+        this.app.showToast(`${b.name}: kept, in ⋯ → Brushes and the Brush slot`, 2200);
+        return b;
+    },
+
+    async deleteBrush(id) {
+        const own = this.ownBrushes(), b = own.find(x => x.id === id);
+        if (!b) return;
+        const ok = await UI.confirm({ title: `Delete ${b.name}?`, message: 'The brush goes from your brushes. What it painted stays.', ok: 'Delete', danger: true });
+        if (!ok) return;
+        this.setOwnBrushes(own.filter(x => x.id !== id));
+    },
+
+    // ⋯ → Brushes
+    brushItems() {
+        const own = this.ownBrushes();
+        return [
+            ...(this.sel ? [['Make a brush from what\'s selected…', () => this.defineBrush()]] : []),
+            ['Make a brush from a picture…', () => this.defineBrush(true)],
+            ...(own.length ? [['—'],
+                ...own.map(b => [b.name, () => { this.opts.tip = b.id; this.setTool('custom'); this.remember(); }, false, this.tool === 'custom' && this.opts.tip === b.id]),
+                ['—'],
+                ['Delete a brush', own.map(b => [b.name, () => this.deleteBrush(b.id), true])]] : [])
+        ];
     },
 
     // The pixel pencil's square: the brush's size, whole pixels
@@ -1987,6 +2210,7 @@ const PaintEditor = {
         const step = d.tool === 'pencil' || d.tool === 'eraser-block' ? 1
             : d.tool === 'pixel' ? Math.max(1, this.pixelCell() / 2)
             : d.tool === 'stamp' ? Math.max(2, this.opts.size * 1.15)
+            : d.tool === 'custom' ? Math.max(1, this.opts.size * 0.25 * (this.opts.pressure !== 'opacity' ? Math.min(pa, pb) : 1))
             : Math.max(0.5, this.radius() * (d.tool === 'ink' || this.opts.pressure !== 'opacity' ? Math.min(pa, pb) : 1) * 0.18);
         let t = step - d.carry;
         while (t <= len) {
@@ -2691,6 +2915,7 @@ const PaintEditor = {
                 ['Bring in an image…', () => this.pickImage(), false, undefined, 'paint.import'],
                 ...(n > 1 ? [['—'], ['Delete layer', () => this.deleteLayer(), true]] : [])
             ]],
+            ['Brushes', this.brushItems()],
             ['—'],
             ['History', () => this.toggleHistory(), false, this.opts.history],
             ['QuickShape: hold at a stroke\'s end', () => { this.opts.quickShape = !this.opts.quickShape; this.remember(); }, false, this.opts.quickShape],
