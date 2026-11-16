@@ -1389,6 +1389,39 @@ const PROJECT = `
                 out.heal = [healOpts, noSource.join(), near(cloned, [32, 80, 192]) && cloned[3] === 255, cloneName, near(healed, [128, 128, 128], 16) && healed[3] === 255,
                     near(spot, [128, 128, 128]) && spot[3] > 200, spotName, P.history.length - hn, healMenu, [k1, k2, P.tool].join()];
                 lg.clearRect(80, 205, 150, 65);
+                // Tone and focus: dodge lightens, burn darkens, sponge takes
+                // colour out, blur softens an edge, sharpen crisps it, smudge
+                // drags a colour along; each one step of Undo
+                step = 'tone';
+                const tn = P.history.length;
+                P.opts.size = 20; P.opts.hardness = 100; P.opts.strength = 50; P.opts.toneRange = 'mid'; P.opts.sponge = 'less'; P.opts.sampleAll = true;
+                const toneOpts = (P.setTool('dodge'), ['Range', 'Strength', 'All layers'].every(t => document.getElementById('paint-options').textContent.includes(t)));
+                pe('pointerdown', 100, 220); pe('pointerup', 100, 220);
+                const dodged = px(0, 100, 220);
+                P.setTool('burn');
+                pe('pointerdown', 140, 220); pe('pointerup', 140, 220);
+                const burnt = px(0, 140, 220);
+                P.setTool('sponge');
+                pe('pointerdown', 300, 100); pe('pointerup', 300, 100);
+                const sponged = px(0, 300, 100);
+                P.setTool('blur');
+                pe('pointerdown', 250, 120); pe('pointerup', 250, 120);
+                const blurIn = px(0, 252, 120), blurOut = px(0, 247, 120);
+                P.setTool('sharpen');
+                pe('pointerdown', 350, 120); pe('pointerup', 350, 120);
+                const sharpOut = px(0, 351, 120);
+                P.setTool('smudge'); P.opts.strength = 80;
+                pe('pointerdown', 300, 135); for (let y = 140; y <= 190; y += 5) pe('pointermove', 300, y); pe('pointerup', 300, 190);
+                const smudged = px(0, 300, 160);
+                const toneNames = P.history.slice(tn).map(h => h.name).join('|');
+                hslot.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+                const tm = document.getElementById('context-menu');
+                const toneMenu = tm ? [...tm.children].map(e => e.textContent.replace(/[A-Z]$/, '').trim()).filter(Boolean).join('|') : '';
+                app.closeContextMenu();
+                out.tone = [toneOpts, dodged[0] > 180 && dodged[0] < 200 && dodged[3] === 255, burnt[0] > 55 && burnt[0] < 75, sponged[2] - sponged[0] < 100 && sponged[3] === 255,
+                    blurIn[0] > 42 && blurOut[0] < 118, sharpOut[0] > 135, smudged[2] > smudged[0] + 20 && smudged[3] > 0, toneNames, toneMenu];
+                for (let i = 0; i < 6; i++) pressKey('z', { ctrlKey: true });
+                out.tone.push(P.history.length === tn && px(0, 100, 220)[3] === 0 && px(0, 300, 160)[3] === 0);
                 P.setTool('brush'); P.opts.size = 10; P.opts.hardness = hard0;
                 // Canvas size: the canvas bigger than the photo, the layers
                 // reaching past it; what's painted out there kept, and
@@ -1642,7 +1675,8 @@ const PROJECT = `
         check('paint: Recolor turns the colour clicked into the brush colour, light and dark shades alike, nothing else; one undo step; G goes fill, gradient, recolor', JSON.stringify(r.recolor) === '[true,true,true,"32,160,64,255",0,"Recolor","200,32,32,255","gradient,recolor"]', JSON.stringify(r.recolor));
         check('paint: Canvas size makes the canvas bigger than the photo (the layers too, what\'s added the background colour); what\'s painted past the photo is kept, and Export writes the bigger canvas; Crop dragged past the edge adds more; each one step of Undo',
             JSON.stringify(r.canvas) === JSON.stringify({ big: [true, 440, 320, 440, 320, 40, 20, 440, true], painted: 255, turned: ['{"l":20,"t":40,"r":0,"b":0}', 320, 440, true, '{"l":40,"t":0,"r":0,"b":20}'], record: [400, 300, '{"l":40,"t":0,"r":0,"b":20}', '{"l":40,"t":0,"r":0,"b":20}', '#ffffff'], exported: [440, 320, '0,255,0', '255,255,255', '128,128,128'], onlyPhoto: [440, 320], cropping: true, cropped: [500, 320, 60, 'Crop'], undone: [440, 400, 400, true, true] }), JSON.stringify(r.canvas));
-        check('paint: heal and clone: clone copies from the Alt-click (nothing without one); heal copies in the colours round it; spot heal fills a mark from round it; one undo each; their own slot; J and S', JSON.stringify(r.heal) === '[true,"true,0",true,"Clone stamp",true,true,"Spot heal",3,"Spot heal|Heal|Clone stamp","spot-heal,heal,clone"]', JSON.stringify(r.heal));
+        check('paint: heal and clone: clone copies from the Alt-click (nothing without one); heal copies in the colours round it; spot heal fills a mark from round it; one undo each; their own slot; J and S', JSON.stringify(r.heal) === '[true,"true,0",true,"Clone stamp",true,true,"Spot heal",3,"Spot heal|Heal|Clone stamp|Dodge|Burn|Sponge|Blur|Sharpen|Smudge","spot-heal,heal,clone"]', JSON.stringify(r.heal));
+        check('paint: tone and focus: dodge lightens, burn darkens, sponge takes colour out, blur softens an edge, sharpen crisps it, smudge drags a colour; in the Heal slot under Tone and Focus; one undo each', JSON.stringify(r.tone) === '[true,true,true,true,true,true,true,"Dodge|Burn|Sponge|Blur|Sharpen|Smudge","Spot heal|Heal|Clone stamp|Tone|Dodge|Burn|Sponge|Focus|Blur|Sharpen|Smudge",true]', JSON.stringify(r.tone));
         check('paint: Retro: the pixel pencil fills one square of its grid; the stamp paints our star (not its corners); the spray can sprays hard dots inside its round; listed under Retro in the brush slot', JSON.stringify(r.retro) === '["255,255,0,0,0","255,0,255,0,Stamp",true,"menu"]', JSON.stringify(r.retro));
         check('paint: a pen\'s pressure sizes the brush', r.pressure && r.pressure[0] > 200 && r.pressure[1] === 0, String(r.pressure));
         check('paint: a new layer; a filled rectangle on it', r.layers && r.rect && r.rect[0][1] === 255 && r.rect[1] === 0, JSON.stringify(r));

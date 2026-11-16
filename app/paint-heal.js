@@ -1,5 +1,6 @@
-// Paint's healing: the pixels for the spot healing brush, the healing
-// brush and the clone stamp (paint-editor.js paints their strokes).
+// Paint's retouching: the pixels for the spot healing brush, the healing
+// brush and the clone stamp, and for the tone and focus brushes (dodge,
+// burn, sponge, blur, sharpen); paint-editor.js paints their strokes.
 //
 // Healing works the way Adjust's spot removal does (retouch.js): the
 // source's texture is copied in, and the difference between what was
@@ -168,5 +169,84 @@ const PaintHeal = {
             }
         }
         return out;
+    },
+
+    // ---- Tone and focus ----
+
+    // The blur's radius for a brush of radius r (px): a fraction of the
+    // brush for blur, a fine one for sharpen's unsharp mask
+    blurOf(kind, r) {
+        return kind === 'blur' ? Math.max(2, Math.round(r / 4)) : kind === 'sharpen' ? 1 : 0;
+    },
+
+    // Pixels with the brush's effect on them, at full strength: src is a
+    // box with `m` px round it (3 blurs' worth; `valid`: the part of src
+    // that's on the picture), and the result the box itself, w × h
+    //   dodge, burn: lighter or darker, mostly in the shadows, midtones or
+    //     highlights (range); sponge: more or less colour (more: true)
+    //   blur: a soft blur; sharpen: an unsharp mask
+    tone(kind, src, m, w, h, { amount = 0.5, range = 'mid', more = false, radius = 1 } = {}, valid = null) {
+        const sw = src.width, S = src.data;
+        const out = new ImageData(w, h), O = out.data;
+        let soft = null;
+        if (kind === 'blur' || kind === 'sharpen') soft = this.boxBlur(src, radius, valid);
+        const lift = (L) => range === 'shadows' ? (1 - L) * (1 - L) : range === 'highlights' ? L * L : 1 - (2 * L - 1) * (2 * L - 1);
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                const i = ((y + m) * sw + x + m) * 4, o = (y * w + x) * 4;
+                const r = S[i], g = S[i + 1], b = S[i + 2];
+                O[o + 3] = S[i + 3];
+                if (kind === 'dodge' || kind === 'burn') {
+                    const k = amount * lift((0.299 * r + 0.587 * g + 0.114 * b) / 255);
+                    for (let c = 0; c < 3; c++) {
+                        const v = S[i + c];
+                        O[o + c] = kind === 'dodge' ? v + (255 - v) * k : v * (1 - k);
+                    }
+                } else if (kind === 'sponge') {
+                    const L = 0.299 * r + 0.587 * g + 0.114 * b, k = more ? 1 + amount : 1 - amount;
+                    for (let c = 0; c < 3; c++) O[o + c] = L + (S[i + c] - L) * k;
+                } else if (kind === 'blur') {
+                    for (let c = 0; c < 4; c++) O[o + c] = soft[i + c];
+                } else if (kind === 'sharpen') {
+                    for (let c = 0; c < 3; c++) O[o + c] = S[i + c] + (S[i + c] - soft[i + c]) * amount * 2.5;
+                }
+            }
+        }
+        return out;
+    },
+
+    // A box blur of radius r, three times (near enough a Gaussian), the
+    // edges of `valid` (the picture's) repeated past it: RGBA as floats.
+    // A running sum, so a big radius costs no more than a small one
+    boxBlur(img, r, valid = null) {
+        const w = img.width, h = img.height;
+        const v = valid || { x0: 0, y0: 0, x1: w, y1: h };
+        let a = Float32Array.from(img.data), b = new Float32Array(a.length);
+        const n = 2 * r + 1;
+        const line = (get, put, lo, hi, len) => {
+            // along one row or column: positions lo..hi-1 are the picture
+            for (let c = 0; c < 4; c++) {
+                let t = 0;
+                const at = (k) => get(Math.min(hi - 1, Math.max(lo, k)), c);
+                for (let k = -r; k <= r; k++) t += at(k);
+                for (let k = 0; k < len; k++) {
+                    put(k, c, t / n);
+                    t += at(k + r + 1) - at(k - r);
+                }
+            }
+        };
+        for (let pass = 0; pass < 3; pass++) {
+            for (let y = 0; y < h; y++) {
+                const yy = Math.min(v.y1 - 1, Math.max(v.y0, y));
+                line((x, c) => a[(yy * w + x) * 4 + c], (x, c, t) => { b[(y * w + x) * 4 + c] = t; }, v.x0, v.x1, w);
+            }
+            [a, b] = [b, a];
+            for (let x = 0; x < w; x++) {
+                const xx = Math.min(v.x1 - 1, Math.max(v.x0, x));
+                line((y, c) => a[(y * w + xx) * 4 + c], (y, c, t) => { b[(y * w + x) * 4 + c] = t; }, v.y0, v.y1, h);
+            }
+            [a, b] = [b, a];
+        }
+        return a;
     }
 };
