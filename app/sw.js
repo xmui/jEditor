@@ -52,6 +52,7 @@ const ASSETS = [
     './adjust-spots.js',
     './adjust-sync.js',
     './paint.js',
+    './paint-heal.js',
     './paint-editor.js',
     './dupes.js',
     './rename.js',
