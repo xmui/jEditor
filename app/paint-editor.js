@@ -61,6 +61,7 @@ const PaintEditor = {
         strength: 50, toneRange: 'mid', sponge: 'less',
         smoothing: 0, pressure: 'size',
         font: 'system-ui, sans-serif', fontSize: 72, bold: false, italic: false,
+        snap: true,
         sizeFor: 1500   // the long side of the layers the sizes were for
     },
     BRUSHES: ['brush', 'soft-round', 'hard-round', 'pencil', 'ink', 'marker', 'airbrush', 'spray', 'eraser', 'eraser-block', 'eraser-soft', 'pixel', 'can', 'stamp', 'custom', 'spot-heal', 'heal', 'clone', 'dodge', 'burn', 'sponge', 'blur', 'sharpen', 'smudge'],
@@ -463,6 +464,7 @@ const PaintEditor = {
         new MutationObserver(() => this.layoutTopSoon()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-skin'] });
         // Zoom's pill: its clicks aren't strokes
         const zoom = this.el('paint-zoom');
+        this.el('paint-view-angle').addEventListener('click', (e) => { e.currentTarget.blur(); this.rotateViewTo(0); });
         for (const type of ['pointerdown', 'dblclick', 'contextmenu']) zoom.addEventListener(type, (e) => e.stopPropagation());
         // An open › card closes on a click anywhere else
         window.addEventListener('pointerdown', (e) => {
@@ -476,12 +478,78 @@ const PaintEditor = {
 
     // Zoom's pill: Fit or 100% lit when it's at that, and the zoom
     showZoom() {
-        const z = this.view.z, at1 = Math.abs(z - 1) < 0.001;
-        if (this._zoomShown === z + ':' + this.fitted) return;
-        this._zoomShown = z + ':' + this.fitted;
+        const z = this.view.z, at1 = Math.abs(z - 1) < 0.001, deg = this.viewAngle();
+        if (this._zoomShown === z + ':' + this.fitted + ':' + deg) return;
+        this._zoomShown = z + ':' + this.fitted + ':' + deg;
+        const turn = this.el('paint-view-angle');
+        turn.classList.toggle('hidden', !deg);
+        turn.querySelector('span').textContent = `${deg}°`;
+        turn.querySelector('svg').style.transform = `rotate(${deg}deg)`;
         this.el('paint-zoom-fit').setAttribute('aria-pressed', String(!!this.fitted));
         this.el('paint-zoom-1').setAttribute('aria-pressed', String(at1));
         this.el('paint-zoom-level').textContent = this.fitted || at1 ? '' : `${Math.round(z * 100)}%`;
+    },
+
+    // ---- Snap (View → Snap, Ctrl+;): to the canvas's edges and middle ----
+
+    // Within 8 screen px of an edge or the middle, on it; the lines snapped
+    // to show while dragging
+    snapTargets() {
+        return { xs: [0, this.OW / 2, this.OW], ys: [0, this.OH / 2, this.OH] };
+    },
+
+    snapPoint(p) {
+        this._snapLines = null;
+        if (!this.opts.snap || this.view.r) return p;
+        const near = 8 / this.view.z, { xs, ys } = this.snapTargets();
+        const fx = xs.find(x => Math.abs(p.ox - x) < near), fy = ys.find(y => Math.abs(p.oy - y) < near);
+        if (fx === undefined && fy === undefined) return p;
+        const o = { x: fx === undefined ? p.ox : fx, y: fy === undefined ? p.oy : fy };
+        const l = this.Ci.transformPoint(o);
+        this._snapLines = { x: fx, y: fy };
+        return { ...p, ox: o.x, oy: o.y, x: l.x, y: l.y };
+    },
+
+    // What's being moved: its edges or middle onto the canvas's
+    snapFloat() {
+        this._snapLines = null;
+        const f = this.float, t = f.t;
+        if (!this.opts.snap || this.view.r || t.rot) return;
+        const near = 8 / this.view.z, { xs, ys } = this.snapTargets();
+        const w = f.w * Math.abs(t.sx), h = f.h * Math.abs(t.sy);
+        const cx = f.x0 + f.w / 2 + t.tx, cy = f.y0 + f.h / 2 + t.ty;
+        const best = (c, half, targets) => {
+            let b = null;
+            for (const at of targets) for (const k of [-1, 0, 1]) {
+                const dd = at - (c + k * half);
+                if (Math.abs(dd) < near && (!b || Math.abs(dd) < Math.abs(b.d))) b = { d: dd, at };
+            }
+            return b;
+        };
+        const bx = best(cx, w / 2, xs), by = best(cy, h / 2, ys);
+        if (bx) t.tx += bx.d;
+        if (by) t.ty += by.d;
+        if (bx || by) this._snapLines = { x: bx ? bx.at : undefined, y: by ? by.at : undefined };
+    },
+
+    drawSnapLines(ctx, VD) {
+        const s = this._snapLines;
+        if (!s || !this.drag) return;
+        ctx.save();
+        ctx.setTransform(VD);
+        ctx.strokeStyle = '#ff2d95';
+        ctx.lineWidth = 1 / this.view.z;
+        ctx.beginPath();
+        if (s.x !== undefined) { ctx.moveTo(s.x, 0); ctx.lineTo(s.x, this.OH); }
+        if (s.y !== undefined) { ctx.moveTo(0, s.y); ctx.lineTo(this.OW, s.y); }
+        ctx.stroke();
+        ctx.restore();
+    },
+
+    toggleSnap() {
+        this.opts.snap = !this.opts.snap;
+        this.remember();
+        this.app.showToast(this.opts.snap ? 'Snap on: to the canvas\'s edges and middle' : 'Snap off', 1400);
     },
 
     layoutTopSoon() {
@@ -825,6 +893,7 @@ const PaintEditor = {
         this.syncColours();
         this.setTool(this.tool);
         this.sizeCanvas();
+        this.view = { z: 1, x: 0, y: 0, r: 0 }; // straight, for each photo
         this.fit();
         this.drawLayers();
     },
@@ -1087,7 +1156,7 @@ const PaintEditor = {
             lasso: 'Draw round what to select. Shift adds, Alt takes away',
             wand: 'Click a colour to select it. Shift adds, Alt takes away',
             picker: 'Click or drag for the foreground colour, Alt for the background. With a brush, hold Alt to pick',
-            hand: 'Drag to move about; the wheel zooms; double-click fits',
+            hand: 'Drag to move about; Shift-drag turns the view; the wheel zooms; double-click fits',
             text: 'Click where the text goes; Ctrl+Enter puts it down',
             fill: wholeFill ? 'Click to fill the whole layer (or what\'s selected) with the foreground colour' : 'Click to fill with the foreground colour',
             gradient: 'Drag from where it starts to where it ends',
@@ -1209,10 +1278,15 @@ const PaintEditor = {
 
     fit() {
         if (!this.ready) return;
-        const pad = 24;
-        const z = Math.min((this.cssW - 2 * pad) / this.OW, (this.cssH - 2 * pad) / this.OH, 8);
-        this.view = { z, x: (this.cssW - this.OW * z) / 2, y: (this.cssH - this.OH * z) / 2 };
+        const pad = 24, r = (this.view && this.view.r) || 0;
+        // Turned (View → Rotate), the picture's bounds turned
+        const c = Math.abs(Math.cos(r)), sn = Math.abs(Math.sin(r));
+        const bw = this.OW * c + this.OH * sn, bh = this.OW * sn + this.OH * c;
+        const z = Math.min((this.cssW - 2 * pad) / bw, (this.cssH - 2 * pad) / bh, 8);
+        this.view = { z, x: 0, y: 0, r };
+        this.place({ x: this.OW / 2, y: this.OH / 2 }, this.cssW / 2, this.cssH / 2);
         this.fitted = true;
+        this.positionText();
         this.render();
     },
 
@@ -1224,16 +1298,46 @@ const PaintEditor = {
         if (!this.ready) return;
         z = Math.min(32, Math.max(0.02, z));
         this.fitted = false;
-        const v = this.view;
-        const ox = (cx - v.x) / v.z, oy = (cy - v.y) / v.z;
-        this.view = { z, x: cx - ox * z, y: cy - oy * z };
+        const o = this.V().inverse().transformPoint({ x: cx, y: cy });
+        this.view.z = z;
+        this.place(o, cx, cy);
         this.positionText();
         this.renderSoon();
     },
 
+    // The view moved so the picture's point o is at (cx, cy) on screen
+    place(o, cx, cy) {
+        this.view.x = this.view.y = 0;
+        const q = this.V().transformPoint(o);
+        this.view.x = cx - q.x;
+        this.view.y = cy - q.y;
+    },
+
+    // ---- Turning the view (not the picture): View → Rotate, < and >,
+    // Shift-drag with the Hand. Straight again with Put the view straight
+    // or a click on the angle in the zoom pill ----
+
+    rotateViewTo(deg, cx = this.cssW / 2, cy = this.cssH / 2) {
+        if (!this.ready) return;
+        // Within a degree of straight (or a quarter turn) it's that
+        let a = ((deg % 360) + 540) % 360 - 180;
+        for (const q of [-180, -90, 0, 90, 180]) if (Math.abs(a - q) < 1) a = q;
+        const o = this.V().inverse().transformPoint({ x: cx, y: cy });
+        this.view.r = a * Math.PI / 180;
+        this.place(o, cx, cy);
+        if (this.fitted) this.fit();
+        this.positionText();
+        this.renderSoon();
+    },
+
+    viewAngle() {
+        return Math.round(((this.view && this.view.r) || 0) * 180 / Math.PI);
+    },
+
     // The view as a matrix: the picture shown (output px) → css px
     V() {
-        return new DOMMatrix([this.view.z, 0, 0, this.view.z, this.view.x, this.view.y]);
+        const v = this.view;
+        return new DOMMatrix().translate(v.x, v.y).rotate((v.r || 0) * 180 / Math.PI).scale(v.z);
     },
 
     // A pointer event → the picture shown (output px) and layer px
@@ -1296,6 +1400,7 @@ const PaintEditor = {
         if (this.crop) { this.drawCrop(ctx, VD); return; }
         this.drawSelection(ctx, VD, LD);
         this.drawGuides(ctx, VD, LD);
+        this.drawSnapLines(ctx, VD);
         if (loupe) this.drawLoupe(ctx, loupe);
     },
 
@@ -1460,7 +1565,8 @@ const PaintEditor = {
         if ((t === 'heal' || t === 'clone') && e.altKey) { this.setSource(p); return; }
         if (this.isBrush(t)) return this.startStroke(p, e.shiftKey ? this.lastDab : null);
         if (['line', 'rect', 'ellipse', 'gradient', 'rect-select', 'ellipse-select'].includes(t)) {
-            this.drag = { kind: 'shape', start: p, end: p, mode: e.altKey ? 'sub' : e.shiftKey && t.endsWith('select') ? 'add' : 'new' };
+            const sp = this.snapPoint(p);
+            this.drag = { kind: 'shape', start: sp, end: sp, mode: e.altKey ? 'sub' : e.shiftKey && t.endsWith('select') ? 'add' : 'new' };
             return;
         }
         if (t === 'lasso') {
@@ -1484,7 +1590,19 @@ const PaintEditor = {
         if (!d) { if (this.crop) this.cropCursor(p); this.renderSoon(); return; }
         if (d.kind === 'size') { this.sizeBy(p.sx - d.sx, p.sy - d.sy); return; }
         if (d.kind === 'pick') { this.pick(p, d.toBg); this.renderSoon(); return; }
-        if (d.kind === 'pan') {
+        if (d.kind === 'pan' && e.shiftKey) {
+            // Shift-drag with the Hand: the view turns about the middle
+            const cx = this.cssW / 2, cy = this.cssH / 2;
+            const ang = (q) => Math.atan2(q.sy - cy, q.sx - cx) * 180 / Math.PI;
+            if (!d.turn) d.turn = { a0: ang(d), r0: this.viewAngle() };
+            let deg = d.turn.r0 + ang(p) - d.turn.a0;
+            if (!e.shiftKey) deg = Math.round(deg);
+            else deg = Math.round(deg / 15) * 15;
+            this.rotateViewTo(deg);
+            // (Shift let go: it pans on from here)
+            Object.assign(d, { vx: this.view.x, vy: this.view.y, sx: p.sx, sy: p.sy });
+            if (!e.shiftKey) d.turn = null;
+        } else if (d.kind === 'pan') {
             this.fitted = false;
             this.view.x = d.vx + (p.sx - d.sx);
             this.view.y = d.vy + (p.sy - d.sy);
@@ -1503,7 +1621,7 @@ const PaintEditor = {
                 if (Math.hypot(p.sx - d.still.sx, p.sy - d.still.sy) > 5) { d.still = p; this.holdSoon(); }
             }
         } else if (d.kind === 'shape') {
-            d.end = p;
+            d.end = this.snapPoint(p);
             d.shift = e.shiftKey;
         } else if (d.kind === 'lasso') {
             const last = d.pts[d.pts.length - 1];
@@ -2916,6 +3034,16 @@ const PaintEditor = {
                 ...(n > 1 ? [['—'], ['Delete layer', () => this.deleteLayer(), true]] : [])
             ]],
             ['Brushes', this.brushItems()],
+            ['View', [
+                ['Snap', () => this.toggleSnap(), false, !!this.opts.snap, 'paint.snap'],
+                ['—'],
+                ['Rotate the view left', () => this.rotateViewTo(this.viewAngle() - 15), false, undefined, 'paint.viewLeft'],
+                ['Rotate the view right', () => this.rotateViewTo(this.viewAngle() + 15), false, undefined, 'paint.viewRight'],
+                ...when(!!this.viewAngle(), ['Put the view straight', () => this.rotateViewTo(0)]),
+                ['—'],
+                ['Fit', () => this.fit(), false, undefined, 'paint.fit'],
+                ['Actual pixels', () => this.zoomTo(1), false, undefined, 'paint.actual']
+            ]],
             ['—'],
             ['History', () => this.toggleHistory(), false, this.opts.history],
             ['QuickShape: hold at a stroke\'s end', () => { this.opts.quickShape = !this.opts.quickShape; this.remember(); }, false, this.opts.quickShape],
@@ -3235,6 +3363,8 @@ const PaintEditor = {
         const s = this.V().transformPoint({ x: this.text.ox, y: this.text.oy });
         ta.style.left = `${s.x}px`;
         ta.style.top = `${s.y}px`;
+        ta.style.transformOrigin = '0 0';
+        ta.style.transform = this.view.r ? `rotate(${this.view.r}rad)` : '';
         ta.style.font = this.font(this.view.z);
         this.sizeText();
     },
@@ -3376,6 +3506,7 @@ const PaintEditor = {
         if (d.part === 'move') {
             t.tx = o.tx + (p.ox - d.start.ox);
             t.ty = o.ty + (p.oy - d.start.oy);
+            this.snapFloat();
         } else if (d.part === 'rotate') {
             const a0 = Math.atan2(d.start.oy - cy, d.start.ox - cx), a1 = Math.atan2(p.oy - cy, p.ox - cx);
             let rot = o.rot + a1 - a0;
