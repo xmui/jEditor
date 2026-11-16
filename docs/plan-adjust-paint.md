@@ -146,6 +146,27 @@ can be changed or taken off later wherever it was made.
    via the Wrangler, 2026-11-15: "skip it").
 5. Later: an optional AI recolour, as a desktop download.
 
+**Phase 2, the rest of the row (the owner, via the Wrangler,
+2026-11-16):** descreen, then scratch and crease removal, then clarity,
+texture and dehaze; one PR each, into beta.
+
+1. *Done:* **descreen**, in Restore (Printed photos). Measured on its own
+   kit (`test/descreen.test.js`): the restore kit's scenes printed in
+   dots (four colour screens at the usual angles, or black alone as
+   newsprint, 3 to 9 px apart) and scanned. The spacing is found from the
+   brightness's spectrum, a sharp peak with its twin a quarter turn round
+   (exact on every case, 12,000 times above the rest or more); no photo
+   that isn't printed is said to be (400 at most; stripes have no twin).
+   Scored by ΔE2000 against the dots evenly mixed: 14–27 printed → 2.0–4.9
+   descreened (mean 3.2), and descreened then made small is 0.4 from the
+   photo's thumbnail. Measured and left out: mixing the dots in linear
+   light, as the eye does, is truer to the print (1.5 against the inks
+   mixed in light, where the shipped one is 5.8) but lighter than every
+   preview and thumbnail, which the browser makes smaller in the encoded
+   values (5.5 apart), so it would break "every size looks the same". It
+   could come back if previews of a descreened photo were made from the
+   full photo (`Develop.DESCREEN.linear`).
+
 ### Adjust: film looks you dial in, and your own (the owner, 2026-11-15)
 
 "For the film looks I want to be able to create your own, and it's also a

@@ -30,6 +30,10 @@
 //   sharpen (0–150), sharpRadius (px), sharpMask; noise, colorNoise
 //           (Detail: they look at the pixels round each one, so they're
 //           done first, on the photo itself, on the CPU: see applyDetail)
+//   descreen (0–100), screen (the printed dots' spacing, in the photo's
+//           pixels: findScreen measures it): the dot pattern of a printed
+//           photo (a magazine, a newspaper) taken off; the first step of
+//           Detail
 //   masks:  [{ type: 'linear'|'radial'|'brush'|'sky'|'subject', invert,
 //           adj: {exposure, contrast, … MASK_SLIDERS}, linear: [x0, y0, x1,
 //           y1], radial: [cx, cy, rx, ry, angle, feather], brush: [{ size,
@@ -70,6 +74,8 @@ const Develop = {
         sharpMask: { min: 0, max: 100, step: 1 },
         noise: { min: 0, max: 100, step: 1 },
         colorNoise: { min: 0, max: 100, step: 1 },
+        descreen: { min: 0, max: 100, step: 1 },
+        screen: { min: 2, max: 24, step: 0.1, def: 5 },
         halation: { min: 0, max: 100, step: 1 },
         lookAmount: { min: 0, max: 200, step: 1, def: 100 }
     },
@@ -498,6 +504,7 @@ const Develop = {
         { id: 'mixer', name: 'Color mixer', keys: ['hsl'] },
         { id: 'grading', name: 'Color grading', keys: ['grade', 'gradeBlend', 'gradeBalance'] },
         { id: 'detail', name: 'Detail', keys: ['sharpen', 'sharpRadius', 'sharpMask', 'noise', 'colorNoise'] },
+        { id: 'descreen', name: 'Descreen', keys: ['descreen', 'screen'] },
         { id: 'effects', name: 'Effects', keys: ['vignette', 'vigMid', 'vigFeather', 'vigRound', 'grain', 'grainSize', 'grainColor', 'halation'] },
         { id: 'masks', name: 'Masks', keys: ['masks'], off: true, note: 'Sky and subject masks are found in each photo, so each keeps its own' },
         { id: 'spots', name: 'Spot removal', keys: ['spots'], off: true },
@@ -1684,7 +1691,7 @@ void main() {
         map = map || this.cropMap(null, canvas.width, canvas.height);
         const brush = this.brushFor(T.masks, map.asp);
         if (brush && R && !R.lost) R.setBrush(brush);
-        const d = scale >= 0.5 ? this.detail(this.full(adj)) : null;
+        const d = this.detail(this.full(adj), scale);
         // Detail reads round each block: from the picture as it was
         let source = null;
         if (d) {
@@ -1721,22 +1728,42 @@ void main() {
         return true;
     },
 
-    // ---- Detail: sharpening and noise reduction ----
+    // ---- Detail: descreen, sharpening and noise reduction ----
     //
     // On the photo before everything else, in brightness and colour
     // (Y, and the colour differences Cb, Cr), each a pass across then a
     // pass down:
+    //   descreen: a printed photo's dots blurred away, in a blur sized to
+    //           their spacing (`screen`), colour more than brightness (the
+    //           colour screens' rosette is coarser than the dots); then
+    //           the edges brought back a little, at a size the dots don't
+    //           have
     //   noise: an edge-keeping (bilateral) blur of the brightness
     //   colorNoise: a blur of the colour only, so blotches go and edges stay
     //   sharpen: an unsharp mask of the brightness (no colour fringes);
     //            Masking keeps it to the edges, off flat skin and sky
     // Sizes are in the photo's own pixels: `scale` is how many of this
-    // picture's pixels there are to one of the photo's (a screen-sized
-    // preview is 0.3 or so, where none of it shows: it's left out there).
+    // picture's pixels there are to one of the photo's. Below a half (a
+    // screen-sized preview, a thumbnail) sharpening and noise don't show
+    // and are left out; descreen is kept while the dots are still two of
+    // this picture's pixels apart, since then they'd show.
 
-    detail(a) {
-        if (!a.sharpen && !a.noise && !a.colorNoise) return null;
-        return { amount: a.sharpen / 100 * 1.5, radius: a.sharpRadius, mask: a.sharpMask / 100, noise: a.noise / 100, color: a.colorNoise / 100 };
+    // Descreen's sizes, in the screen's spacing (measured on the descreen
+    // kit: test/descreen.test.js). linear: the dots mixed in linear light,
+    // as the eye mixes them, which is truer to the print (ΔE 1.5 against
+    // 5.8 on the kit) but lighter than the photo's previews and thumbnails,
+    // which the browser makes smaller in the encoded values (5.5 apart):
+    // off, so every size of the photo looks the same
+    DESCREEN: { y: 0.5, c: 0.8, back: 0.3, backR: 0.8, linear: false },
+
+    detail(a, scale = 1) {
+        const near = scale >= 0.5;
+        const ds = a.descreen && a.screen * scale >= 2 ? a.descreen / 100 : 0;
+        if (!ds && !(near && (a.sharpen || a.noise || a.colorNoise))) return null;
+        const d = near ? { amount: a.sharpen / 100 * 1.5, radius: a.sharpRadius, mask: a.sharpMask / 100, noise: a.noise / 100, color: a.colorNoise / 100 }
+            : { amount: 0, radius: 1, mask: 0, noise: 0, color: 0 };
+        if (ds) { d.descreen = ds; d.screen = a.screen; }
+        return d;
     },
 
     detailSizes(d, s) {
@@ -1744,13 +1771,69 @@ void main() {
         const rn = d.noise ? Math.min(6, Math.ceil(2 * sn)) : 0;
         const rc = d.color ? Math.min(10, Math.ceil(2 * sc)) : 0;
         const rb = d.amount ? Math.min(10, Math.ceil(2.5 * sb)) : 0;
-        return { sn, sc, sb, rn, rc, rb, margin: Math.max(rn, rc) + rb + (d.amount ? 1 : 0) };
+        const D = this.DESCREEN, p = (d.screen || 0) * s;
+        const dy = D.y * p, dc = D.c * p, db = D.backR * p;
+        const ry = d.descreen ? Math.min(48, Math.ceil(2.5 * dy)) : 0;
+        const rcs = d.descreen ? Math.min(64, Math.ceil(2.5 * dc)) : 0;
+        const rbs = d.descreen && D.back ? Math.min(48, Math.ceil(2.5 * db)) : 0;
+        const md = Math.max(ry + rbs, rcs);
+        return { sn, sc, sb, rn, rc, rb, dy, dc, db, ry, rcs, rbs, margin: md + Math.max(rn, rc) + rb + (d.amount ? 1 : 0) };
+    },
+
+    // A Gaussian blur of a w × h plane (sigma, out to r), edges repeated
+    gauss(src, w, h, sigma, r) {
+        const k = new Float32Array(2 * r + 1);
+        let ks = 0;
+        for (let i = -r; i <= r; i++) ks += k[i + r] = Math.exp(-(i * i) / (2 * sigma * sigma));
+        for (let i = 0; i <= 2 * r; i++) k[i] /= ks;
+        const tmp = new Float32Array(w * h), out = new Float32Array(w * h);
+        const row = new Float32Array(Math.max(w, h) + 2 * r);
+        for (let y = 0; y < h; y++) {
+            for (let x = -r; x < w + r; x++) row[x + r] = src[y * w + (x < 0 ? 0 : x >= w ? w - 1 : x)];
+            for (let x = 0; x < w; x++) { let v = 0; for (let t = 0; t <= 2 * r; t++) v += row[x + t] * k[t]; tmp[y * w + x] = v; }
+        }
+        for (let x = 0; x < w; x++) {
+            for (let y = -r; y < h + r; y++) row[y + r] = tmp[(y < 0 ? 0 : y >= h ? h - 1 : y) * w + x];
+            for (let y = 0; y < h; y++) { let v = 0; for (let t = 0; t <= 2 * r; t++) v += row[y + t] * k[t]; out[y * w + x] = v; }
+        }
+        return out;
+    },
+
+    // Descreen (RGBA bytes, in place): in the encoded values, as a picture
+    // made smaller mixes the dots (or in linear light: DESCREEN.linear)
+    descreenPx(px, w, h, d, z) {
+        const n = w * h, D = this.DESCREEN, t = d.descreen;
+        const L = D.linear;
+        const toLin = L ? (this._toLin || (this._toLin = Float32Array.from({ length: 256 }, (_, i) => { const v = i / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); })))
+            : (this._toUnit || (this._toUnit = Float32Array.from({ length: 256 }, (_, i) => i / 255)));
+        const Y = new Float32Array(n), Cb = new Float32Array(n), Cr = new Float32Array(n);
+        for (let i = 0; i < n; i++) {
+            const r = toLin[px[i * 4]], g = toLin[px[i * 4 + 1]], b = toLin[px[i * 4 + 2]];
+            const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            Y[i] = y; Cb[i] = b - y; Cr[i] = r - y;
+        }
+        const Yb = this.gauss(Y, w, h, z.dy, z.ry);
+        if (z.rbs) {
+            const Bb = this.gauss(Yb, w, h, z.db, z.rbs);
+            for (let i = 0; i < n; i++) Yb[i] += D.back * (Yb[i] - Bb[i]);
+        }
+        const Cbb = this.gauss(Cb, w, h, z.dc, z.rcs), Crb = this.gauss(Cr, w, h, z.dc, z.rcs);
+        const enc = L ? (v) => { v = v < 0 ? 0 : v > 1 ? 1 : v; return Math.round(255 * (v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055)); }
+            : (v) => Math.round(255 * (v < 0 ? 0 : v > 1 ? 1 : v));
+        for (let i = 0; i < n; i++) {
+            const y = Y[i] + t * (Yb[i] - Y[i]);
+            const cb = Cb[i] + t * (Cbb[i] - Cb[i]), cr = Cr[i] + t * (Crb[i] - Cr[i]);
+            const r = y + cr, b = y + cb, g = (y - 0.2126 * r - 0.0722 * b) / 0.7152;
+            px[i * 4] = enc(r); px[i * 4 + 1] = enc(g); px[i * 4 + 2] = enc(b);
+        }
     },
 
     // RGBA bytes (w × h), in place
     applyDetail(px, w, h, d, s = 1) {
         const z = this.detailSizes(d, s);
         const n = w * h;
+        if (z.ry) this.descreenPx(px, w, h, d, z);
+        if (!z.rn && !z.rc && !z.rb) return px;
         let Y = new Float32Array(n), Cb = new Float32Array(n), Cr = new Float32Array(n);
         for (let i = 0; i < n; i++) {
             const r = px[i * 4] / 255, g = px[i * 4 + 1] / 255, b = px[i * 4 + 2] / 255;
@@ -1860,6 +1943,124 @@ void main() {
             out.data.set(big.data.subarray(from, from + w * 4), r * w * 4);
         }
         return out;
+    },
+
+    // A printed photo's dot screen, found in its own pixels (RGBA, w × h,
+    // at full size: a preview would have lost the dots): the brightness's
+    // spectrum, averaged over a few windows, has a sharp peak at the dots'
+    // spacing that a photo's own texture doesn't: far above the rest of its
+    // ring (SCREEN_FOUND times), and a real share of all the fine detail
+    // (SCREEN_SHARE: the dots are high contrast; the ripple a scanner's
+    // interpolated resolution leaves is faint), with its twin a quarter
+    // turn round (SCREEN_TURNED, as strong or a quarter of it). The kit's
+    // screens stand 12,000 times above their ring or more; its photos that
+    // aren't printed, 400 at most. → { screen (px), strength } or null
+    SCREEN_FOUND: 2000,
+    SCREEN_SHARE: 0.01,
+    SCREEN_TURNED: 0.25,
+    findScreen(px, w, h) {
+        let N = 256;
+        while (N > 64 && N > Math.min(w, h)) N >>= 1;
+        if (N > Math.min(w, h)) return null;
+        const at = (len) => len >= 2 * N ? [len / 4 - N / 2, 3 * len / 4 - N / 2, len / 2 - N / 2] : [(len - N) / 2];
+        const xs = at(w).map(Math.round), ys = at(h).map(Math.round);
+        const wins = [];
+        for (const y of ys) for (const x of xs) wins.push([x, y]);
+        const hann = new Float32Array(N);
+        for (let i = 0; i < N; i++) hann[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * (i + 0.5) / N);
+        const pow = new Float64Array(N * N), re = new Float64Array(N * N), im = new Float64Array(N * N);
+        for (const [x0, y0] of wins) {
+            let mean = 0;
+            for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+                const i = ((y0 + y) * w + x0 + x) * 4;
+                mean += re[y * N + x] = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+            }
+            mean /= N * N;
+            for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+                const i = y * N + x;
+                re[i] = (re[i] - mean) * hann[x] * hann[y];
+                im[i] = 0;
+            }
+            this.fft2(re, im, N);
+            for (let i = 0; i < N * N; i++) pow[i] += re[i] * re[i] + im[i] * im[i];
+        }
+        // Each ring's median power (the photo's own falls off with frequency)
+        const fr = (i) => (i < N / 2 ? i : i - N);
+        const R = Math.floor(N / 2), rings = Array.from({ length: R + 1 }, () => []);
+        for (let v = 0; v < N; v++) for (let u = 0; u < N; u++) {
+            const r = Math.round(Math.hypot(fr(u), fr(v)));
+            if (r <= R && fr(v) >= 0) rings[r].push(pow[v * N + u]);
+        }
+        const med = rings.map(l => { if (!l.length) return 0; l.sort((a, b) => a - b); return l[l.length >> 1]; });
+        const P = (u, v) => pow[((v + N) % N) * N + ((u + N) % N)];
+        let best = null;
+        const r0 = Math.max(3, Math.ceil(N / 24)), r1 = Math.floor(N / 2.1);
+        // All the detail finer than the coarsest screen (half the plane)
+        let total = 0;
+        for (let v = 0; v <= R; v++) for (let u = -R + 1; u < R; u++) if (Math.hypot(u, v) >= r0 && !(v === 0 && u < 0)) total += P(u, v);
+        for (let v = 0; v <= R; v++) for (let u = -R + 1; u < R; u++) {
+            const r = Math.hypot(u, v);
+            if (r < r0 || r > r1 || (v === 0 && u < 0)) continue;
+            const p = P(u, v), m = med[Math.round(r)] || 1e-9;
+            if (p < m * this.SCREEN_FOUND) continue;
+            let peak = true;
+            for (let dv = -1; dv <= 1 && peak; dv++) for (let du = -1; du <= 1; du++) if ((du || dv) && P(u + du, v + dv) > p) { peak = false; break; }
+            if (!peak) continue;
+            // A screen is a lattice of dots: the same peak a quarter turn
+            // round (stripes, a fence or a weave have it one way only)
+            let turned = 0;
+            for (let dv = -1; dv <= 1; dv++) for (let du = -1; du <= 1; du++) turned = Math.max(turned, P(-v + du, u + dv));
+            if (turned < p * this.SCREEN_TURNED) continue;
+            // the peak's power, its neighbours' too (it falls between bins)
+            let sum = 0;
+            for (let dv = -1; dv <= 1; dv++) for (let du = -1; du <= 1; du++) sum += P(u + du, v + dv);
+            if (!best || sum > best.sum) best = { u, v, sum, ratio: p / m, share: sum / total };
+        }
+        if (!best || best.share < this.SCREEN_SHARE) return null;
+        // where between the bins it is (a parabola through each way)
+        const off = (a, b, c) => { const q = a - 2 * b + c; return q < 0 ? Math.max(-0.5, Math.min(0.5, 0.5 * (a - c) / q)) : 0; };
+        const { u, v } = best, c = Math.log(P(u, v) + 1e-12);
+        const du = off(Math.log(P(u - 1, v) + 1e-12), c, Math.log(P(u + 1, v) + 1e-12));
+        const dv = off(Math.log(P(u, v - 1) + 1e-12), c, Math.log(P(u, v + 1) + 1e-12));
+        const screen = N / Math.hypot(u + du, v + dv);
+        const sl = this.SLIDERS.screen;
+        if (screen < sl.min || screen > sl.max) return null;
+        return { screen: +screen.toFixed(1), strength: Math.round(best.ratio) };
+    },
+
+    // In place: a 2D Fourier transform of N × N (N a power of two)
+    fft2(re, im, N) {
+        const rr = new Float64Array(N), ii = new Float64Array(N);
+        const fft = (rr, ii) => {
+            for (let i = 1, j = 0; i < N; i++) {
+                let bit = N >> 1;
+                for (; j & bit; bit >>= 1) j ^= bit;
+                j ^= bit;
+                if (i < j) { let t = rr[i]; rr[i] = rr[j]; rr[j] = t; t = ii[i]; ii[i] = ii[j]; ii[j] = t; }
+            }
+            for (let len = 2; len <= N; len <<= 1) {
+                const a = -2 * Math.PI / len, wr = Math.cos(a), wi = Math.sin(a);
+                for (let i = 0; i < N; i += len) {
+                    let cr = 1, ci = 0;
+                    for (let k = 0; k < len / 2; k++) {
+                        const p = i + k, q = p + len / 2;
+                        const tr = rr[q] * cr - ii[q] * ci, ti = rr[q] * ci + ii[q] * cr;
+                        rr[q] = rr[p] - tr; ii[q] = ii[p] - ti; rr[p] += tr; ii[p] += ti;
+                        const nr = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = nr;
+                    }
+                }
+            }
+        };
+        for (let y = 0; y < N; y++) {
+            for (let x = 0; x < N; x++) { rr[x] = re[y * N + x]; ii[x] = im[y * N + x]; }
+            fft(rr, ii);
+            for (let x = 0; x < N; x++) { re[y * N + x] = rr[x]; im[y * N + x] = ii[x]; }
+        }
+        for (let x = 0; x < N; x++) {
+            for (let y = 0; y < N; y++) { rr[y] = re[y * N + x]; ii[y] = im[y * N + x]; }
+            fft(rr, ii);
+            for (let y = 0; y < N; y++) { re[y * N + x] = rr[y]; im[y * N + x] = ii[y]; }
+        }
     },
 
     // An ImageBitmap with the adjustments (the crop editor's picture)

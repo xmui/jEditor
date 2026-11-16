@@ -113,6 +113,14 @@ const Adjust = {
         for (const [k, label] of this.COLOR) (k === 'temp' || k === 'tint' ? wb : color).appendChild(this.slider(k, label));
         const detail = this.el('adj-detail');
         for (const [k, label] of this.DETAIL) detail.appendChild(this.slider(k, label));
+        // Descreen, in Restore: its sliders once it's on
+        const ds = this.el('adj-descreen-tools');
+        for (const [k, label] of [['descreen', 'Descreen'], ['screen', 'Dot spacing']]) {
+            const row = this.slider(k, label), sync = row._sync;
+            row._sync = () => { sync(); ds.classList.toggle('hidden', !this.a.descreen); };
+            ds.appendChild(row);
+        }
+        bind('adj-descreen', () => this.descreen());
         this.initLoupe();
         const effects = this.el('adj-effects');
         for (const [k, label] of this.EFFECTS) effects.appendChild(this.slider(k, label));
@@ -405,12 +413,9 @@ const Adjust = {
 
         if (this.gl) {
             this.gl.setImage(bmp);
-            // Big enough for detail to show (a small photo): kept, to do it on
-            if (this.pxScale >= 0.5) {
-                this.srcData = bmp.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, bmp.width, bmp.height);
-            } else {
-                this.srcData = null;
-            }
+            // Kept, to do detail on: sharpening and noise show on a small
+            // photo (shown at half size or more), descreen on most
+            this.srcData = bmp.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, bmp.width, bmp.height);
         } else {
             // No GPU: a smaller working copy, adjusted on the CPU
             const s2 = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
@@ -593,6 +598,29 @@ const Adjust = {
         const m = Develop.restoreMeasure(this.sample);
         const t = m ? Develop.restoreType(m) : 'keep';
         return t === 'keep' ? 'print' : t;
+    },
+
+    // Descreen: the dot screen found in the full-size photo (a preview has
+    // lost the dots), from up to 1024 px square in its middle, and taken off
+    async descreen() {
+        if (this._descreening) return;
+        this._descreening = true;
+        try {
+            const full = await this.loadFull();
+            if (!full || !this.isOpen) return;
+            const w = Math.min(1024, full.width), h = Math.min(1024, full.height);
+            const x = Math.round((full.width - w) / 2), y = Math.round((full.height - h) / 2);
+            const found = Develop.findScreen(this.fullCtx.getImageData(x, y, w, h).data, w, h);
+            if (!found) {
+                const on = () => this.setAll({ ...this.result(), descreen: 100 });
+                this.app.showToast('Descreen: no printed dot pattern found', 4000, null, this.a.descreen ? null : { label: 'Turn on anyway', run: on }, { kind: 'adjust' });
+                return;
+            }
+            this.setAll({ ...this.result(), descreen: this.a.descreen || 100, screen: found.screen });
+            this.app.showToast(`Descreen: dots ${found.screen} px apart found and taken off. Zoom to 100% to see it`, 3000, null, null, { kind: 'adjust' });
+        } finally {
+            this._descreening = false;
+        }
     },
 
     // The Restore tool's colour options, while Restore color is on
@@ -1132,7 +1160,7 @@ const Adjust = {
     // The working copy with detail done (debounced: it's on the CPU)
     detailSoon() {
         if (!this.gl || !this.srcData) return;
-        const d = Develop.detail(this.a);
+        const d = Develop.detail(this.a, this.pxScale);
         const key = JSON.stringify(d);
         if (key === this._detailKey) return;
         clearTimeout(this._detailTimer);
