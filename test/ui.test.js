@@ -586,9 +586,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.files = [file];
             document.getElementById('main-interface').classList.remove('hidden');
             await app.loadFile(file);
-            const chip = document.getElementById('status-bar');
-            out.chipVisible = !chip.classList.contains('hidden');
-            out.chipText = chip.textContent;
+            // No path chip at the bottom left any more (the owner's ask):
+            // the name is in the header, the location in Info
+            out.noChip = !document.getElementById('status-bar');
 
             // Info panel opens and lists name + formatted size
             app.toggleInfoPanel(true);
@@ -599,7 +599,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         });
         check('EXIF Make parsed', r.make === 'TestCam Inc.', String(r.make));
         check('EXIF DateTimeOriginal parsed', r.taken === '2024-6-15', String(r.taken));
-        check('status chip visible with full path', r.chipVisible && r.chipText === 'Photos/vacation/photo.png', r.chipText);
+        check('no path chip at the bottom left', r.noChip);
         check('info panel opens', r.panelOpen);
         check('info panel lists name, location and size', r.panelText.includes('photo.png') &&
             r.panelText.includes('Photos/vacation') && /\d+ B|KB|MB/.test(r.panelText), r.panelText);
@@ -888,10 +888,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.applyUiPrefs();
             out.containDefault = document.getElementById('grid-view').classList.contains('thumb-contain');
 
-            // Strip height + in-flow status bar (no overlap possible)
+            // Strip height
             app.setStripHeight(120);
             out.stripVar = getComputedStyle(document.documentElement).getPropertyValue('--strip-height').trim();
-            out.statusInFlow = ['static', 'relative'].includes(getComputedStyle(document.getElementById('status-bar')).position);
 
             // Info icon actually has its dot
             out.infoDot = document.getElementById('btn-info').innerHTML.includes('cy="8"');
@@ -931,8 +930,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('vertical pill + scale + persistence', r.vertical && r.persisted && parseFloat(r.scaleApplied) === 1.2,
             JSON.stringify({ v: r.vertical, p: r.persisted, z: r.scaleApplied }));
         check('thumbnail fit (contain) on by default', r.containDefault);
-        check('strip height adjustable, status bar in flow below strip', r.stripVar === '120px' && r.statusInFlow,
-            JSON.stringify({ s: r.stripVar, flow: r.statusInFlow }));
+        check('strip height adjustable', r.stripVar === '120px', r.stripVar);
         check('info icon has its dot', r.infoDot);
         check('task pill shows current task with count', r.pillVisible && r.pillLabel === 'Exporting 2/5 (+1)' && r.taskRows === 2,
             JSON.stringify({ l: r.pillLabel, rows: r.taskRows }));
@@ -3170,12 +3168,6 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.menu = Folders.contextItems('Wedding/Reception').map(i => i[0]).join('|');
             app.selection = new Set([f('b.jpg'), f('d.jpg')]);
             out.menuSel = Folders.contextItems('Wedding').map(i => i[0]).slice(0, 5).join('|');
-            // The path chip (bottom left) is for single view only
-            app.setView('single');
-            const chipShown = () => !document.getElementById('status-bar').classList.contains('hidden');
-            out.chipSingle = chipShown();
-            app.setView('grid');
-            out.chipGrid = chipShown();
             // Grid rows never overlap, however wide the tiles stretch
             Folders.setScope(null);
             // (big enough for two rows of the seven, the grid as wide as it is beside the sidebar)
@@ -3215,7 +3207,6 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('folders: folder list can be hidden (remembered)', r.railHidden);
         check('folders: Rename All in a folder covers that folder only', r.renameScope === 'Wedding/b.jpg,Wedding/w1.jpg|All photos in Wedding (2)', r.renameScope);
         check('folders: folder menu', r.menu === 'Open|Folder info|—|New folder inside…|New blank image…|Rename folder…|—|Delete folder', r.menu);
-        check('path chip: shown in single view, hidden in the grid', r.chipSingle && !r.chipGrid, `${r.chipSingle}/${r.chipGrid}`);
         check('folders: grid rows keep their gap (tiles never overlap)', r.rowGap === 16 && r.square, `gap=${r.rowGap}`);
         check('folders: folder menu moves or copies the selection there', r.menuSel === 'Open|Folder info|—|Move 2 photos here|Copy 2 photos here', r.menuSel);
 

@@ -13,8 +13,10 @@
 //
 // Adjust and Paint have no Done bar: what's done is kept as you go, as in
 // Lightroom. The switch, Esc or Enter go back to Photos keeping it (and
-// Ctrl+Z there takes it off again); a film strip runs along the bottom
-// (#mode-strip), and another photo there opens in the same mode.
+// Ctrl+Z there takes it off again); the film strip runs along the bottom,
+// the same one as Photos' (#thumbnail-strip, moved in: its size, badges,
+// clicks and showing or hiding are the same everywhere), and another photo
+// there opens in the same mode.
 //
 // The landing page's Start in (Photos · Adjust · Paint, remembered) is
 // where a project opened from it lands; Paint there asks what to paint on
@@ -90,17 +92,13 @@ const Modes = {
         float.className = 'mode-float toolbar hidden';
         float.appendChild(this.makeChip('mode-chip-float'));
         document.body.appendChild(float);
-        // The strip in Adjust and Paint
-        const strip = document.createElement('div');
-        strip.id = 'mode-strip';
-        strip.className = 'mode-strip';
-        strip.setAttribute('aria-label', 'Photos: another one opens in this mode');
-        strip.addEventListener('wheel', (e) => {
-            if (e.ctrlKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
-            e.preventDefault();
-            strip.scrollLeft += Wheel.pixels(e, strip).y;
-        }, { passive: false });
-        this.strip = strip;
+        // The film strip's place in Photos, to put it back when Adjust or
+        // Paint closes (placeStrip)
+        const strip = this.strip = app.elements.thumbnailStrip;
+        if (strip) {
+            this.stripHome = document.createComment('film strip');
+            (app.elements.stripResize || strip).before(this.stripHome);
+        }
         const blank = this.el('start-blank');
         // New project: a folder for photos or a blank canvas (places.js asks which)
         if (blank) blank.addEventListener('click', () => typeof Places !== 'undefined' ? Places.newProject() : this.paintStart());
@@ -520,38 +518,37 @@ const Modes = {
         this.menuChip = null;
     },
 
-    // ---- The strip in Adjust and Paint ----
+    // ---- The film strip, in every mode ----
 
+    // Photos' own film strip, at the bottom of Adjust or Paint while one
+    // is open, and back in its place in Photos after
     placeStrip(mode) {
         const app = this.app;
-        const strip = this.strip;
-        if (!strip) return;
-        const host = mode === 'adjust' ? this.el('adjust-editor') : mode === 'paint' ? this.el('paint-editor') : null;
-        const want = host && app.elements.thumbnailStrip && !app.elements.thumbnailStrip.classList.contains('hidden') && app.viewFiles().length > 1;
-        if (!want) {
-            if (strip.parentElement) strip.remove();
-            this._stripFor = null;
-            return;
+        const strip = app.elements.thumbnailStrip;
+        if (!strip || !this.stripHome) return;
+        const resize = app.elements.stripResize;
+        // (a blank canvas with no folder open: no photos, no strip)
+        const host = !app.viewFiles().length ? null : mode === 'adjust' ? this.el('adjust-editor') : mode === 'paint' ? this.el('paint-editor') : null;
+        const parts = resize ? [resize, strip] : [strip];
+        if (host) {
+            if (strip.parentElement !== host) host.append(...parts);
+        } else if (strip.parentElement !== this.stripHome.parentNode) {
+            this.stripHome.after(...parts);
         }
-        if (strip.parentElement !== host) host.appendChild(strip);
-        const files = app.viewFiles();
-        const current = mode === 'adjust' ? Adjust.file : PaintEditor.file;
-        // The same photos: kept as they are (their thumbnails loaded)
-        const same = this._stripFor && this._stripFor.length === files.length && files.every((f, i) => f === this._stripFor[i]);
-        if (!same || strip.childElementCount !== files.length) this.fillStrip(files);
-        for (const div of strip.children) {
-            div.classList.toggle('active', div._file === current);
-            div.classList.toggle('sel', mode === 'adjust' && div._file !== current && app.selection.has(div._file));
-        }
-        const on = [...strip.children].find(d => d._file === current);
-        if (on) {
-            const target = on.offsetLeft - (strip.clientWidth - on.offsetWidth) / 2;
-            if (Math.abs(strip.scrollLeft - target) > 1) strip.scrollLeft = target;
-        }
+        // Picked for Sync, in Adjust: a ring inside (the open one's outside)
+        const sel = mode === 'adjust' ? app.selection : null;
+        for (const div of strip.querySelectorAll('.thumb-item')) this.markStrip(div, sel);
+        if (host) app.updateActiveThumbnail();
     },
 
-    // In Adjust, Ctrl+click picks others too and Shift+click a run of
-    // them, for Sync (adjust-sync.js); a plain click opens that one alone
+    // One item's Sync ring (sel: the photos picked, in Adjust; else none)
+    markStrip(div, sel = this.current() === 'adjust' ? this.app.selection : null) {
+        div.classList.toggle('sel', !!sel && div._file !== this.app.currentFile && sel.has(div._file));
+    },
+
+    // A click on the film strip, in any mode: that photo, in this mode. In
+    // Adjust, Ctrl+click picks others too and Shift+click a run of them,
+    // for Sync (adjust-sync.js)
     stripClick(f, e) {
         const app = this.app;
         const cur = Adjust.file;
@@ -584,52 +581,25 @@ const Modes = {
     STRIP_TYPE: 'application/x-jeditor-strip',
     dragging: null,
 
-    fillStrip(files) {
+    // What a film strip item does besides a click (script.js: makeStripItem):
+    // dragged into Paint, a layer; right-clicked in Adjust, Sync's menu
+    wireStripItem(div, f) {
         const app = this.app;
-        const strip = this.strip;
-        strip.textContent = '';
-        this._stripFor = files;
-        if (this._observer) this._observer.disconnect();
-        this._observer = new IntersectionObserver((entries) => {
-            for (const en of entries) {
-                if (!en.isIntersecting) continue;
-                const div = en.target;
-                this._observer.unobserve(div);
-                const img = document.createElement('img');
-                img.alt = '';
-                img.draggable = false;
-                div.appendChild(img);
-                app.loadImageThumbnail(div._file, img).catch(() => { /* the name shows */ });
-            }
-        }, { root: strip, rootMargin: '0px 400px' });
-        const frag = document.createDocumentFragment();
-        for (const f of files) {
-            const div = document.createElement('button');
-            div.type = 'button';
-            div.className = 'mode-thumb';
-            div.title = f.relPath || f.name;
-            div.setAttribute('aria-label', f.name);
-            div._file = f;
-            // In Paint, a photo dragged onto the picture comes in as a layer
-            div.draggable = true;
-            div.addEventListener('dragstart', (e) => {
-                if (this.current() !== 'paint' || f === PaintEditor.file) { e.preventDefault(); return; }
-                this.dragging = f;
-                e.dataTransfer.effectAllowed = 'copy';
-                e.dataTransfer.setData(this.STRIP_TYPE, f.name);
-            });
-            div.addEventListener('dragend', () => { this.dragging = null; });
-            div.addEventListener('click', (e) => this.stripClick(f, e));
-            div.addEventListener('contextmenu', (e) => {
-                if (this.current() !== 'adjust') return;
-                e.preventDefault();
-                if (f !== Adjust.file && !app.selection.has(f)) this.stripSelect(new Set([...app.selection, Adjust.file, f]));
-                app.openContextMenu(AdjustSync.stripItems(), e.clientX, e.clientY);
-            });
-            frag.appendChild(div);
-            this._observer.observe(div);
-        }
-        strip.appendChild(frag);
+        div.draggable = true;
+        div.addEventListener('dragstart', (e) => {
+            if (this.current() !== 'paint' || f === PaintEditor.file) { e.preventDefault(); return; }
+            this.dragging = f;
+            e.dataTransfer.effectAllowed = 'copy';
+            e.dataTransfer.setData(this.STRIP_TYPE, f.name);
+        });
+        div.addEventListener('dragend', () => { this.dragging = null; });
+        div.addEventListener('contextmenu', (e) => {
+            if (this.current() !== 'adjust') return;
+            e.preventDefault();
+            if (f !== Adjust.file && !app.selection.has(f)) this.stripSelect(new Set([...app.selection, Adjust.file, f]));
+            app.openContextMenu(AdjustSync.stripItems(), e.clientX, e.clientY);
+        });
+        this.markStrip(div);
     },
 
     // ---- The home page's tiles (start.js) ----

@@ -49,7 +49,6 @@ const app = {
         taskList: document.getElementById('task-list'),
         infoPanel: document.getElementById('info-panel'),
         infoList: document.getElementById('info-list'),
-        statusBar: document.getElementById('status-bar'),
         loadingText: document.getElementById('loading-text'),
         gridControls: document.getElementById('grid-controls'),
         gridSizeSlider: document.getElementById('grid-size-slider'),
@@ -1375,9 +1374,12 @@ const app = {
         }, this.CONTROLS_IDLE_MS);
     },
 
+    // Shown or hidden for the session, in Photos, Adjust and Paint alike
+    // (setView keeps it so; modes.js moves the strip into Adjust and Paint)
     toggleThumbnailStrip() {
         const strip = this.elements.thumbnailStrip;
         const show = strip.classList.contains('hidden');
+        this._stripOff = !show;
         strip.classList.toggle('hidden', !show);
         if (this.elements.stripResize) this.elements.stripResize.classList.toggle('hidden', !show);
         this.elements.btnToggleStrip.setAttribute('aria-pressed', String(show));
@@ -2103,19 +2105,6 @@ const app = {
         if (!file) return '';
         const rel = file.relPath || file.name;
         return this.dirHandle ? `${this.dirHandle.name}/${rel}` : rel;
-    },
-
-    // Subtle chip in the bottom-left with location + file name (single
-    // view only: the grid has the folder list and the folder pill)
-    updateStatusBar() {
-        const el = this.elements.statusBar;
-        if (!el) return;
-        if (!this.currentFile || this.viewMode === 'grid') {
-            el.classList.add('hidden');
-            return;
-        }
-        el.classList.remove('hidden');
-        el.textContent = this.getDisplayPath(this.currentFile) + (this.readOnlyMode ? ' · read-only' : '');
     },
 
     formatBytes(n) {
@@ -3089,7 +3078,10 @@ const app = {
         }
         Flags.decorate(div, file);
         Edits.decorate(div, file);
-        div.onclick = () => this.openSingle(file);
+        // The same in Photos, Adjust and Paint: that photo, in this mode
+        // (modes.js; in Adjust, Ctrl and Shift pick photos for Sync)
+        div.onclick = (e) => typeof Modes !== 'undefined' && Modes.app ? Modes.stripClick(file, e) : this.openSingle(file);
+        if (typeof Modes !== 'undefined' && Modes.app) Modes.wireStripItem(div, file);
         if (this._stripObserver) this._stripObserver.observe(div);
         return div;
     },
@@ -4045,13 +4037,12 @@ const app = {
         this.elements.imageContainer.classList.toggle('hidden', grid);
         this.elements.gridView.classList.toggle('hidden', !grid);
         this.elements.thumbnailStrip.parentElement.querySelector('.controls').classList.toggle('hidden', grid); // the floating controls
-        this.elements.thumbnailStrip.classList.toggle('hidden', grid);
-        if (this.elements.stripResize) this.elements.stripResize.classList.toggle('hidden', grid);
+        this.elements.thumbnailStrip.classList.toggle('hidden', grid || !!this._stripOff);
+        if (this.elements.stripResize) this.elements.stripResize.classList.toggle('hidden', grid || !!this._stripOff);
         this.elements.gridControls.classList.toggle('hidden', !grid);
         iconGrid.classList.toggle('hidden', grid);
         iconSingle.classList.toggle('hidden', !grid);
         Folders.render();
-        this.updateStatusBar();
         this.refreshInfoSoon();
 
         if (grid) {
@@ -4100,7 +4091,6 @@ const app = {
         Flags.updateHeader();
         Edits.updateHeader();
         this.updateFileCount();
-        this.updateStatusBar();
         if (this._infoOpen) this.refreshInfoSoon();
         this.updateActiveThumbnail();
     },
@@ -6866,7 +6856,6 @@ const app = {
             Folders.showEmptyHeader();
         } else if (this.files.length === 0) {
             this.currentFile = null;
-            this.updateStatusBar();
             this.elements.mainInterface.classList.add('hidden');
             this.elements.dropZone.classList.remove('hidden');
         } else if (wasCurrent && next) {
@@ -6875,7 +6864,6 @@ const app = {
             } else {
                 this.currentFile = next;
                 if (selectionGone) this.selection.add(next);
-                this.updateStatusBar();
             }
         }
         this.updateSelectionUI();
@@ -7040,7 +7028,6 @@ const app = {
         if (Edits.orphans) Edits.orphans.delete(file.relPath || file.name);
         if (this.currentFile === file) {
             this.elements.fileName.textContent = newName;
-            this.updateStatusBar();
             if (this._infoOpen) this.fillInfoPanel(file);
         }
         const gridImg = file._gridEl && file._gridEl.querySelector('img');
@@ -7628,7 +7615,6 @@ const app = {
                 this.currentFile = file;
                 this.selection = new Set([file]);
                 this.updateSelectionUI();
-                this.updateStatusBar();
             }
             const sel = [...this.selection];
             if (sel.length > 1) {
