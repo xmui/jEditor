@@ -1072,7 +1072,7 @@ const PROJECT = `
             out.clean = JSON.stringify(Paint.clean({ id: 'abc', w: 100, h: 50, layers: [{ id: 'l1', rev: 'r1', name: '  Sky  ', opacity: 3, blend: 'nope', hidden: 1 }, { id: 'BAD', rev: 'x' }] }));
             out.none = Paint.clean({ id: 'abc', w: 100, h: 50, layers: [] }) === null && Paint.clean({ id: '../x', w: 1, h: 1, layers: [{ id: 'a', rev: 'b' }] }) === null;
             out.size = JSON.stringify([Paint.sizeFor(6000, 4000), Paint.sizeFor(800, 600)]);
-            // Nine slots; a slot shows its group's tool used last; a
+            // Ten slots; a slot shows its group's tool used last; a
             // right-click on a slot of several lists them
             PaintEditor.init(app);
             PaintEditor.setTool('lasso');
@@ -1122,7 +1122,7 @@ const PROJECT = `
         check('paint: Feather softens the edge (half-way at it, nothing far off), the middle still selected', m.feather[0] >= 240 && m.feather[1] > 90 && m.feather[1] < 165 && m.feather[2] < m.feather[1] && m.feather[3] === 0, JSON.stringify(m.feather));
         check('paint: the record is checked (names, opacity, blend; bad ids dropped)', m.clean === '{"id":"abc","w":100,"h":50,"layers":[{"id":"l1","rev":"r1","name":"Sky","opacity":1,"blend":"source-over","hidden":true}]}' && m.none, JSON.stringify(m));
         check('paint: layers at the photo\'s size, a very big one smaller', m.size === '[{"w":3000,"h":2000},{"w":800,"h":600}]', m.size);
-        check('paint: nine tool slots, each showing its group\'s tool used last; a right-click lists the others', JSON.stringify(m.slots) === '[9,"move,lasso,pencil,eraser,fill,line,text,picker,hand","pencil",4]', JSON.stringify(m.slots));
+        check('paint: ten tool slots, each showing its group\'s tool used last; a right-click lists the others', JSON.stringify(m.slots) === '[10,"move,lasso,pencil,eraser,spot-heal,fill,line,text,picker,hand","pencil",4]', JSON.stringify(m.slots));
         check('paint: a layer\'s locked transparency is kept (only when on)', m.lock === '[true,null]', m.lock);
         check('paint: saved colours: + saves the brush colour (once), kept; right-click takes one off; Choose a colour…', JSON.stringify(m.saved) === '[1,true,0,true]', JSON.stringify(m.saved));
 
@@ -1358,6 +1358,38 @@ const PROJECT = `
                 app.closeContextMenu();
                 out.retro = [cell.join(), stamped.join(), dots > 20 && soft === 0 && outside === 0, retroMenu.replace(/(Brush|Pencil)[A-Z]\|/g, "$1|") === "Brush|Pencil|Spray|Retro|Pixel pencil|Spray can|Stamp" ? 'menu' : retroMenu];
                 P.setTool('brush'); P.opts.size = 10; P.opts.density = 40;
+                // Heal and clone (paint-heal.js): clone copies from where
+                // Alt was clicked; heal copies its texture in the colours
+                // round the stroke; spot heal fills a mark from round it;
+                // each one step of Undo; J and S choose them
+                step = 'heal';
+                const hn = P.history.length, hard0 = P.opts.hardness;
+                P.setTool('clone'); P.opts.size = 16; P.opts.hardness = 100; P.opts.sampleAll = true; P.opts.aligned = true;
+                const healOpts = ['Hardness', 'Aligned', 'All layers', 'Opacity'].every(t => document.getElementById('paint-options').textContent.includes(t));
+                pe('pointerdown', 100, 220); pe('pointerup', 100, 220);
+                const noSource = [P.history.length === hn, px(0, 100, 220)[3]];
+                pe('pointerdown', 300, 100, { altKey: true }); pe('pointerup', 300, 100, { altKey: true });
+                pe('pointerdown', 100, 220); pe('pointerup', 100, 220);
+                const cloned = px(0, 100, 220);
+                const cloneName = P.history[P.history.length - 1].name;
+                P.setTool('heal');
+                pe('pointerdown', 100, 250); pe('pointermove', 115, 250); pe('pointerup', 115, 250);
+                const healed = px(0, 108, 250);
+                lg.fillStyle = '#000'; lg.fillRect(198, 248, 6, 6);
+                P.setTool('spot-heal'); P.opts.size = 20; P.opts.hardness = 80;
+                pe('pointerdown', 201, 251); pe('pointerup', 201, 251);
+                const spot = px(0, 200, 250), spotName = P.history[P.history.length - 1].name;
+                const near = (q, v, k = 14) => Math.abs(q[0] - v[0]) < k && Math.abs(q[1] - v[1]) < k && Math.abs(q[2] - v[2]) < k;
+                const hslot = [...document.querySelectorAll('.paint-tool')].find(b => b.dataset.group === '4');
+                hslot.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+                const hm = document.getElementById('context-menu');
+                const healMenu = hm ? [...hm.querySelectorAll('[role^="menuitem"]')].map(e => e.textContent.replace(/[A-Z]$/, '').trim()).join('|') : '';
+                app.closeContextMenu();
+                P.setTool('brush'); pressKey('j'); const k1 = P.tool; pressKey('j'); const k2 = P.tool; pressKey('s');
+                out.heal = [healOpts, noSource.join(), near(cloned, [32, 80, 192]) && cloned[3] === 255, cloneName, near(healed, [128, 128, 128], 16) && healed[3] === 255,
+                    near(spot, [128, 128, 128]) && spot[3] > 200, spotName, P.history.length - hn, healMenu, [k1, k2, P.tool].join()];
+                lg.clearRect(80, 205, 150, 65);
+                P.setTool('brush'); P.opts.size = 10; P.opts.hardness = hard0;
                 // Canvas size: the canvas bigger than the photo, the layers
                 // reaching past it; what's painted out there kept, and
                 // written (padded) by Export; Crop past the edge adds more;
@@ -1610,6 +1642,7 @@ const PROJECT = `
         check('paint: Recolor turns the colour clicked into the brush colour, light and dark shades alike, nothing else; one undo step; G goes fill, gradient, recolor', JSON.stringify(r.recolor) === '[true,true,true,"32,160,64,255",0,"Recolor","200,32,32,255","gradient,recolor"]', JSON.stringify(r.recolor));
         check('paint: Canvas size makes the canvas bigger than the photo (the layers too, what\'s added the background colour); what\'s painted past the photo is kept, and Export writes the bigger canvas; Crop dragged past the edge adds more; each one step of Undo',
             JSON.stringify(r.canvas) === JSON.stringify({ big: [true, 440, 320, 440, 320, 40, 20, 440, true], painted: 255, turned: ['{"l":20,"t":40,"r":0,"b":0}', 320, 440, true, '{"l":40,"t":0,"r":0,"b":20}'], record: [400, 300, '{"l":40,"t":0,"r":0,"b":20}', '{"l":40,"t":0,"r":0,"b":20}', '#ffffff'], exported: [440, 320, '0,255,0', '255,255,255', '128,128,128'], onlyPhoto: [440, 320], cropping: true, cropped: [500, 320, 60, 'Crop'], undone: [440, 400, 400, true, true] }), JSON.stringify(r.canvas));
+        check('paint: heal and clone: clone copies from the Alt-click (nothing without one); heal copies in the colours round it; spot heal fills a mark from round it; one undo each; their own slot; J and S', JSON.stringify(r.heal) === '[true,"true,0",true,"Clone stamp",true,true,"Spot heal",3,"Spot heal|Heal|Clone stamp","spot-heal,heal,clone"]', JSON.stringify(r.heal));
         check('paint: Retro: the pixel pencil fills one square of its grid; the stamp paints our star (not its corners); the spray can sprays hard dots inside its round; listed under Retro in the brush slot', JSON.stringify(r.retro) === '["255,255,0,0,0","255,0,255,0,Stamp",true,"menu"]', JSON.stringify(r.retro));
         check('paint: a pen\'s pressure sizes the brush', r.pressure && r.pressure[0] > 200 && r.pressure[1] === 0, String(r.pressure));
         check('paint: a new layer; a filled rectangle on it', r.layers && r.rect && r.rect[0][1] === 255 && r.rect[1] === 0, JSON.stringify(r));

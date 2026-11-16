@@ -57,11 +57,14 @@ const PaintEditor = {
         tolerance: 32, contiguous: true, sampleAll: true, fillWhat: 'match', gaps: 0,
         lineWidth: 8, shapeFill: 'none', arrow: false,
         gradient: 'linear', gradTo: 'bg',
-        density: 40, range: 30, stamp: 'star', quickShape: true, history: false,
+        density: 40, range: 30, stamp: 'star', quickShape: true, history: false, aligned: true,
         font: 'system-ui, sans-serif', fontSize: 72, bold: false, italic: false,
         sizeFor: 1500   // the long side of the layers the sizes were for
     },
-    BRUSHES: ['brush', 'pencil', 'spray', 'eraser', 'pixel', 'can', 'stamp'],
+    BRUSHES: ['brush', 'pencil', 'spray', 'eraser', 'pixel', 'can', 'stamp', 'spot-heal', 'heal', 'clone'],
+    // The healing tools (paint-heal.js does their pixels): they copy the
+    // picture from somewhere else on it, not a colour
+    RETOUCH: ['spot-heal', 'heal', 'clone'],
     // The Retro set (inspired by MS Paint and Mario Paint; every picture
     // drawn for jEditor), listed under its own heading in the brush slot
     RETRO: ['pixel', 'can', 'stamp'],
@@ -191,6 +194,9 @@ const PaintEditor = {
         ['can', 'Spray can: dots as it\'s held', '<path d="M6 9h6v12H6zM7 6h4v3H7zM12 7h2"/><path d="M17 5h.01M20 4h.01M19 8h.01M22 7h.01M18 11h.01M21 10h.01"/>'],
         ['stamp', 'Stamp: a little picture with each click', '<path d="M12 3l1.8 3.7 4 .6-2.9 2.8.7 4L12 12.2 8.4 14.1l.7-4-2.9-2.8 4-.6z"/><path d="M5 18h14v3H5z"/>'],
         ['eraser', 'Eraser (E)', '<path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4l10-10a1 1 0 0 1 1.4 0l5.6 5.6a1 1 0 0 1 0 1.4L13 19"/><path d="M22 21H7M5 11l9 9"/>'],
+        ['spot-heal', 'Spot heal: paint over a mark, and it\'s filled from what\'s round it (J)', '<rect x="2.5" y="8" width="19" height="8" rx="4" transform="rotate(-45 12 12)"/><path d="M10 12h.01M12 10h.01M14 12h.01M12 14h.01"/><path d="M19 2.5v3M17.5 4h3"/>'],
+        ['heal', 'Heal: Alt-click where to copy from, then paint; it takes on the colours round it (J)', '<rect x="2.5" y="8" width="19" height="8" rx="4" transform="rotate(-45 12 12)"/><path d="M10.5 12h3M12 10.5v3"/>'],
+        ['clone', 'Clone stamp: Alt-click where to copy from, then paint (S)', '<path d="M9.5 3h5v5l-1 2.5h4.5a2 2 0 0 1 2 2V16H4v-3.5a2 2 0 0 1 2-2h4.5l-1-2.5z"/><path d="M5 20h14"/>'],
         ['sep'],
         ['fill', 'Fill (G)', '<path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2a2 2 0 0 0 2.8 0z"/><path d="m5 2 5 5M2 13h15M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4z"/>'],
         ['gradient', 'Gradient', '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18" opacity=".5"/>'],
@@ -204,7 +210,7 @@ const PaintEditor = {
         ['picker', 'Colour picker (I)', '<path d="m2 22 1-1h3l9-9M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3z"/>'],
         ['hand', 'Hand: move about (H, or hold Space)', '<path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v2M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/>']
     ],
-    // The nine slots down the left (the plan): tools of a kind share one,
+    // The ten slots down the left (the plan: nine, and Heal in phase 2): tools of a kind share one,
     // which shows the one used last; hold it or right-click it for the
     // others. Hand stays on Space too
     GROUPS: [
@@ -212,6 +218,7 @@ const PaintEditor = {
         ['rect-select', 'ellipse-select', 'lasso', 'wand'],
         ['brush', 'pencil', 'spray', 'pixel', 'can', 'stamp'],
         ['eraser'],
+        ['spot-heal', 'heal', 'clone'],
         ['fill', 'gradient', 'recolor'],
         ['line', 'rect', 'ellipse'],
         ['text'],
@@ -227,6 +234,9 @@ const PaintEditor = {
         can: ['size', 'density', 'opacity'],
         stamp: ['stamp', 'size', 'opacity'],
         eraser: ['size', 'hardness', 'opacity'],
+        'spot-heal': ['size', 'hardness', 'sampleAll', 'opacity'],
+        heal: ['size', 'hardness', 'aligned', 'sampleAll', 'opacity'],
+        clone: ['size', 'hardness', 'aligned', 'sampleAll', 'opacity'],
         fill: ['fillWhat', 'tolerance', 'gaps', 'contiguous', 'sampleAll', 'opacity'],
         gradient: ['gradient', 'gradTo', 'opacity'],
         recolor: ['range', 'sampleAll', 'opacity'],
@@ -458,7 +468,7 @@ const PaintEditor = {
     },
 
     // The key each tool has, as script.js names it
-    KEY_OF: { 'rect-select': 'rectSelect', 'ellipse-select': 'ellipseSelect' },
+    KEY_OF: { 'rect-select': 'rectSelect', 'ellipse-select': 'ellipseSelect', 'spot-heal': 'heal' },
 
     syncTools() {
         const byId = Object.fromEntries(this.TOOLS.filter(t => t[0] !== 'sep').map(t => [t[0], t]));
@@ -472,7 +482,7 @@ const PaintEditor = {
                 b.dataset.tool = id;
                 b.innerHTML = `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${svg}</svg>`;
                 const more = group.length > 1 ? ' (hold or right-click for the others)' : '';
-                b.title = title + more;
+                b.title = Host.keys(title + more);
                 b.setAttribute('aria-label', title.replace(/ \(.*\)$/, ''));
             }
             b.setAttribute('aria-pressed', String(group.includes(this.tool)));
@@ -572,6 +582,7 @@ const PaintEditor = {
     },
 
     applyView(edit, pad = this.pad) {
+        this.healSrc = this.healOff = null; // (layer px move)
         this.pad = pad ? { ...pad } : null;
         this.dropSelection();
         this.setView(edit);
@@ -586,6 +597,7 @@ const PaintEditor = {
         this.file = file;
         this.ready = false;
         this.isOpen = true;
+        this.healSrc = this.healOff = null; // (layer px move)
         this.history = [];
         this.future = [];
         this.historyBytes = 0;
@@ -796,6 +808,7 @@ const PaintEditor = {
             : this.tool === 'move' ? 'move'
             : this.picking() ? 'crosshair'
             : this.tool === 'text' ? 'text'
+            : this.alt && (this.tool === 'heal' || this.tool === 'clone') ? 'crosshair'
             : this.isBrush() ? 'none' : 'crosshair';
         this.stage.style.cursor = t;
     },
@@ -865,7 +878,14 @@ const PaintEditor = {
             if (k === 'fontSize') num('Size', 'fontSize', 6, 600, 1, true);
             if (k === 'gaps') choose('Close gaps', 'gaps', [[0, 'Off'], [2, 'Small'], [5, 'Medium'], [10, 'Large']]).title = 'A line drawing with small gaps in its lines still fills one area, not the whole picture';
             if (k === 'contiguous') check('Joined only', 'contiguous');
-            if (k === 'sampleAll') check('All layers', 'sampleAll');
+            if (k === 'sampleAll') {
+                const c = check('All layers', 'sampleAll');
+                if (this.RETOUCH.includes(this.tool) && c) c.title = 'Copy from the picture as it looks (this layer and those under it), not just this layer';
+            }
+            if (k === 'aligned') {
+                const c = check('Aligned', 'aligned');
+                if (c) c.title = 'On: each stroke goes on copying from the same distance away. Off: each stroke starts again from where you Alt-clicked';
+            }
             if (k === 'arrow') check('Arrow', 'arrow');
             if (k === 'bold') check('Bold', 'bold');
             if (k === 'italic') check('Italic', 'italic');
@@ -891,8 +911,12 @@ const PaintEditor = {
             recolor: 'Click a colour: it becomes the foreground colour everywhere, its shading kept',
             pixel: 'Square pixels on a grid the brush\'s size, crisp at any zoom',
             can: 'Hold to spray: the longer it\'s held, the more dots',
-            stamp: 'Click for a stamp; drag for a row of them'
+            stamp: 'Click for a stamp; drag for a row of them',
+            'spot-heal': 'Paint over a mark or a speck: it\'s filled from what\'s round it',
+            heal: this.healSrc ? 'Paint over what to hide: copied from the + mark, in the colours round it. Alt-click to copy from elsewhere' : 'Alt-click where to copy from, then paint over what to hide',
+            clone: this.healSrc ? 'Paint: copied from the + mark. Alt-click to copy from elsewhere' : 'Alt-click where to copy from, then paint'
         }[this.tool] || '';
+        hint.textContent = Host.keys(hint.textContent);
         if (hint.textContent) {
             hint.title = hint.textContent;
             hint.style.color = 'var(--text-3, var(--text-2))';
@@ -1236,6 +1260,8 @@ const PaintEditor = {
             return;
         }
         if (t === 'eraser' && this.layer().lock) { this.lockedToast(); return; }
+        // Heal and clone: Alt-click is where they copy from
+        if ((t === 'heal' || t === 'clone') && e.altKey) { this.setSource(p); return; }
         if (this.isBrush(t)) return this.startStroke(p, e.shiftKey ? this.lastDab : null);
         if (['line', 'rect', 'ellipse', 'gradient', 'rect-select', 'ellipse-select'].includes(t)) {
             this.drag = { kind: 'shape', start: p, end: p, mode: e.altKey ? 'sub' : e.shiftKey && t.endsWith('select') ? 'add' : 'new' };
@@ -1328,7 +1354,7 @@ const PaintEditor = {
     sizeBy(dx, dy) {
         const d = this.drag, o = this.opts;
         o.size = Math.min(this.sizeMax(), Math.max(1, d.size * Math.exp(dx / 150)));
-        if (this.tool === 'brush' || this.tool === 'eraser') o.hardness = Math.round(Math.min(100, Math.max(0, d.hard - dy / 2)));
+        if (this.tool === 'brush' || this.tool === 'eraser' || this.RETOUCH.includes(this.tool)) o.hardness = Math.round(Math.min(100, Math.max(0, d.hard - dy / 2)));
         for (const k of ['size', 'hardness']) { const row = this.optRows && this.optRows[k]; if (row) row._sync(); }
         this.remember();
         this.flashSize();
@@ -1605,19 +1631,34 @@ const PaintEditor = {
     // from: where the last stroke ended (Shift-click), to paint straight on
     // from there
     startStroke(p, from = null) {
+        // Heal and clone: copied from a distance away, kept for the next
+        // stroke when they're aligned
+        let off = null;
+        if (this.RETOUCH.includes(this.tool)) {
+            if (this.tool === 'spot-heal') off = { dx: 0, dy: 0 };
+            else if (!this.healSrc) {
+                this.app.showToast(Host.keys('Alt-click where to copy from first'), 2200);
+                return;
+            } else {
+                const at = from || p;
+                off = this.opts.aligned && this.healOff ? this.healOff
+                    : { dx: Math.round(this.healSrc.x - at.x), dy: Math.round(this.healSrc.y - at.y) };
+                this.healOff = off;
+            }
+        }
         const l = this.layer();
         this.beginPixels(l);
         const g = this.stroke.getContext('2d');
         g.setTransform(1, 0, 0, 1, 0, 0);
         g.globalCompositeOperation = 'source-over';
         g.clearRect(0, 0, this.W, this.H);
-        this.drag = { kind: 'paint', stroke: true, last: from || p, dirty: null, tool: this.tool, carry: 0 };
+        this.drag = { kind: 'paint', stroke: true, last: from || p, dirty: null, tool: this.tool, carry: 0, off, base: off && this.healBase() };
         if (from) this.strokeTo(p);
         else this.dab(p);
         if (this.tool === 'spray' || this.tool === 'can') this.sprayLoop();
         // QuickShape: the stroke's points as shown, to fit a shape to when
         // the pointer's held still (not for stamps)
-        else if (this.opts.quickShape && this.tool !== 'stamp') {
+        else if (this.opts.quickShape && this.tool !== 'stamp' && !off) {
             const first = from ? this.C.transformPoint(from) : { x: p.ox, y: p.oy };
             this.drag.pts = [{ x: first.x, y: first.y }, { x: p.ox, y: p.oy }];
             this.drag.still = p;
@@ -1648,6 +1689,7 @@ const PaintEditor = {
         const g = this.stroke.getContext('2d');
         const pr = p.pr || 1, r = Math.max(0.5, this.radius() * pr), t = this.drag.tool;
         const colour = t === 'eraser' ? '#000000' : this.fg;
+        if (this.drag.off) { this.healDab(g, p, r); return; }
         if (t === 'pencil') {
             const s = Math.max(1, Math.round(this.opts.size * pr));
             g.fillStyle = colour;
@@ -1937,7 +1979,8 @@ const PaintEditor = {
         }
         g.save();
         if (r) { g.beginPath(); g.rect(r.x, r.y, r.w, r.h); g.clip(); }
-        g.globalAlpha = this.opts.opacity / 100;
+        // (spot heal, until it's let go: where it'll heal, darkened)
+        g.globalAlpha = this.opts.opacity / 100 * (d && d.tool === 'spot-heal' && !d.healed ? 0.45 : 1);
         g.globalCompositeOperation = d && d.tool === 'eraser' ? 'destination-out' : this.layer() && this.layer().lock ? 'source-atop' : 'source-over';
         g.drawImage(this.stroke, 0, 0);
         g.restore();
@@ -1947,11 +1990,79 @@ const PaintEditor = {
         const d = this.drag, l = this.layer();
         this.lastDab = { x: d.last.x, y: d.last.y, pr: d.last.pr };
         if (!d.dirty) return;
+        if (d.tool === 'heal' || d.tool === 'spot-heal') this.healStroke(d);
         this.putStroke(l.canvas.getContext('2d'));
         const r = { x: d.dirty.x0, y: d.dirty.y0, w: d.dirty.x1 - d.dirty.x0, h: d.dirty.y1 - d.dirty.y0 };
         this.stroke.getContext('2d').clearRect(0, 0, this.W, this.H);
         this.drag = null;
         this.endPixels(l, r, { name: d.snap ? `${this.toolName(d.tool)}: ${d.snap.name}` : this.toolName(d.tool) });
+    },
+
+    // ---- Heal and clone ----
+
+    // Where heal and clone copy from (Alt-click), in layer px
+    setSource(p) {
+        this.healSrc = { x: p.x, y: p.y };
+        this.healOff = null;
+        this.buildOptions();
+        this.renderSoon();
+    },
+
+    // What they copy from: the picture as it was when the stroke began
+    // (so a stroke never copies itself), kept for the next stroke's use
+    healBase() {
+        let c = this._healBase;
+        if (!c || c.width !== this.W || c.height !== this.H) c = this._healBase = this.newCanvas();
+        this.compose(c.getContext('2d', { willReadFrequently: true }), this.layer());
+        return c;
+    },
+
+    // One dab: the source through a soft round (spot heal: the round
+    // alone, which is healed when the stroke's let go)
+    healDab(g, p, r) {
+        const d = this.drag, hard = Math.min(0.98, this.opts.hardness / 100);
+        const s = Math.ceil(2 * r + 4), x0 = Math.floor(p.x - r - 2), y0 = Math.floor(p.y - r - 2);
+        let dc = this._dab;
+        if (!dc || dc.width < s || dc.height < s) dc = this._dab = this.newCanvas(Math.max(s, dc ? dc.width : 0), Math.max(s, dc ? dc.height : 0));
+        const dg = dc.getContext('2d');
+        dg.globalCompositeOperation = 'copy';
+        const grad = dg.createRadialGradient(p.x - x0, p.y - y0, r * hard, p.x - x0, p.y - y0, r);
+        grad.addColorStop(0, '#000');
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        dg.fillStyle = grad;
+        dg.fillRect(0, 0, s, s);
+        if (d.tool !== 'spot-heal') {
+            dg.globalCompositeOperation = 'source-in';
+            dg.drawImage(d.base, x0 + d.off.dx, y0 + d.off.dy, s, s, 0, 0, s, s);
+        }
+        dg.globalCompositeOperation = 'source-over';
+        g.drawImage(dc, 0, 0, s, s, x0, y0, s, s);
+        this.grow({ x: x0, y: y0, w: s, h: s });
+    },
+
+    // Heal and spot heal, as the stroke's let go: the stroke's pixels
+    // become the source's in the colours round the stroke (paint-heal.js);
+    // spot heal finds its source first
+    healStroke(d) {
+        const r = d.dirty, R = this.radius();
+        const pad = d.tool === 'spot-heal' ? Math.ceil(R * 0.6) + 4 : 3;
+        const x = Math.max(0, Math.floor(r.x0) - pad), y = Math.max(0, Math.floor(r.y0) - pad);
+        const w = Math.min(this.W, Math.ceil(r.x1) + pad) - x, h = Math.min(this.H, Math.ceil(r.y1) + pad) - y;
+        d.healed = true;
+        if (w <= 0 || h <= 0) return;
+        const sg = this.stroke.getContext('2d'), bg = d.base.getContext('2d', { willReadFrequently: true });
+        const M = sg.getImageData(x, y, w, h);
+        let off = d.off;
+        if (d.tool === 'spot-heal') {
+            const look = Math.round(Math.max(5.5 * R, 2 * Math.min(w, h) + R)) + 4;
+            const ax = Math.max(0, x - look), ay = Math.max(0, y - look);
+            const aw = Math.min(this.W, x + w + look) - ax, ah = Math.min(this.H, y + h + look) - ay;
+            off = PaintHeal.findSource(bg.getImageData(ax, ay, aw, ah), ax, ay, M, x, y, R);
+            d.off = off;
+        }
+        const out = PaintHeal.heal(bg.getImageData(x, y, w, h), bg.getImageData(x + off.dx, y + off.dy, w, h), M);
+        sg.putImageData(out, x, y);
+        this.grow({ x, y, w, h });
     },
 
     rgb(hex) {
@@ -2312,12 +2423,20 @@ const PaintEditor = {
     sample() {
         const c = this.scratch();
         const g = c.getContext('2d', { willReadFrequently: true });
+        this.compose(g);
+        return g.getImageData(0, 0, this.W, this.H).data;
+    },
+
+    // The picture onto g (layer-sized): the photo and the layers shown,
+    // or just this layer; upTo: only the layers up to it (as heal and
+    // clone copy from: what's above isn't this layer's to copy)
+    compose(g, upTo = null) {
         g.setTransform(1, 0, 0, 1, 0, 0);
         g.globalCompositeOperation = 'copy';
         if (this.opts.sampleAll) {
             g.drawImage(this.photo, 0, 0, this.W, this.H);
             g.globalCompositeOperation = 'source-over';
-            for (const l of this.layers) {
+            for (const l of upTo ? this.layers.slice(0, this.layers.indexOf(upTo) + 1) : this.layers) {
                 if (l.hidden) continue;
                 g.globalAlpha = l.opacity;
                 g.globalCompositeOperation = l.blend;
@@ -2328,7 +2447,6 @@ const PaintEditor = {
             g.drawImage(this.layer().canvas, 0, 0);
         }
         g.globalCompositeOperation = 'source-over';
-        return g.getImageData(0, 0, this.W, this.H).data;
     },
 
     // The pixels like the one at (x, y): a mask (1 each), and its bounds
@@ -3058,7 +3176,17 @@ const PaintEditor = {
                 line.lineTo(ox, oy);
                 outline(line);
             }
-            if (sizing || this.tool === 'stamp') this.drawGhost(ctx, ox, oy, r);
+            if ((sizing && !this.RETOUCH.includes(this.tool)) || this.tool === 'stamp') this.drawGhost(ctx, ox, oy, r);
+            // Heal and clone: a + where they're copying from
+            if ((this.tool === 'heal' || this.tool === 'clone') && this.healSrc) {
+                const off = d && d.kind === 'paint' && d.off ? d.off : !this.alt && this.opts.aligned && this.healOff ? this.healOff : null;
+                const q = this.C.transformPoint(off && at.ox !== undefined ? { x: at.x + off.dx, y: at.y + off.dy } : this.healSrc);
+                const m = new Path2D(), k = Math.max(r, 4 / z), c = 5 / z;
+                m.arc(q.x, q.y, k, 0, Math.PI * 2);
+                m.moveTo(q.x - c, q.y); m.lineTo(q.x + c, q.y);
+                m.moveTo(q.x, q.y - c); m.lineTo(q.x, q.y + c);
+                outline(m, [3 / z, 3 / z]);
+            }
             const p = new Path2D();
             if (this.tool === 'pencil') {
                 const s = Math.max(1, Math.round(this.opts.size));
@@ -3442,6 +3570,7 @@ const PaintEditor = {
     // A canvas state put on (setCanvas, Undo and Redo): the layers' pictures
     // swapped for that state's, the photo and the view made again
     applyCanvas(s) {
+        this.healSrc = this.healOff = null; // (layer px move)
         this.dropSelection();
         if (this.float) this.commitFloat();
         this.ext = { ...s.ext };
