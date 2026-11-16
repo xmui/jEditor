@@ -55,7 +55,7 @@ const PaintEditor = {
     opts: {
         size: 24, hardness: 80, opacity: 100, flow: 100,
         tolerance: 32, contiguous: true, sampleAll: true, fillWhat: 'match', gaps: 0,
-        lineWidth: 8, shapeFill: 'none', arrow: false,
+        lineWidth: 8, shapeFill: 'none', arrow: false, shapeLayer: true,
         gradient: 'linear', gradTo: 'bg',
         density: 40, range: 30, stamp: 'star', tip: '', quickShape: true, history: false, aligned: true,
         strength: 50, toneRange: 'mid', sponge: 'less',
@@ -286,9 +286,9 @@ const PaintEditor = {
         fill: ['fillWhat', 'tolerance', 'gaps', 'contiguous', 'sampleAll', 'opacity'],
         gradient: ['gradient', 'gradTo', 'opacity'],
         recolor: ['range', 'sampleAll', 'opacity'],
-        line: ['lineWidth', 'arrow', 'opacity'],
-        rect: ['lineWidth', 'shapeFill', 'opacity'],
-        ellipse: ['lineWidth', 'shapeFill', 'opacity'],
+        line: ['lineWidth', 'arrow', 'opacity', 'shapeLayer'],
+        rect: ['lineWidth', 'shapeFill', 'opacity', 'shapeLayer'],
+        ellipse: ['lineWidth', 'shapeFill', 'opacity', 'shapeLayer'],
         text: ['font', 'fontSize', 'bold', 'italic', 'opacity'],
         wand: ['tolerance', 'contiguous', 'sampleAll'],
         'rect-select': [], 'ellipse-select': [], lasso: [], move: [], picker: [], hand: []
@@ -344,8 +344,8 @@ const PaintEditor = {
         bind('paint-layer-down', () => this.moveLayer(-1));
         bind('paint-layer-merge', () => this.mergeDown());
         bind('paint-layer-delete', () => this.deleteLayer());
-        this.el('paint-fg').addEventListener('input', (e) => { this.fg = e.target.value; this.remember(); });
-        this.el('paint-bg').addEventListener('input', (e) => { this.bg = e.target.value; this.remember(); });
+        this.el('paint-fg').addEventListener('input', (e) => { this.fg = e.target.value; this.remember(); this.restyleSoon(); });
+        this.el('paint-bg').addEventListener('input', (e) => { this.bg = e.target.value; this.remember(); this.restyleSoon(); });
         // Choose a colour…: the system's own picker, for the brush colour
         bind('paint-choose', () => {
             const i = this.el('paint-fg');
@@ -881,7 +881,7 @@ const PaintEditor = {
                 const c = this.newCanvas();
                 const src = await Paint.layerBitmap(kept.paint, l);
                 if (src) c.getContext('2d').drawImage(src, 0, 0, this.W, this.H);
-                const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: !!l.lock, canvas: c, changed: false, text: l.text || null };
+                const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: !!l.lock, canvas: c, changed: false, text: l.text || null, shape: l.shape || null };
                 if (l.mask) {
                     const m = this.newCanvas(), mb = await Paint.layerBitmap(kept.paint, Paint.maskOf(l));
                     if (mb) m.getContext('2d').drawImage(mb, 0, 0, this.W, this.H);
@@ -1069,7 +1069,8 @@ const PaintEditor = {
         if (this.crop) { this.cropOptions(box); return; }
         if (this.float) { this.transformOptions(box); return; }
         const o = this.opts;
-        const save = () => this.remember();
+        this.loadShapeStyle();
+        const save = () => { this.remember(); this.restyleSoon(); };
         const add = (el) => { box.appendChild(el); return el; };
         const check = (label, key) => {
             const l = document.createElement('label');
@@ -1141,6 +1142,10 @@ const PaintEditor = {
                 if (c) c.title = 'On: each stroke goes on copying from the same distance away. Off: each stroke starts again from where you Alt-clicked';
             }
             if (k === 'arrow') check('Arrow', 'arrow');
+            if (k === 'shapeLayer') {
+                const c = check('New layer', 'shapeLayer');
+                if (c) c.title = 'On: each shape is a layer of its own, its line and fill changed later. Off: drawn onto this layer';
+            }
             if (k === 'bold') check('Bold', 'bold');
             if (k === 'italic') check('Italic', 'italic');
             if (k === 'shapeFill') choose('Fill', 'shapeFill', [['none', 'None'], ['fg', 'Foreground'], ['bg', 'Background']]);
@@ -1714,10 +1719,10 @@ const PaintEditor = {
     },
 
     // After it: the part that changed (r), before and after
-    endPixels(l, r, { free = false, name = this.toolName(), text = null } = {}) {
+    endPixels(l, r, { free = false, name = this.toolName(), vec = null } = {}) {
         r = this.clampRect(r);
         if (!r || this._beforeOf !== l) return;
-        const t0 = l.text || null;
+        const v0 = l.text || l.shape ? { text: l.text || null, shape: l.shape || null } : null;
         const before = this.before.getContext('2d', { willReadFrequently: true }).getImageData(r.x, r.y, r.w, r.h);
         const after = l.canvas.getContext('2d', { willReadFrequently: true }).getImageData(r.x, r.y, r.w, r.h);
         // Transparency locked: each pixel keeps how see-through it was (a
@@ -1732,10 +1737,13 @@ const PaintEditor = {
         }
         l.changed = true;
         const entry = { kind: 'px', name, layer: l, r, before, after, bytes: r.w * r.h * 8 };
-        if (t0 || text) {
-            Object.assign(entry, { text0: t0, text1: text });
-            l.text = text;
-            if (t0 && !text) this.drawLayers();
+        // A text or shape layer painted on is pixels from then on (vec:
+        // what it is after a move)
+        if (v0 || vec) {
+            Object.assign(entry, { vec0: v0, vec1: vec });
+            l.text = vec ? vec.text : null;
+            l.shape = vec ? vec.shape : null;
+            if (v0 && !vec) this.drawLayers();
         }
         this.record(entry);
     },
@@ -1785,9 +1793,9 @@ const PaintEditor = {
         if (entry.kind === 'px') {
             entry.layer.canvas.getContext('2d').putImageData(undo ? entry.before : entry.after, entry.r.x, entry.r.y);
             entry.layer.changed = true;
-            if (entry.text0 || entry.text1) {
-                const k = this.layers.find(x => x.canvas === entry.layer.canvas);
-                if (k) k.text = undo ? entry.text0 : entry.text1;
+            if (entry.vec0 || entry.vec1) {
+                const k = this.layers.find(x => x.canvas === entry.layer.canvas), v = undo ? entry.vec0 : entry.vec1;
+                if (k) { k.text = v ? v.text : null; k.shape = v ? v.shape : null; }
             }
         } else if (entry.kind === 'state') {
             if (undo && entry.extra) this.apply(entry.extra, true);
@@ -2767,27 +2775,35 @@ const PaintEditor = {
     },
 
     // Shape options as drawn: draws onto g (already set to output space)
-    drawShape(g, kind, a, b) {
-        const o = this.opts;
+    shapeStyle(kind = this.tool) {
+        const o = this.opts, line = kind === 'line';
+        return {
+            stroke: this.fg, lw: o.lineWidth,
+            fill: line || o.shapeFill === 'none' ? null : o.shapeFill === 'bg' ? this.bg : this.fg,
+            from: line ? 'none' : o.shapeFill, arrow: line && !!o.arrow
+        };
+    },
+
+    drawShape(g, kind, a, b, st = this.shapeStyle(kind)) {
         const path = this.shapePath(kind, a, b);
         g.lineJoin = 'round';
         g.lineCap = 'round';
-        if (kind !== 'line' && o.shapeFill !== 'none') {
-            g.fillStyle = o.shapeFill === 'bg' ? this.bg : this.fg;
+        if (kind !== 'line' && st.fill) {
+            g.fillStyle = st.fill;
             g.fill(path);
         }
-        if (o.lineWidth > 0) {
-            g.strokeStyle = this.fg;
-            g.lineWidth = o.lineWidth;
+        if (st.lw > 0) {
+            g.strokeStyle = st.stroke;
+            g.lineWidth = st.lw;
             g.stroke(path);
-            if (kind === 'line' && o.arrow) {
-                const ang = Math.atan2(b.y - a.y, b.x - a.x), L = Math.max(10, o.lineWidth * 4);
+            if (kind === 'line' && st.arrow) {
+                const ang = Math.atan2(b.y - a.y, b.x - a.x), L = Math.max(10, st.lw * 4);
                 g.beginPath();
                 g.moveTo(b.x, b.y);
                 g.lineTo(b.x - Math.cos(ang - 0.45) * L, b.y - Math.sin(ang - 0.45) * L);
                 g.lineTo(b.x - Math.cos(ang + 0.45) * L, b.y - Math.sin(ang + 0.45) * L);
                 g.closePath();
-                g.fillStyle = this.fg;
+                g.fillStyle = st.stroke;
                 g.fill();
             }
         }
@@ -2813,6 +2829,18 @@ const PaintEditor = {
             return;
         }
         if (tiny) return;
+        if (t !== 'gradient' && this.opts.shapeLayer && this.layers.length < Paint.MAX_LAYERS) {
+            const rec = { kind: t, a: [a.x, a.y].map(v => +v.toFixed(2)), b: [b.x, b.y].map(v => +v.toFixed(2)), ...this.shapeStyle(t), alpha: +(this.opts.opacity / 100).toFixed(3), m: this.textArr(this.extM().inverse().multiply(this.Ci)) };
+            this.pushState(this.toolName(t));
+            const l = this.makeLayer(this.toolName(t));
+            l.shape = rec;
+            this.drawVec(l);
+            this.layers.splice(this.cur + 1, 0, l);
+            this.cur++;
+            this.onMask = false;
+            this.afterState();
+            return;
+        }
         const l = this.layer();
         this.beginPixels(l);
         const g = this.stroke.getContext('2d');
@@ -3457,6 +3485,69 @@ const PaintEditor = {
         return this.extM().multiply(new DOMMatrix(t.m));
     },
 
+    // ---- Shape layers ----
+    // A line, rectangle or ellipse on a layer of its own (l.shape: { kind,
+    // a, b, stroke, lw, fill, from, arrow, alpha, m }, a and b in its own
+    // space, m from there to the photo's). With its tool out and the layer
+    // chosen, the line, fill, opacity and colours change it; Move and Free
+    // transform keep it a shape; painting on it makes it pixels
+
+    // A text or shape layer's pixels drawn again from what it keeps
+    drawVec(l, canvas = l.canvas) {
+        if (l.text) { this.drawText(l.text, canvas); return; }
+        const sh = l.shape;
+        if (!sh) return;
+        const g = canvas.getContext('2d');
+        g.save();
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.clearRect(0, 0, canvas.width, canvas.height);
+        g.setTransform(this.textM(sh));
+        g.globalAlpha = sh.alpha;
+        this.drawShape(g, sh.kind, { x: sh.a[0], y: sh.a[1] }, { x: sh.b[0], y: sh.b[1] }, sh);
+        g.restore();
+    },
+
+    // The shape layer chosen, with its own tool out
+    shapeHere() {
+        const l = this.layer();
+        return l && l.shape && !this.onMask && l.shape.kind === this.tool ? l : null;
+    },
+
+    // Its style into the tool's options (and colours), so they show it
+    loadShapeStyle() {
+        const l = this.shapeHere();
+        if (!l || this._shapeShown === l.shape) return;
+        this._shapeShown = l.shape;
+        const sh = l.shape;
+        Object.assign(this.opts, { lineWidth: sh.lw, opacity: Math.round(sh.alpha * 100) });
+        if (sh.kind === 'line') this.opts.arrow = sh.arrow;
+        else this.opts.shapeFill = sh.from;
+        this.fg = sh.stroke;
+        if (sh.from === 'bg' && sh.fill) this.bg = sh.fill;
+        this.syncColours();
+    },
+
+    // The options changed: the shape layer chosen follows (a moment after,
+    // so dragging a colour is one step of Undo)
+    restyleSoon() {
+        clearTimeout(this._restyle);
+        if (!this.shapeHere()) return;
+        this._restyle = setTimeout(() => this.restyle(), 250);
+    },
+
+    restyle() {
+        clearTimeout(this._restyle);
+        const l = this.shapeHere();
+        if (!l) return;
+        const rec = { ...l.shape, ...this.shapeStyle(l.shape.kind), alpha: +(this.opts.opacity / 100).toFixed(3) };
+        if (JSON.stringify(rec) === JSON.stringify(l.shape)) return;
+        this.pushState('Shape style');
+        Object.assign(l, { shape: rec, canvas: this.newCanvas(), changed: true });
+        this._shapeShown = rec;
+        this.drawVec(l);
+        this.afterState();
+    },
+
     textArr(M) {
         return [M.a, M.b, M.c, M.d, M.e, M.f].map(v => +v.toFixed(5));
     },
@@ -3779,11 +3870,12 @@ const PaintEditor = {
         const l = f.layer;
         const g = l.canvas.getContext('2d');
         let text = null;
-        if (l.text && !f.sel) {
+        if ((l.text || l.shape) && !f.sel) {
             // Its matrix taken through the move: drawn again, not resampled
             const K = this.Ci.multiply(this.floatM.call({ float: f, view: this.view })).multiply(new DOMMatrix().translate(-f.x0, -f.y0)).multiply(this.C);
-            text = { ...l.text, m: this.textArr(this.extM().inverse().multiply(K).multiply(this.textM(l.text))) };
-            this.drawText(text, l.canvas);
+            const moved = (r) => r && { ...r, m: this.textArr(this.extM().inverse().multiply(K).multiply(this.textM(r))) };
+            text = { text: moved(l.text) || null, shape: moved(l.shape) || null };
+            this.drawVec(text, l.canvas);
         } else {
             g.save();
             g.setTransform(this.Ci.multiply(this.floatM.call({ float: f, view: this.view })));
@@ -3803,7 +3895,7 @@ const PaintEditor = {
             this.sel = { mask: m };
             this.selectionChanged();
         }
-        this.endPixels(l, { x: 0, y: 0, w: this.W, h: this.H }, { free: true, name: 'Move', text });
+        this.endPixels(l, { x: 0, y: 0, w: this.W, h: this.H }, { free: true, name: 'Move', vec: text });
         this.buildOptions();
         this.renderSoon();
     },
@@ -4217,6 +4309,14 @@ const PaintEditor = {
                 row.appendChild(m);
                 row.addEventListener('dblclick', (e) => { e.preventDefault(); this.editText(i); });
             }
+            if (l.shape) {
+                const m = document.createElement('span');
+                m.className = 'paint-layer-kind';
+                m.innerHTML = '<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="11" height="11" rx="1"/><circle cx="15" cy="15" r="6"/></svg>';
+                m.title = 'Shape: with its tool out, the line, fill and colours change it; double-click for its tool';
+                row.appendChild(m);
+                row.addEventListener('dblclick', (e) => { e.preventDefault(); this.cur = i; this.onMask = false; this.setTool(l.shape.kind); this.drawLayers(); });
+            }
             if (l.lock) {
                 const m = document.createElement('span');
                 m.className = 'paint-layer-lock';
@@ -4373,6 +4473,7 @@ const PaintEditor = {
             ['Show this layer alone', () => this.soloLayer(i)],
             ['Select its pixels', () => this.selectLayerPixels(i)],
             ...(l.text ? [['—'], ['Edit the text', () => this.editText(i)], ['Make it pixels', () => this.rasterize(i)]] : []),
+            ...(l.shape ? [['—'], ['Make it pixels', () => this.rasterize(i)]] : []),
             ['—'],
             ...(room ? [['Duplicate', () => this.duplicateLayer(), false, undefined, 'paint.duplicate']] : []),
             ...(i > 0 ? [['Merge down', () => this.mergeDown(), false, undefined, 'paint.merge']] : []),
@@ -4532,7 +4633,7 @@ const PaintEditor = {
         if (this.float) this.commitFloat();
         this.pushState('Duplicate layer');
         const copy = this.makeLayer(`${l.name} copy`);
-        Object.assign(copy, { opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: l.lock, text: l.text || null });
+        Object.assign(copy, { opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: l.lock, text: l.text || null, shape: l.shape || null });
         if (l.mask) {
             copy.mask = this.newCanvas();
             copy.mask.getContext('2d').drawImage(l.mask, 0, 0);
@@ -4643,7 +4744,7 @@ const PaintEditor = {
         if (this.float) this.commitFloat();
         const top = this.layer(), below = this.layers[this.cur - 1];
         this.pushState('Merge down');
-        below.text = null;
+        below.text = below.shape = null;
         this.beginPixels(below);
         const g = below.canvas.getContext('2d');
         if (!top.hidden) {
@@ -4664,9 +4765,9 @@ const PaintEditor = {
     // A text layer as pixels: painted on like any other, no longer text
     rasterize(i) {
         const l = this.layers[i];
-        if (!l || !l.text) return;
+        if (!l || !(l.text || l.shape)) return;
         this.pushState('Make it pixels');
-        l.text = null;
+        l.text = l.shape = null;
         this.afterState();
     },
 
@@ -4971,7 +5072,7 @@ const PaintEditor = {
         const paint = { id: this.paintId, w: this.PW, h: this.PH, layers: [], ext: this.ext, pad: this.pad, fill: this.fill };
         for (const l of this.layers) {
             if ((l.changed || !l.rev) && this.empty(l)) continue;
-            const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, ...(l.lock ? { lock: true } : {}), ...(l.text ? { text: l.text } : {}) };
+            const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, ...(l.lock ? { lock: true } : {}), ...(l.text ? { text: l.text } : {}), ...(l.shape ? { shape: l.shape } : {}) };
             if (l.changed || !l.rev) {
                 rec.rev = Paint.newId().slice(-10);
                 await Paint.writeLayer(paint, rec, l.canvas);

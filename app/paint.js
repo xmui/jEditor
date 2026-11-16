@@ -5,7 +5,7 @@
 // (.jeditor/paint/<id>-<layer>-<rev>.png; a new rev each time a layer
 // changes, so Ctrl+Z on the edit finds the old one still there).
 //
-//   paint: { id, w, h, layers: [{ id, rev, name, opacity, blend, hidden, lock?, mask?, text? }],
+//   paint: { id, w, h, layers: [{ id, rev, name, opacity, blend, hidden, lock?, mask?, text?, shape? }],
 //            ext?, pad?, fill? }
 //
 // Layers cover the whole photo as it is on disk (before any crop or turn,
@@ -60,6 +60,24 @@ const Paint = {
         };
     },
 
+    cleanShape(t) {
+        if (!t || typeof t !== 'object' || !['line', 'rect', 'ellipse'].includes(t.kind)) return null;
+        const num = (x, lo, hi) => typeof x === 'number' && isFinite(x) && x >= lo && x <= hi;
+        const pt = (q) => Array.isArray(q) && q.length === 2 && q.every(x => num(x, -1e6, 1e6));
+        const col = (c) => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c);
+        if (!pt(t.a) || !pt(t.b) || !Array.isArray(t.m) || t.m.length !== 6 || !t.m.every(x => num(x, -1e6, 1e6))) return null;
+        return {
+            kind: t.kind, a: t.a.slice(), b: t.b.slice(),
+            stroke: col(t.stroke) ? t.stroke : '#000000',
+            lw: num(t.lw, 0, 2000) ? t.lw : 8,
+            fill: col(t.fill) ? t.fill : null,
+            from: ['none', 'fg', 'bg'].includes(t.from) ? t.from : 'none',
+            arrow: !!t.arrow,
+            alpha: num(t.alpha, 0, 1) ? t.alpha : 1,
+            m: t.m.slice()
+        };
+    },
+
     clean(v) {
         if (!v || typeof v !== 'object') return null;
         const id = (x) => typeof x === 'string' && /^[a-z0-9]{1,24}$/.test(x);
@@ -81,7 +99,9 @@ const Paint = {
                 ...(id(l.mask) ? { mask: l.mask } : {}),
                 // A text layer: its words and how they're set, to change
                 // later (its pixels are in its file as for any layer)
-                ...(this.cleanText(l.text) ? { text: this.cleanText(l.text) } : {})
+                ...(this.cleanText(l.text) ? { text: this.cleanText(l.text) } : {}),
+                // A shape layer: the shape, its line and fill
+                ...(this.cleanShape(l.shape) ? { shape: this.cleanShape(l.shape) } : {})
             });
         }
         const side = (o, min) => {
