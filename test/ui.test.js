@@ -6232,6 +6232,17 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.loupe = Adjust.fullCanvas.width === 640 && Adjust._loupeRect.x < lr0.x && !document.getElementById('adj-loupe-box').classList.contains('hidden');
             document.getElementById('adj-detail-sec').open = false;
             document.getElementById('adj-detail-sec').dispatchEvent(new Event('toggle'));
+            // Texture, Clarity and Dehaze: in Presence, above Vibrance; a
+            // slider sets its own setting
+            const presRows = [...document.querySelectorAll('#adj-color .adj-range')].map(x => x.id);
+            out.presence = presRows.join() === 'adj-texture,adj-clarity,adj-dehaze,adj-vibrance,adj-saturation';
+            const clar = document.getElementById('adj-clarity');
+            clar.value = 40;
+            clar.dispatchEvent(new Event('input'));
+            clar.dispatchEvent(new Event('change'));
+            out.presence = out.presence && Adjust.result().clarity === 40;
+            Adjust.undo();
+            out.presence = out.presence && !Adjust.result()?.clarity;
             // Descreen, in Restore: a photo that isn't printed has no dots
             // to find, so it stays off (and its sliders hidden)
             step = 'descreen';
@@ -6367,6 +6378,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('adjust: Save as a look keeps the look as dialled in under Your looks, with rename, duplicate and delete on its right-click; a photo done with it keeps it', r.saved && r.listed && r.ownOn && r.duplicated && r.deleted, JSON.stringify(r));
         check('adjust: a grading wheel takes a hue and strength; presets save and put settings back', r.wheel && r.preset, JSON.stringify(r));
         check('adjust: Detail shows the full photo at 1:1, where you click', r.loupe, JSON.stringify(r));
+        check('adjust: Texture, Clarity and Dehaze are in Presence above Vibrance, and set their own settings; undo takes them off', r.presence, JSON.stringify(r.presence));
         check('adjust: in Restore, a drag along a scratch puts a line there; undo takes it off', r.scratchLine && r.scratchUndone, JSON.stringify([r.scratchLine, r.scratchUndone]));
         check('adjust: Descreen finds no dots in a photo that isn\'t printed; on, its sliders show; undo takes it off', r.descreenOff && r.descreenOn && r.descreenUndone, JSON.stringify([r.descreenOff, r.descreenOn, r.descreenUndone]));
         check('adjust: Pick grey (W) sets the white balance from a click on the photo, one Ctrl+Z; Esc stops picking', r.pickOn && r.pickEsc && r.picked && r.pickUndone, JSON.stringify(r));
