@@ -580,6 +580,10 @@ const Modes = {
         AdjustSync.selected();
     },
 
+    // A film strip photo being dragged (into Paint)
+    STRIP_TYPE: 'application/x-jeditor-strip',
+    dragging: null,
+
     fillStrip(files) {
         const app = this.app;
         const strip = this.strip;
@@ -606,6 +610,15 @@ const Modes = {
             div.title = f.relPath || f.name;
             div.setAttribute('aria-label', f.name);
             div._file = f;
+            // In Paint, a photo dragged onto the picture comes in as a layer
+            div.draggable = true;
+            div.addEventListener('dragstart', (e) => {
+                if (this.current() !== 'paint' || f === PaintEditor.file) { e.preventDefault(); return; }
+                this.dragging = f;
+                e.dataTransfer.effectAllowed = 'copy';
+                e.dataTransfer.setData(this.STRIP_TYPE, f.name);
+            });
+            div.addEventListener('dragend', () => { this.dragging = null; });
             div.addEventListener('click', (e) => this.stripClick(f, e));
             div.addEventListener('contextmenu', (e) => {
                 if (this.current() !== 'adjust') return;

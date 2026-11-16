@@ -815,6 +815,19 @@ const PaintEditor = {
         this.flashSize();
     },
 
+    // Shift+[ and Shift+]: the hardness, a quarter at a time (tools that
+    // have it)
+    nudgeHardness(dir) {
+        if (!(this.OPTIONS[this.tool] || []).includes('hardness')) return false;
+        const o = this.opts;
+        o.hardness = Math.min(100, Math.max(0, Math.round((o.hardness + dir * 25) / 25) * 25));
+        this.remember();
+        const row = this.optRows && this.optRows.hardness;
+        if (row) row._sync();
+        this.flashSize();
+        return true;
+    },
+
     // The brush shown as it'll paint, with its size, for a moment as it
     // changes: under the pointer, or in the middle when it's changed along
     // the top
@@ -3188,6 +3201,14 @@ const PaintEditor = {
         return n;
     },
 
+    // One of the folder's photos, dragged in from the film strip
+    async importPhoto(file) {
+        if (!this.ready || this.busy) return false;
+        let data;
+        try { data = await this.app.readImage(file); } catch (e) { this.app.showToast(`Couldn't open ${file.name}`, 2500); return false; }
+        return this.importImage(data, file.name.replace(/\.[^.]+$/, ''));
+    },
+
     async importImage(blob, name = 'Image') {
         if (!this.ready || this.busy) return false;
         if (this.layers.length >= Paint.MAX_LAYERS) {
@@ -3235,7 +3256,8 @@ const PaintEditor = {
     // Dropped on Paint, or pasted from another app (Ctrl+V with nothing
     // copied in Paint)
     initImport() {
-        const outside = (e) => this.isOpen && !!e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+        // A photo from the film strip (Modes.STRIP_TYPE), or files from outside
+        const outside = (e) => this.isOpen && !!e.dataTransfer && [...e.dataTransfer.types].some(t => t === 'Files' || t === Modes.STRIP_TYPE);
         document.addEventListener('dragover', (e) => {
             if (!outside(e)) return;
             e.preventDefault();
@@ -3247,7 +3269,9 @@ const PaintEditor = {
             e.preventDefault();
             e.stopPropagation();
             document.body.classList.remove('drag-over');
-            this.importFiles([...e.dataTransfer.files]);
+            const f = Modes.dragging;
+            if (f) this.importPhoto(f);
+            else this.importFiles([...e.dataTransfer.files]);
         }, true);
         document.addEventListener('paste', (e) => {
             if (!this.isOpen || !e.clipboardData) return;
@@ -3641,6 +3665,81 @@ const PaintEditor = {
         [this.layers[this.cur], this.layers[j]] = [this.layers[j], this.layers[this.cur]];
         this.cur = j;
         this.afterState();
+    },
+
+    // Alt+[ and Alt+]: the layer below or above
+    stepLayer(dir) {
+        const j = this.cur + dir;
+        if (!this.ready || j < 0 || j >= this.layers.length) return;
+        if (this.float) this.commitFloat();
+        this.cur = j;
+        this.drawLayers();
+    },
+
+    // The arrow keys (Shift: 10 px): what's being moved; with Move, the
+    // layer, or what's selected on it; with a selecting tool, the selection
+    // outline. False: nothing to move
+    nudge(dx, dy) {
+        if (!this.ready || this.drag || this.crop) return false;
+        if (this.float) {
+            this.float.t.tx += dx;
+            this.float.t.ty += dy;
+            this.renderSoon();
+            return true;
+        }
+        // The picture as shown is the layers turned or flipped a quarter at a
+        // time: the step, in layer space
+        const Ci = this.Ci, vx = Math.round(Ci.a * dx + Ci.c * dy), vy = Math.round(Ci.b * dx + Ci.d * dy);
+        const selecting = ['rect-select', 'ellipse-select', 'lasso', 'wand'].includes(this.tool);
+        if (selecting && this.sel) {
+            const m = this.newCanvas();
+            m.getContext('2d').drawImage(this.sel.mask, vx, vy);
+            this.sel.mask.width = this.sel.mask.height = 0;
+            this.sel.mask = m;
+            this.selectionChanged();
+            return true;
+        }
+        if (this.tool !== 'move') return false;
+        const l = this.layer();
+        if (!l) return false;
+        // Nudges one after another are one step to undo
+        const last = this.history[this.history.length - 1];
+        const going = this._nudged && this._nudged.entry === last && last && last.layer === l && performance.now() - this._nudged.at < 1500;
+        if (going) {
+            this.history.pop();
+            this.historyBytes -= last.bytes || 0;
+            this.before.getContext('2d').putImageData(last.before, 0, 0);
+            this._beforeOf = l;
+        } else {
+            this.beginPixels(l);
+        }
+        const g = l.canvas.getContext('2d');
+        const part = this.newCanvas();
+        const pg = part.getContext('2d');
+        pg.drawImage(l.canvas, 0, 0);
+        if (this.sel) {
+            pg.globalCompositeOperation = 'destination-in';
+            pg.drawImage(this.sel.mask, 0, 0);
+            g.globalCompositeOperation = 'destination-out';
+            g.drawImage(this.sel.mask, 0, 0);
+        } else {
+            g.clearRect(0, 0, this.W, this.H);
+        }
+        g.globalCompositeOperation = 'source-over';
+        g.drawImage(part, vx, vy);
+        part.width = part.height = 0;
+        // The selection goes with it
+        if (this.sel) {
+            const m = this.newCanvas();
+            m.getContext('2d').drawImage(this.sel.mask, vx, vy);
+            this.sel.mask.width = this.sel.mask.height = 0;
+            this.sel.mask = m;
+            this.selectionChanged();
+        }
+        this.endPixels(l, { x: 0, y: 0, w: this.W, h: this.H }, { free: true, name: 'Nudge' });
+        this._nudged = { entry: this.history[this.history.length - 1], at: performance.now() };
+        this.renderSoon();
+        return true;
     },
 
     mergeDown() {
