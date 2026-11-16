@@ -6073,6 +6073,12 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     height: 100%;
 }
 
+.paint-layer-clip {
+    flex: none;
+    margin-right: -2px;
+    color: var(--text-2);
+}
+
 .paint-layer-kind {
     flex: none;
     padding: 0 4px;

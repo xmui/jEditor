@@ -1221,7 +1221,7 @@ const PROJECT = `
                 P.soloLayer(1);
                 out.solo = [...alone, P.layers[0].hidden, P.layers[1].hidden];
                 P.deleteLayer();
-                out.layerMenu = P.layerItems(0).map(i => i[0]).slice(0, 3).join('|');
+                out.layerMenu = P.layerItems(0).map(i => i[0]).slice(0, 4).join('|');
                 // Alt with the brush: the colour picker, its loupe drawn; the
                 // brush paints nothing
                 step = 'alt pick';
@@ -1724,7 +1724,7 @@ const PROJECT = `
         check('paint: Image ▸ Rotate right turns the photo (its own edit), the layers with it; Ctrl+Z turns it back', r.imageMenu && JSON.stringify(r.turned) === '[true,true,true,255]' && r.turnUndone, JSON.stringify([r.imageMenu, r.turned, r.turnUndone]));
         check('paint: copy merged takes the photo and the layers; paste in place puts it back where it came from', r.plainClip === 0 && JSON.stringify(r.inPlace) === '["255,0",255,true]', JSON.stringify([r.plainClip, r.inPlace]));
         check('paint: lock transparency paints only over what\'s on the layer', JSON.stringify(r.locked) === '[[0,255,0,255],0,true]', JSON.stringify(r.locked));
-        check('paint: Ctrl-click a layer selects its paint; Alt-click an eye shows that layer alone, and again all; a layer\'s right-click menu', r.layerSel && JSON.stringify(r.solo) === '[true,false,false,false]' && r.layerMenu === 'Lock transparency|Show this layer alone|Select its pixels', JSON.stringify([r.layerSel, r.solo, r.layerMenu]));
+        check('paint: Ctrl-click a layer selects its paint; Alt-click an eye shows that layer alone, and again all; a layer\'s right-click menu', r.layerSel && JSON.stringify(r.solo) === '[true,false,false,false]' && r.layerMenu === 'Lock transparency|Lock the layer|Show this layer alone|Select its pixels', JSON.stringify([r.layerSel, r.solo, r.layerMenu]));
         check('paint: Alt with the brush picks the colour under it, with the loupe, and paints nothing', JSON.stringify(r.altPick) === '["#ff0000",true,0]', JSON.stringify(r.altPick));
         check('paint: Alt + right-drag makes the brush bigger (sideways) and softer (down), painting nothing', JSON.stringify(r.altSize) === '[true,true,0,null]', JSON.stringify(r.altSize));
         check('paint: a stroke at 50% opacity covers half, however it overlaps itself', r.half >= 120 && r.half <= 135, JSON.stringify(r));
@@ -2674,6 +2674,78 @@ const PROJECT = `
         check('paint shapes: New layer off draws onto the layer chosen', JSON.stringify(r.off) === '[0,255]', JSON.stringify(r));
         check('paint shapes: a line keeps its arrow', JSON.stringify(r.arrow) === '["line",true,"Line"]', JSON.stringify(r));
         check('paint shapes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- Paint: clipping, locking the layer, merge visible and flatten ----
+    if (wanted('paintlayers')) {
+        console.log('paint: clipping masks, Lock the layer, Merge visible, Flatten (paint-editor.js, paint.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 200; c.height = 200;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 200, 200);
+                await openProject('ly', { 'l.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                const fill = (l, col, x, y, w, h) => { const g = l.canvas.getContext('2d'); g.fillStyle = col; g.fillRect(x, y, w, h); };
+                const px = (cv, x, y) => [...cv.getContext('2d', { willReadFrequently: true }).getImageData(x, y, 1, 1).data];
+                // Base: a red square; above: blue all over, clipped to it
+                step = 'clip';
+                fill(P.layers[0], '#ff0000', 50, 50, 100, 100);
+                P.addLayer();
+                fill(P.layer(), '#0000ff', 0, 0, 200, 200);
+                pressKey('g', { ctrlKey: true, altKey: true });
+                const top = P.layer();
+                out.clipped = [!!top.clip, px(P.shownOf(top), 100, 100)[2], px(P.shownOf(top), 10, 10)[3], !!document.querySelector('#paint-layer-list .paint-layer.clipped .paint-layer-clip')];
+                // The base hidden: the clipped one with it
+                P.layers[0].hidden = true;
+                out.hiddenBase = P.isShown(top);
+                P.layers[0].hidden = false;
+                // Kept: Paint.clean, and Paint.prepare draws it clipped
+                const kept = Paint.clean({ id: 'abc', w: 200, h: 200, layers: [{ id: 'l1', rev: 'r1' }, { id: 'l2', rev: 'r2', clip: true, fixed: true }] });
+                out.kept = [kept.layers[1].clip, kept.layers[1].fixed, 'clip' in kept.layers[0]];
+                pressKey('z', { ctrlKey: true });
+                out.unclipUndo = !P.layer().clip;
+                pressKey('z', { ctrlKey: true, shiftKey: true });
+                // Lock the layer: the brush leaves it as it was, Move doesn't lift it
+                step = 'fixed';
+                P.toggleFixed();
+                const n0 = P.history.length;
+                P.beginPixels(P.layer());
+                fill(P.layer(), '#00ff00', 0, 0, 20, 20);
+                P.endPixels(P.layer(), { x: 0, y: 0, w: 20, h: 20 });
+                out.fixed = [px(P.layer().canvas, 5, 5)[2], P.history.length - n0, P.liftFloat(), P.layerItems(P.cur).find(i => i[0] === 'Lock the layer')[3]];
+                P.toggleFixed();
+                // Merge visible: the two as they look, one layer; one step to undo
+                step = 'merge';
+                P.addLayer();
+                fill(P.layer(), '#00ff00', 0, 0, 10, 10);
+                P.layer().hidden = true;
+                const n1 = P.layers.length;
+                pressKey('e', { ctrlKey: true, shiftKey: true });
+                const m = P.layers.find(l => l.name === 'Merged');
+                out.merged = [n1 - P.layers.length, !!m && px(m.canvas, 100, 100)[2], !!m && px(m.canvas, 10, 10)[3], P.layers.some(l => l.hidden)];
+                pressKey('z', { ctrlKey: true });
+                out.mergeUndo = P.layers.length === n1;
+                // Flatten: one layer, the hidden one gone
+                P.mergeVisible(true);
+                out.flat = [P.layers.length, px(P.layers[0].canvas, 100, 100)[2], px(P.layers[0].canvas, 5, 5)[3]];
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint layers: Ctrl+Alt+G clips a layer to the one below, marked in the list', r.clipped && r.clipped[0] && r.clipped[1] === 255 && r.clipped[2] === 0 && r.clipped[3], JSON.stringify(r));
+        check('paint layers: a clipped layer hides with the layer it\'s clipped to; Undo unclips', r.hiddenBase === false && r.unclipUndo, JSON.stringify(r));
+        check('paint layers: clip and lock are kept with the layers', JSON.stringify(r.kept) === '[true,true,false]', JSON.stringify(r));
+        check('paint layers: Lock the layer keeps paint off it and Move from lifting it', JSON.stringify(r.fixed) === '[255,0,false,true]', JSON.stringify(r));
+        check('paint layers: Ctrl+Shift+E merges the layers shown as they look, the hidden one kept; one step to undo', r.merged && r.merged[0] === 1 && r.merged[1] === 255 && r.merged[2] === 0 && r.merged[3] && r.mergeUndo, JSON.stringify(r));
+        check('paint layers: Flatten leaves one layer, the hidden one gone', JSON.stringify(r.flat) === '[1,255,0]', JSON.stringify(r));
+        check('paint layers: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
