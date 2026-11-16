@@ -2828,6 +2828,57 @@ const PROJECT = `
         await page.close();
     }
 
+    // ---- Paint: snapping to other layers; R held turns the view ----
+    if (wanted('paintsnapr')) {
+        console.log('paint: Snap to what\'s on other layers; R held and dragged turns the view (paint-editor.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 200; c.height = 200;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 200, 200);
+                await openProject('sn', { 's.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                P.opts.snap = true;
+                P.layers[0].canvas.getContext('2d').fillRect(120, 30, 40, 40);
+                P.addLayer();
+                step = 'snap';
+                const near = 4 / P.view.z;
+                const q = P.snapPoint({ ox: 120 + near, oy: 100, x: 0, y: 0 });
+                const q2 = P.snapPoint({ ox: 140, oy: 70 - near, x: 0, y: 0 });
+                out.snapped = [q.ox, q2.oy, P.snapTargets().xs.includes(160)];
+                // R held, dragged: the view turns; let go, the tool's as it was
+                step = 'r';
+                P.setTool('brush');
+                const st = document.getElementById('paint-stage'), rr = P.canvas.getBoundingClientRect();
+                document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', code: 'KeyR', bubbles: true }));
+                const cx = rr.left + P.cssW / 2, cy = rr.top + P.cssH / 2;
+                st.dispatchEvent(new PointerEvent('pointerdown', { clientX: cx + 100, clientY: cy, pointerId: 1, bubbles: true, button: 0 }));
+                st.dispatchEvent(new PointerEvent('pointermove', { clientX: cx, clientY: cy + 100, pointerId: 1, bubbles: true }));
+                st.dispatchEvent(new PointerEvent('pointerup', { clientX: cx, clientY: cy + 100, pointerId: 1, bubbles: true }));
+                document.body.dispatchEvent(new KeyboardEvent('keyup', { key: 'r', code: 'KeyR', bubbles: true }));
+                out.turned = [Math.round(P.viewAngle()), P.tool, P.layers[1].canvas.getContext('2d').getImageData(100, 100, 1, 1).data[3]];
+                // Tapped twice: straight again
+                for (const k of [0, 1]) {
+                    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', code: 'KeyR', bubbles: true }));
+                    document.body.dispatchEvent(new KeyboardEvent('keyup', { key: 'r', code: 'KeyR', bubbles: true }));
+                }
+                out.straight = P.viewAngle();
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint snap: points snap to the edges of what\'s on other layers', r.snapped && r.snapped[0] === 120 && r.snapped[1] === 70 && r.snapped[2], JSON.stringify(r));
+        check('paint view: R held and dragged turns the view, nothing painted, the tool as it was after', JSON.stringify(r.turned) === '[90,"brush",0]', JSON.stringify(r));
+        check('paint view: R tapped twice puts the view straight', r.straight === 0, JSON.stringify(r));
+        check('paint snap and R: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Restore colour (develop.js: restoreAuto; script.js: restoreColour) ----
     if (wanted('restore')) {
         console.log('restore colour (develop.js, script.js, adjust.js)');

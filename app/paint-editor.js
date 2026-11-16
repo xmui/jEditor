@@ -433,6 +433,22 @@ const PaintEditor = {
         window.addEventListener('keyup', (e) => {
             if (e.code === 'Space' && this.space) { this.space = false; this.cursor(); }
         }, true);
+        // R held and dragged: the view turns (the tool back as it was when
+        // R's let go); R tapped twice: the view straight. A tap alone is
+        // still the rectangle
+        window.addEventListener('keydown', (e) => {
+            if (!this.isOpen || !this.ready || e.repeat || e.ctrlKey || e.metaKey || e.altKey || (e.key !== 'r' && e.key !== 'R') || this.app.isTypingTarget(e.target)) return;
+            const now = performance.now();
+            if (now - (this._rTap || 0) < 350 && this.viewAngle()) this.rotateViewTo(0);
+            this._rTap = now;
+            this.rHeld = { tool: this.tool, used: false };
+        }, true);
+        window.addEventListener('keyup', (e) => {
+            if ((e.key !== 'r' && e.key !== 'R') || !this.rHeld) return;
+            const h = this.rHeld;
+            this.rHeld = null;
+            if (h.used) { this._rTap = 0; if (this.tool !== h.tool) this.setTool(h.tool); }
+        }, true);
         // Shift held over the photo with a brush: the straight line it'd paint
         for (const type of ['keydown', 'keyup']) window.addEventListener(type, (e) => {
             if (e.key !== 'Shift' || !this.isOpen || !this.hover) return;
@@ -495,7 +511,41 @@ const PaintEditor = {
     // Within 8 screen px of an edge or the middle, on it; the lines snapped
     // to show while dragging
     snapTargets() {
-        return { xs: [0, this.OW / 2, this.OW], ys: [0, this.OH / 2, this.OH] };
+        const xs = [0, this.OW / 2, this.OW], ys = [0, this.OH / 2, this.OH];
+        for (const b of this.layerEdges()) { xs.push(b.x0, b.x1); ys.push(b.y0, b.y1); }
+        return { xs, ys };
+    },
+
+    // The edges of what's on the other layers shown, in the picture as
+    // shown (found once a drag, while nothing changes)
+    layerEdges() {
+        const key = this.history.length + ':' + this.cur + ':' + this.layers.length;
+        if (this._edges && this._edges.key === key) return this._edges.list;
+        const list = [];
+        this.layers.forEach((l, i) => {
+            if (i === this.cur || !this.isShown(l)) return;
+            const d = l.canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, this.W, this.H).data, W = this.W;
+            let x0 = W, y0 = this.H, x1 = -1, y1 = -1;
+            for (let y = 0; y < this.H; y++) {
+                const row = y * W * 4;
+                let first = -1, last = -1;
+                for (let x = 0; x < W; x++) if (d[row + x * 4 + 3] > 8) { first = x; break; }
+                if (first < 0) continue;
+                for (let x = W - 1; x >= first; x--) if (d[row + x * 4 + 3] > 8) { last = x; break; }
+                if (first < x0) x0 = first;
+                if (last > x1) x1 = last;
+                if (y < y0) y0 = y;
+                y1 = y;
+            }
+            if (x1 < 0) return;
+            const pts = [[x0, y0], [x1 + 1, y0], [x0, y1 + 1], [x1 + 1, y1 + 1]].map(([x, y]) => this.C.transformPoint({ x, y }));
+            const b = { x0: Math.min(...pts.map(q => q.x)), y0: Math.min(...pts.map(q => q.y)), x1: Math.max(...pts.map(q => q.x)), y1: Math.max(...pts.map(q => q.y)) };
+            // (one that fills the canvas has the canvas's edges already)
+            if (b.x0 <= 0.5 && b.y0 <= 0.5 && b.x1 >= this.OW - 0.5 && b.y1 >= this.OH - 0.5) return;
+            list.push(b);
+        });
+        this._edges = { key, list };
+        return list;
     },
 
     snapPoint(p) {
@@ -1572,6 +1622,8 @@ const PaintEditor = {
         e.preventDefault();
         try { this.stage.setPointerCapture(e.pointerId); } catch (err) { /* not a live pointer */ }
         const p = this.point(e);
+        // R held: dragging turns the view
+        if (this.rHeld) { this.startPan(e); this.drag.turnAlways = true; this.rHeld.used = true; return; }
         if (this.space || this.tool === 'hand') { this.startPan(e); return; }
         if (this.crop) { this.startCropDrag(p); return; }
         if (this.text && e.target !== this.el('paint-text')) { this.endText(true); return; }
@@ -1621,7 +1673,7 @@ const PaintEditor = {
         if (!d) { if (this.crop) this.cropCursor(p); this.renderSoon(); return; }
         if (d.kind === 'size') { this.sizeBy(p.sx - d.sx, p.sy - d.sy); return; }
         if (d.kind === 'pick') { this.pick(p, d.toBg); this.renderSoon(); return; }
-        if (d.kind === 'pan' && e.shiftKey) {
+        if (d.kind === 'pan' && (e.shiftKey || d.turnAlways)) {
             // Shift-drag with the Hand: the view turns about the middle
             const cx = this.cssW / 2, cy = this.cssH / 2;
             const ang = (q) => Math.atan2(q.sy - cy, q.sx - cx) * 180 / Math.PI;
@@ -1632,7 +1684,7 @@ const PaintEditor = {
             this.rotateViewTo(deg);
             // (Shift let go: it pans on from here)
             Object.assign(d, { vx: this.view.x, vy: this.view.y, sx: p.sx, sy: p.sy });
-            if (!e.shiftKey) d.turn = null;
+            if (!e.shiftKey && !d.turnAlways) d.turn = null;
         } else if (d.kind === 'pan') {
             this.fitted = false;
             this.view.x = d.vx + (p.sx - d.sx);
