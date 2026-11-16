@@ -1593,7 +1593,7 @@ const PROJECT = `
                 pressKey('N', { ctrlKey: true, shiftKey: true });
                 out.layers = P.layers.length === 2 && P.cur === 1;
                 P.fg = '#00ff00'; P.opts.shapeFill = 'fg'; P.opts.lineWidth = 0;
-                P.setTool('rect');
+                P.opts.shapeLayer = false; P.setTool('rect');
                 pe('pointerdown', 20, 20); pe('pointermove', 60, 60); pe('pointerup', 60, 60);
                 out.rect = [px(1, 40, 40), px(1, 70, 70)[3]];
                 // The fill: the blue square, sampled from the photo
@@ -1810,7 +1810,7 @@ const PROJECT = `
                 // A wide rectangle on the picture as shown is wide there
                 step = 'rect';
                 P.fg = '#00ff00'; P.opts.shapeFill = 'fg'; P.opts.lineWidth = 0; P.opts.opacity = 100;
-                P.setTool('rect');
+                P.opts.shapeLayer = false; P.setTool('rect');
                 pe('pointerdown', 20, 20); pe('pointermove', 180, 60); pe('pointerup', 180, 60);
                 out.rect = [shownAt(0, 170, 40)[3], shownAt(0, 40, 100)[3]];
                 // The eraser takes it off where it goes
@@ -2581,6 +2581,99 @@ const PROJECT = `
         check('paint text: painted on, it\'s pixels; Undo makes it text again', r.pixels && r.back === 'Hello', JSON.stringify(r));
         check('paint text: right-click has Edit the text and Make it pixels', r.menu && r.rasterized, JSON.stringify(r));
         check('paint text: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- Paint: shape layers ----
+    if (wanted('paintshape')) {
+        console.log('paint: shape layers (paint-editor.js, paint.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 400; c.height = 300;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 400, 300);
+                await openProject('sh', { 's.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                P.opts.snap = false;
+                const st = document.getElementById('paint-stage');
+                const sc = (q) => { const sp = P.V().transformPoint(q); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                const drag = (a, b) => {
+                    st.dispatchEvent(new PointerEvent('pointerdown', { ...sc(a), pointerId: 1, bubbles: true, button: 0 }));
+                    st.dispatchEvent(new PointerEvent('pointermove', { ...sc(b), pointerId: 1, bubbles: true }));
+                    st.dispatchEvent(new PointerEvent('pointerup', { ...sc(b), pointerId: 1, bubbles: true }));
+                };
+                const px = (l, x, y) => [...l.canvas.getContext('2d', { willReadFrequently: true }).getImageData(x, y, 1, 1).data];
+                // Drawn: a layer of its own (by default), named for it, keeping the shape
+                step = 'new';
+                Object.assign(P.opts, { lineWidth: 6, shapeFill: 'none', opacity: 100, shapeLayer: true });
+                P.fg = '#ff0000'; P.syncColours();
+                P.setTool('rect');
+                const n0 = P.layers.length;
+                drag({ x: 100, y: 100 }, { x: 200, y: 180 });
+                const l = P.layer();
+                out.made = [P.layers.length - n0, l.name, l.shape && l.shape.kind, px(l, 100, 140)[0], px(l, 150, 140)[3]];
+                out.mark = !!document.querySelector('#paint-layer-list .paint-layer[aria-selected="true"] .paint-layer-kind');
+                // Kept with the layers, through Paint.clean (a bad one dropped)
+                const kept = Paint.clean({ id: 'abc', w: 400, h: 300, layers: [{ id: 'l1', rev: 'r1', name: 'R', shape: l.shape }, { id: 'l2', rev: 'r2', name: 'x', shape: { kind: 'star' } }] });
+                out.kept = [kept.layers[0].shape && kept.layers[0].shape.kind, kept.layers[0].shape && kept.layers[0].shape.stroke, 'shape' in kept.layers[1]];
+                // Its tool out, the fill changed: it's filled, one step to undo
+                step = 'restyle';
+                P.opts.shapeFill = 'fg';
+                P.restyle();
+                out.filled = [px(P.layer(), 150, 140)[0], P.layer().shape.fill, P.history[P.history.length - 1].name];
+                pressKey('z', { ctrlKey: true });
+                out.unfilled = [px(P.layer(), 150, 140)[3], P.layer().shape.fill];
+                // Chosen again with its tool out: the options show its own
+                step = 'load';
+                P.cur = 0; P.opts.lineWidth = 1; P.opts.shapeFill = 'bg'; P.buildOptions();
+                P.cur = n0; P.buildOptions();
+                out.loaded = [P.opts.lineWidth, P.opts.shapeFill];
+                // Moved: still a shape, where it was put
+                step = 'move';
+                P.setTool('move');
+                P.liftFloat();
+                P.float.t.tx = 30;
+                P.commitFloat();
+                out.moved = [!!P.layer().shape, Math.round(P.layer().shape.m[4]), px(P.layer(), 130, 140)[0], px(P.layer(), 100, 140)[3]];
+                // Painted on: pixels from then on; Undo brings the shape back
+                step = 'paint';
+                P.setTool('brush');
+                drag({ x: 300, y: 250 }, { x: 340, y: 260 });
+                await sleep(20);
+                out.pixels = !P.layer().shape;
+                pressKey('z', { ctrlKey: true });
+                out.back = P.layer().shape && P.layer().shape.kind;
+                out.menu = P.layerItems(P.cur).some(i => i[0] === 'Make it pixels');
+                // New layer off: onto the layer chosen, as before
+                step = 'off';
+                P.cur = 0;
+                P.setTool('line');
+                P.opts.shapeLayer = false;
+                const n1 = P.layers.length;
+                drag({ x: 20, y: 20 }, { x: 80, y: 20 });
+                out.off = [P.layers.length - n1, px(P.layers[0], 50, 20)[0]];
+                // An arrow keeps its arrow
+                P.opts.shapeLayer = true; P.opts.arrow = true;
+                drag({ x: 20, y: 250 }, { x: 120, y: 250 });
+                out.arrow = [P.layer().shape.kind, P.layer().shape.arrow, P.layer().name];
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint shapes: a rectangle is a layer of its own, marked in the list, keeping the shape', JSON.stringify(r.made) === '[1,"Rectangle","rect",255,0]' && r.mark, JSON.stringify(r));
+        check('paint shapes: the shape is kept with the layers (a bad one dropped)', JSON.stringify(r.kept) === '["rect","#ff0000",false]', JSON.stringify(r));
+        check('paint shapes: its tool out, a fill changed fills it; one step to undo', r.filled && r.filled[0] === 255 && r.filled[1] === '#ff0000' && r.filled[2] === 'Shape style' && JSON.stringify(r.unfilled) === '[0,null]', JSON.stringify(r));
+        check('paint shapes: chosen again, the options show its own line and fill', JSON.stringify(r.loaded) === '[6,"none"]', JSON.stringify(r));
+        check('paint shapes: moved, it stays a shape, drawn where it went', r.moved && r.moved[0] && r.moved[1] === 30 && r.moved[2] === 255 && r.moved[3] === 0, JSON.stringify(r));
+        check('paint shapes: painted on, it\'s pixels; Undo makes it a shape again', r.pixels && r.back === 'rect' && r.menu, JSON.stringify(r));
+        check('paint shapes: New layer off draws onto the layer chosen', JSON.stringify(r.off) === '[0,255]', JSON.stringify(r));
+        check('paint shapes: a line keeps its arrow', JSON.stringify(r.arrow) === '["line",true,"Line"]', JSON.stringify(r));
+        check('paint shapes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
