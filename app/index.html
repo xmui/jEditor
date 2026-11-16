@@ -677,15 +677,16 @@
     <!-- Paint (paint-editor.js; layers kept by paint.js) -->
     <div id="paint-editor" class="paint-editor mode-screen hidden">
         <div class="mode-head paint-head">
+            <!-- The top, in three places: the file and Undo at the left, the
+                 tool's options in the middle (placed by layoutTop), ⋯ at the right -->
             <span class="mode-file"><span id="paint-file" class="mode-title"></span>
-            <span id="paint-dims" class="crop-dims"></span></span>
+            <span id="paint-dims" class="crop-dims"></span>
+            <span class="paint-undo-redo" role="group" aria-label="Undo and redo">
+                <button id="paint-undo" class="btn ghost sm icon" title="Undo (Ctrl+Z)" aria-label="Undo"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+                <button id="paint-redo" class="btn ghost sm icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+            </span></span>
             <span class="mode-head-acts" role="toolbar" aria-label="Paint">
-                <button id="paint-undo" class="btn ghost sm" title="Undo (Ctrl+Z)">Undo</button>
-                <button id="paint-redo" class="btn ghost sm" title="Redo (Ctrl+Shift+Z)">Redo</button>
-                <button id="paint-more" class="btn ghost sm adj-more" title="More: Select and Layer" aria-label="More" aria-haspopup="menu"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.25" fill="currentColor"/><circle cx="12" cy="12" r="1.25" fill="currentColor"/><circle cx="19" cy="12" r="1.25" fill="currentColor"/></svg></button>
-                <span class="mode-head-sep" aria-hidden="true"></span>
-                <button id="paint-zoom-fit" class="btn ghost sm" title="Fit the photo (0)">Fit</button>
-                <button id="paint-zoom-1" class="btn ghost sm" title="Actual pixels (1)">100%</button>
+                <button id="paint-more" class="btn ghost sm adj-more" title="More: Image, Select, Layer and the rest" aria-label="More" aria-haspopup="menu"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.25" fill="currentColor"/><circle cx="12" cy="12" r="1.25" fill="currentColor"/><circle cx="19" cy="12" r="1.25" fill="currentColor"/></svg></button>
             </span>
         </div>
         <div id="paint-options" class="paint-options" role="toolbar" aria-label="Tool options"></div>
@@ -693,6 +694,12 @@
             <div id="paint-tools" class="paint-tools" role="toolbar" aria-label="Tools" aria-orientation="vertical"></div>
             <div id="paint-stage" class="paint-stage">
                 <canvas id="paint-canvas"></canvas>
+                <!-- Zoom: at the bottom in the middle, as in Adjust -->
+                <div id="paint-zoom" class="adj-zoom paint-zoom" role="toolbar" aria-label="Zoom">
+                    <button id="paint-zoom-fit" class="adj-zoom-btn" title="Fit the photo (0)">Fit</button>
+                    <button id="paint-zoom-1" class="adj-zoom-btn" title="Actual pixels (1)">100%</button>
+                    <span id="paint-zoom-level" class="adj-zoom-level" aria-live="off"></span>
+                </div>
                 <textarea id="paint-text" class="paint-text hidden" spellcheck="false" aria-label="Text"></textarea>
             </div>
             <div class="side-edge side-edge-right hidden" data-side="paint" data-edge="left" data-for="paint-panel" title="Drag to show the panel" aria-hidden="true"></div>

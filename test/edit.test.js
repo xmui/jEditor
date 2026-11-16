@@ -2008,6 +2008,167 @@ const PROJECT = `
         await page.close();
     }
 
+    // ---- Paint's top: three places (layout 3) ----
+    if (wanted('painttop')) {
+        console.log('paint\'s top: the file, the options, ⋯ (paint-editor.js: layoutTop)');
+        const { page, issues } = await open();
+        const look = async () => page.evaluate(async () => {
+            await sleep(300);
+            const r = (s) => { const e = document.querySelector(s); if (!e || !e.getClientRects().length) return null; const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
+            const hit = (a, b) => a && b && a.l < b.r - 1 && b.l < a.r - 1 && a.t < b.b - 1 && b.t < a.b - 1;
+            const row = r('#mode-row'), file = r('.paint-head .mode-file'), opts = r('#paint-options'), more = r('#paint-more'), zoom = r('#paint-zoom'), stage = r('#paint-stage');
+            const box = document.getElementById('paint-options');
+            return {
+                order: !!(file && opts && more && file.r <= opts.l && opts.r <= more.l),
+                clear: !hit(row, file) && !hit(file, opts) && !hit(opts, more),
+                sameRow: !!(file && opts && more && Math.abs((file.t + file.b) / 2 - (opts.t + opts.b) / 2) < 3 && Math.abs((opts.t + opts.b) / 2 - (more.t + more.b) / 2) < 3),
+                zoomAtBottom: !!(zoom && stage && zoom.b <= stage.b && zoom.b > stage.b - 60 && Math.abs((zoom.l + zoom.r) / 2 - (stage.l + stage.r) / 2) < 3),
+                undo: !!r('.paint-head .mode-file #paint-undo') && !!r('.paint-head .mode-file #paint-redo'),
+                folded: box.querySelectorAll('.paint-fold > *').length,
+                fits: box.scrollWidth <= box.clientWidth + 1,
+                text: box.textContent
+            };
+        });
+        const setup = await page.evaluate(async () => {
+            const c = document.createElement('canvas'); c.width = 600; c.height = 400;
+            c.getContext('2d').fillStyle = '#777'; c.getContext('2d').fillRect(0, 0, 600, 400);
+            await openProject('top', { 'a_photo_with_a_long_camera_name_IMG_20261101_143207.png': await canvasBlob(c) });
+            app.openSingle(app.files[0]);
+            await app.enterPaint();
+            await until(() => PaintEditor.ready);
+            PaintEditor.setTool('heal');
+            return true;
+        });
+        await page.setViewportSize({ width: 1400, height: 820 });
+        const wide = await look();
+        await page.setViewportSize({ width: 700, height: 820 });
+        const narrow = await look();
+        // › opens the rest under it; a click elsewhere closes it
+        const fold = await page.evaluate(async () => {
+            const btn = document.querySelector('.paint-fold-btn'), card = document.querySelector('.paint-fold');
+            if (!btn) return null;
+            btn.click();
+            const open = !card.classList.contains('hidden') && btn.getAttribute('aria-expanded') === 'true';
+            document.getElementById('paint-stage').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+            return { open, shut: card.classList.contains('hidden') };
+        });
+        // Zoom's pill: 100% lights up and the zoom shows once zoomed
+        const zoom = await page.evaluate(async () => {
+            const P = PaintEditor;
+            document.getElementById('paint-zoom-1').click();
+            await sleep(50);
+            const at1 = document.getElementById('paint-zoom-1').getAttribute('aria-pressed') === 'true';
+            P.zoomTo(2);
+            P.render();
+            const level = document.getElementById('paint-zoom-level').textContent;
+            document.getElementById('paint-zoom-fit').click();
+            P.render();
+            const fit = document.getElementById('paint-zoom-fit').getAttribute('aria-pressed') === 'true';
+            app.cancelPaint();
+            return { at1, level, fit };
+        });
+        check('paint top: the file and Undo at the left, after the mode switcher; the options in the middle; ⋯ at the right, one row', setup && wide.order && wide.clear && wide.sameRow && wide.undo, JSON.stringify(wide));
+        check('paint top: wide, the heal tool\'s main options in the row, the rest behind ›', wide.fits && wide.folded <= 2 && wide.folded < narrow.folded, JSON.stringify([wide, narrow.folded]));
+        check('paint top: narrow, the rest fold behind ›, nothing over anything', narrow.order && narrow.clear && narrow.folded > 0 && narrow.fits && ['Size', 'Hardness', 'Aligned', 'All layers', 'Opacity'].every(t => narrow.text.includes(t)), JSON.stringify(narrow));
+        check('paint top: › opens the folded options; a click elsewhere closes them', fold && fold.open && fold.shut, JSON.stringify(fold));
+        check('paint top: zoom in a pill at the bottom, in the middle; Fit and 100% lit, the zoom shown', wide.zoomAtBottom && zoom.at1 && zoom.level === '200%' && zoom.fit, JSON.stringify([wide.zoomAtBottom, zoom]));
+        check('paint top: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- Paint: keys like Photoshop's; a film strip photo dropped in ----
+    if (wanted('paintkeys')) {
+        console.log('paint keys and the film strip (paint-editor.js, modes.js, script.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const one = (colour) => { const c = document.createElement('canvas'); c.width = 200; c.height = 100; const g = c.getContext('2d'); g.fillStyle = colour; g.fillRect(0, 0, 200, 100); return canvasBlob(c, 'image/png'); };
+                await openProject('keys', { 'a.png': await one('#808080'), 'b.png': await one('#0000ff') });
+                const a = app.files.find(f => f.name === 'a.png'), b = app.files.find(f => f.name === 'b.png');
+                app.openSingle(a);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                // The film strip's other photo, dragged onto the picture: a layer
+                step = 'strip';
+                const thumb = [...document.querySelectorAll('.mode-thumb')].find(t => t._file === b);
+                const dt = new DataTransfer();
+                thumb.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt }));
+                const st = document.getElementById('paint-stage');
+                st.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+                st.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+                thumb.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }));
+                await until(() => P.float);
+                out.strip = [P.layers.map(l => l.name).join(), !!P.float];
+                // Arrows move what's floating; Enter puts it down
+                const tx = P.float.t.tx;
+                pressKey('ArrowRight');
+                pressKey('ArrowRight', { shiftKey: true });
+                out.floatNudge = P.float.t.tx - tx;
+                pressKey('Enter');
+                // Alt+[ and Alt+]: the layer below and above; Ctrl+] moves it up
+                step = 'layers';
+                const names = () => P.layers.map(l => l.name).join();
+                pressKey('[', { altKey: true, code: 'BracketLeft' });
+                out.below = P.cur;
+                pressKey(']', { altKey: true, code: 'BracketRight' });
+                out.above = P.cur;
+                pressKey('[', { ctrlKey: true, code: 'BracketLeft' });
+                out.movedDown = [names(), P.cur];
+                pressKey(']', { ctrlKey: true, code: 'BracketRight' });
+                out.movedUp = names();
+                // Shift+[ (typed as {): softer, a quarter at a time
+                step = 'hardness';
+                P.setTool('brush');
+                P.opts.hardness = 80;
+                pressKey('{', { shiftKey: true, code: 'BracketLeft' });
+                const h1 = P.opts.hardness;
+                pressKey('}', { shiftKey: true, code: 'BracketRight' });
+                out.hard = [h1, P.opts.hardness];
+                // With Move, arrows nudge the layer's pixels: one step to undo
+                step = 'nudge';
+                P.cur = 0;
+                P.drawLayers();
+                const l = P.layers[0], g = l.canvas.getContext('2d');
+                g.clearRect(0, 0, P.W, P.H);
+                g.fillStyle = '#ff0000';
+                g.fillRect(10, 10, 5, 5);
+                P.setTool('move');
+                const n0 = P.history.length;
+                pressKey('ArrowRight');
+                pressKey('ArrowDown', { shiftKey: true });
+                const px = (x, y) => g.getImageData(x, y, 1, 1).data[3];
+                out.moved = [px(10, 10), px(11, 20), px(15, 24), P.history.length - n0];
+                pressKey('z', { ctrlKey: true });
+                out.undone = [px(10, 10), px(11, 20)];
+                // With a select tool, arrows move the outline only
+                step = 'outline';
+                P.setTool('rect-select');
+                const m = P.newCanvas(); m.getContext('2d').fillRect(20, 20, 10, 10);
+                P.combineSelection(m, 'new');
+                pressKey('ArrowLeft', { shiftKey: true });
+                out.outline = [P.sel.box.x, P.sel.box.y, px(10, 10)];
+                P.deselect();
+                // Nothing to nudge (a brush): the arrows are left alone
+                P.setTool('brush');
+                out.leftAlone = window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint: a photo dragged from the film strip comes in as a layer', r.strip && r.strip[0] === 'Layer 1,b' && r.strip[1], JSON.stringify(r));
+        check('paint: arrows nudge what\'s floating (Shift: 10 px)', r.floatNudge === 11, JSON.stringify(r));
+        check('paint: Alt+[ / Alt+] the layer below / above; Ctrl+[ / Ctrl+] move it', r.below === 0 && r.above === 1 && r.movedDown && r.movedDown[0] === 'b,Layer 1' && r.movedDown[1] === 0 && r.movedUp === 'Layer 1,b', JSON.stringify(r));
+        check('paint: Shift+[ / Shift+] softer / harder by a quarter', JSON.stringify(r.hard) === '[50,75]', JSON.stringify(r));
+        check('paint: with Move, arrows nudge the layer (Shift: 10 px), one step to undo', JSON.stringify(r.moved) === '[0,255,255,1]' && JSON.stringify(r.undone) === '[255,0]', JSON.stringify(r));
+        check('paint: with a select tool, arrows move the outline, not the pixels', JSON.stringify(r.outline) === '[10,20,255]', JSON.stringify(r));
+        check('paint: with nothing to nudge, the arrows are left alone', r.leftAlone === true, JSON.stringify(r));
+        check('paint keys: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Restore colour (develop.js: restoreAuto; script.js: restoreColour) ----
     if (wanted('restore')) {
         console.log('restore colour (develop.js, script.js, adjust.js)');

@@ -4980,6 +4980,20 @@ const app = {
         ['paint.crop', 'paint', 'Paint', 'Crop: drag past the picture for more canvas', ['C']],
         ['paint.smaller', 'paint', 'Paint', 'Brush (or line, or text) smaller', ['[']],
         ['paint.bigger', 'paint', 'Paint', 'Brush (or line, or text) bigger', [']']],
+        ['paint.softer', 'paint', 'Paint', 'Brush softer', ['Shift+[']],
+        ['paint.harder', 'paint', 'Paint', 'Brush harder', ['Shift+]']],
+        ['paint.nudgeLeft', 'paint', 'Paint', 'Nudge left: with Move, the layer or what\'s selected; with a select tool, the outline (Shift: 10 px)', ['ArrowLeft']],
+        ['paint.nudgeRight', 'paint', 'Paint', 'Nudge right', ['ArrowRight']],
+        ['paint.nudgeUp', 'paint', 'Paint', 'Nudge up', ['ArrowUp']],
+        ['paint.nudgeDown', 'paint', 'Paint', 'Nudge down', ['ArrowDown']],
+        ['paint.nudgeLeft10', 'paint', 'Paint', 'Nudge left 10 px', ['Shift+ArrowLeft']],
+        ['paint.nudgeRight10', 'paint', 'Paint', 'Nudge right 10 px', ['Shift+ArrowRight']],
+        ['paint.nudgeUp10', 'paint', 'Paint', 'Nudge up 10 px', ['Shift+ArrowUp']],
+        ['paint.nudgeDown10', 'paint', 'Paint', 'Nudge down 10 px', ['Shift+ArrowDown']],
+        ['paint.layerAbove', 'paint', 'Paint', 'The layer above', ['Alt+]']],
+        ['paint.layerBelow', 'paint', 'Paint', 'The layer below', ['Alt+[']],
+        ['paint.layerUp', 'paint', 'Paint', 'Move the layer up', ['Ctrl+]']],
+        ['paint.layerDown', 'paint', 'Paint', 'Move the layer down', ['Ctrl+[']],
         ['paint.swap', 'paint', 'Paint', 'Swap the colours', ['X']],
         ['paint.colours', 'paint', 'Paint', 'Black and white', ['D']],
         ['paint.selectAll', 'paint', 'Paint', 'Select all', ['Ctrl+A']],
@@ -5214,6 +5228,20 @@ const app = {
             'paint.crop': () => { if (PaintEditor.crop) PaintEditor.endCrop(true); else PaintEditor.startCrop(); },
             'paint.smaller': () => PaintEditor.nudgeSize(1 / 1.2, true),
             'paint.bigger': () => PaintEditor.nudgeSize(1.2, true),
+            'paint.softer': () => PaintEditor.nudgeHardness(-1),
+            'paint.harder': () => PaintEditor.nudgeHardness(1),
+            'paint.nudgeLeft': () => PaintEditor.nudge(-1, 0),
+            'paint.nudgeRight': () => PaintEditor.nudge(1, 0),
+            'paint.nudgeUp': () => PaintEditor.nudge(0, -1),
+            'paint.nudgeDown': () => PaintEditor.nudge(0, 1),
+            'paint.nudgeLeft10': () => PaintEditor.nudge(-10, 0),
+            'paint.nudgeRight10': () => PaintEditor.nudge(10, 0),
+            'paint.nudgeUp10': () => PaintEditor.nudge(0, -10),
+            'paint.nudgeDown10': () => PaintEditor.nudge(0, 10),
+            'paint.layerAbove': () => PaintEditor.stepLayer(1),
+            'paint.layerBelow': () => PaintEditor.stepLayer(-1),
+            'paint.layerUp': () => PaintEditor.moveLayer(1),
+            'paint.layerDown': () => PaintEditor.moveLayer(-1),
             'paint.swap': () => PaintEditor.swapColours(),
             'paint.colours': () => PaintEditor.defaultColours(),
             'paint.selectAll': () => PaintEditor.selectAll(),
@@ -5249,11 +5277,15 @@ const app = {
         if (!k || ['Control', 'Shift', 'Alt', 'Meta', 'CapsLock', 'Dead', 'Unidentified'].includes(k)) return null;
         const legacy = { ' ': 'Space', Spacebar: 'Space', Esc: 'Escape', Del: 'Delete', Left: 'ArrowLeft', Right: 'ArrowRight', Up: 'ArrowUp', Down: 'ArrowDown' };
         k = legacy[k] || k;
+        // [ and ] with Shift (or a Mac's Option), which change the character
+        // they type: Shift+[ and Alt+[
+        const brackets = { '{': '[', '}': ']', '“': '[', '‘': ']' };
+        if (brackets[k] && /^Bracket/.test(e.code || '')) k = brackets[k];
         if (k.length === 1) k = k.toUpperCase();
         const mods = [];
         if (e.ctrlKey || e.metaKey) mods.push('Ctrl');
         if (e.altKey) mods.push('Alt');
-        if (e.shiftKey && (k.length > 1 || /^[A-Z]$/.test(k))) mods.push('Shift');
+        if (e.shiftKey && (k.length > 1 || /^[A-Z[\]]$/.test(k))) mods.push('Shift');
         return [...mods, k].join('+');
     },
 

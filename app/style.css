@@ -5011,7 +5011,7 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     display: none;
 }
 
-:root:not([data-skin]) .adj-head .adj-more {
+:root:not([data-skin]) :is(.adj-head, .paint-head) .adj-more {
     display: inline-flex;
     align-items: center;
     padding: 0 6px;
@@ -6363,9 +6363,6 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     .paint-palette {
         grid-template-columns: repeat(16, 1fr);
         gap: 2px;
-    }
-    #paint-zoom-1 {
-        display: none;
     }
 }
 
@@ -11830,6 +11827,123 @@ body.touring .controls.idle button { pointer-events: auto; }
 :root:not([data-skin]) .paint-options .paint-hint {
     flex: 0 1 auto;
     max-width: 320px;
+}
+
+/* The top in three places (the owner's pick, mockups round 2): the file
+   and Undo in a pill at the left, after the mode switcher; the tool's
+   options in a pill in the middle, on the same row; ⋯ at the right. Zoom
+   is a pill at the bottom. layoutTop (paint-editor.js) places the options
+   between the two and folds what doesn't fit behind › */
+:root:not([data-skin]) .paint-head {
+    justify-content: flex-start;
+}
+
+:root:not([data-skin]) .paint-head .mode-file {
+    gap: var(--sp-2);
+    padding-right: var(--sp-1);
+}
+
+:root:not([data-skin]) .paint-head .mode-title {
+    max-width: 24ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.paint-undo-redo {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+:root:not([data-skin]) .paint-undo-redo {
+    padding-left: var(--sp-2);
+    border-left: 1px solid var(--border);
+}
+
+:root:not([data-skin]) .paint-undo-redo .btn {
+    width: calc(var(--ctl-lg) - 8px);
+    height: calc(var(--ctl-lg) - 8px);
+    padding: 0;
+    border: 0;
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: var(--text-1);
+}
+
+:root:not([data-skin]) .paint-undo-redo .btn:hover:not(:disabled) {
+    background: var(--tb-hover);
+}
+
+:root:not([data-skin]) .paint-head .mode-head-acts {
+    padding: 0 var(--sp-1);
+}
+
+:root:not([data-skin]) .paint-editor .paint-options,
+:root:not([data-skin]) .paint-editor:not(.panel-hidden) .paint-options {
+    position: absolute;
+    z-index: 5;
+    top: var(--gutter);
+    left: 50%;
+    max-width: none;
+    margin: 0;
+    overflow: visible;
+}
+
+:root:not([data-skin]) .paint-options .paint-opt input[type="range"] {
+    width: 80px;
+}
+
+:root:not([data-skin]) .paint-options .paint-hint {
+    max-width: 240px;
+}
+
+/* What doesn't fit: behind › at the end, in a glass card under it */
+.paint-fold-btn {
+    flex: none;
+}
+
+.paint-fold {
+    position: absolute;
+    top: calc(100% + var(--sp-2));
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-4);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    /* Solid: glass in the options' glass pill doesn't blur what's behind */
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-3);
+    animation: popover-in var(--dur-base) var(--ease-out);
+}
+
+.paint-fold.hidden {
+    display: none;
+}
+
+.paint-fold .paint-hint {
+    max-width: 260px;
+    white-space: normal;
+}
+
+/* Zoom: Adjust's pill at the bottom, in the middle of the photo */
+.paint-zoom {
+    z-index: 4;
+}
+
+@media (max-width: 900px) {
+    :root:not([data-skin]) .paint-head .crop-dims {
+        display: none;
+    }
+    :root:not([data-skin]) .paint-head .mode-title {
+        max-width: 9ch;
+    }
+    :root:not([data-skin]) .paint-options .paint-opt input[type="range"] {
+        width: 60px;
+    }
 }
 
 @media (max-width: 760px) {
