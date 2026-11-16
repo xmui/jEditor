@@ -59,16 +59,27 @@ const PaintEditor = {
         gradient: 'linear', gradTo: 'bg',
         density: 40, range: 30, stamp: 'star', quickShape: true, history: false, aligned: true,
         strength: 50, toneRange: 'mid', sponge: 'less',
+        smoothing: 0, pressure: 'size',
         font: 'system-ui, sans-serif', fontSize: 72, bold: false, italic: false,
         sizeFor: 1500   // the long side of the layers the sizes were for
     },
-    BRUSHES: ['brush', 'pencil', 'spray', 'eraser', 'pixel', 'can', 'stamp', 'spot-heal', 'heal', 'clone', 'dodge', 'burn', 'sponge', 'blur', 'sharpen', 'smudge'],
+    BRUSHES: ['brush', 'soft-round', 'hard-round', 'pencil', 'ink', 'marker', 'airbrush', 'spray', 'eraser', 'eraser-block', 'eraser-soft', 'pixel', 'can', 'stamp', 'spot-heal', 'heal', 'clone', 'dodge', 'burn', 'sponge', 'blur', 'sharpen', 'smudge'],
     // The healing tools (paint-heal.js does their pixels): they copy the
     // picture from somewhere else on it, not a colour
     RETOUCH: ['spot-heal', 'heal', 'clone'],
     // The tone and focus brushes (paint-heal.js too): they change what's
     // there, lighter, darker, more or less colour, softer, sharper, smudged
     TONE: ['dodge', 'burn', 'sponge', 'blur', 'sharpen', 'smudge'],
+    // How the round brushes feel: their hardness (none: the Hardness
+    // option's), whether they take the Flow option, and how much of it each
+    // dab lays down when it builds up as it's held (airbrushes)
+    FEEL: {
+        brush: { flow: true }, eraser: {},
+        'soft-round': { hard: 0, flow: true }, 'hard-round': { hard: 1, flow: true },
+        ink: { hard: 0.92 }, marker: { hard: 0.8 },
+        airbrush: { hard: 0, flow: true, build: 0.12 }, 'eraser-soft': { hard: 0, flow: true, build: 0.12 }
+    },
+    ERASERS: ['eraser', 'eraser-block', 'eraser-soft'],
     // Headings in a slot's menu, before the tool they're on
     HEADINGS: { pixel: 'Retro', dodge: 'Tone', blur: 'Focus' },
     // The Retro set (inspired by MS Paint and Mario Paint; every picture
@@ -194,12 +205,19 @@ const PaintEditor = {
         ['wand', 'Magic wand: select by colour (W)', '<path d="m15 4 .8 2.2L18 7l-2.2.8L15 10l-.8-2.2L12 7l2.2-.8z"/><path d="M3 21 13 11"/>'],
         ['sep'],
         ['brush', 'Brush (B)', '<path d="M18.4 2.6a2 2 0 0 1 2.9 2.9L12 14.8 9.2 12z"/><path d="M9.2 12c-2.5 0-4.2 1.6-4.2 4 0 1.5-.8 2.6-2.4 3.4C4.4 21 6.3 21.5 8 21.5c3 0 5-1.9 4.9-4.6z"/>'],
+        ['soft-round', 'Soft round', '<circle cx="12" cy="12" r="8" stroke-dasharray="2 2"/><circle cx="12" cy="12" r="3"/>'],
+        ['hard-round', 'Hard round', '<circle cx="12" cy="12" r="8"/>'],
         ['pencil', 'Pencil: hard edges (N)', '<path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/>'],
+        ['ink', 'Ink: thin when fast, thick when slow (and as a pen\'s pressed)', '<path d="M12 2c2 3 4 6 4 9a4 4 0 0 1-8 0c0-3 2-6 4-9z"/><path d="M12 15v7M9 22h6"/>'],
+        ['marker', 'Marker: see-through, darker where strokes cross', '<path d="M15 3l6 6-9 9H6v-6z"/><path d="M6 18l-3 3M12 6l6 6"/>'],
+        ['airbrush', 'Airbrush: soft, builds up as it\'s held', '<path d="M3 17l8-8 4 4-8 8H3z"/><path d="M15 5h.01M18 4h.01M19 7h.01M17 9h.01M21 9h.01"/>'],
         ['spray', 'Spray', '<path d="M9 3h3v4H9zM8 7h5v14H8z"/><path d="M16 6h.01M19 4h.01M19 8h.01M17 10h.01M21 6h.01"/>'],
         ['pixel', 'Pixel pencil: square pixels on a grid', '<path d="M3 3h6v6H3zM9 9h6v6H9zM15 15h6v6h-6z"/>'],
         ['can', 'Spray can: dots as it\'s held', '<path d="M6 9h6v12H6zM7 6h4v3H7zM12 7h2"/><path d="M17 5h.01M20 4h.01M19 8h.01M22 7h.01M18 11h.01M21 10h.01"/>'],
         ['stamp', 'Stamp: a little picture with each click', '<path d="M12 3l1.8 3.7 4 .6-2.9 2.8.7 4L12 12.2 8.4 14.1l.7-4-2.9-2.8 4-.6z"/><path d="M5 18h14v3H5z"/>'],
         ['eraser', 'Eraser (E)', '<path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4l10-10a1 1 0 0 1 1.4 0l5.6 5.6a1 1 0 0 1 0 1.4L13 19"/><path d="M22 21H7M5 11l9 9"/>'],
+        ['eraser-block', 'Block eraser: a hard square (E)', '<rect x="5" y="5" width="14" height="14" rx="1"/><path d="M5 12h14" opacity=".5"/>'],
+        ['eraser-soft', 'Soft eraser: takes off more as it\'s held (E)', '<circle cx="12" cy="12" r="8" stroke-dasharray="2 2"/><path d="M8 12h8"/>'],
         ['spot-heal', 'Spot heal: paint over a mark, and it\'s filled from what\'s round it (J)', '<rect x="2.5" y="8" width="19" height="8" rx="4" transform="rotate(-45 12 12)"/><path d="M10 12h.01M12 10h.01M14 12h.01M12 14h.01"/><path d="M19 2.5v3M17.5 4h3"/>'],
         ['heal', 'Heal: Alt-click where to copy from, then paint; it takes on the colours round it (J)', '<rect x="2.5" y="8" width="19" height="8" rx="4" transform="rotate(-45 12 12)"/><path d="M10.5 12h3M12 10.5v3"/>'],
         ['clone', 'Clone stamp: Alt-click where to copy from, then paint (S)', '<path d="M9.5 3h5v5l-1 2.5h4.5a2 2 0 0 1 2 2V16H4v-3.5a2 2 0 0 1 2-2h4.5l-1-2.5z"/><path d="M5 20h14"/>'],
@@ -228,8 +246,8 @@ const PaintEditor = {
     GROUPS: [
         ['move'],
         ['rect-select', 'ellipse-select', 'lasso', 'wand'],
-        ['brush', 'pencil', 'spray', 'pixel', 'can', 'stamp'],
-        ['eraser'],
+        ['brush', 'soft-round', 'hard-round', 'pencil', 'ink', 'marker', 'airbrush', 'spray', 'pixel', 'can', 'stamp'],
+        ['eraser', 'eraser-block', 'eraser-soft'],
         ['spot-heal', 'heal', 'clone', 'dodge', 'burn', 'sponge', 'blur', 'sharpen', 'smudge'],
         ['fill', 'gradient', 'recolor'],
         ['line', 'rect', 'ellipse'],
@@ -241,6 +259,13 @@ const PaintEditor = {
     OPTIONS: {
         brush: ['size', 'hardness', 'opacity', 'flow'],
         pencil: ['size', 'opacity'],
+        'soft-round': ['size', 'opacity', 'flow'],
+        'hard-round': ['size', 'opacity', 'flow'],
+        ink: ['size', 'opacity'],
+        marker: ['size', 'opacity'],
+        airbrush: ['size', 'opacity', 'flow'],
+        'eraser-block': ['size', 'opacity'],
+        'eraser-soft': ['size', 'opacity', 'flow'],
         spray: ['size', 'density', 'opacity'],
         pixel: ['size', 'opacity'],
         can: ['size', 'density', 'opacity'],
@@ -935,6 +960,11 @@ const PaintEditor = {
             stamp: 'Click for a stamp; drag for a row of them',
             'spot-heal': 'Paint over a mark or a speck: it\'s filled from what\'s round it',
             heal: this.healSrc ? 'Paint over what to hide: copied from the + mark, in the colours round it. Alt-click to copy from elsewhere' : 'Alt-click where to copy from, then paint over what to hide',
+            ink: 'Thin when you go fast, thick when slow; with a pen, as hard as you press',
+            marker: 'See-through, like a felt pen: where strokes cross, it\'s darker',
+            airbrush: 'Soft: hold still or go over it again to build it up',
+            'eraser-soft': 'Soft: hold still or go over it again to take more off',
+            'eraser-block': 'A hard square, like the pencil',
             dodge: 'Paint to lighten; again over it for more',
             burn: 'Paint to darken; again over it for more',
             sponge: 'Paint to take colour out, or (More) to put it in',
@@ -1286,7 +1316,7 @@ const PaintEditor = {
             this.app.showToast('That layer is hidden: show it to paint on it', 2000);
             return;
         }
-        if (t === 'eraser' && this.layer().lock) { this.lockedToast(); return; }
+        if (this.ERASERS.includes(t) && this.layer().lock) { this.lockedToast(); return; }
         // Heal and clone: Alt-click is where they copy from
         if ((t === 'heal' || t === 'clone') && e.altKey) { this.setSource(p); return; }
         if (this.isBrush(t)) return this.startStroke(p, e.shiftKey ? this.lastDab : null);
@@ -1326,8 +1356,8 @@ const PaintEditor = {
             // Every point the pointer went through since the last event (a
             // fast stroke, a pen), not only the last
             const all = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
-            if (all.length > 1) for (const c of all) this.strokeTo(this.point(c));
-            else this.strokeTo(p);
+            if (all.length > 1) for (const c of all) this.strokeTo(this.smooth(this.point(c)));
+            else this.strokeTo(this.smooth(p));
             if (d.pts) {
                 d.pts.push({ x: p.ox, y: p.oy });
                 // Held still means within a few pixels on screen
@@ -1381,7 +1411,7 @@ const PaintEditor = {
     sizeBy(dx, dy) {
         const d = this.drag, o = this.opts;
         o.size = Math.min(this.sizeMax(), Math.max(1, d.size * Math.exp(dx / 150)));
-        if (this.tool === 'brush' || this.tool === 'eraser' || this.RETOUCH.includes(this.tool) || this.TONE.includes(this.tool)) o.hardness = Math.round(Math.min(100, Math.max(0, d.hard - dy / 2)));
+        if ((this.OPTIONS[this.tool] || []).includes('hardness')) o.hardness = Math.round(Math.min(100, Math.max(0, d.hard - dy / 2)));
         for (const k of ['size', 'hardness']) { const row = this.optRows && this.optRows[k]; if (row) row._sync(); }
         this.remember();
         this.flashSize();
@@ -1673,6 +1703,8 @@ const PaintEditor = {
                 this.healOff = off;
             }
         }
+        // (ink starts thin)
+        if (this.tool === 'ink' && !from) p = { ...p, pr: (p.pr || 1) * 0.45 };
         const l = this.layer();
         this.beginPixels(l);
         const g = this.stroke.getContext('2d');
@@ -1684,7 +1716,7 @@ const PaintEditor = {
         if (this.drag.tone) this.drag.rad = PaintHeal.blurOf(this.tool, this.radius());
         if (from) this.strokeTo(p);
         else this.dab(p);
-        if (this.tool === 'spray' || this.tool === 'can') this.sprayLoop();
+        if (this.tool === 'spray' || this.tool === 'can' || (this.FEEL[this.tool] || {}).build) this.sprayLoop();
         // QuickShape: the stroke's points as shown, to fit a shape to when
         // the pointer's held still (not for stamps)
         else if (this.opts.quickShape && this.tool !== 'stamp' && !off && !this.drag.tone) {
@@ -1716,12 +1748,16 @@ const PaintEditor = {
 
     dab(p) {
         const g = this.stroke.getContext('2d');
-        const pr = p.pr || 1, r = Math.max(0.5, this.radius() * pr), t = this.drag.tool;
-        const colour = t === 'eraser' ? '#000000' : this.fg;
+        const t = this.drag.tool, pr = p.pr || 1;
+        // A pen's pressure: the brush's size, its opacity, or both (⋯);
+        // ink always thins as it's pressed lighter
+        const prSize = t === 'ink' || this.opts.pressure !== 'opacity' ? pr : 1;
+        const r = Math.max(0.5, this.radius() * prSize);
+        const colour = this.ERASERS.includes(t) ? '#000000' : this.fg;
         if (this.drag.off) { this.healDab(g, p, r); return; }
         if (this.drag.tone) { this.toneDab(g, p, r); return; }
-        if (t === 'pencil') {
-            const s = Math.max(1, Math.round(this.opts.size * pr));
+        if (t === 'pencil' || t === 'eraser-block') {
+            const s = Math.max(1, Math.round(this.opts.size * prSize));
             g.fillStyle = colour;
             g.fillRect(Math.round(p.x - s / 2), Math.round(p.y - s / 2), s, s);
             this.grow({ x: p.x - s, y: p.y - s, w: 2 * s, h: 2 * s });
@@ -1766,8 +1802,12 @@ const PaintEditor = {
             this.grow({ x: p.x - r - 2, y: p.y - r - 2, w: 2 * r + 4, h: 2 * r + 4 });
             return;
         }
-        const hard = t === 'eraser' || t === 'brush' ? this.opts.hardness / 100 : 1;
-        const flow = t === 'brush' ? this.opts.flow / 100 : 1;
+        const feel = this.FEEL[t] || {};
+        const hard = feel.hard !== undefined ? feel.hard : t === 'eraser' || t === 'brush' ? this.opts.hardness / 100 : 1;
+        let flow = (feel.flow ? this.opts.flow / 100 : 1) * (feel.build || 1);
+        // Pressure for opacity: each dab lighter, so where they overlap
+        // along the stroke (about 2r / step of them) it comes to the pressure
+        if (pr < 1 && t !== 'ink' && this.opts.pressure !== 'size') flow *= 1 - Math.pow(1 - pr, 0.09);
         const rgb = this.rgb(colour);
         if (hard >= 0.99) {
             g.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${flow})`;
@@ -1806,12 +1846,20 @@ const PaintEditor = {
     strokeTo(p) {
         const d = this.drag, a = d.last;
         if (d.tool === 'spray' || d.tool === 'can') { d.last = p; return; }
+        // Ink: thinner the faster it goes (eased, so it swells and thins
+        // smoothly), and from thin at its start
+        if (d.tool === 'ink') {
+            const len = Math.hypot(p.x - a.x, p.y - a.y), R = Math.max(1, this.radius());
+            const want = Math.min(1.15, Math.max(0.3, 1.2 - len / (6 * R)));
+            d.inkF = d.inkF === undefined ? 0.45 : d.inkF * 0.75 + want * 0.25;
+            p = { ...p, pr: (p.pr || 1) * d.inkF };
+        }
         const len = Math.hypot(p.x - a.x, p.y - a.y);
         const pa = a.pr || 1, pb = p.pr || 1;
-        const step = d.tool === 'pencil' ? 1
+        const step = d.tool === 'pencil' || d.tool === 'eraser-block' ? 1
             : d.tool === 'pixel' ? Math.max(1, this.pixelCell() / 2)
             : d.tool === 'stamp' ? Math.max(2, this.opts.size * 1.15)
-            : Math.max(0.5, this.radius() * Math.min(pa, pb) * 0.18);
+            : Math.max(0.5, this.radius() * (d.tool === 'ink' || this.opts.pressure !== 'opacity' ? Math.min(pa, pb) : 1) * 0.18);
         let t = step - d.carry;
         while (t <= len) {
             const k = t / len;
@@ -1820,6 +1868,20 @@ const PaintEditor = {
         }
         d.carry = len - (t - step);
         d.last = p;
+    },
+
+    // Smoothing (⋯): the stroke follows the pointer a little behind, as on
+    // a string, so a shaky hand draws a steady line; it catches up where
+    // it's let go
+    SMOOTHING: [[0, 'Off'], [25, 'Some'], [50, 'More'], [75, 'Most']],
+
+    smooth(q) {
+        const d = this.drag, k = Math.min(0.9, (this.opts.smoothing || 0) / 100);
+        if (!k || d.tool === 'spray' || d.tool === 'can') return q;
+        const s = d.sm || d.last, t = 1 - k * 0.9;
+        d.sm = { ...q, x: s.x + (q.x - s.x) * t, y: s.y + (q.y - s.y) * t };
+        d.raw = q;
+        return d.sm;
     },
 
     // ---- QuickShape ----
@@ -1989,7 +2051,7 @@ const PaintEditor = {
 
     sprayLoop() {
         const d = this.drag;
-        if (!d || d.kind !== 'paint' || (d.tool !== 'spray' && d.tool !== 'can')) return;
+        if (!d || d.kind !== 'paint' || (d.tool !== 'spray' && d.tool !== 'can' && !(this.FEEL[d.tool] || {}).build)) return;
         this.dab(d.last);
         this.renderSoon();
         setTimeout(() => this.sprayLoop(), 30);
@@ -2011,13 +2073,15 @@ const PaintEditor = {
         if (r) { g.beginPath(); g.rect(r.x, r.y, r.w, r.h); g.clip(); }
         // (spot heal, until it's let go: where it'll heal, darkened)
         g.globalAlpha = this.opts.opacity / 100 * (d && d.tool === 'spot-heal' && !d.healed ? 0.45 : 1);
-        g.globalCompositeOperation = d && d.tool === 'eraser' ? 'destination-out' : this.layer() && this.layer().lock ? 'source-atop' : 'source-over';
+        g.globalCompositeOperation = d && this.ERASERS.includes(d.tool) ? 'destination-out' : this.layer() && this.layer().lock ? 'source-atop'
+            : d && d.tool === 'marker' ? 'multiply' : 'source-over';
         g.drawImage(this.stroke, 0, 0);
         g.restore();
     },
 
     endStroke() {
         const d = this.drag, l = this.layer();
+        if (d.raw && !d.snap) this.strokeTo(d.raw);
         this.lastDab = { x: d.last.x, y: d.last.y, pr: d.last.pr };
         if (!d.dirty) return;
         if (d.tool === 'heal' || d.tool === 'spot-heal') this.healStroke(d);
@@ -2501,7 +2565,9 @@ const PaintEditor = {
             ]],
             ['—'],
             ['History', () => this.toggleHistory(), false, this.opts.history],
-            ['QuickShape: hold at a stroke\'s end', () => { this.opts.quickShape = !this.opts.quickShape; this.remember(); }, false, this.opts.quickShape]
+            ['QuickShape: hold at a stroke\'s end', () => { this.opts.quickShape = !this.opts.quickShape; this.remember(); }, false, this.opts.quickShape],
+            ['Smoothing', this.SMOOTHING.map(([v, name]) => [name, () => { this.opts.smoothing = v; this.remember(); }, false, (this.opts.smoothing || 0) === v])],
+            ['Pen pressure', [['size', 'Size'], ['opacity', 'Opacity'], ['both', 'Size and opacity']].map(([v, name]) => [name, () => { this.opts.pressure = v; this.remember(); }, false, this.opts.pressure === v])]
         ];
     },
 
@@ -3290,7 +3356,7 @@ const PaintEditor = {
                 outline(m, [3 / z, 3 / z]);
             }
             const p = new Path2D();
-            if (this.tool === 'pencil') {
+            if (this.tool === 'pencil' || this.tool === 'eraser-block') {
                 const s = Math.max(1, Math.round(this.opts.size));
                 p.rect(Math.round(ox - s / 2), Math.round(oy - s / 2), s, s);
             } else if (this.tool === 'pixel' && at.x !== undefined && at.ox !== undefined) {
@@ -3326,9 +3392,10 @@ const PaintEditor = {
     // How the brush paints, faintly, at (x, y) in the picture as shown
     drawGhost(ctx, x, y, r) {
         const o = this.opts, t = this.tool;
-        const rgb = this.rgb(t === 'eraser' ? '#ffffff' : this.fg);
-        const a = 0.7 * o.opacity / 100 * (t === 'brush' ? o.flow / 100 : 1) * (t === 'spray' ? 0.4 : 1);
-        const hard = t === 'brush' || t === 'eraser' ? o.hardness / 100 : 1;
+        const feel = this.FEEL[t] || {};
+        const rgb = this.rgb(this.ERASERS.includes(t) ? '#ffffff' : this.fg);
+        const a = 0.7 * o.opacity / 100 * (feel.flow && !feel.build ? o.flow / 100 : 1) * (t === 'spray' || feel.build ? 0.4 : 1);
+        const hard = feel.hard !== undefined ? feel.hard : t === 'brush' || t === 'eraser' ? o.hardness / 100 : 1;
         ctx.save();
         if (hard >= 0.99) ctx.fillStyle = `rgba(${rgb.join(',')},${a})`;
         else {
@@ -3344,7 +3411,7 @@ const PaintEditor = {
             ctx.restore();
             return;
         }
-        if (t === 'pencil' || t === 'pixel') {
+        if (t === 'pencil' || t === 'pixel' || t === 'eraser-block') {
             const s = Math.max(1, Math.round(o.size));
             ctx.rect(Math.round(x - s / 2), Math.round(y - s / 2), s, s);
         } else ctx.arc(x, y, r, 0, Math.PI * 2);
