@@ -1639,7 +1639,7 @@ const PROJECT = `
                 // The ⋯ menu's Select: invert (twice, back again), grow, shrink
                 const more = P.moreItems();
                 const sub = (n) => (more.find(i => i[0] === n) || [, []])[1];
-                out.menu = more.map(i => i[0]).join().startsWith('Image,Select,Layer,Brushes,—,History,QuickShape') && typeof more.find(i => i[0].startsWith('QuickShape'))[3] === 'boolean' && sub('Select').some(i => i[0] === 'Invert') &&
+                out.menu = more.map(i => i[0]).join().startsWith('Image,Select,Layer,Brushes,View,—,History,QuickShape') && typeof more.find(i => i[0].startsWith('QuickShape'))[3] === 'boolean' && sub('Select').some(i => i[0] === 'Invert') &&
                     sub('Smoothing').map(i => i[0]).join() === 'Off,Some,More,Most' && sub('Pen pressure').filter(i => i[3]).map(i => i[0]).join() === 'Size';
                 const w0 = P.sel.box.w;
                 P.invertSelection();
@@ -1745,7 +1745,7 @@ const PROJECT = `
         check('paint: the fill takes the photo\'s blue square, not beyond it; text is drawn', r.fill && r.fill[0][0] === 255 && r.fill[0][1] === 255 && r.fill[1] === 0 && r.text > 50, JSON.stringify(r));
         check('paint: the fill can fill the whole layer (only what\'s selected, with a selection), without the colour options; Ctrl+Z undoes it', r.wholeOpts && r.wholeSel && String(r.wholeSel[0]) === '255,0,255,255' && r.wholeSel[1] === 0 && String(r.whole) === '255,0,255,255,255,0,255,255' && r.wholeUndone, JSON.stringify([r.wholeOpts, r.wholeSel, r.whole, r.wholeUndone]));
         check('paint: a selection; Delete clears only inside it', r.selected && r.cleared[0] === 0 && r.cleared[1] === 255, JSON.stringify(r));
-        check('paint: the ⋯ menu has Image, Select, Layer and Brushes (and History and QuickShape, ticked when on, Smoothing and Pen pressure); Invert, Grow and Shrink change the selection', r.menu && r.inverted && JSON.stringify(r.reshaped) === '[6,0]', JSON.stringify([r.menu, r.inverted, r.reshaped]));
+        check('paint: the ⋯ menu has Image, Select, Layer, Brushes and View (and History and QuickShape, ticked when on, Smoothing and Pen pressure); Invert, Grow and Shrink change the selection', r.menu && r.inverted && JSON.stringify(r.reshaped) === '[6,0]', JSON.stringify([r.menu, r.inverted, r.reshaped]));
         check('paint: the wand selects by colour; Move drags it, Enter puts it down', r.wand && r.moved[0] === 0 && r.moved[1][3] === 255 && r.notDone, JSON.stringify(r));
         check('paint: Done keeps it with the photo (layers in the project\'s folder), the file untouched', r.kept && r.files === 2 && r.fileSame, JSON.stringify(r));
         check('paint: shown painted; opened again, the layers come back', r.shown && r.shown[0][0] > 200 && r.shown[1][1] > 200 && r.shown[2][0] > 200 && r.reopened, JSON.stringify(r));
@@ -2242,6 +2242,92 @@ const PROJECT = `
         check('paint brushes: from a see-through picture, its shape', r.fromFile && r.fromFile[0] && r.fromFile[1] === 2 && r.fromFile[2] === '40x40', JSON.stringify(r));
         check('paint brushes: deleted again', r.deleted === 'Bar', JSON.stringify(r));
         check('paint brushes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- Paint: the View menu, turning the view, Snap ----
+    if (wanted('paintview')) {
+        console.log('paint: View, the view turned, Snap (paint-editor.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 400; c.height = 300;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 400, 300);
+                await openProject('view', { 'v.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                const st = document.getElementById('paint-stage');
+                const at = (x, y) => { const sp = P.V().transformPoint(P.C.transformPoint({ x, y })); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                const pe = (type, x, y, o = {}) => st.dispatchEvent(new PointerEvent(type, { ...at(x, y), pointerId: 1, bubbles: true, button: 0, ...o }));
+                // ⋯ → View
+                step = 'menu';
+                const view = () => P.moreItems().find(i => i[0] === 'View')[1].map(i => i[0]).join('|');
+                out.menu = view();
+                // > turns the view 15°; a stroke still lands where it's drawn
+                step = 'turn';
+                pressKey('>');
+                pressKey('>');
+                out.angle = [P.viewAngle(), !document.getElementById('paint-view-angle').classList.contains('hidden'), (P.render(), document.getElementById('paint-view-angle').textContent)];
+                out.menuTurned = view().includes('Put the view straight');
+                P.setTool('pencil'); P.fg = '#ff0000'; P.opts.size = 4; P.opts.opacity = 100;
+                const l = P.layers[0].canvas.getContext('2d', { willReadFrequently: true });
+                pe('pointerdown', 100, 80); pe('pointerup', 100, 80);
+                out.painted = [l.getImageData(100, 80, 1, 1).data[0], l.getImageData(100, 80, 1, 1).data[3]];
+                // Fitted while turned: the turned picture fits in the stage
+                step = 'fit';
+                P.fit();
+                const rr = P.canvas.getBoundingClientRect();
+                const corners = [[0, 0], [P.OW, 0], [0, P.OH], [P.OW, P.OH]].map(([x, y]) => P.V().transformPoint({ x, y }));
+                out.fits = corners.every(q => q.x >= 0 && q.y >= 0 && q.x <= rr.width && q.y <= rr.height);
+                // Shift-drag with the Hand turns it; a click on the angle puts it straight
+                step = 'hand';
+                P.setTool('hand');
+                const a0 = P.viewAngle();
+                const sx = rr.left + rr.width / 2 + 100, sy = rr.top + rr.height / 2;
+                st.dispatchEvent(new PointerEvent('pointerdown', { clientX: sx, clientY: sy, pointerId: 1, bubbles: true, button: 0, shiftKey: true }));
+                st.dispatchEvent(new PointerEvent('pointermove', { clientX: rr.left + rr.width / 2, clientY: sy + 100, pointerId: 1, bubbles: true, shiftKey: true }));
+                st.dispatchEvent(new PointerEvent('pointerup', { clientX: rr.left + rr.width / 2, clientY: sy + 100, pointerId: 1, bubbles: true, shiftKey: true }));
+                out.handTurn = P.viewAngle() - a0;
+                document.getElementById('paint-view-angle').click();
+                out.straight = [P.viewAngle(), document.getElementById('paint-view-angle').classList.contains('hidden') || (P.render(), document.getElementById('paint-view-angle').classList.contains('hidden'))];
+                // Snap: a rectangle selection drawn near the edge starts on it
+                step = 'snap';
+                P.opts.snap = true;
+                P.setTool('rect-select');
+                const near = 4 / P.view.z;
+                pe('pointerdown', near, near); pe('pointermove', 50, 40); pe('pointerup', 50, 40);
+                out.snapped = P.sel && [P.sel.box.x, P.sel.box.y].join();
+                P.deselect();
+                pressKey(';', { ctrlKey: true });
+                out.snapOff = P.opts.snap === false;
+                pe('pointerdown', near * 2, near * 2); pe('pointermove', 50, 40); pe('pointerup', 50, 40);
+                out.unsnapped = P.sel && P.sel.box.x > 0;
+                P.deselect();
+                pressKey(';', { ctrlKey: true });
+                // What's moved: its edge onto the canvas's
+                step = 'float';
+                P.setTool('move');
+                const m = P.newCanvas(); m.getContext('2d').fillRect(50, 50, 40, 40);
+                P.combineSelection(m, 'new');
+                pe('pointerdown', 70, 70); pe('pointermove', 70 - 50 + near, 70); pe('pointermove', 70 - 50 + near / 2, 70);
+                out.floatSnap = P.float && Math.round(P.float.x0 + P.float.t.tx);
+                pe('pointerup', 70 - 50 + near / 2, 70);
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint view: ⋯ → View has Snap, Rotate left and right, Fit and Actual pixels', r.menu === 'Snap|—|Rotate the view left|Rotate the view right|—|Fit|Actual pixels', JSON.stringify(r));
+        check('paint view: > turns the view 15° a time, its angle in the zoom pill, Put the view straight offered', r.angle && r.angle[0] === 30 && r.angle[1] && r.angle[2] === '30°' && r.menuTurned, JSON.stringify(r));
+        check('paint view: turned, a stroke lands where it\'s drawn', r.painted && r.painted[0] === 255 && r.painted[1] === 255, JSON.stringify(r));
+        check('paint view: turned, Fit fits the turned picture', r.fits, JSON.stringify(r));
+        check('paint view: Shift-drag with the Hand turns it; a click on the angle puts it straight', Math.abs(r.handTurn - 90) <= 1 && r.straight && r.straight[0] === 0 && r.straight[1], JSON.stringify(r));
+        check('paint view: Snap puts a selection\'s corner on the canvas\'s; Ctrl+; turns it off', r.snapped === '0,0' && r.snapOff && r.unsnapped, JSON.stringify(r));
+        check('paint view: what\'s moved snaps its edge onto the canvas\'s', r.floatSnap === 0, JSON.stringify(r));
+        check('paint view: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

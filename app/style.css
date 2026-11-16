@@ -11978,6 +11978,21 @@ body.touring .controls.idle button { pointer-events: auto; }
     z-index: 4;
 }
 
+/* The view turned: its angle, a click puts it straight */
+.paint-view-angle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+}
+
+.paint-view-angle.hidden {
+    display: none;
+}
+
+.paint-view-angle svg {
+    transition: transform var(--dur-base) var(--ease-out);
+}
+
 @media (max-width: 900px) {
     :root:not([data-skin]) .paint-head .crop-dims {
         display: none;
