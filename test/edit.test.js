@@ -1629,9 +1629,11 @@ const PROJECT = `
                 const ta = document.getElementById('paint-text');
                 ta.value = 'Hi';
                 ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
-                const tx = P.layers[1].canvas.getContext('2d').getImageData(15, 230, 60, 50).data;
+                const tx = P.layer().canvas.getContext('2d').getImageData(15, 230, 60, 50).data;
                 let ink = 0; for (let i = 3; i < tx.length; i += 4) if (tx[i] > 128) ink++;
                 out.text = ink;
+                // (On a layer of its own: taken off again for what follows)
+                pressKey('z', { ctrlKey: true });
                 // Select a rectangle, Delete: cleared there only
                 step = 'select';
                 P.setTool('rect-select');
@@ -2490,6 +2492,95 @@ const PROJECT = `
         check('paint transform: the angle typed turns it; Flip ↔ mirrors it', r.turned === 90 && r.flipped, JSON.stringify(r));
         check('paint transform: Cancel puts it back; Done puts it down, one step to undo', JSON.stringify(r.cancelled) === '[true,255,0]' && r.done && r.done[0] && r.done[1] === 255 && r.done[2] === 255 && r.done[3] === 1 && JSON.stringify(r.undone) === '[0,255]', JSON.stringify(r));
         check('paint transform: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- Paint: text layers ----
+    if (wanted('painttext')) {
+        console.log('paint: text layers (paint-editor.js, paint.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 400; c.height = 300;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 400, 300);
+                await openProject('tx', { 't.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                P.opts.snap = false;
+                const st = document.getElementById('paint-stage'), ta = document.getElementById('paint-text');
+                const sc = (q) => { const sp = P.V().transformPoint(q); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                const click = (q) => {
+                    st.dispatchEvent(new PointerEvent('pointerdown', { ...sc(q), pointerId: 1, bubbles: true, button: 0 }));
+                    st.dispatchEvent(new PointerEvent('pointerup', { ...sc(q), pointerId: 1, bubbles: true }));
+                };
+                const type = (v) => { ta.value = v; ta.dispatchEvent(new Event('input')); ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true })); };
+                const alphaIn = (l, x, y, w, h) => { const d = l.canvas.getContext('2d', { willReadFrequently: true }).getImageData(x, y, w, h).data; let n = 0; for (let i = 3; i < d.length; i += 4) n += d[i] > 0; return n; };
+                // Typed: a layer of its own, named from it, keeping the words
+                step = 'new';
+                P.setTool('text');
+                Object.assign(P.opts, { fontSize: 40, bold: false, italic: false, opacity: 100 });
+                P.fg = '#ff0000';
+                const n0 = P.layers.length;
+                click({ x: 50, y: 50 });
+                await sleep(20);
+                type('Hi');
+                const l = P.layer();
+                out.made = [P.layers.length - n0, l.name, l.text && l.text.v, l.text && l.text.color, alphaIn(l, 50, 50, 60, 50) > 50];
+                // Kept with the layers, through Paint.clean
+                const kept = Paint.clean({ id: 'abc', w: 400, h: 300, layers: [{ id: 'l1', rev: 'r1', name: 'Hi', text: l.text }, { id: 'l2', rev: 'r2', name: 'x', text: { v: 'bad' } }] });
+                out.kept = [kept.layers[0].text && kept.layers[0].text.v, kept.layers[0].text && kept.layers[0].text.m.length, 'text' in kept.layers[1]];
+                // Clicked again with the Text tool: open with its words, hidden under the box; changed, one step to undo
+                step = 'edit';
+                P.cur = 0;
+                click({ x: 60, y: 60 });
+                await sleep(20);
+                const wide0 = alphaIn(l, 50, 50, 140, 50);
+                out.opened = [!ta.classList.contains('hidden'), ta.value, P.cur, P.text && P.text.layer === l];
+                type('Hello');
+                const l2 = P.layer();
+                out.edited = [P.layers.length - n0, l2.text.v, l2.name, alphaIn(l2, 50, 50, 140, 50) > wide0];
+                pressKey('z', { ctrlKey: true });
+                out.undone = [P.layer().text.v, P.layer().name];
+                pressKey('z', { ctrlKey: true, shiftKey: true });
+                // Moved: still text, where it was put
+                step = 'move';
+                P.setTool('move');
+                P.liftFloat();
+                P.float.t.tx = 20;
+                P.commitFloat();
+                out.moved = [!!P.layer().text, Math.round(P.layer().text.m[4]), P.layer().text.v];
+                // Painted on: pixels from then on; Undo brings the text back
+                step = 'paint';
+                P.setTool('brush');
+                const a = sc({ x: 300, y: 200 }), b = sc({ x: 340, y: 220 });
+                st.dispatchEvent(new PointerEvent('pointerdown', { ...a, pointerId: 1, bubbles: true, button: 0 }));
+                st.dispatchEvent(new PointerEvent('pointermove', { ...b, pointerId: 1, bubbles: true }));
+                st.dispatchEvent(new PointerEvent('pointerup', { ...b, pointerId: 1, bubbles: true }));
+                await sleep(20);
+                out.pixels = !P.layer().text;
+                pressKey('z', { ctrlKey: true });
+                out.back = P.layer().text && P.layer().text.v;
+                // Its menu: change it, or make it pixels
+                const items = P.layerItems(P.cur).map(i => i[0]);
+                out.menu = items.includes('Edit the text') && items.includes('Make it pixels');
+                P.rasterize(P.cur);
+                out.rasterized = !P.layer().text && !P.layerItems(P.cur).some(i => i[0] === 'Edit the text');
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint text: typed text is a layer of its own, named from it, keeping its words and colour', JSON.stringify(r.made) === '[1,"Hi","Hi","#ff0000",true]', JSON.stringify(r));
+        check('paint text: the words are kept with the layers (a bad one dropped)', JSON.stringify(r.kept) === '["Hi",6,false]', JSON.stringify(r));
+        check('paint text: the Text tool on it opens it again with its words', r.opened && r.opened[0] && r.opened[1] === 'Hi' && r.opened[2] === 1 && r.opened[3], JSON.stringify(r));
+        check('paint text: changed in place and renamed, one step to undo', JSON.stringify(r.edited) === '[1,"Hello","Hello",true]' && JSON.stringify(r.undone) === '["Hi","Hi"]', JSON.stringify(r));
+        check('paint text: moved, it stays text', r.moved && r.moved[0] && r.moved[1] === 70 && r.moved[2] === 'Hello', JSON.stringify(r));
+        check('paint text: painted on, it\'s pixels; Undo makes it text again', r.pixels && r.back === 'Hello', JSON.stringify(r));
+        check('paint text: right-click has Edit the text and Make it pixels', r.menu && r.rasterized, JSON.stringify(r));
+        check('paint text: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
