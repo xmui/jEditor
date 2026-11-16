@@ -2230,7 +2230,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             window.dispatchEvent(new KeyboardEvent('keydown', { key: '0', bubbles: true }));
             out.keyFit = app.zoom === 1 && app.panX === 0 && !document.getElementById('current-image').classList.contains('pixelated');
 
-            // An edit not saved yet (Keep edits in jEditor): shown from a
+            // An edit kept in jEditor: shown from a
             // screen-sized copy, and zoomed in, from the photo's own pixels
             // with the edit on them
             const until = async (fn, ms) => { const t = Date.now(); while (!fn() && Date.now() - t < ms) await new Promise(r => setTimeout(r, 50)); };
@@ -3639,57 +3639,33 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             };
             const openIt = async (d) => { window.showDirectoryPicker = async () => d; await app.browseFolder(); await wait(() => app.dirHandle === d && !app.isLoading); };
             localStorage.removeItem('jeditor.firstOpen');
-            Start.setDeferNew(false);
-            // The first Open a folder: one dialog, with Keep edits in jEditor
+            // No question about saving: in a browser (no projects folder to
+            // ask about) the first Open a folder goes straight to the card
             document.getElementById('btn-browse-folder').click();
-            await wait(() => document.getElementById('first-open'));
-            const fo = document.getElementById('first-open');
-            out.welcome = !!fo && fo.querySelectorAll('input[name="fo-defer"]').length === 2 && /Keep edits in jEditor, export copies/.test(fo.textContent) &&
-                !document.getElementById('fo-dir') && !shown('open-card');
-            fo.querySelector('input[value="on"]').click();
-            document.getElementById('fo-ok').click();
             await wait(() => shown('open-card'));
-            out.remembered = !document.getElementById('first-open') && FirstOpen.asked() && app.uiPrefs.deferNew === true && shown('open-card');
+            out.noQuestion = !document.getElementById('first-open') && shown('open-card');
             OpenCard.close();
-            // ... and its answer is the folder opened then: not asked again
+            // A folder opened, or dragged in, asks nothing either
             await openIt(await make('fo First'));
             await new Promise(res => setTimeout(res, 300));
-            out.firstFolder = !shown('ui-dialog') && Edits.chosen && Edits.defer === true;
-            // Another folder's first time: asked (Settings can turn it on and off)
-            FirstOpen.set({ ask: true });
-            await openIt(await make('fo Second'));
-            await wait(() => shown('ui-dialog'));
-            out.asked = /Save edits to fo Second when done/.test(document.getElementById('uid-title').textContent);
-            document.getElementById('uid-alt').click();
-            await wait(() => Edits.chosen);
-            out.answered = Edits.defer === false && Edits.chosen;
-            await Edits.flush();
-            // Opened again: it chose already
-            await openIt(await make('fo Other'));
-            await wait(() => shown('ui-dialog'));
-            document.getElementById('uid-cancel').click();
-            await openIt(await opfs.getDirectoryHandle('fo Second'));
-            await new Promise(res => setTimeout(res, 300));
-            out.again = !shown('ui-dialog') && Edits.chosen && Edits.defer === false;
-            // Asking off: a new folder follows Keep edits in jEditor
-            FirstOpen.set({ ask: false });
-            await openIt(await make('fo Third'));
-            await new Promise(res => setTimeout(res, 300));
-            out.off = !shown('ui-dialog') && Edits.defer === true && !Edits.chosen;
-            app.toggleCustomizePanel(true);
-            out.setting = document.getElementById('cust-ask-defer').checked === false;
-            app.toggleCustomizePanel(false);
-            // A folder dragged in before anything was asked: the dialog, for it
-            localStorage.removeItem('jeditor.firstOpen');
-            await openIt(await make('fo Dropped'));
+            out.firstFolder = !shown('ui-dialog') && !document.getElementById('first-open');
+            // Edits are kept in jEditor unless Settings → Saving turns it off
+            const kept = app.uiPrefs.keepEdits;
+            delete app.uiPrefs.keepEdits;
+            out.keptByDefault = Edits.keeping() === true && Edits.on() === true;
+            keepEdits(false);
+            out.offWritesStraightAway = Edits.on() === false;
+            app.uiPrefs.keepEdits = kept;
+            // The apps' welcome (where your projects are) says how saving works, and asks nothing about it
+            const welcome = FirstOpen.welcome();
             await wait(() => document.getElementById('first-open'));
-            out.dropped = /Opening fo Dropped/.test(document.getElementById('fo-title').textContent);
-            document.getElementById('first-open').querySelector('input[value="off"]').click();
+            const fo = document.getElementById('first-open');
+            out.welcome = !fo.querySelector('input[type="radio"]') && /Save over the original/.test(fo.textContent) && /Export makes edited copies/.test(fo.textContent);
             document.getElementById('fo-ok').click();
-            await wait(() => Edits.chosen);
-            out.droppedKept = Edits.defer === false && app.uiPrefs.deferNew === false;
+            await welcome;
+            out.welcomeGone = !document.getElementById('first-open') && FirstOpen.asked();
             // A prompt with a switch (New project's name dialog) answers both
-            const p = UI.prompt({ title: 'New project', input: { label: 'Name' }, check: { label: 'Save edits when done', value: true } });
+            const p = UI.prompt({ title: 'New project', input: { label: 'Name' }, check: { label: 'A switch', value: true } });
             document.getElementById('uid-input').value = 'Smith';
             const hasSwitch = shown('uid-check') && document.getElementById('uid-check-box').checked;
             document.getElementById('uid-ok').click();
@@ -3701,13 +3677,10 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await q;
             return out;
         });
-        check('first open: the first Open a folder asks once, with both choices explained', f.welcome, JSON.stringify(f));
-        check('first open: the answer is remembered, and Keep edits in jEditor is set', f.remembered);
-        check('first open: the folder opened then isn\'t asked again', f.firstFolder);
-        check('first open: each other folder\'s first time asks, and keeps the answer', f.asked && f.answered && f.again);
-        check('first open: with asking off in Settings, a folder follows Keep edits in jEditor', f.off && f.setting);
-        check('first open: a folder dragged in first gets the dialog, for that folder', f.dropped && f.droppedKept);
-        check('new project: the name dialog has a Keep edits in jEditor switch', f.prompt && f.plainPrompt);
+        check('first open: nothing is asked about saving, opening or dragging in a folder', f.noQuestion && f.firstFolder, JSON.stringify(f));
+        check('first open: edits are kept in jEditor unless Settings turns it off', f.keptByDefault && f.offWritesStraightAway, JSON.stringify(f));
+        check('first open: the apps\' welcome says how saving works, with no choice to make', f.welcome && f.welcomeGone, JSON.stringify(f));
+        check('ui: a prompt can carry a switch', f.prompt && f.plainPrompt);
         check('open card suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -4643,7 +4616,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             }
             window.showDirectoryPicker = async () => dir;
             await app.browseFolder();
-            await Edits.setDefer(true);
+            keepEdits(true);
             const a = app.files.find(x => x.name === 'a.jpg');
             app.setView('grid');
             await until(() => { const i = a._gridEl && a._gridEl.querySelector(':scope > img'); return i && i.src && i.src !== app.BLANK_THUMB && i.naturalWidth; });
@@ -4909,7 +4882,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
-    // ---- 7s2. Keep edits in jEditor, export copies ----
+    // ---- 7s2. Edits kept in jEditor; Save over the original ----
     console.log('keep edits in jEditor');
     {
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
@@ -4962,14 +4935,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.setView('grid');
             out.barOffAtFirst = noNag();
 
-            // Turned on for this project (the grid's menu)
-            step = "Turned on for this project (the grid's menu)";
-            const bg = app.buildContextItems(null, false).find(it => it[0] === 'Keep edits in jEditor, export copies');
-            out.menuUnticked = bg && !bg[3];
-            bg[1]();
-            await until(async () => (await kept()) && (await kept()).defer);
-            out.on = Edits.on() && noNag() && (await kept()).defer === true &&
-                !!app.buildContextItems(null, false).find(it => it[0] === 'Keep edits in jEditor, export copies' && it[3]);
+            // Kept, as Settings → Saving has it to start with; no setting in the menus
+            step = 'Kept, with no setting in the menus';
+            keepEdits(true);
+            out.menuUnticked = !app.buildContextItems(null, false).find(it => /Keep edits/.test(it[0]));
+            out.on = Edits.on() && noNag();
 
             // Batch Auto crop: kept as edits, nothing written
             step = 'Batch Auto crop: kept as edits, nothing written';
@@ -4984,7 +4954,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.badges = !!f('scan1.jpg')._gridEl.querySelector('.tile-edit') && !f('plain.jpg')._gridEl.querySelector('.tile-edit');
             out.barCount = Edits.count();
             out.noNagEdited = noNag();
-            out.saveInMenu = !!app.buildContextItems(null, false).find(it => it[0] === 'Save edits…');
+            out.saveInMenu = !!app.buildContextItems(null, false).find(it => it[0] === 'Save over the originals of 2 edited');
             // Shown as it will be saved: the thumbnail and preview are of the print
             step = 'Shown as it will be saved: the thumbnail and preview are of the print';
             await until(() => f('scan1.jpg').thumbnailUrl && !f('scan1.jpg')._thumbStale);
@@ -5044,25 +5014,31 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             // Export copies: every photo, the edited ones with their edits
             step = 'Export copies: every photo, the edited ones with their edits';
             await until(() => Edits.count() === 3);
-            // (Save opens the Export window: its Copies tab, of the edited photos, into a folder named here)
-            {
-                const saving = Edits.saveAll();
-                out.saveWindow = document.getElementById('ex-title').textContent + ' / ' + [...document.querySelectorAll('#ex-tabs button')].map(b => b.textContent + (b.classList.contains('active') ? '*' : '')).join(', ') + ' / ' + document.getElementById('ex-go').textContent;
-                document.querySelector('#ex-tabs [data-tab="copies"]').click();
-                out.saveCopies = Export.which + ' / ' + document.getElementById('ex-go').textContent;
-                Export.folder = 'jEditor Export';
-                Export.render();
-                document.getElementById('ex-go').click();
-                await saving;
-            }
+            // (the Export window has no Save tab any more: copies, of every photo, into a folder named here)
+            Export.open({});
+            out.saveWindow = [...document.querySelectorAll('#ex-tabs button')].map(b => b.dataset.tab).join(', ') + ' / ' + Export.tab + ' / ' + Export.which;
+            Export.folder = 'jEditor Export';
+            Export.render();
+            document.getElementById('ex-go').click();
+            const exported = async () => { try { const d = await dir.getDirectoryHandle('jEditor Export'); let n = 0; for await (const e of d.values()) n++; return n === 3; } catch (e) { return false; } };
+            await until(exported);
+            await until(() => !app._tasks || !app._tasks.size);
             const exp = await dir.getDirectoryHandle('jEditor Export');
             out.exported = [await dims(exp, 'scan1.jpg'), await dims(exp, 'scan2.jpg'), await dims(exp, 'plain.jpg')];
             out.exportLeavesEdits = Edits.count() === 3 && await untouched();
 
-            // Save into the photos
-            step = 'Save into the photos';
+            // Save over the original: Ctrl+S on the selection
+            step = 'Save over the original';
             await until(() => Edits.count() === 3 && !app._savingEdits);
-            { const saving = Edits.saveAll(); document.getElementById('ex-go').click(); await saving; }
+            app.setView('grid');
+            app.selection = new Set(app.files);
+            app.updateSelectionUI();
+            out.selMenu = !!app.buildContextItems(f('scan1.jpg')._gridEl, false).find(it => it[0] === 'Save over the originals of 3');
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true, bubbles: true }));
+            await until(() => app._savingEdits, 40);
+            await until(() => !app._savingEdits, 1200);
+            app.selection.clear();
+            app.updateSelectionUI();
             out.saved = [await dims(dir, 'scan1.jpg'), await dims(dir, 'scan2.jpg'), await dims(dir, 'plain.jpg')];
             out.plainLossless = readOrientation(await bytes(dir, 'plain.jpg')) === 8;
             out.savedClears = Edits.count() === 0 && !f('scan1.jpg')._gridEl.querySelector('.tile-edit') && noNag();
@@ -5078,35 +5054,49 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const upright = (await dims(dir, 'plain.jpg')).join('x') === '400x300';
             out.undoSave = await same('scan1.jpg') && await same('scan2.jpg') && upright && Edits.count() === 3;
 
-            // Turned off with edits waiting: discard them
-            step = 'Turned off with edits waiting: discard them';
-            UI.choose = async () => 'alt';
-            await Edits.setDefer(false);
-            // The choice stays (off, nothing waiting), so the folder isn't asked again (first-open.js)
-            const offKept = async () => { const k = await kept(); return !!k && k.defer === false && !Object.keys(k.edits || {}).length; };
-            await until(offKept);
-            out.off = !Edits.on() && Edits.count() === 0 && noNag() && await offKept() &&
-                await same('scan1.jpg') && (await dims(dir, 'plain.jpg')).join('x') === '400x300';
+            // Settings → Saving: Clear… takes every kept edit off, after asking; the photos stay
+            step = 'Settings: Clear edits stored in jEditor';
+            app.toggleCustomizePanel(true);
+            out.settings = document.getElementById('cust-keep-edits').checked && !document.getElementById('set-edits-clear').disabled &&
+                /3 edits kept for keptedits/.test(document.getElementById('set-edits-count').textContent);
+            const confirm0 = UI.confirm;
+            let asked = '';
+            UI.confirm = async (o) => { asked = o.title + ' ' + o.message; return true; };
+            document.getElementById('set-edits-clear').click();
+            await until(() => Edits.count() === 0);
+            UI.confirm = confirm0;
+            await Edits.flush();
+            out.cleared = /Clear 3 edits stored for keptedits/.test(asked) && /stay exactly as they are/.test(asked) && Edits.count() === 0 && noNag() &&
+                await same('scan1.jpg') && (await dims(dir, 'plain.jpg')).join('x') === '400x300' && !Object.keys(((await kept()) || { edits: {} }).edits).length;
+            out.clearedSettings = document.getElementById('set-edits-clear').disabled;
+            // Keeping turned off: a turn goes straight into the photo
+            step = 'Keeping turned off';
+            document.getElementById('cust-keep-edits').click();
+            app.toggleCustomizePanel(false);
+            await app.rotateImage(f('plain.jpg'), 90);
+            await until(async () => (await dims(dir, 'plain.jpg')).join('x') === '300x400');
+            out.off = !Edits.on() && !f('plain.jpg')._edit && (await dims(dir, 'plain.jpg')).join('x') === '300x400' && app.uiPrefs.keepEdits === false;
             return out;
             })(); } catch (err) { return { crash: `${step}: ${err.message}`, toasts: [...document.querySelectorAll('.toast')].map(t => t.textContent).join(' | ') }; }
         });
         check('kept edits: the steps all ran', !r.crash, `${r.crash} — toasts: ${r.toasts}`);
         if (r.crash) { await page.close(); } else {
         const inside = (d) => d[0] < 900 && d[1] < 700 && d[0] > 450 && d[1] > 300;
-        check('kept edits: on for the project (the menu ticks it), no bar counting edits, saved in edits.json', r.barOffAtFirst && r.menuUnticked && r.on, JSON.stringify(r));
+        check('kept edits: kept to start with, no setting in the menus, no bar counting edits', r.barOffAtFirst && r.menuUnticked && r.on, JSON.stringify(r));
         check('kept edits: batch Auto crop keeps crops as edits, nothing written', r.autoKept && /check them, then Export/.test(r.autoToast), r.autoToast);
-        check('kept edits: pencil on edited photos, nothing nagging; Save edits… on the grid\'s right-click', r.badges && r.barCount === 2 && r.noNagEdited && r.saveInMenu, JSON.stringify([r.barCount, r.noNagEdited, r.saveInMenu]));
+        check('kept edits: pencil on edited photos, nothing nagging; Save over the originals on the grid\'s right-click', r.badges && r.barCount === 2 && r.noNagEdited && r.saveInMenu, JSON.stringify([r.barCount, r.noNagEdited, r.saveInMenu]));
         check('kept edits: thumbnail and viewer show the photo as it will be saved', r.thumbAspect > 1.33 && r.tileShows && inside(r.shown), `${r.thumbAspect} ${r.tileShows} ${r.shown}`);
         check('kept edits: recrop opens on the whole photo at the kept crop', r.editorWhole && r.editorAtKept && r.doneLabel === 'Done');
         check('kept edits: a new crop replaces the kept one, still nothing written', r.recropped && r.recropShown.join('x') === '600x400', String(r.recropShown));
         check('kept edits: a batch Auto crop changed in the editor is an Auto crop test (corrected), with the photo as the scan', r.keptLabel && r.keptLabel.result === 'corrected' && r.keptLabel.auto && r.keptLabel.auto.found && r.keptLabel.W === 900 && r.keptScan, JSON.stringify(r.keptLabel && { result: r.keptLabel.result, W: r.keptLabel.W, scan: r.keptScan }));
         check('kept edits: a turn is kept too; Ctrl+Z takes it back', r.turned && r.turnUndone);
         check('kept edits: still there when the project is opened again', r.reloaded);
-        check('kept edits: Save opens the Export window on Save into the photos; its Copies are of the edited photos', r.saveWindow === 'Save 3 edits / Save into the photos*, Copies / Save into 3 photos' && r.saveCopies === 'edited / Export 3 photos', JSON.stringify([r.saveWindow, r.saveCopies]));
+        check('kept edits: Export has no Save tab; it makes copies of every photo', /^copies/.test(r.saveWindow) && !/save/.test(r.saveWindow) && /\/ copies \/ all$/.test(r.saveWindow), r.saveWindow);
         check('kept edits: export copies all photos with their edits, photos untouched', r.exported[0].join('x') === '600x400' && inside(r.exported[1]) && r.exported[2].join('x') === '300x400' && r.exportLeavesEdits, JSON.stringify(r.exported));
-        check('kept edits: save writes them into the photos (a turn losslessly), originals kept', r.saved[0].join('x') === '600x400' && inside(r.saved[1]) && r.saved[2].join('x') === '300x400' && r.plainLossless && r.savedClears && r.backups === 2, JSON.stringify(r.saved) + ' ' + r.backups);
+        check('kept edits: Ctrl+S on the selection saves over the originals (a turn losslessly), originals kept', r.selMenu && r.saved[0].join('x') === '600x400' && inside(r.saved[1]) && r.saved[2].join('x') === '300x400' && r.plainLossless && r.savedClears && r.backups === 2, JSON.stringify(r.saved) + ' ' + r.backups);
         check('kept edits: Ctrl+Z after saving puts the photos back with the edits kept', r.undoSave);
-        check('kept edits: turning it off can discard what is waiting', r.off);
+        check('kept edits: Settings → Saving → Clear… asks, then takes every kept edit off and leaves the photos', r.settings && r.cleared && r.clearedSettings, JSON.stringify([r.settings, r.cleared, r.clearedSettings]));
+        check('kept edits: with Keep edits in jEditor off, a turn goes straight into the photo', r.off);
         check('kept edits suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
         }
@@ -6306,7 +6296,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             key('Enter');
             await until(async () => (await kept()) && (await kept()).edits['a.jpg']);
             const k1 = await kept();
-            out.kept = !Adjust.isOpen && f('a.jpg')._edit && f('a.jpg')._edit.adj.exposure === 1 && k1.defer === false && k1.edits['a.jpg'].adj.exposure === 1 && await same('a.jpg');
+            out.kept = !Adjust.isOpen && f('a.jpg')._edit && f('a.jpg')._edit.adj.exposure === 1 && k1.edits['a.jpg'].adj.exposure === 1 && await same('a.jpg');
             out.noBar = !document.getElementById('edits-bar');
             const shown = await app.getDisplaySource(f('a.jpg'));
             out.shownBrighter = (await brightness(await blobOf(shown))) > before + 25;
@@ -6360,13 +6350,24 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             })();
             out.exported = Math.max(Math.abs(exPx[0] - exPx[1]), Math.abs(exPx[1] - exPx[2])) <= 3 && await same('b.jpg');
 
-            // Save edits: written into the photo, the edit gone
+            // Save over the original: written into the photo, the edit gone
             step = 'save into photo';
             const choose = UI.choose;
             UI.choose = async () => 'ok';
-            { const saving = Edits.saveAll({ list: [f('b.jpg')] }); document.getElementById('ex-go').click(); await saving; }
+            await Edits.saveAll({ list: [f('b.jpg')] });
             UI.choose = choose;
             out.saved = !f('b.jpg')._edit && !(await same('b.jpg')) && !!f('a.jpg')._edit;
+            // From inside Adjust: ⋯ has it, and Ctrl+S keeps what's there,
+            // leaves Adjust and saves over the original
+            step = 'save over from Adjust';
+            app.openSingle(f('a.jpg'));
+            await app.enterAdjust();
+            await until(() => Adjust.ready);
+            out.adjustMenu = !!Adjust.moreItems().find(it => it[0] === 'Save over the original');
+            key('s', { ctrlKey: true });
+            await until(() => !Adjust.isOpen && app._savingEdits, 40);
+            await until(() => !app._savingEdits && !f('a.jpg')._edit, 400);
+            out.savedFromAdjust = !Adjust.isOpen && !f('a.jpg')._edit && !(await same('a.jpg'));
             return out;
             })(); } catch (e) { return { error: step + ': ' + e.message }; }
         });
@@ -6388,7 +6389,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('adjust: an adjusted photo\'s turn is kept with it; Ctrl+Z takes both back', r.turnKept && r.undone, JSON.stringify(r));
         check('adjust: Ctrl+Shift+C / V copy the adjustments onto other photos', r.pasted, JSON.stringify(r));
         check('adjust: still there when the project is opened again', r.reopened, JSON.stringify(r));
-        check('adjust: Export writes them, Save edits writes them into the photo', r.exported && r.saved, JSON.stringify(r));
+        check('adjust: Export writes them, Save over the original writes them into the photo', r.exported && r.saved, JSON.stringify(r));
+        check('adjust: ⋯ has Save over the original, and Ctrl+S in Adjust saves over it', r.adjustMenu && r.savedFromAdjust, JSON.stringify([r.adjustMenu, r.savedFromAdjust]));
 
         // Without a project (photos picked on a phone): Done writes the photo
         const p = await page.evaluate(async () => {

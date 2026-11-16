@@ -966,6 +966,18 @@
 
                     <section id="set-page-projects" class="settings-section" data-page="projects" role="tabpanel" aria-labelledby="set-h-folder">
                         <h3 id="set-h-folder" class="settings-page-title">Projects</h3>
+                        <!-- Saving (edits.js): kept in jEditor, or straight into the photos -->
+                        <h4 class="set-group">Saving</h4>
+                        <div class="set-row">
+                            <label class="set-label" for="cust-keep-edits">Keep edits in jEditor
+                                <small>Crops, turns, adjustments and painting are kept in jEditor and the photos on disk stay as they are. Save over the original (Ctrl+S) writes an edit into its photo. Off: edits are saved straight into the photo.</small></label>
+                            <input type="checkbox" id="cust-keep-edits" class="switch">
+                        </div>
+                        <div class="set-row">
+                            <span class="set-label">Edits stored in jEditor
+                                <small id="set-edits-count">The edits kept for the open project. Clearing them leaves the photos on disk as they are.</small></span>
+                            <button id="set-edits-clear" class="btn secondary">Clear…</button>
+                        </div>
                         <!-- Where projects and the cache are kept (folder-move.js) -->
                         <div id="set-folders" class="native-only">
                             <h4 class="set-group">Folders</h4>
@@ -996,16 +1008,6 @@
                             <label class="set-label" for="cust-on-open">When jEditor opens
                                 <small>The home page, the project you had open last, or one you pick</small></label>
                             <select id="cust-on-open" class="field"></select>
-                        </div>
-                        <div class="set-row">
-                            <label class="set-label" for="cust-defer-new">Keep edits in jEditor, export copies
-                                <small>Projects opened from now on keep crops and turns in jEditor and leave the photos as they are; Export makes edited copies. Each project can change it in its card.</small></label>
-                            <input type="checkbox" id="cust-defer-new" class="switch">
-                        </div>
-                        <div class="set-row">
-                            <label class="set-label" for="cust-ask-defer">Ask about keeping edits when opening a folder
-                                <small>The first time each folder is opened. Off: it follows Keep edits in jEditor</small></label>
-                            <input type="checkbox" id="cust-ask-defer" class="switch">
                         </div>
                         <div class="set-row">
                             <label class="set-label" for="cust-auto-check">Watch the folder for changes

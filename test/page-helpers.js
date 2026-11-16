@@ -36,6 +36,8 @@ function launchOptions() {
 
 // Shared in-page helpers, injected into every test page.
 const PAGE_HELPERS = `
+    // Settings → Saving → Keep edits in jEditor (edits.js), on or off
+    window.keepEdits = (on) => { app.uiPrefs.keepEdits = !!on; };
     // A fake FileSystemFileHandle backed by in-memory bytes.
     window.makeHandle = (name, bytes, type) => {
         const h = {
@@ -193,9 +195,16 @@ const PAGE_HELPERS = `
 `;
 
 // The first-time questions (first-open.js) answered already, so they
-// don't cover what a test clicks; the tests of them clear this
+// don't cover what a test clicks; the tests of them clear this. And Keep
+// edits in jEditor off (Settings → Saving; edits.js), so a turn or a crop
+// is written into the photo as the tests check; the tests of keeping turn
+// it on (keepEdits(true))
 const QUIET_FIRST_OPEN = () => {
-    try { if (!localStorage.getItem('jeditor.firstOpen')) localStorage.setItem('jeditor.firstOpen', JSON.stringify({ asked: true, ask: false })); } catch (e) { /* no storage */ }
+    try { if (!localStorage.getItem('jeditor.firstOpen')) localStorage.setItem('jeditor.firstOpen', JSON.stringify({ asked: true })); } catch (e) { /* no storage */ }
+    try {
+        const ui = JSON.parse(localStorage.getItem('jeditor.ui') || '{}') || {};
+        if (typeof ui.keepEdits !== 'boolean') localStorage.setItem('jeditor.ui', JSON.stringify({ ...ui, keepEdits: false }));
+    } catch (e) { /* no storage */ }
 };
 
 async function newPage(browser, url) {

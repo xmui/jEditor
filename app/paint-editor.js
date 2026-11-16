@@ -3048,7 +3048,8 @@ const PaintEditor = {
             ['History', () => this.toggleHistory(), false, this.opts.history],
             ['QuickShape: hold at a stroke\'s end', () => { this.opts.quickShape = !this.opts.quickShape; this.remember(); }, false, this.opts.quickShape],
             ['Smoothing', this.SMOOTHING.map(([v, name]) => [name, () => { this.opts.smoothing = v; this.remember(); }, false, (this.opts.smoothing || 0) === v])],
-            ['Pen pressure', [['size', 'Size'], ['opacity', 'Opacity'], ['both', 'Size and opacity']].map(([v, name]) => [name, () => { this.opts.pressure = v; this.remember(); }, false, this.opts.pressure === v])]
+            ['Pen pressure', [['size', 'Size'], ['opacity', 'Opacity'], ['both', 'Size and opacity']].map(([v, name]) => [name, () => { this.opts.pressure = v; this.remember(); }, false, this.opts.pressure === v])],
+            ...(Edits.canKeep() ? [['—'], ['Save over the original', () => this.app.saveOverOriginal([this.file]), false, undefined, 'paint.saveOver']] : [])
         ];
     },
 
