@@ -2954,6 +2954,67 @@ const PROJECT = `
         await page.close();
     }
 
+    // ---- Paint: adjustment layers ----
+    if (wanted('paintadj')) {
+        console.log('paint: adjustment layers (paint-editor.js, paint.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 200; c.height = 200;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 200, 200);
+                await openProject('aj', { 'a.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                P.opts.sampleAll = true;
+                const shown = (x, y) => { const k = P.newCanvas(); P.compose(k.getContext('2d')); return [...k.getContext('2d').getImageData(x, y, 1, 1).data]; };
+                // Invert: what's under it inverted; its mask chosen to paint on
+                step = 'invert';
+                const n0 = P.layers.length;
+                P.addAdjLayer('invert');
+                const l = P.layer();
+                out.made = [P.layers.length - n0, l.name, l.adj.kind, shown(100, 100)[0], P.target().isMask === true, !document.querySelector('.paint-adj-card')];
+                // Black on its mask: not there
+                l.mask.getContext('2d').clearRect(0, 0, 50, 50);
+                out.masked = [shown(10, 10)[0], shown(100, 100)[0]];
+                // Brightness/Contrast: its card; Done is one step to undo
+                step = 'bc';
+                P.addAdjLayer('bc');
+                const card = document.querySelector('.paint-adj-card');
+                out.card = !!card && card.textContent.includes('Brightness') && card.textContent.includes('Contrast');
+                const bl = P.layer();
+                bl.adj = { ...bl.adj, b: 50 };
+                const n1 = P.history.length;
+                card.querySelector('.paint-adj-done').click();
+                out.done = [!document.querySelector('.paint-adj-card'), P.history.length - n1, shown(100, 100)[0]];
+                pressKey('z', { ctrlKey: true });
+                out.undone = P.layer().adj.b;
+                // Kept: Paint.clean keeps it, drops a made-up kind
+                const kept = Paint.clean({ id: 'abc', w: 200, h: 200, layers: [{ id: 'l1', rev: 'r1', adj: { kind: 'levels', lo: 10, hi: 5, g: 99 } }, { id: 'l2', rev: 'r2', adj: { kind: 'nope' } }] });
+                out.kept = [JSON.stringify(kept.layers[0].adj), 'adj' in kept.layers[1]];
+                // As the viewer and Export draw it
+                const v = document.createElement('canvas'); v.width = 4; v.height = 4;
+                v.getContext('2d').fillStyle = '#808080'; v.getContext('2d').fillRect(0, 0, 4, 4);
+                Paint.adjustCanvas(v, { kind: 'invert' }, null, 1);
+                out.viewer = v.getContext('2d').getImageData(1, 1, 1, 1).data[0];
+                // Can't be moved or clipped
+                out.noMove = P.liftFloat() === false;
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint adjustment layers: Invert changes what\'s under it, painted on through its mask', JSON.stringify(r.made) === '[1,"Invert","invert",127,true,true]', JSON.stringify(r));
+        check('paint adjustment layers: where its mask is black, it doesn\'t change anything', JSON.stringify(r.masked) === '[128,127]', JSON.stringify(r));
+        check('paint adjustment layers: Brightness/Contrast opens its card; Done is one step to undo', r.card && r.done && r.done[0] && r.done[1] === 1 && r.done[2] > 127 + 50 && r.undone === 0, JSON.stringify(r));
+        check('paint adjustment layers: kept with the layers, settings kept in range', r.kept && r.kept[0] === '{"kind":"levels","lo":10,"hi":12,"g":10}' && r.kept[1] === false, JSON.stringify(r));
+        check('paint adjustment layers: the viewer and Export draw them; nothing to move', r.viewer === 127 && r.noMove, JSON.stringify(r));
+        check('paint adjustment layers: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Restore colour (develop.js: restoreAuto; script.js: restoreColour) ----
     if (wanted('restore')) {
         console.log('restore colour (develop.js, script.js, adjust.js)');
