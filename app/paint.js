@@ -5,7 +5,7 @@
 // (.jeditor/paint/<id>-<layer>-<rev>.png; a new rev each time a layer
 // changes, so Ctrl+Z on the edit finds the old one still there).
 //
-//   paint: { id, w, h, layers: [{ id, rev, name, opacity, blend, hidden, lock?, clip?, fixed?, group?, mask?, text?, shape? }], groups?: [{ id, name, hidden, open }],
+//   paint: { id, w, h, layers: [{ id, rev, name, opacity, blend, hidden, lock?, clip?, fixed?, group?, adj?, mask?, text?, shape? }], groups?: [{ id, name, hidden, open }],
 //            ext?, pad?, fill? }
 //
 // Layers cover the whole photo as it is on disk (before any crop or turn,
@@ -44,6 +44,105 @@ const Paint = {
 
     has(e) {
         return !!(e && e.paint && Array.isArray(e.paint.layers) && (e.paint.layers.length || this.padOf(e.paint)));
+    },
+
+    // ---- Adjustment layers ----
+    // A layer that changes what's under it (l.adj: { kind, ... }), through
+    // its mask; its own pixels are unused
+
+    ADJ: {
+        bc: ['Brightness/Contrast', { b: 0, c: 0 }],
+        hsl: ['Hue/Saturation', { h: 0, s: 0, l: 0 }],
+        levels: ['Levels', { lo: 0, hi: 255, g: 1 }],
+        bw: ['Black & white', {}],
+        invert: ['Invert', {}]
+    },
+
+    cleanAdj(a) {
+        if (!a || typeof a !== 'object' || !this.ADJ[a.kind]) return null;
+        const num = (x, lo, hi, d) => typeof x === 'number' && isFinite(x) ? Math.min(hi, Math.max(lo, x)) : d;
+        if (a.kind === 'bc') return { kind: 'bc', b: num(a.b, -100, 100, 0), c: num(a.c, -100, 100, 0) };
+        if (a.kind === 'hsl') return { kind: 'hsl', h: num(a.h, -180, 180, 0), s: num(a.s, -100, 100, 0), l: num(a.l, -100, 100, 0) };
+        if (a.kind === 'levels') {
+            const lo = num(a.lo, 0, 253, 0);
+            return { kind: 'levels', lo, hi: num(a.hi, lo + 2, 255, 255), g: num(a.g, 0.1, 10, 1) };
+        }
+        return { kind: a.kind };
+    },
+
+    // The pixels (RGBA, in place) as the adjustment makes them
+    adjPixels(d, a) {
+        const n = d.length;
+        if (a.kind === 'bw') {
+            for (let i = 0; i < n; i += 4) { const y = Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]); d[i] = d[i + 1] = d[i + 2] = y; }
+            return;
+        }
+        if (a.kind === 'hsl') {
+            const dh = a.h / 360, ks = 1 + a.s / 100, kl = a.l / 100;
+            for (let i = 0; i < n; i += 4) {
+                const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255;
+                const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+                let h = 0, s = 0, l = (mx + mn) / 2;
+                if (mx !== mn) {
+                    const c = mx - mn;
+                    s = l > 0.5 ? c / (2 - mx - mn) : c / (mx + mn);
+                    h = mx === r ? (g - b) / c + (g < b ? 6 : 0) : mx === g ? (b - r) / c + 2 : (r - g) / c + 4;
+                    h /= 6;
+                }
+                h = ((h + dh) % 1 + 1) % 1;
+                s = Math.min(1, s * ks);
+                l = kl > 0 ? l + (1 - l) * kl : l * (1 + kl);
+                if (!s) { d[i] = d[i + 1] = d[i + 2] = l * 255; continue; }
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+                const f = (t) => { t = t < 0 ? t + 1 : t > 1 ? t - 1 : t; return t < 1 / 6 ? p + (q - p) * 6 * t : t < 0.5 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; };
+                d[i] = f(h + 1 / 3) * 255; d[i + 1] = f(h) * 255; d[i + 2] = f(h - 1 / 3) * 255;
+            }
+            return;
+        }
+        const lut = new Uint8ClampedArray(256);
+        for (let v = 0; v < 256; v++) {
+            let x = v / 255;
+            if (a.kind === 'bc') {
+                const k = a.c >= 0 ? 1 / Math.max(0.01, 1 - a.c / 100) : 1 + a.c / 100;
+                x = (x - 0.5) * k + 0.5 + a.b / 200;
+            } else if (a.kind === 'levels') {
+                x = Math.pow(Math.min(1, Math.max(0, (v - a.lo) / (a.hi - a.lo))), 1 / a.g);
+            } else if (a.kind === 'invert') x = 1 - x;
+            lut[v] = Math.round(x * 255);
+        }
+        for (let i = 0; i < n; i += 4) { d[i] = lut[d[i]]; d[i + 1] = lut[d[i + 1]]; d[i + 2] = lut[d[i + 2]]; }
+    },
+
+    // What's on canvas so far, adjusted, put back over it (at opacity,
+    // through the mask drawMask draws, if any; each pixel as see-through
+    // as it was)
+    adjustCanvas(canvas, adj, drawMask, opacity = 1) {
+        const w = canvas.width, h = canvas.height;
+        if (!w || !h || !opacity) return;
+        let t = this._adjC;
+        if (!t || t.width !== w || t.height !== h) { t = this._adjC = document.createElement('canvas'); t.width = w; t.height = h; }
+        const tg = t.getContext('2d', { willReadFrequently: true });
+        tg.setTransform(1, 0, 0, 1, 0, 0);
+        tg.globalAlpha = 1;
+        tg.globalCompositeOperation = 'copy';
+        tg.drawImage(canvas, 0, 0);
+        tg.globalCompositeOperation = 'source-over';
+        const img = tg.getImageData(0, 0, w, h);
+        this.adjPixels(img.data, adj);
+        tg.putImageData(img, 0, 0);
+        if (drawMask) {
+            tg.save();
+            tg.globalCompositeOperation = 'destination-in';
+            drawMask(tg);
+            tg.restore();
+        }
+        const g = canvas.getContext('2d');
+        g.save();
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.globalAlpha = opacity;
+        g.globalCompositeOperation = 'source-atop';
+        g.drawImage(t, 0, 0);
+        g.restore();
     },
 
     cleanText(t) {
@@ -99,6 +198,8 @@ const Paint = {
                 // size, and the 3×3 from it to the layer
                 ...(l.src && id(l.src.rev) && int(l.src.w) && int(l.src.h0) && Array.isArray(l.src.h) && l.src.h.length === 9 && l.src.h.every(x => typeof x === 'number' && isFinite(x))
                     ? { src: { rev: l.src.rev, w: l.src.w, h0: l.src.h0, h: l.src.h.slice() } } : {}),
+                // An adjustment layer: what it does
+                ...(this.cleanAdj(l.adj) ? { adj: this.cleanAdj(l.adj) } : {}),
                 // Clipped to the layer below; the whole layer locked
                 ...(l.clip ? { clip: true } : {}),
                 // In a group (paint.groups)
@@ -274,6 +375,12 @@ const Paint = {
         for (const l0 of p.layers) {
             const l = l0.group && hiddenGroups.has(l0.group) ? { ...l0, hidden: true } : l0;
             if (!l.clip) base = l.hidden ? null : { src: null, l };
+            if (l.adj) {
+                if (l.hidden || !l.opacity) continue;
+                const mask = l.mask ? await this.layerBitmap(p, this.maskOf(l)) : null;
+                layers.push({ adj: l.adj, src: mask, opacity: l.opacity });
+                continue;
+            }
             if (l.hidden || !l.opacity || (l.clip && !base)) continue;
             if (l.clip && !base.src) continue;
             let src = await this.layerBitmap(p, l);
@@ -299,6 +406,10 @@ const Paint = {
         const ctx = canvas.getContext('2d');
         ctx.save();
         for (const l of prepared.layers) {
+            if (l.adj) {
+                this.adjustCanvas(canvas, l.adj, l.src ? (t) => this.drawThrough(t, ed, l.src, canvas.width, canvas.height, prepared, at) : null, l.opacity);
+                continue;
+            }
             ctx.globalAlpha = l.opacity;
             ctx.globalCompositeOperation = l.blend;
             this.drawThrough(ctx, ed, l.src, canvas.width, canvas.height, prepared, at);
