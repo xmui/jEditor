@@ -1356,7 +1356,7 @@ const PROJECT = `
                 const menuNow = document.getElementById('context-menu');
                 const retroMenu = menuNow ? [...menuNow.children].map(e => e.textContent.replace(/\s+$/, '')).join('|') : '';
                 app.closeContextMenu();
-                out.retro = [cell.join(), stamped.join(), dots > 20 && soft === 0 && outside === 0, retroMenu.replace(/(Brush|Pencil)[A-Z]\|/g, "$1|") === "Brush|Pencil|Spray|Retro|Pixel pencil|Spray can|Stamp" ? 'menu' : retroMenu];
+                out.retro = [cell.join(), stamped.join(), dots > 20 && soft === 0 && outside === 0, retroMenu.replace(/(Brush|Pencil)[A-Z]\|/g, "$1|") === "Brush|Soft round|Hard round|Pencil|Ink|Marker|Airbrush|Spray|Retro|Pixel pencil|Spray can|Stamp" ? 'menu' : retroMenu];
                 P.setTool('brush'); P.opts.size = 10; P.opts.density = 40;
                 // Heal and clone (paint-heal.js): clone copies from where
                 // Alt was clicked; heal copies its texture in the colours
@@ -1422,6 +1422,66 @@ const PROJECT = `
                     blurIn[0] > 42 && blurOut[0] < 118, sharpOut[0] > 135, smudged[2] > smudged[0] + 20 && smudged[3] > 0, toneNames, toneMenu];
                 for (let i = 0; i < 6; i++) pressKey('z', { ctrlKey: true });
                 out.tone.push(P.history.length === tn && px(0, 100, 220)[3] === 0 && px(0, 300, 160)[3] === 0);
+                // More brushes: hard and soft rounds; the marker darker where
+                // it crosses itself; ink thinner when fast; the airbrush
+                // building up as it's held; the block eraser square, E going
+                // through the erasers; smoothing steadying a shaky line; a
+                // pen's pressure as opacity
+                step = 'brushes';
+                const bn = P.history.length;
+                P.opts.opacity = 100; P.opts.flow = 100; P.fg = '#ff0000';
+                P.setTool('hard-round'); P.opts.size = 20;
+                pe('pointerdown', 40, 40); pe('pointerup', 40, 40);
+                P.setTool('soft-round');
+                pe('pointerdown', 90, 40); pe('pointerup', 90, 40);
+                const rounds = [px(0, 48, 40)[3] === 255, px(0, 98, 40)[3] < 100 && px(0, 90, 40)[3] > 200];
+                P.setTool('marker');
+                pe('pointerdown', 140, 30); pe('pointermove', 140, 50); pe('pointerup', 140, 50);
+                const markerOne = px(0, 140, 40);
+                P.fg = '#0000ff';
+                pe('pointerdown', 130, 40); pe('pointermove', 150, 40); pe('pointerup', 150, 40);
+                const markerCross = px(0, 140, 40), markerBlue = px(0, 156, 40);
+                P.fg = '#ff0000';
+                P.setTool('ink'); P.opts.size = 16;
+                pe('pointerdown', 20, 205); for (let x = 22; x <= 120; x += 2) pe('pointermove', x, 205); pe('pointerup', 120, 205);
+                pe('pointerdown', 20, 245); pe('pointermove', 70, 245); pe('pointermove', 120, 245); pe('pointerup', 120, 245);
+                const thick = (y0) => { let n = 0; for (let y = y0 - 15; y <= y0 + 15; y++) if (px(0, 100, y)[3] > 128) n++; return n; };
+                const inkW = [thick(205), thick(245)];
+                P.setTool('airbrush'); P.opts.size = 20;
+                pe('pointerdown', 200, 40); pe('pointerup', 200, 40);
+                pe('pointerdown', 250, 40);
+                await new Promise(res => setTimeout(res, 300));
+                pe('pointerup', 250, 40);
+                const air = [px(0, 200, 40)[3], px(0, 250, 40)[3]];
+                lg.fillStyle = '#00ff00'; lg.fillRect(150, 190, 60, 40);
+                P.setTool('eraser-block'); P.opts.size = 10;
+                pe('pointerdown', 170, 210); pe('pointerup', 170, 210);
+                const block = [px(0, 166, 206)[3], px(0, 174, 214)[3], px(0, 176, 216)[3]];
+                lg.clearRect(150, 190, 60, 40);
+                P.setTool('eraser'); pressKey('e'); const e1 = P.tool; pressKey('e'); const e2 = P.tool; pressKey('e'); const e3 = P.tool;
+                P.setTool('hard-round'); P.opts.size = 4;
+                const zig = (y0) => { pe('pointerdown', 200, y0); for (let i = 1; i <= 24; i++) pe('pointermove', 200 + i * 8, y0 + (i % 2 ? 12 : -12)); pe('pointerup', 392, y0); };
+                const row = (y) => { let n = 0; for (let x = 200; x < 392; x++) if (px(0, x, y)[3] > 0) n++; return n; };
+                P.opts.smoothing = 0; zig(205); const shaky = row(217);
+                P.opts.smoothing = 75; zig(255); const steady = row(267);
+                P.opts.smoothing = 0;
+                P.setTool('hard-round'); P.opts.size = 20; P.opts.pressure = 'opacity';
+                const penLight = { pointerType: 'pen', pressure: 0.4 };
+                pe('pointerdown', 20, 280, penLight); for (let x = 25; x <= 100; x += 5) pe('pointermove', x, 280, penLight); pe('pointerup', 100, 280, penLight);
+                const light = [px(0, 60, 280)[3], px(0, 60, 288)[3]];
+                P.opts.pressure = 'size';
+                const brushMenu = (() => {
+                    const b = [...document.querySelectorAll('.paint-tool')].find(x => x.dataset.group === '2');
+                    b.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+                    const mm = document.getElementById('context-menu');
+                    const t = mm ? [...mm.children].map(e => e.textContent.replace(/[A-Z]$/, '').trim()).filter(Boolean).join('|') : '';
+                    app.closeContextMenu();
+                    return t;
+                })();
+                out.brushes = [rounds.join(), markerOne[0] > 200 && markerOne[2] < 40, markerCross[0] < 40 && markerCross[2] < 40 && markerCross[3] === 255, markerBlue[2] > 200 && markerBlue[0] < 40,
+                    inkW[0] > inkW[1] + 4, air[1] > air[0] + 40, block.join(), [e1, e2, e3].join(), shaky > 20 && steady < shaky / 3, light[0] > 70 && light[0] < 150 && light[1] > 0, brushMenu];
+                while (P.history.length > bn) pressKey('z', { ctrlKey: true });
+                P.fg = '#ff0000';
                 P.setTool('brush'); P.opts.size = 10; P.opts.hardness = hard0;
                 // Canvas size: the canvas bigger than the photo, the layers
                 // reaching past it; what's painted out there kept, and
@@ -1579,7 +1639,8 @@ const PROJECT = `
                 // The ⋯ menu's Select: invert (twice, back again), grow, shrink
                 const more = P.moreItems();
                 const sub = (n) => (more.find(i => i[0] === n) || [, []])[1];
-                out.menu = more.map(i => i[0]).join().startsWith('Image,Select,Layer,—,History,QuickShape') && typeof more[more.length - 1][3] === 'boolean' && sub('Select').some(i => i[0] === 'Invert');
+                out.menu = more.map(i => i[0]).join().startsWith('Image,Select,Layer,—,History,QuickShape') && typeof more.find(i => i[0].startsWith('QuickShape'))[3] === 'boolean' && sub('Select').some(i => i[0] === 'Invert') &&
+                    sub('Smoothing').map(i => i[0]).join() === 'Off,Some,More,Most' && sub('Pen pressure').filter(i => i[3]).map(i => i[0]).join() === 'Size';
                 const w0 = P.sel.box.w;
                 P.invertSelection();
                 out.inverted = !!P.sel && P.sel.box.w === P.W;
@@ -1677,13 +1738,14 @@ const PROJECT = `
             JSON.stringify(r.canvas) === JSON.stringify({ big: [true, 440, 320, 440, 320, 40, 20, 440, true], painted: 255, turned: ['{"l":20,"t":40,"r":0,"b":0}', 320, 440, true, '{"l":40,"t":0,"r":0,"b":20}'], record: [400, 300, '{"l":40,"t":0,"r":0,"b":20}', '{"l":40,"t":0,"r":0,"b":20}', '#ffffff'], exported: [440, 320, '0,255,0', '255,255,255', '128,128,128'], onlyPhoto: [440, 320], cropping: true, cropped: [500, 320, 60, 'Crop'], undone: [440, 400, 400, true, true] }), JSON.stringify(r.canvas));
         check('paint: heal and clone: clone copies from the Alt-click (nothing without one); heal copies in the colours round it; spot heal fills a mark from round it; one undo each; their own slot; J and S', JSON.stringify(r.heal) === '[true,"true,0",true,"Clone stamp",true,true,"Spot heal",3,"Spot heal|Heal|Clone stamp|Dodge|Burn|Sponge|Blur|Sharpen|Smudge","spot-heal,heal,clone"]', JSON.stringify(r.heal));
         check('paint: tone and focus: dodge lightens, burn darkens, sponge takes colour out, blur softens an edge, sharpen crisps it, smudge drags a colour; in the Heal slot under Tone and Focus; one undo each', JSON.stringify(r.tone) === '[true,true,true,true,true,true,true,"Dodge|Burn|Sponge|Blur|Sharpen|Smudge","Spot heal|Heal|Clone stamp|Tone|Dodge|Burn|Sponge|Focus|Blur|Sharpen|Smudge",true]', JSON.stringify(r.tone));
+        check('paint: more brushes: hard and soft rounds; the marker darker where it crosses; ink thinner when fast; the airbrush builds as it\'s held; the block eraser square, E through the erasers; smoothing steadies a shaky line; a pen\'s pressure as opacity; all in the Brush slot', JSON.stringify(r.brushes) === '["true,true",true,true,true,true,true,"0,0,255","eraser-block,eraser-soft,eraser",true,true,"Brush|Soft round|Hard round|Pencil|Ink|Marker|Airbrush|Spray|Retro|Pixel pencil|Spray can|Stamp"]', JSON.stringify(r.brushes));
         check('paint: Retro: the pixel pencil fills one square of its grid; the stamp paints our star (not its corners); the spray can sprays hard dots inside its round; listed under Retro in the brush slot', JSON.stringify(r.retro) === '["255,255,0,0,0","255,0,255,0,Stamp",true,"menu"]', JSON.stringify(r.retro));
         check('paint: a pen\'s pressure sizes the brush', r.pressure && r.pressure[0] > 200 && r.pressure[1] === 0, String(r.pressure));
         check('paint: a new layer; a filled rectangle on it', r.layers && r.rect && r.rect[0][1] === 255 && r.rect[1] === 0, JSON.stringify(r));
         check('paint: the fill takes the photo\'s blue square, not beyond it; text is drawn', r.fill && r.fill[0][0] === 255 && r.fill[0][1] === 255 && r.fill[1] === 0 && r.text > 50, JSON.stringify(r));
         check('paint: the fill can fill the whole layer (only what\'s selected, with a selection), without the colour options; Ctrl+Z undoes it', r.wholeOpts && r.wholeSel && String(r.wholeSel[0]) === '255,0,255,255' && r.wholeSel[1] === 0 && String(r.whole) === '255,0,255,255,255,0,255,255' && r.wholeUndone, JSON.stringify([r.wholeOpts, r.wholeSel, r.whole, r.wholeUndone]));
         check('paint: a selection; Delete clears only inside it', r.selected && r.cleared[0] === 0 && r.cleared[1] === 255, JSON.stringify(r));
-        check('paint: the ⋯ menu has Image, Select and Layer (and History and QuickShape, ticked when on); Invert, Grow and Shrink change the selection', r.menu && r.inverted && JSON.stringify(r.reshaped) === '[6,0]', JSON.stringify([r.menu, r.inverted, r.reshaped]));
+        check('paint: the ⋯ menu has Image, Select and Layer (and History and QuickShape, ticked when on, Smoothing and Pen pressure); Invert, Grow and Shrink change the selection', r.menu && r.inverted && JSON.stringify(r.reshaped) === '[6,0]', JSON.stringify([r.menu, r.inverted, r.reshaped]));
         check('paint: the wand selects by colour; Move drags it, Enter puts it down', r.wand && r.moved[0] === 0 && r.moved[1][3] === 255 && r.notDone, JSON.stringify(r));
         check('paint: Done keeps it with the photo (layers in the project\'s folder), the file untouched', r.kept && r.files === 2 && r.fileSame, JSON.stringify(r));
         check('paint: shown painted; opened again, the layers come back', r.shown && r.shown[0][0] > 200 && r.shown[1][1] > 200 && r.shown[2][0] > 200 && r.reopened, JSON.stringify(r));
