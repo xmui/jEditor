@@ -280,7 +280,7 @@ const AdjustSpots = {
         this.el('adj-spot-delete').disabled = !s;
         const list = this.spots(), found = list.filter(x => x.d), m = found.filter(x => x.t === 'line').length;
         this.el('adj-dust-clear').disabled = !found.length;
-        this.el('adj-spot-count').textContent = !list.length ? '' : `${list.length} spot${list.length === 1 ? '' : 's'}` + (found.length ? `, ${this.foundWords(found.length - m, m)} found` : '');
+        this.el('adj-spot-count').textContent = !list.length ? '' : `${list.length} spot${list.length === 1 ? '' : 's'}` + (found.length - m ? `, ${found.length - m} found as dust` : '') + (m ? `, ${m} found as scratch${m === 1 ? '' : 'es'}` : '');
         this.el('adj-spot-hint').textContent = s ? 'Drag the spot, its source (dashed) or its edge; right-click or Delete takes it off'
             : 'Click a speck to heal it, or drag from it to where to copy from';
         this.cv.classList.toggle('hidden', !this.active());
