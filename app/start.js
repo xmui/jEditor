@@ -303,8 +303,7 @@ const Start = {
         const opens = p.onOpen || 'home';
         const items = [];
         if (this.update) items.push([`Update to jEditor ${Updates.label(this.update.tag)}…`, () => Updates.offer(this.update)], ['—']);
-        items.push(['Keep edits in jEditor, export copies', () => this.setDeferNew(!p.deferNew), false, !!p.deferNew]);
-        items.push(['—'], ['When jEditor opens', null]);
+        items.push(['When jEditor opens', null]);
         items.push(['This page', () => this.setOnOpen('home'), false, opens === 'home']);
         items.push(['The last project', () => this.setOnOpen('last'), false, opens === 'last']);
         items.push([opens === 'pick' && p.onOpenName ? `${p.onOpenName}…` : 'A project you pick…', () => this.pickProject(btn), false, opens === 'pick']);
@@ -315,17 +314,6 @@ const Start = {
         items.push([this.el('btn-whatsnew-start').textContent, () => this.el('btn-whatsnew-start').click()]);
         const r = btn.getBoundingClientRect();
         app.openContextMenu(items, r.right - 260, r.bottom + 6);
-    },
-
-    // New projects keep their edits until saved (edits.js): each project
-    // can still change it in its card
-    setDeferNew(on) {
-        const app = this.app;
-        app.uiPrefs.deferNew = !!on;
-        app.saveUiPrefs();
-        const box = this.el('cust-defer-new');
-        if (box) box.checked = !!on;
-        app.showToast(on ? 'Projects opened from now on keep edits in jEditor; Export makes copies' : 'Projects opened from now on save edits straight away', 3000);
     },
 
     setOnOpen(how, rec = null) {
