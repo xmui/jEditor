@@ -247,10 +247,17 @@ const waitForPost = (page, type) => page.waitForFunction(
         {
             const h = await openPage(browser, { engine: 'heic' });
             await waitForPost(h.page, 'ready');
-            const heicAsked = [];
+            const heicAsked = [], previews = [];
             await h.page.route('https://engine.jeditor.example/**', (route) => {
-                heicAsked.push(new URL(route.request().url()).searchParams.get('path'));
-                route.fulfill({ status: 200, contentType: 'image/jpeg', headers: { 'Access-Control-Allow-Origin': ORIGIN }, body: magenta });
+                const u = new URL(route.request().url());
+                heicAsked.push(u.searchParams.get('path'));
+                const headers = { 'Access-Control-Allow-Origin': ORIGIN };
+                // The viewer's picture: the photo's own size in the headers
+                if (u.pathname === '/preview') {
+                    previews.push({ path: u.searchParams.get('path'), edge: u.searchParams.get('edge') });
+                    Object.assign(headers, { 'X-Width': '4000', 'X-Height': '3000', 'Access-Control-Expose-Headers': 'X-Width, X-Height' });
+                }
+                route.fulfill({ status: 200, contentType: 'image/jpeg', headers, body: magenta });
             });
             const heic = [...fs.readFileSync(path.join(__dirname, '..', 'engine', 'tests', 'fixtures', 'halves.heic'))];
             await h.page.evaluate(async (bytes) => {
@@ -260,6 +267,16 @@ const waitForPost = (page, type) => page.waitForFunction(
                 const w = await (await dir.getFileHandle('IMG_0001.HEIC', { create: true })).createWritable();
                 await w.write(new Uint8Array(bytes));
                 await w.close();
+                // And a JPEG bigger than the screen, in green
+                const c = document.createElement('canvas');
+                c.width = 4000; c.height = 3000;
+                const g = c.getContext('2d');
+                g.fillStyle = '#00c000';
+                g.fillRect(0, 0, 4000, 3000);
+                const big = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+                const wj = await (await dir.getFileHandle('IMG_0002.jpg', { create: true })).createWritable();
+                await wj.write(big);
+                await wj.close();
                 window.__onPost = async (m) => {
                     if (m.type === 'pickFolder') setTimeout(() => window.__deliver({ replyTo: m.id, path: 'D:\\Orders\\Heic Order' }, [dir]), 10);
                     else if (m.type === 'dataDir') window.__deliver({ replyTo: m.id, path: 'C:\\data' }, [await (await navigator.storage.getDirectory()).getDirectoryHandle('appdata', { create: true })]);
@@ -268,9 +285,10 @@ const waitForPost = (page, type) => page.waitForFunction(
             await h.page.click('#btn-browse-folder');
             await h.page.waitForSelector('#open-card:not(.hidden)');
             await h.page.click('#oc-browse');
-            await h.page.waitForFunction(() => app.files.length === 1 && app.files[0].thumbnailUrl, null, { timeout: 20000 });
+            await h.page.waitForFunction(() => app.files.length === 2 && app.files.every(f => f.thumbnailUrl), null, { timeout: 20000 });
             const hr = await h.page.evaluate(async () => {
-                const bmp = await createImageBitmap(await (await fetch(app.files[0].thumbnailUrl)).blob());
+                const heicFile = app.files.find(f => /heic$/i.test(f.name));
+                const bmp = await createImageBitmap(await (await fetch(heicFile.thumbnailUrl)).blob());
                 const c = new OffscreenCanvas(bmp.width, bmp.height);
                 c.getContext('2d').drawImage(bmp, 0, 0);
                 const [R, G, B] = c.getContext('2d').getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data;
@@ -278,6 +296,36 @@ const waitForPost = (page, type) => page.waitForFunction(
             });
             check('an engine with libheif: HEICs listed', hr.has);
             check('a HEIC\'s thumbnail comes from the engine', hr.engine && heicAsked.includes('D:\\Orders\\Heic Order\\IMG_0001.HEIC'), JSON.stringify({ hr, heicAsked }));
+            // Opened in the viewer: a HEIC's picture from the engine, at the
+            // screen's size, shown as the photo's own size (for zoom and Info)
+            for (const name of ['IMG_0001.HEIC', 'IMG_0002.jpg']) {
+                const v = await h.page.evaluate(async (name) => {
+                    const f = app.files.find(x => x.name === name);
+                    app.openSingle(f);
+                    const t0 = Date.now();
+                    let el;
+                    while (Date.now() - t0 < 15000) {
+                        el = app.elements.currentImage;
+                        if (el && el._decoded && app._displayFile === f && app._displayKind === 'full') break;
+                        await new Promise(r => setTimeout(r, 50));
+                    }
+                    if (!el || !el._decoded || app._displayKind !== 'full') return { shown: false, kind: app._displayKind };
+                    const c = new OffscreenCanvas(el.naturalWidth, el.naturalHeight);
+                    c.getContext('2d').drawImage(el, 0, 0);
+                    const [R, G, B] = c.getContext('2d').getImageData(el.naturalWidth >> 1, el.naturalHeight >> 1, 1, 1).data;
+                    const out = { shown: true, engine: R > 200 && B > 200 && G < 60, w: el._origW, h: el._origH, preview: el._isPreview, edge: app.previewEdge() };
+                    app.setView('grid');
+                    return out;
+                }, name);
+                const asked = previews.find(p => p.path === 'D:\\Orders\\Heic Order\\' + name);
+                if (/heic$/i.test(name)) {
+                    check('the viewer shows a HEIC from the engine', v.shown && v.engine && v.preview && v.w === 4000 && v.h === 3000, JSON.stringify(v));
+                    check('  asked at the screen\'s size', asked && +asked.edge === v.edge, JSON.stringify({ previews, v }));
+                } else {
+                    // A JPEG: the page's own scaled decode, as quick
+                    check('the viewer makes a JPEG\'s picture itself', v.shown && !v.engine && !asked && v.w === 4000 && v.h === 3000, JSON.stringify({ previews, v }));
+                }
+            }
             check('engine HEIC: no JS errors', h.errors.length === 0, h.errors.join('; '));
             await h.context.close();
         }

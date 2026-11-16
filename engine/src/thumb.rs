@@ -50,6 +50,31 @@ pub fn oriented_thumbnail_rgb(jpeg: &[u8], width: u32, o: u16) -> Result<Rgb, Er
     Ok(orient(resized, o))
 }
 
+/// `w` × `h` fitted inside `edge` × `edge` (never made bigger)
+pub fn fit(w: usize, h: usize, edge: usize) -> (usize, usize) {
+    let long = w.max(h).max(1);
+    if long <= edge {
+        return (w.max(1), h.max(1));
+    }
+    let k = edge as f64 / long as f64;
+    (((w as f64 * k).round() as usize).max(1), ((h as f64 * k).round() as usize).max(1))
+}
+
+/// The JPEG's stored size (before its orientation), from its header
+pub fn jpeg_size(jpeg: &[u8]) -> Result<(usize, usize), Error> {
+    guard(|| Decompress::new_mem(jpeg).map(|d| d.size()).map_err(|e| Error::Bad(e.to_string())))
+}
+
+/// The viewer's picture of a JPEG: its long side at most `edge` (never
+/// bigger than the photo), turned by `o`, decoded only as much as that
+/// needs; with the whole photo's size as shown
+pub fn oriented_preview_rgb(jpeg: &[u8], edge: u32, o: u16) -> Result<(Rgb, usize, usize), Error> {
+    let (w, h) = jpeg_size(jpeg)?;
+    let (sw, sh) = if (5..=8).contains(&o) { (h, w) } else { (w, h) };
+    let (tw, _) = fit(sw, sh, edge as usize);
+    Ok((oriented_thumbnail_rgb(jpeg, tw as u32, o)?, sw, sh))
+}
+
 /// Decoded at the smallest n/8 that's still at least `want` px along the
 /// axis that's shown across (the height when the orientation turns it)
 pub fn decode_scaled(jpeg: &[u8], want: usize, swap: bool) -> Result<Rgb, Error> {
@@ -215,6 +240,23 @@ mod tests {
         // And it encodes
         let j = jpeg_thumbnail(&src, 320, 80.0).unwrap();
         assert_eq!(&j[..2], &[0xFF, 0xD8]);
+    }
+
+    #[test]
+    fn previews_fit_the_screen() {
+        assert_eq!(fit(6000, 4000, 2560), (2560, 1707));
+        assert_eq!(fit(4000, 6000, 2560), (1707, 2560));
+        assert_eq!(fit(800, 600, 2560), (800, 600));
+        let src = encode_jpeg(&corners(3000, 2000), 90.0).unwrap();
+        let (p, w, h) = oriented_preview_rgb(&src, 1200, 1).unwrap();
+        assert_eq!((p.w, p.h, w, h), (1200, 800, 3000, 2000));
+        // Turned: fitted by its height as shown, and the size as shown
+        let (p, w, h) = oriented_preview_rgb(&with_orientation(&src, 6), 1200, 6).unwrap();
+        assert_eq!((p.w, p.h, w, h), (800, 1200, 2000, 3000));
+        assert!(near(at(&p, 10, 10), [20, 20, 250]));
+        // Smaller than the screen: its own size
+        let (p, ..) = oriented_preview_rgb(&src, 4096, 1).unwrap();
+        assert_eq!((p.w, p.h), (3000, 2000));
     }
 
     #[test]

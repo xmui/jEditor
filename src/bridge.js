@@ -228,6 +228,12 @@
             const path = dir.replace(/[\\/]+$/, '') + '\\' + String(relPath).replace(/\//g, '\\');
             return `https://engine.jeditor.example/thumb?w=${w}&path=${encodeURIComponent(path)}`;
         },
+        // The viewer's picture of the same photo, its long side at most
+        // edge, with the photo's own size in X-Width and X-Height
+        enginePreview(dir, relPath, edge) {
+            const path = dir.replace(/[\\/]+$/, '') + '\\' + String(relPath).replace(/\//g, '\\');
+            return `https://engine.jeditor.example/preview?edge=${edge}&path=${encodeURIComponent(path)}`;
+        },
         // A folder handle for a path, with permission to edit it
         async folderHandle(path) {
             const { msg, objects } = await answer('folderHandle', { path });

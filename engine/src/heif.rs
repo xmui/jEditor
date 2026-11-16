@@ -39,6 +39,16 @@ pub fn heic_thumbnail_rgb(bytes: &[u8], width: u32) -> Result<Rgb, Error> {
     thumb::resize(img, tw, th)
 }
 
+/// The viewer's picture of a HEIC: the whole photo decoded (on all of
+/// libheif's threads: the viewer asks for one at a time) and fitted inside
+/// `edge`; with its size as shown
+pub fn heic_preview_rgb(bytes: &[u8], edge: u32) -> Result<(Rgb, usize, usize), Error> {
+    let img = decode_full(bytes)?;
+    let (w, h) = (img.w, img.h);
+    let (tw, th) = thumb::fit(w, h, edge as usize);
+    Ok((thumb::resize(img, tw, th)?, w, h))
+}
+
 /// The whole photo, as RGB pixels (as shown)
 pub fn decode_full(bytes: &[u8]) -> Result<Rgb, Error> {
     let ctx = HeifContext::read_from_bytes(bytes).map_err(|e| Error::Bad(e.to_string()))?;
@@ -97,6 +107,8 @@ mod tests {
         assert!(r[2] > 180 && r[0] < 80, "right is blue: {r:?}");
         let full = decode_full(HALVES).unwrap();
         assert_eq!((full.w, full.h), (600, 400));
+        let (p, w, h) = heic_preview_rgb(HALVES, 300).unwrap();
+        assert_eq!((p.w, p.h, w, h), (300, 200, 600, 400));
         // As a JPEG, the size asked for
         let j = heic_thumbnail(HALVES, 120, 80.0).unwrap();
         let back = thumb::decode_full(&j).unwrap();

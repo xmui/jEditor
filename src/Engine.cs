@@ -11,7 +11,12 @@ namespace JEditor;
 //   https://engine.jeditor.example/thumb?w=320&path=<the photo on disk>
 //     → a JPEG thumbnail, w wide as shown (after its EXIF orientation), of
 //       a JPEG, or of a HEIC when the engine was built with libheif
-//       (Formats; its DLLs beside it, scripts/engine-heif.ps1)
+//       (Formats; its DLLs beside it, scripts/engine-heif.ps1), or of a RAW
+//       from the JPEG inside it
+//   https://engine.jeditor.example/preview?edge=2560&path=<the photo>
+//     → the viewer's picture of the same kinds: its long side at most edge
+//       (never bigger than the photo), turned as shown, with the whole
+//       photo's size as shown in the headers X-Width and X-Height
 //
 // so a full-size photo is never read into the page, and the page shows
 // the answer as it would any picture. Without the DLL (a build with no
@@ -39,6 +44,9 @@ static class Engine
 
     [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
     static extern int je_thumbnail_file(byte[] path, nuint pathLen, uint width, out JeBuf buf);
+
+    [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+    static extern int je_preview_file(byte[] path, nuint pathLen, uint edge, out JeBuf buf, out uint w, out uint h);
 
     [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
     static extern void je_free(JeBuf buf);
@@ -83,7 +91,22 @@ static class Engine
     {
         var p = Encoding.UTF8.GetBytes(path);
         code = je_thumbnail_file(p, (nuint)p.Length, (uint)width, out var buf);
-        if (code != 0) return null;
+        return code == 0 ? Take(buf) : null;
+    }
+
+    // The viewer's picture of the photo at path, its long side at most edge,
+    // and the whole photo's size as shown; null as Thumbnail's
+    public static byte[]? Preview(string path, int edge, out int code, out int w, out int h)
+    {
+        var p = Encoding.UTF8.GetBytes(path);
+        code = je_preview_file(p, (nuint)p.Length, (uint)edge, out var buf, out var uw, out var uh);
+        (w, h) = ((int)uw, (int)uh);
+        return code == 0 ? Take(buf) : null;
+    }
+
+    // The engine's bytes, copied out and given back
+    static byte[] Take(JeBuf buf)
+    {
         try
         {
             var bytes = new byte[(int)buf.Len];
@@ -114,11 +137,13 @@ static class Engine
             var cors = $"Access-Control-Allow-Origin: {pageOrigin}\r\nCache-Control: no-store";
             try
             {
-                var (status, body) = await Gated(uri);
+                var (status, body, size) = await Gated(uri);
                 if (!loggedFirst) { loggedFirst = true; Log.Write($"Engine: first request answered {status} ({body?.Length ?? 0} bytes)"); }
+                // A preview's photo size, readable by the page (CORS)
+                var extra = size is { } wh ? $"X-Width: {wh.Item1}\r\nX-Height: {wh.Item2}\r\nAccess-Control-Expose-Headers: X-Width, X-Height\r\n" : "";
                 e.Response = core.Environment.CreateWebResourceResponse(
                     body is null ? null : new MemoryStream(body), status, status == 200 ? "OK" : status == 204 ? "No Content" : "Not Found",
-                    body is null ? cors : "Content-Type: image/jpeg\r\n" + cors);
+                    body is null ? cors : "Content-Type: image/jpeg\r\n" + extra + cors);
             }
             catch (Exception ex)
             {
@@ -138,8 +163,11 @@ static class Engine
     static readonly SemaphoreSlim cores = new(Math.Max(1, Environment.ProcessorCount));
     static readonly SemaphoreSlim heavy = new(Math.Max(1, Environment.ProcessorCount - 1));
 
-    static async Task<(int, byte[]?)> Gated(Uri uri)
+    static async Task<(int, byte[]?, (int, int)?)> Gated(Uri uri)
     {
+        // The photo being opened doesn't wait behind the grid's thumbnails:
+        // one at a time, straight away (one thread more than the cores)
+        if (uri.AbsolutePath == "/preview") return await Task.Run(() => AnswerPreview(uri));
         var q = System.Web.HttpUtility.ParseQueryString(uri.Query)["path"] ?? "";
         var slow = Path.GetExtension(q).ToLowerInvariant() is ".heic" or ".heif";
         var queued = System.Diagnostics.Stopwatch.StartNew();
@@ -148,7 +176,7 @@ static class Engine
         {
             await cores.WaitAsync();
             var waited = queued.Elapsed.TotalMilliseconds;
-            try { return await Task.Run(() => Answer(uri, waited)); }
+            try { var (status, body) = await Task.Run(() => Answer(uri, waited)); return (status, body, null); }
             finally { cores.Release(); }
         }
         finally
@@ -198,5 +226,19 @@ static class Engine
         Count(Path.GetExtension(path).ToLowerInvariant(), bytes is not null, t.Elapsed.TotalMilliseconds, ThreadCpu() - cpu, waited);
         if (bytes is null && code != 1) Log.Write($"Engine: no thumbnail for {path} (code {code})");
         return bytes is null ? (204, null) : (200, bytes);
+    }
+
+    // The viewer's picture (/preview?edge=&path=): logged, each one, with
+    // how long it took (test/grid-speed.perf.js reads it)
+    static (int, byte[]?, (int, int)?) AnswerPreview(Uri uri)
+    {
+        var q = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        var path = q["path"];
+        if (string.IsNullOrEmpty(path) || !int.TryParse(q["edge"], out var edge) || edge < 1 || edge > 8192) return (404, null, null);
+        if (!Path.IsPathFullyQualified(path) || !Reads.Contains(Path.GetExtension(path).ToLowerInvariant())) return (204, null, null);
+        var t = System.Diagnostics.Stopwatch.StartNew();
+        var bytes = Preview(path, edge, out var code, out var w, out var h);
+        Log.Write($"Engine: preview {Path.GetFileName(path)} {(bytes is null ? $"not made (code {code})" : $"{w}x{h}, {bytes.Length / 1024} KB")} in {t.Elapsed.TotalMilliseconds:F0} ms");
+        return bytes is null ? (204, null, null) : (200, bytes, (w, h));
     }
 }

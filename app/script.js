@@ -4162,6 +4162,14 @@ const app = {
             const converted = Codec.decoded(file.name) || Raw.is(file.name);
             let rec = converted ? await this.idbGet('previews', key) : null;
             if (rec && rec.blob) return keep(rec);
+            // The app's engine: a HEIC or RAW without converting it here first
+            if (converted) {
+                rec = await this.enginePreview(file, edge);
+                if (rec) {
+                    this.idbPutPreview(key, rec);
+                    return keep(rec);
+                }
+            }
             const data = converted ? await this.readImage(file) : disk;
 
             // Already about screen size? The header says so: show the
@@ -4312,6 +4320,32 @@ const app = {
             file._fullReadAt = savedAtRead;
         }
         return { url: file.fullImageUrl, isPreview: false, savedAtRead: file._fullReadAt };
+    },
+
+    // The viewer's picture from the app's engine (Host.has('engine'):
+    // src/Engine.cs), straight from the file on disk: a RAW's JPEG decoded
+    // only as much as the screen needs, a HEIC (Host.has('engineHeic')) on
+    // every core rather than in WebAssembly. Not a JPEG: the page's worker
+    // already decodes those scaled, and was as quick (the Speed run, #241).
+    // { blob, w, h } as generatePreview's, or null: the page makes it
+    async enginePreview(file, edge) {
+        if (!Host.has('engine') || !Host.get().enginePreview || !this.dirHandle) return null;
+        if (!Raw.is(file.name) && !(Host.has('engineHeic') && /\.hei[cf]$/i.test(file.name))) return null;
+        const handle = this.dirHandle;
+        if (!this._engineDir || this._engineDir.handle !== handle) {
+            this._engineDir = { handle, path: Host.get().folderPath(handle).catch(() => null) };
+        }
+        const dir = await this._engineDir.path;
+        if (!dir) return null;
+        try {
+            const r = await fetch(Host.get().enginePreview(dir, file.relPath || file.name, edge));
+            const w = +r.headers.get('X-Width'), h = +r.headers.get('X-Height');
+            if (r.status !== 200 || !w || !h) return null;
+            this._enginePreviews = (this._enginePreviews || 0) + 1; // test/grid-speed.perf.js counts them
+            return { blob: await r.blob(), w, h };
+        } catch (e) {
+            return null;
+        }
     },
 
     // Worker: decode, downscale to `edge`, encode. { blob, w, h },
