@@ -881,7 +881,7 @@ const PaintEditor = {
                 const c = this.newCanvas();
                 const src = await Paint.layerBitmap(kept.paint, l);
                 if (src) c.getContext('2d').drawImage(src, 0, 0, this.W, this.H);
-                const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: !!l.lock, canvas: c, changed: false, text: l.text || null, shape: l.shape || null };
+                const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: !!l.lock, canvas: c, changed: false, text: l.text || null, shape: l.shape || null, clip: !!l.clip, fixed: !!l.fixed };
                 if (l.mask) {
                     const m = this.newCanvas(), mb = await Paint.layerBitmap(kept.paint, Paint.maskOf(l));
                     if (mb) m.getContext('2d').drawImage(mb, 0, 0, this.W, this.H);
@@ -1399,7 +1399,7 @@ const PaintEditor = {
         ctx.clip();
         const LD = VD.multiply(this.C);
         this.layers.forEach((l, i) => {
-            if (l.hidden || (this.text && this.text.layer === l)) return;
+            if (!this.isShown(l) || (this.text && this.text.layer === l)) return;
             ctx.save();
             ctx.globalAlpha = l.opacity;
             ctx.globalCompositeOperation = l.blend;
@@ -1411,6 +1411,8 @@ const PaintEditor = {
             const onMask = stroking && this.drag.target && this.drag.target.isMask;
             if (stroking && !onMask) src = this.preview(l);
             if (l.mask) src = this.maskedNow(src, onMask ? this.preview(this.drag.target) : l.mask);
+            const base = this.baseOf(i);
+            if (base >= 0) src = this.clipNow(src, this.layers[base]);
             ctx.drawImage(src, 0, 0);
             if (i === this.cur && this.float) this.drawFloat(ctx, VD);
             ctx.restore();
@@ -1580,6 +1582,7 @@ const PaintEditor = {
             this.app.showToast('That layer is hidden: show it to paint on it', 2000);
             return;
         }
+        if (this.layer().fixed && !['rect-select', 'ellipse-select', 'lasso', 'wand', 'picker'].includes(t)) { this.fixedToast(); return; }
         if (this.ERASERS.includes(t) && this.layer().lock) { this.lockedToast(); return; }
         // Heal and clone: Alt-click is where they copy from
         if ((t === 'heal' || t === 'clone') && e.altKey) { this.setSource(p); return; }
@@ -1722,6 +1725,14 @@ const PaintEditor = {
     endPixels(l, r, { free = false, name = this.toolName(), vec = null } = {}) {
         r = this.clampRect(r);
         if (!r || this._beforeOf !== l) return;
+        // A locked layer (or its mask): put back, nothing kept
+        if ((l.owner || l).fixed) {
+            l.canvas.getContext('2d').putImageData(this.before.getContext('2d', { willReadFrequently: true }).getImageData(r.x, r.y, r.w, r.h), r.x, r.y);
+            this._beforeOf = null;
+            this.fixedToast();
+            this.renderSoon();
+            return;
+        }
         const v0 = l.text || l.shape ? { text: l.text || null, shape: l.shape || null } : null;
         const before = this.before.getContext('2d', { willReadFrequently: true }).getImageData(r.x, r.y, r.w, r.h);
         const after = l.canvas.getContext('2d', { willReadFrequently: true }).getImageData(r.x, r.y, r.w, r.h);
@@ -2243,7 +2254,7 @@ const PaintEditor = {
         g.translate(-b.x, -b.y);
         g.drawImage(this.photo, 0, 0, this.W, this.H);
         for (const l of this.layers) {
-            if (l.hidden) continue;
+            if (!this.isShown(l)) continue;
             g.globalAlpha = l.opacity;
             g.globalCompositeOperation = l.blend;
             g.drawImage(this.shownOf(l), 0, 0);
@@ -3087,6 +3098,9 @@ const PaintEditor = {
                 ...when(room, ['New layer', () => this.addLayer(), false, undefined, 'paint.newLayer']),
                 ...when(room, ['Duplicate', () => this.duplicateLayer(), false, undefined, 'paint.duplicate']),
                 ...when(this.cur > 0, ['Merge down', () => this.mergeDown(), false, undefined, 'paint.merge']),
+                ...when(n > 1, ['Merge visible', () => this.mergeVisible(), false, undefined, 'paint.mergeVisible']),
+                ...when(n > 1, ['Flatten', () => this.mergeVisible(true)]),
+                ...when(this.cur > 0, ['Clip to the layer below', () => this.toggleClip(), false, !!(this.layer() && this.layer().clip), 'paint.clip']),
                 ['Free transform', () => this.freeTransform(), false, undefined, 'paint.transform'],
                 ['—'],
                 ['Bring in an image…', () => this.pickImage(), false, undefined, 'paint.import'],
@@ -3147,7 +3161,7 @@ const PaintEditor = {
             g.drawImage(this.photo, 0, 0, this.W, this.H);
             g.globalCompositeOperation = 'source-over';
             for (const l of upTo ? this.layers.slice(0, this.layers.indexOf(upTo) + 1) : this.layers) {
-                if (l.hidden) continue;
+                if (!this.isShown(l)) continue;
                 g.globalAlpha = l.opacity;
                 g.globalCompositeOperation = l.blend;
                 g.drawImage(this.shownOf(l), 0, 0);
@@ -3432,6 +3446,7 @@ const PaintEditor = {
     editText(i) {
         const l = this.layers[i];
         if (!l || !l.text || !this.ready) return;
+        if (l.fixed) { this.fixedToast(); return; }
         if (this.float) this.commitFloat();
         if (this.text) this.endText(true);
         if (this.tool !== 'text') this.setTool('text');
@@ -3696,6 +3711,7 @@ const PaintEditor = {
     liftFloat() {
         const l = this.layer();
         if (!l) return false;
+        if (l.fixed) { this.fixedToast(); return false; }
         this.beginPixels(l);
         // What's lifted, in layer space: the selection of the layer, or all of it
         const lifted = this.newCanvas();
@@ -3939,7 +3955,7 @@ const PaintEditor = {
         if (merged) {
             g.drawImage(this.photo, -b.x, -b.y, this.W, this.H);
             for (const k of this.layers) {
-                if (k.hidden) continue;
+                if (!this.isShown(k)) continue;
                 g.save();
                 g.globalAlpha = k.opacity;
                 g.globalCompositeOperation = k.blend;
@@ -4297,7 +4313,7 @@ const PaintEditor = {
         for (let i = this.layers.length - 1; i >= 0; i--) {
             const l = this.layers[i];
             const row = document.createElement('div');
-            row.className = 'paint-layer' + (l.hidden ? ' hidden-layer' : '');
+            row.className = 'paint-layer' + (l.hidden ? ' hidden-layer' : '') + (this.baseOf(i) >= 0 ? ' clipped' : '');
             row.setAttribute('role', 'option');
             row.setAttribute('aria-selected', String(i === this.cur));
             row.innerHTML = '<button class="paint-eye"></button><canvas></canvas><span class="paint-layer-name"></span>';
@@ -4316,6 +4332,20 @@ const PaintEditor = {
                 m.title = 'Shape: with its tool out, the line, fill and colours change it; double-click for its tool';
                 row.appendChild(m);
                 row.addEventListener('dblclick', (e) => { e.preventDefault(); this.cur = i; this.onMask = false; this.setTool(l.shape.kind); this.drawLayers(); });
+            }
+            if (this.baseOf(i) >= 0) {
+                const m = document.createElement('span');
+                m.className = 'paint-layer-clip';
+                m.textContent = '↳';
+                m.title = `Clipped to ${this.layers[this.baseOf(i)].name}: it shows only where that layer has paint`;
+                row.querySelector('canvas').before(m);
+            }
+            if (l.fixed) {
+                const m = document.createElement('span');
+                m.className = 'paint-layer-lock fixed';
+                m.title = 'Locked: nothing is painted on it, moved or transformed (right-click to unlock)';
+                m.innerHTML = '<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="currentColor"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+                row.appendChild(m);
             }
             if (l.lock) {
                 const m = document.createElement('span');
@@ -4470,6 +4500,8 @@ const PaintEditor = {
         const l = this.layers[i], n = this.layers.length, room = n < Paint.MAX_LAYERS;
         return [
             ['Lock transparency', () => this.toggleLock(i), false, !!l.lock, 'paint.lockAlpha'],
+            ['Lock the layer', () => this.toggleFixed(i), false, !!l.fixed],
+            ...(i > 0 ? [['Clip to the layer below', () => this.toggleClip(i), false, !!l.clip, 'paint.clip']] : []),
             ['Show this layer alone', () => this.soloLayer(i)],
             ['Select its pixels', () => this.selectLayerPixels(i)],
             ...(l.text ? [['—'], ['Edit the text', () => this.editText(i)], ['Make it pixels', () => this.rasterize(i)]] : []),
@@ -4512,7 +4544,105 @@ const PaintEditor = {
 
     // The layer as it shows: its pixels through its mask (a new canvas)
     shownOf(l) {
-        return l.mask ? Paint.masked(l.canvas, l.mask) : l.canvas;
+        const src = l.mask ? Paint.masked(l.canvas, l.mask) : l.canvas;
+        const b = this.baseOf(this.layers.indexOf(l));
+        return b >= 0 ? Paint.masked(src, this.shownOf(this.layers[b])) : src;
+    },
+
+    // ---- Clipping masks ----
+    // A clipped layer shows only where the layer it's clipped to (the
+    // nearest one below that isn't clipped itself) has paint, and not at
+    // all when that one's hidden
+
+    // The layer i is clipped to, or -1
+    baseOf(i) {
+        const l = this.layers[i];
+        if (!l || !l.clip) return -1;
+        let j = i - 1;
+        while (j >= 0 && this.layers[j].clip) j--;
+        return j;
+    },
+
+    isShown(l) {
+        if (!l || l.hidden) return false;
+        const b = this.baseOf(this.layers.indexOf(l));
+        return b < 0 || !this.layers[b].hidden;
+    },
+
+    // Each frame, into one canvas kept for it
+    clipNow(src, base) {
+        let c = this._clipC;
+        if (!c || c.width !== this.W || c.height !== this.H) c = this._clipC = this.newCanvas();
+        const g = c.getContext('2d');
+        g.globalCompositeOperation = 'copy';
+        g.drawImage(src, 0, 0);
+        g.globalCompositeOperation = 'destination-in';
+        g.drawImage(this.shownOf(base), 0, 0);
+        g.globalCompositeOperation = 'source-over';
+        return c;
+    },
+
+    toggleClip(i = this.cur) {
+        const l = this.layers[i];
+        if (!l || !this.ready) return;
+        if (!l.clip && i === 0) { this.app.showToast('There\'s no layer below to clip it to', 1800); return; }
+        if (this.float) this.commitFloat();
+        this.pushState(l.clip ? 'Unclip' : 'Clip to the layer below');
+        l.clip = !l.clip;
+        l.changed = true;
+        this.afterState();
+    },
+
+    // ---- Lock the layer: nothing painted on it, moved or transformed ----
+
+    toggleFixed(i = this.cur) {
+        const l = this.layers[i];
+        if (!l) return;
+        if (this.float) this.commitFloat();
+        this.pushState(l.fixed ? 'Unlock the layer' : 'Lock the layer');
+        l.fixed = !l.fixed;
+        this.afterState();
+        this.app.showToast(l.fixed ? `${l.name}: locked` : `${l.name}: unlocked`, 1600);
+    },
+
+    fixedToast() {
+        this.app.showToast('This layer is locked (right-click it to unlock it)', 2200);
+    },
+
+    // ---- Merge visible (Ctrl+Shift+E) and Flatten: the layers shown, as
+    // they look together, into one (Flatten: the hidden ones gone too) ----
+
+    mergeVisible(flatten = false) {
+        if (!this.ready || this.busy) return;
+        if (this.text) this.endText(true);
+        if (this.float) this.commitFloat();
+        const shown = this.layers.filter(l => this.isShown(l));
+        if (!flatten && shown.length < 2) { this.app.showToast('Two or more layers need to be shown to merge them', 2000); return; }
+        if (flatten && this.layers.length < 2 && !this.layers.some(l => l.mask || l.clip || l.text || l.shape)) return;
+        const c = this.newCanvas(), g = c.getContext('2d');
+        for (const l of shown) {
+            g.globalAlpha = l.opacity;
+            g.globalCompositeOperation = l.blend;
+            g.drawImage(this.shownOf(l), 0, 0);
+        }
+        g.globalAlpha = 1;
+        g.globalCompositeOperation = 'source-over';
+        this.pushState(flatten ? 'Flatten' : 'Merge visible');
+        const top = shown.length ? this.layers.indexOf(shown[shown.length - 1]) : 0;
+        const m = this.makeLayer(flatten ? 'Layer 1' : 'Merged');
+        m.canvas = c;
+        if (flatten) {
+            this.layers = [m];
+            this.cur = 0;
+        } else {
+            const kept = this.layers.filter(l => !shown.includes(l));
+            const at = this.layers.slice(0, top).filter(l => !shown.includes(l)).length;
+            kept.splice(at, 0, m);
+            this.layers = kept;
+            this.cur = at;
+        }
+        this.onMask = false;
+        this.afterState();
     },
 
     // The same, each frame, into one canvas kept for it
@@ -4633,7 +4763,7 @@ const PaintEditor = {
         if (this.float) this.commitFloat();
         this.pushState('Duplicate layer');
         const copy = this.makeLayer(`${l.name} copy`);
-        Object.assign(copy, { opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: l.lock, text: l.text || null, shape: l.shape || null });
+        Object.assign(copy, { opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: l.lock, text: l.text || null, shape: l.shape || null, clip: !!l.clip });
         if (l.mask) {
             copy.mask = this.newCanvas();
             copy.mask.getContext('2d').drawImage(l.mask, 0, 0);
@@ -4743,6 +4873,7 @@ const PaintEditor = {
         if (this.cur <= 0) return;
         if (this.float) this.commitFloat();
         const top = this.layer(), below = this.layers[this.cur - 1];
+        if (below.fixed || top.fixed) { this.fixedToast(); return; }
         this.pushState('Merge down');
         below.text = below.shape = null;
         this.beginPixels(below);
@@ -5072,7 +5203,7 @@ const PaintEditor = {
         const paint = { id: this.paintId, w: this.PW, h: this.PH, layers: [], ext: this.ext, pad: this.pad, fill: this.fill };
         for (const l of this.layers) {
             if ((l.changed || !l.rev) && this.empty(l)) continue;
-            const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, ...(l.lock ? { lock: true } : {}), ...(l.text ? { text: l.text } : {}), ...(l.shape ? { shape: l.shape } : {}) };
+            const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, ...(l.lock ? { lock: true } : {}), ...(l.text ? { text: l.text } : {}), ...(l.shape ? { shape: l.shape } : {}), ...(l.clip ? { clip: true } : {}), ...(l.fixed ? { fixed: true } : {}) };
             if (l.changed || !l.rev) {
                 rec.rev = Paint.newId().slice(-10);
                 await Paint.writeLayer(paint, rec, l.canvas);
@@ -5093,6 +5224,6 @@ const PaintEditor = {
     layersNow() {
         if (this.text) this.endText(true);
         if (this.float) this.commitFloat();
-        return { w: this.PW, h: this.PH, ext: this.ext, pad: Paint.padOf(this), fill: this.fill, layers: this.layers.filter(l => !l.hidden && l.opacity > 0).map(l => ({ src: this.shownOf(l), opacity: l.opacity, blend: l.blend })) };
+        return { w: this.PW, h: this.PH, ext: this.ext, pad: Paint.padOf(this), fill: this.fill, layers: this.layers.filter(l => this.isShown(l) && l.opacity > 0).map(l => ({ src: this.shownOf(l), opacity: l.opacity, blend: l.blend })) };
     }
 };

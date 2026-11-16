@@ -5,7 +5,7 @@
 // (.jeditor/paint/<id>-<layer>-<rev>.png; a new rev each time a layer
 // changes, so Ctrl+Z on the edit finds the old one still there).
 //
-//   paint: { id, w, h, layers: [{ id, rev, name, opacity, blend, hidden, lock?, mask?, text?, shape? }],
+//   paint: { id, w, h, layers: [{ id, rev, name, opacity, blend, hidden, lock?, clip?, fixed?, mask?, text?, shape? }],
 //            ext?, pad?, fill? }
 //
 // Layers cover the whole photo as it is on disk (before any crop or turn,
@@ -95,6 +95,9 @@ const Paint = {
                 hidden: !!l.hidden,
                 // Transparency locked (kept only when on)
                 ...(l.lock ? { lock: true } : {}),
+                // Clipped to the layer below; the whole layer locked
+                ...(l.clip ? { clip: true } : {}),
+                ...(l.fixed ? { fixed: true } : {}),
                 // Its mask's rev (a file of its own, maskFile): what shows
                 ...(id(l.mask) ? { mask: l.mask } : {}),
                 // A text layer: its words and how they're set, to change
@@ -249,11 +252,18 @@ const Paint = {
         if (!this.has(e)) return null;
         const p = e.paint;
         const layers = [];
+        // A clipped layer shows only where the one it's clipped to (the
+        // nearest below not clipped) has paint, and not when it's hidden
+        let base = null;
         for (const l of p.layers) {
-            if (l.hidden || !l.opacity) continue;
+            if (!l.clip) base = l.hidden ? null : { src: null, l };
+            if (l.hidden || !l.opacity || (l.clip && !base)) continue;
+            if (l.clip && !base.src) continue;
             let src = await this.layerBitmap(p, l);
             const mask = src && l.mask ? await this.layerBitmap(p, this.maskOf(l)) : null;
             if (mask) src = this.masked(src, mask);
+            if (!l.clip && base) base.src = src;
+            if (src && l.clip) src = this.masked(src, base.src);
             if (src) layers.push({ src, opacity: l.opacity, blend: l.blend });
         }
         const pad = this.padOf(p);
