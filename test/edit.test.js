@@ -2879,6 +2879,81 @@ const PROJECT = `
         await page.close();
     }
 
+    // ---- Paint: layer groups ----
+    if (wanted('paintgroups')) {
+        console.log('paint: layer groups (paint-editor.js, paint.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 200; c.height = 200;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 200, 200);
+                await openProject('gr', { 'g.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                const fill = (l, col, x, y, w, h) => { const g = l.canvas.getContext('2d'); g.fillStyle = col; g.fillRect(x, y, w, h); };
+                const px = (cv, x, y) => [...cv.getContext('2d', { willReadFrequently: true }).getImageData(x, y, 1, 1).data];
+                // Ctrl+G: a group, its row above its layer; a new layer joins it
+                step = 'group';
+                fill(P.layers[0], '#ff0000', 0, 0, 50, 50);
+                P.addLayer();
+                fill(P.layer(), '#0000ff', 100, 100, 50, 50);
+                pressKey('g', { ctrlKey: true });
+                const gid = P.layer().group;
+                P.addLayer();
+                fill(P.layer(), '#00ff00', 60, 60, 20, 20);
+                const rows = [...document.querySelectorAll('#paint-layer-list .paint-layer')];
+                out.made = [!!gid, P.layer().group === gid, rows[0].classList.contains('paint-group-row'), rows[0].textContent.includes('Group 1'), rows.filter(x => x.classList.contains('in-group')).length];
+                // Hidden: its layers with it, in the editor and as kept
+                step = 'hide';
+                P.toggleGroupShown(gid);
+                out.hidden = [P.isShown(P.layers[1]), P.isShown(P.layers[0])];
+                const kept = Paint.clean({ id: 'abc', w: 200, h: 200, groups: [{ id: gid, name: 'G', hidden: true }, { id: 'zz', name: 'unused' }], layers: [{ id: 'l1', rev: 'r1' }, { id: 'l2', rev: 'r2', group: gid }, { id: 'l3', rev: 'r3', group: 'nope' }] });
+                out.kept = [kept.groups.length, kept.groups[0].hidden, kept.layers[1].group === gid, 'group' in kept.layers[2]];
+                pressKey('z', { ctrlKey: true });
+                out.shownAgain = P.isShown(P.layers[1]);
+                // Closed: its layers out of the list
+                P.toggleGroupOpen(gid);
+                out.closed = document.querySelectorAll('#paint-layer-list .in-group').length;
+                P.toggleGroupOpen(gid);
+                // Moved down at its edge: out of the group first
+                step = 'move';
+                P.cur = 1;
+                P.moveLayer(-1);
+                out.out = [P.layers[1].group, P.layers.length];
+                P.moveLayer(1);
+                out.back = P.layers[1].group === gid;
+                // Ctrl+Shift+G: out, put above the group
+                P.cur = 1;
+                pressKey('g', { ctrlKey: true, shiftKey: true });
+                out.ungrouped = [P.cur, P.layers[2].group, P.layers[1].group === gid];
+                P.cur = 1;
+                P.groupWithBelow(2);
+                // Merge group: one layer in its place, as they looked
+                step = 'merge';
+                const n0 = P.layers.length;
+                P.mergeGroup(gid);
+                out.merged = [n0 - P.layers.length, P.layers[1].name, px(P.layers[1].canvas, 120, 120)[2], px(P.layers[1].canvas, 70, 70)[1], !P.groups[gid]];
+                pressKey('z', { ctrlKey: true });
+                out.mergeUndone = [P.layers.length === n0, !!P.groups[gid]];
+                out.menu = P.groupItems(gid).map(i => i[0]).join('|');
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint groups: Ctrl+G groups the layer, its row above; a new layer joins it', JSON.stringify(r.made) === '[true,true,true,true,2]', JSON.stringify(r));
+        check('paint groups: hiding a group hides its layers; kept with the layers; one step to undo', JSON.stringify(r.hidden) === '[false,true]' && JSON.stringify(r.kept) === '[1,true,true,false]' && r.shownAgain, JSON.stringify(r));
+        check('paint groups: closed, its layers leave the list', r.closed === 0, JSON.stringify(r));
+        check('paint groups: moved at its edge, a layer goes out of the group, and back in', JSON.stringify(r.out) === '[null,3]' && r.back, JSON.stringify(r));
+        check('paint groups: Ctrl+Shift+G takes a layer out, above the group', JSON.stringify(r.ungrouped) === '[2,null,true]', JSON.stringify(r));
+        check('paint groups: Merge group makes one layer of it, as it looked; Undo brings it back', r.merged && r.merged[0] === 1 && r.merged[1] === 'Group 1' && r.merged[2] === 255 && r.merged[3] === 255 && r.merged[4] && JSON.stringify(r.mergeUndone) === '[true,true]', JSON.stringify(r));
+        check('paint groups: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Restore colour (develop.js: restoreAuto; script.js: restoreColour) ----
     if (wanted('restore')) {
         console.log('restore colour (develop.js, script.js, adjust.js)');

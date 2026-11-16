@@ -5,7 +5,7 @@
 // (.jeditor/paint/<id>-<layer>-<rev>.png; a new rev each time a layer
 // changes, so Ctrl+Z on the edit finds the old one still there).
 //
-//   paint: { id, w, h, layers: [{ id, rev, name, opacity, blend, hidden, lock?, clip?, fixed?, mask?, text?, shape? }],
+//   paint: { id, w, h, layers: [{ id, rev, name, opacity, blend, hidden, lock?, clip?, fixed?, group?, mask?, text?, shape? }], groups?: [{ id, name, hidden, open }],
 //            ext?, pad?, fill? }
 //
 // Layers cover the whole photo as it is on disk (before any crop or turn,
@@ -101,6 +101,8 @@ const Paint = {
                     ? { src: { rev: l.src.rev, w: l.src.w, h0: l.src.h0, h: l.src.h.slice() } } : {}),
                 // Clipped to the layer below; the whole layer locked
                 ...(l.clip ? { clip: true } : {}),
+                // In a group (paint.groups)
+                ...(id(l.group) && Array.isArray(v.groups) && v.groups.some(g => g && g.id === l.group) ? { group: l.group } : {}),
                 ...(l.fixed ? { fixed: true } : {}),
                 // Its mask's rev (a file of its own, maskFile): what shows
                 ...(id(l.mask) ? { mask: l.mask } : {}),
@@ -122,7 +124,10 @@ const Paint = {
         // (a canvas that's smaller can't be smaller than nothing)
         const ok = !pad || (v.w + pad.l + pad.r >= 1 && v.h + pad.t + pad.b >= 1);
         if (!layers.length && !(pad && ok)) return null;
-        return { id: v.id, w: v.w, h: v.h, layers, ...(ext ? { ext } : {}), ...(pad && ok ? { pad } : {}), ...(pad && ok && fill ? { fill } : {}) };
+        const used = new Set(layers.map(l => l.group).filter(Boolean));
+        const groups = (Array.isArray(v.groups) ? v.groups : []).filter(g => g && id(g.id) && used.has(g.id))
+            .map(g => ({ id: g.id, name: typeof g.name === 'string' && g.name.trim() ? g.name.trim().slice(0, 60) : 'Group', hidden: !!g.hidden, open: g.open !== false }));
+        return { id: v.id, w: v.w, h: v.h, layers, ...(groups.length ? { groups } : {}), ...(ext ? { ext } : {}), ...(pad && ok ? { pad } : {}), ...(pad && ok && fill ? { fill } : {}) };
     },
 
     ZERO: { l: 0, t: 0, r: 0, b: 0 },
@@ -265,7 +270,9 @@ const Paint = {
         // A clipped layer shows only where the one it's clipped to (the
         // nearest below not clipped) has paint, and not when it's hidden
         let base = null;
-        for (const l of p.layers) {
+        const hiddenGroups = new Set((p.groups || []).filter(g => g.hidden).map(g => g.id));
+        for (const l0 of p.layers) {
+            const l = l0.group && hiddenGroups.has(l0.group) ? { ...l0, hidden: true } : l0;
             if (!l.clip) base = l.hidden ? null : { src: null, l };
             if (l.hidden || !l.opacity || (l.clip && !base)) continue;
             if (l.clip && !base.src) continue;

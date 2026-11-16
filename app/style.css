@@ -6073,6 +6073,19 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     height: 100%;
 }
 
+.paint-layer.in-group {
+    margin-left: var(--sp-3);
+}
+
+.paint-group-row {
+    min-height: 32px;
+}
+
+.paint-group-row .paint-group-open {
+    min-width: 0;
+    padding: 0 4px;
+}
+
 .paint-layer-clip {
     flex: none;
     margin-right: -2px;
