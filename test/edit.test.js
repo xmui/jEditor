@@ -2749,6 +2749,85 @@ const PROJECT = `
         await page.close();
     }
 
+    // ---- Paint: skew, distort, perspective; smart layers ----
+    if (wanted('paintwarp')) {
+        console.log('paint: skew, distort and perspective; transformed layers kept as they were (paint-editor.js, paint.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 200; c.height = 200;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 200, 200);
+                await openProject('wp', { 'w.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                P.opts.snap = false;
+                const g = P.layers[0].canvas.getContext('2d', { willReadFrequently: true });
+                g.fillStyle = '#ff0000'; g.fillRect(50, 50, 100, 100);
+                const a = (x, y) => g.getImageData(x, y, 1, 1).data[3];
+                const st = document.getElementById('paint-stage'), box = document.getElementById('paint-options');
+                const sc = (q) => { const sp = P.V().transformPoint(q); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                // Ctrl-drag a corner: the corners go free (Mode along the top, no W or H)
+                step = 'distort';
+                pressKey('t', { ctrlKey: true });
+                const ne = P.floatHandles().corners.find(x => x[0] === 'ne')[1], to = { x: ne.x - 100, y: ne.y };
+                st.dispatchEvent(new PointerEvent('pointerdown', { ...sc(ne), pointerId: 1, bubbles: true, button: 0, ctrlKey: true }));
+                st.dispatchEvent(new PointerEvent('pointermove', { ...sc(to), pointerId: 1, bubbles: true, ctrlKey: true }));
+                st.dispatchEvent(new PointerEvent('pointerup', { ...sc(to), pointerId: 1, bubbles: true, ctrlKey: true }));
+                out.free = [!!P.float.quad, Math.round(P.float.quad[1].x), !!box.querySelector('.paint-tf-mode'), !box.querySelector('input.paint-tf-num')];
+                [...box.querySelectorAll('button')].find(b => b.textContent === 'Done').click();
+                out.distorted = [a(140, 55), a(67, 67), !!P.layer().src];
+                pressKey('z', { ctrlKey: true });
+                out.undone = [a(140, 55), !P.layer().src];
+                // Perspective: one corner out, its neighbour along the side the other way
+                step = 'perspective';
+                pressKey('t', { ctrlKey: true });
+                P.float.mode = 'perspective';
+                const sw = P.floatHandles().corners.find(x => x[0] === 'sw')[1], to2 = { x: sw.x - 30, y: sw.y };
+                st.dispatchEvent(new PointerEvent('pointerdown', { ...sc(sw), pointerId: 1, bubbles: true, button: 0 }));
+                st.dispatchEvent(new PointerEvent('pointermove', { ...sc(to2), pointerId: 1, bubbles: true }));
+                st.dispatchEvent(new PointerEvent('pointerup', { ...sc(to2), pointerId: 1, bubbles: true }));
+                out.persp = P.float.quad.map(q => Math.round(q.x)).join();
+                P.cancelFloat();
+                // Smart: made small then big again, it's as sharp as it was
+                step = 'smart';
+                pressKey('t', { ctrlKey: true });
+                P.float.t.sx = P.float.t.sy = 0.2;
+                P.commitFloat();
+                pressKey('t', { ctrlKey: true });
+                P.float.t.sx = P.float.t.sy = 5;
+                P.commitFloat();
+                out.sharp = [a(100, 100), a(148, 100), a(152, 100), a(53, 53)];
+                // Kept with the layers; painting on it makes it plain pixels
+                const kept = Paint.clean({ id: 'abc', w: 200, h: 200, layers: [{ id: 'l1', rev: 'r1', src: { rev: 'sx', w: 200, h0: 200, h: [1, 0, 0, 0, 1, 0, 0, 0, 1] } }, { id: 'l2', rev: 'r2', src: { rev: 'sy', h: [1] } }] });
+                out.kept = [!!kept.layers[0].src && kept.layers[0].src.rev, 'src' in kept.layers[1]];
+                P.beginPixels(P.layer());
+                g.fillRect(0, 0, 5, 5);
+                P.endPixels(P.layer(), { x: 0, y: 0, w: 5, h: 5 });
+                out.plain = !P.layer().src;
+                // A plain slide keeps no copy
+                pressKey('z', { ctrlKey: true });
+                P.rasterize(0);
+                pressKey('t', { ctrlKey: true });
+                P.float.t.tx = 5;
+                P.commitFloat();
+                out.slid = !P.layer().src;
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint warp: Ctrl-drag a corner sets the corners free, with Mode along the top', r.free && r.free[0] && r.free[1] === 100 && r.free[2] && r.free[3], JSON.stringify(r));
+        check('paint warp: Done distorts it; Ctrl+Z puts it back', r.distorted && r.distorted[0] === 0 && r.distorted[1] >= 250 && r.distorted[2] && JSON.stringify(r.undone) === '[255,true]', JSON.stringify(r));
+        check('paint warp: Perspective moves the neighbour along the side the other way', r.persp === '0,200,230,-30', JSON.stringify(r));
+        check('paint warp: transformed small then big again, it\'s as sharp as it was', JSON.stringify(r.sharp) === '[255,255,0,255]', JSON.stringify(r));
+        check('paint warp: the original is kept with the layers; painting on it makes it plain pixels; a slide keeps no copy', r.kept && r.kept[0] === 'sx' && r.kept[1] === false && r.plain && r.slid, JSON.stringify(r));
+        check('paint warp: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Restore colour (develop.js: restoreAuto; script.js: restoreColour) ----
     if (wanted('restore')) {
         console.log('restore colour (develop.js, script.js, adjust.js)');
