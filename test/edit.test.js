@@ -2007,6 +2007,99 @@ const PROJECT = `
         await page.close();
     }
 
+    // ---- Paint: keys like Photoshop's; a film strip photo dropped in ----
+    if (wanted('paintkeys')) {
+        console.log('paint keys and the film strip (paint-editor.js, modes.js, script.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const one = (colour) => { const c = document.createElement('canvas'); c.width = 200; c.height = 100; const g = c.getContext('2d'); g.fillStyle = colour; g.fillRect(0, 0, 200, 100); return canvasBlob(c, 'image/png'); };
+                await openProject('keys', { 'a.png': await one('#808080'), 'b.png': await one('#0000ff') });
+                const a = app.files.find(f => f.name === 'a.png'), b = app.files.find(f => f.name === 'b.png');
+                app.openSingle(a);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                // The film strip's other photo, dragged onto the picture: a layer
+                step = 'strip';
+                const thumb = [...document.querySelectorAll('.mode-thumb')].find(t => t._file === b);
+                const dt = new DataTransfer();
+                thumb.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt }));
+                const st = document.getElementById('paint-stage');
+                st.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+                st.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+                thumb.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }));
+                await until(() => P.float);
+                out.strip = [P.layers.map(l => l.name).join(), !!P.float];
+                // Arrows move what's floating; Enter puts it down
+                const tx = P.float.t.tx;
+                pressKey('ArrowRight');
+                pressKey('ArrowRight', { shiftKey: true });
+                out.floatNudge = P.float.t.tx - tx;
+                pressKey('Enter');
+                // Alt+[ and Alt+]: the layer below and above; Ctrl+] moves it up
+                step = 'layers';
+                const names = () => P.layers.map(l => l.name).join();
+                pressKey('[', { altKey: true, code: 'BracketLeft' });
+                out.below = P.cur;
+                pressKey(']', { altKey: true, code: 'BracketRight' });
+                out.above = P.cur;
+                pressKey('[', { ctrlKey: true, code: 'BracketLeft' });
+                out.movedDown = [names(), P.cur];
+                pressKey(']', { ctrlKey: true, code: 'BracketRight' });
+                out.movedUp = names();
+                // Shift+[ (typed as {): softer, a quarter at a time
+                step = 'hardness';
+                P.setTool('brush');
+                P.opts.hardness = 80;
+                pressKey('{', { shiftKey: true, code: 'BracketLeft' });
+                const h1 = P.opts.hardness;
+                pressKey('}', { shiftKey: true, code: 'BracketRight' });
+                out.hard = [h1, P.opts.hardness];
+                // With Move, arrows nudge the layer's pixels: one step to undo
+                step = 'nudge';
+                P.cur = 0;
+                P.drawLayers();
+                const l = P.layers[0], g = l.canvas.getContext('2d');
+                g.clearRect(0, 0, P.W, P.H);
+                g.fillStyle = '#ff0000';
+                g.fillRect(10, 10, 5, 5);
+                P.setTool('move');
+                const n0 = P.history.length;
+                pressKey('ArrowRight');
+                pressKey('ArrowDown', { shiftKey: true });
+                const px = (x, y) => g.getImageData(x, y, 1, 1).data[3];
+                out.moved = [px(10, 10), px(11, 20), px(15, 24), P.history.length - n0];
+                pressKey('z', { ctrlKey: true });
+                out.undone = [px(10, 10), px(11, 20)];
+                // With a select tool, arrows move the outline only
+                step = 'outline';
+                P.setTool('rect-select');
+                const m = P.newCanvas(); m.getContext('2d').fillRect(20, 20, 10, 10);
+                P.combineSelection(m, 'new');
+                pressKey('ArrowLeft', { shiftKey: true });
+                out.outline = [P.sel.box.x, P.sel.box.y, px(10, 10)];
+                P.deselect();
+                // Nothing to nudge (a brush): the arrows are left alone
+                P.setTool('brush');
+                out.leftAlone = window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint: a photo dragged from the film strip comes in as a layer', r.strip && r.strip[0] === 'Layer 1,b' && r.strip[1], JSON.stringify(r));
+        check('paint: arrows nudge what\'s floating (Shift: 10 px)', r.floatNudge === 11, JSON.stringify(r));
+        check('paint: Alt+[ / Alt+] the layer below / above; Ctrl+[ / Ctrl+] move it', r.below === 0 && r.above === 1 && r.movedDown && r.movedDown[0] === 'b,Layer 1' && r.movedDown[1] === 0 && r.movedUp === 'Layer 1,b', JSON.stringify(r));
+        check('paint: Shift+[ / Shift+] softer / harder by a quarter', JSON.stringify(r.hard) === '[50,75]', JSON.stringify(r));
+        check('paint: with Move, arrows nudge the layer (Shift: 10 px), one step to undo', JSON.stringify(r.moved) === '[0,255,255,1]' && JSON.stringify(r.undone) === '[255,0]', JSON.stringify(r));
+        check('paint: with a select tool, arrows move the outline, not the pixels', JSON.stringify(r.outline) === '[10,20,255]', JSON.stringify(r));
+        check('paint: with nothing to nudge, the arrows are left alone', r.leftAlone === true, JSON.stringify(r));
+        check('paint keys: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Restore colour (develop.js: restoreAuto; script.js: restoreColour) ----
     if (wanted('restore')) {
         console.log('restore colour (develop.js, script.js, adjust.js)');
