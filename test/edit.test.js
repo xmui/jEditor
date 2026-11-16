@@ -540,6 +540,7 @@ const PROJECT = `
                 // turned to fit, a turned one keeps its own quarter turn
                 if (typeof app.cropEditsLike === 'function') {
                     step = 'crop';
+                    keepEdits(true); // (both kept as edits, to compare)
                     Edits.set([
                         { file: f('a.jpg'), edit: { q: 0, angle: 3, n: { x0: -0.4, y0: -0.3, x1: 0.2, y1: 0.4 } } },
                         { file: f('c.jpg'), edit: null },
