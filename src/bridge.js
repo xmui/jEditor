@@ -593,7 +593,7 @@
     }
 
     // Opened the folder; now, with the app checking on disk after each step:
-    // save an edit (the handle can write), flag a photo (the order's data
+    // turn a photo and save over the original (the handle can write), flag a photo (the order's data
     // goes to jEditor's storage, not the folder), delete one (it's in the
     // Recycle Bin) and undo that (it's back, unchanged), and look for updates
     async function smokeTest(a) {
@@ -605,7 +605,8 @@
         const listed = a.files.length;
         let lastScanned = null; // the scan step's last photo, moved by the windows step
         const file = a.files[0];
-        const rotated = file ? await a.rotateImage(file, 90) !== false : false;
+        // (edits are kept in jEditor: Save over the original writes the turn)
+        const rotated = file ? (await a.rotateImage(file, 90) !== false && (!file._edit || await a.saveOverOriginal([file]) !== false)) : false;
         // The engine: a thumbnail of the first photo, made by the app
         // (Engine.cs) from the file on disk, 64 px wide
         if (window.JEditorNative.features.includes('engine') && file) {
