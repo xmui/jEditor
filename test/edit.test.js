@@ -2007,6 +2007,74 @@ const PROJECT = `
         await page.close();
     }
 
+    // ---- Paint's top: three places (layout 3) ----
+    if (wanted('painttop')) {
+        console.log('paint\'s top: the file, the options, ⋯ (paint-editor.js: layoutTop)');
+        const { page, issues } = await open();
+        const look = async () => page.evaluate(async () => {
+            await sleep(300);
+            const r = (s) => { const e = document.querySelector(s); if (!e || !e.getClientRects().length) return null; const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
+            const hit = (a, b) => a && b && a.l < b.r - 1 && b.l < a.r - 1 && a.t < b.b - 1 && b.t < a.b - 1;
+            const row = r('#mode-row'), file = r('.paint-head .mode-file'), opts = r('#paint-options'), more = r('#paint-more'), zoom = r('#paint-zoom'), stage = r('#paint-stage');
+            const box = document.getElementById('paint-options');
+            return {
+                order: !!(file && opts && more && file.r <= opts.l && opts.r <= more.l),
+                clear: !hit(row, file) && !hit(file, opts) && !hit(opts, more),
+                sameRow: !!(file && opts && more && Math.abs((file.t + file.b) / 2 - (opts.t + opts.b) / 2) < 3 && Math.abs((opts.t + opts.b) / 2 - (more.t + more.b) / 2) < 3),
+                zoomAtBottom: !!(zoom && stage && zoom.b <= stage.b && zoom.b > stage.b - 60 && Math.abs((zoom.l + zoom.r) / 2 - (stage.l + stage.r) / 2) < 3),
+                undo: !!r('.paint-head .mode-file #paint-undo') && !!r('.paint-head .mode-file #paint-redo'),
+                folded: box.querySelectorAll('.paint-fold > *').length,
+                fits: box.scrollWidth <= box.clientWidth + 1,
+                text: box.textContent
+            };
+        });
+        const setup = await page.evaluate(async () => {
+            const c = document.createElement('canvas'); c.width = 600; c.height = 400;
+            c.getContext('2d').fillStyle = '#777'; c.getContext('2d').fillRect(0, 0, 600, 400);
+            await openProject('top', { 'a_photo_with_a_long_camera_name_IMG_20261101_143207.png': await canvasBlob(c) });
+            app.openSingle(app.files[0]);
+            await app.enterPaint();
+            await until(() => PaintEditor.ready);
+            PaintEditor.setTool('heal');
+            return true;
+        });
+        await page.setViewportSize({ width: 1400, height: 820 });
+        const wide = await look();
+        await page.setViewportSize({ width: 700, height: 820 });
+        const narrow = await look();
+        // › opens the rest under it; a click elsewhere closes it
+        const fold = await page.evaluate(async () => {
+            const btn = document.querySelector('.paint-fold-btn'), card = document.querySelector('.paint-fold');
+            if (!btn) return null;
+            btn.click();
+            const open = !card.classList.contains('hidden') && btn.getAttribute('aria-expanded') === 'true';
+            document.getElementById('paint-stage').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+            return { open, shut: card.classList.contains('hidden') };
+        });
+        // Zoom's pill: 100% lights up and the zoom shows once zoomed
+        const zoom = await page.evaluate(async () => {
+            const P = PaintEditor;
+            document.getElementById('paint-zoom-1').click();
+            await sleep(50);
+            const at1 = document.getElementById('paint-zoom-1').getAttribute('aria-pressed') === 'true';
+            P.zoomTo(2);
+            P.render();
+            const level = document.getElementById('paint-zoom-level').textContent;
+            document.getElementById('paint-zoom-fit').click();
+            P.render();
+            const fit = document.getElementById('paint-zoom-fit').getAttribute('aria-pressed') === 'true';
+            app.cancelPaint();
+            return { at1, level, fit };
+        });
+        check('paint top: the file and Undo at the left, after the mode switcher; the options in the middle; ⋯ at the right, one row', setup && wide.order && wide.clear && wide.sameRow && wide.undo, JSON.stringify(wide));
+        check('paint top: wide, the heal tool\'s main options in the row, the rest behind ›', wide.fits && wide.folded <= 2 && wide.folded < narrow.folded, JSON.stringify([wide, narrow.folded]));
+        check('paint top: narrow, the rest fold behind ›, nothing over anything', narrow.order && narrow.clear && narrow.folded > 0 && narrow.fits && ['Size', 'Hardness', 'Aligned', 'All layers', 'Opacity'].every(t => narrow.text.includes(t)), JSON.stringify(narrow));
+        check('paint top: › opens the folded options; a click elsewhere closes them', fold && fold.open && fold.shut, JSON.stringify(fold));
+        check('paint top: zoom in a pill at the bottom, in the middle; Fit and 100% lit, the zoom shown', wide.zoomAtBottom && zoom.at1 && zoom.level === '200%' && zoom.fit, JSON.stringify([wide.zoomAtBottom, zoom]));
+        check('paint top: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Paint: keys like Photoshop's; a film strip photo dropped in ----
     if (wanted('paintkeys')) {
         console.log('paint keys and the film strip (paint-editor.js, modes.js, script.js)');

@@ -451,6 +451,120 @@ const PaintEditor = {
             if (this.fitted) this.fit(); else this.render();
         });
         this._resize.observe(st);
+        // The top: placed again when the options change or the window does
+        const box = this.el('paint-options');
+        this._optsSeen = new MutationObserver(() => this.layoutTopSoon());
+        this._optsSeen.observe(box, { childList: true });
+        this._resizeTop = new ResizeObserver(() => this.layoutTopSoon());
+        this._resizeTop.observe(this.root);
+        new MutationObserver(() => this.layoutTopSoon()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-skin'] });
+        // Zoom's pill: its clicks aren't strokes
+        const zoom = this.el('paint-zoom');
+        for (const type of ['pointerdown', 'dblclick', 'contextmenu']) zoom.addEventListener(type, (e) => e.stopPropagation());
+        // An open › card closes on a click anywhere else
+        window.addEventListener('pointerdown', (e) => {
+            const card = box.querySelector('.paint-fold:not(.hidden)');
+            if (card && !e.target.closest('.paint-fold, .paint-fold-btn')) {
+                card.classList.add('hidden');
+                box.querySelector('.paint-fold-btn').setAttribute('aria-expanded', 'false');
+            }
+        }, true);
+    },
+
+    // Zoom's pill: Fit or 100% lit when it's at that, and the zoom
+    showZoom() {
+        const z = this.view.z, at1 = Math.abs(z - 1) < 0.001;
+        if (this._zoomShown === z + ':' + this.fitted) return;
+        this._zoomShown = z + ':' + this.fitted;
+        this.el('paint-zoom-fit').setAttribute('aria-pressed', String(!!this.fitted));
+        this.el('paint-zoom-1').setAttribute('aria-pressed', String(at1));
+        this.el('paint-zoom-level').textContent = this.fitted || at1 ? '' : `${Math.round(z * 100)}%`;
+    },
+
+    layoutTopSoon() {
+        if (this._layTimer) return;
+        this._layTimer = requestAnimationFrame(() => { this._layTimer = 0; this.layoutTop(); });
+    },
+
+    // The top in three places (jEditor's own look): the file and Undo at the
+    // left, after the mode switcher; ⋯ at the right; the tool's options in
+    // the middle of the room between them. What doesn't fit folds behind ›,
+    // last first (a theme keeps its bars, the options under the head)
+    layoutTop() {
+        const box = this.el('paint-options'), head = this.root.querySelector('.paint-head');
+        if (!box || !head) return;
+        try {
+            this.unfold(box);
+            const own = !document.documentElement.hasAttribute('data-skin');
+            if (!own || !this.isOpen) { head.style.paddingLeft = box.style.left = box.style.maxWidth = ''; return; }
+            const ed = this.root.getBoundingClientRect();
+            const gap = 12;
+            // After the mode switcher, when it floats over this row
+            let from = 0;
+            for (const id of ['mode-row', 'mode-float', 'mode-chip-float', 'mode-seg']) {
+                const el = document.getElementById(id);
+                if (!el) continue;
+                // Watched: it changes size as it settles, or the sidebar opens
+                if (!this._watched) this._watched = new Set();
+                if (!this._watched.has(el)) { this._watched.add(el); this._resizeTop.observe(el); }
+                if (!el.getClientRects().length || getComputedStyle(el).visibility === 'hidden') continue;
+                const r = el.getBoundingClientRect();
+                const hr = head.getBoundingClientRect();
+                if (r.width && r.bottom > hr.top && r.top < hr.bottom && r.left < ed.left + ed.width / 2) from = Math.max(from, r.right - ed.left);
+            }
+            head.style.paddingLeft = from ? `${Math.round(from + gap)}px` : '';
+            const file = head.querySelector('.mode-file').getBoundingClientRect();
+            const acts = head.querySelector('.mode-head-acts').getBoundingClientRect();
+            const zoom = parseFloat(getComputedStyle(box).zoom) || 1;
+            const x0 = file.right - ed.left + gap, x1 = (acts.width ? acts.left : ed.right) - ed.left - gap;
+            const room = Math.max(0, x1 - x0);
+            box.style.maxWidth = `${room / zoom}px`;
+            this.fold(box, room);
+            const w = box.getBoundingClientRect().width;
+            box.style.left = `${(x0 + Math.max(0, (room - w) / 2)) / zoom}px`;
+        } finally {
+            // Its own folding isn't a change to lay out again
+            if (this._optsSeen) this._optsSeen.takeRecords();
+        }
+    },
+
+    // The options past the room, last first, into a card under ›
+    fold(box, room) {
+        const kids = [...box.children];
+        if (box.getBoundingClientRect().width <= room + 1 && box.scrollWidth <= box.clientWidth + 1) return;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn ghost sm icon paint-fold-btn';
+        btn.title = 'More options';
+        btn.setAttribute('aria-label', 'More options');
+        btn.setAttribute('aria-expanded', 'false');
+        btn.innerHTML = '<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
+        const card = document.createElement('div');
+        card.className = 'paint-fold hidden';
+        card.setAttribute('role', 'group');
+        card.setAttribute('aria-label', 'More options');
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const open = card.classList.toggle('hidden') === false;
+            btn.setAttribute('aria-expanded', String(open));
+            btn.blur();
+        });
+        box.append(btn, card);
+        const over = () => box.getBoundingClientRect().width > room + 1 || box.scrollWidth > box.clientWidth + 1;
+        // (All of them, at the narrowest: › alone)
+        while (over() && kids.length) card.prepend(kids.pop());
+        if (!card.children.length) { btn.remove(); card.remove(); }
+    },
+
+    // Back in the row, before it's measured again
+    unfold(box) {
+        const card = box.querySelector('.paint-fold');
+        if (card) {
+            const btn = box.querySelector('.paint-fold-btn');
+            for (const k of [...card.children]) box.insertBefore(k, btn);
+            card.remove();
+            if (btn) btn.remove();
+        }
     },
 
     remember() {
@@ -1143,6 +1257,7 @@ const PaintEditor = {
         // downscale of a big photo every frame is what made strokes lag)
         ctx.drawImage(this.shown(VD), 0, 0);
         ctx.setTransform(VD);
+        this.showZoom();
         ctx.imageSmoothingEnabled = this.view.z < 2;
         // Layers: the quick downscale while drawing, the fine one once it stops
         ctx.imageSmoothingQuality = quick ? 'low' : 'high';
