@@ -6250,18 +6250,18 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             // Scratches, in Restore: a drag along one is a line there (a
             // click is still red-eye); undo takes it off
             step = 'scratch';
-            const ov = document.getElementById('adj-spot-overlay');
-            const or = ov.getBoundingClientRect();
-            const before = (Adjust.a.spots || []).length;
-            const ptr = (type, fx, fy) => ov.dispatchEvent(new PointerEvent(type, { clientX: or.left + or.width * fx, clientY: or.top + or.height * fy, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 7, bubbles: true }));
-            ptr('pointerdown', 0.2, 0.3);
-            for (let k = 1; k <= 10; k++) ptr('pointermove', 0.2 + 0.05 * k, 0.3 + 0.02 * k);
-            ptr('pointerup', 0.7, 0.5);
-            const line = (Adjust.a.spots || [])[before];
-            out.scratchLine = !ov.classList.contains('hidden') && (Adjust.a.spots || []).length === before + 1 && !!line && line.t === 'line' && line.pts.length >= 4
+            const scratchOv = document.getElementById('adj-spot-overlay');
+            const scratchBox = scratchOv.getBoundingClientRect();
+            const spotsBefore = (Adjust.a.spots || []).length;
+            const scratchPtr = (type, fx, fy) => scratchOv.dispatchEvent(new PointerEvent(type, { clientX: scratchBox.left + scratchBox.width * fx, clientY: scratchBox.top + scratchBox.height * fy, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 7, bubbles: true }));
+            scratchPtr('pointerdown', 0.2, 0.3);
+            for (let k = 1; k <= 10; k++) scratchPtr('pointermove', 0.2 + 0.05 * k, 0.3 + 0.02 * k);
+            scratchPtr('pointerup', 0.7, 0.5);
+            const scratchSpot = (Adjust.a.spots || [])[spotsBefore];
+            out.scratchLine = !scratchOv.classList.contains('hidden') && (Adjust.a.spots || []).length === spotsBefore + 1 && !!scratchSpot && scratchSpot.t === 'line' && scratchSpot.pts.length >= 4
                 && !!(Adjust.result().spots || []).find(x => x.t === 'line');
             Adjust.undo();
-            out.scratchUndone = (Adjust.a.spots || []).length === before;
+            out.scratchUndone = (Adjust.a.spots || []).length === spotsBefore;
             Adjust.showPane('edit');
             // White balance picked from the photo: W (or Pick grey), a click on
             // something grey; Esc stops picking without leaving Adjust
