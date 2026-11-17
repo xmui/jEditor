@@ -43,6 +43,10 @@
 //                engine's), natively and on every core, rather than the
 //                page's decoder (the fallback)
 //
+// Files: an app may give the page folder handles of its own (mac/handles.js,
+// for web views without File System Access). Those say a file's size and
+// date without reading it: Host.stat(handle). Elsewhere it's getFile().
+//
 // Wording that names the system's own things comes from here too: in a
 // text, {files} is Explorer, Finder or Files, {computer} this PC or this Mac, and
 // {bin} where deleted photos go. On a Mac, keys are said the Mac's way:
@@ -63,6 +67,13 @@ const Host = {
     has(feature) {
         const n = this.get();
         return !!n && Array.isArray(n.features) && n.features.includes(feature);
+    },
+
+    // A file's size and date → { size, lastModified }, without reading it
+    // where the handle can say (the app's own handles: stat()); else from
+    // getFile(), which with Chromium's handles doesn't read the file either
+    stat(handle) {
+        return typeof handle.stat === 'function' ? handle.stat() : handle.getFile();
     },
 
     mac() {

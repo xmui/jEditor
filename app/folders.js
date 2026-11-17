@@ -768,7 +768,7 @@ const Folders = {
         Flags.orphans.delete(f.relPath);
         if (Edits.orphans) Edits.orphans.delete(f.relPath);
         try {
-            const d = await f.handle.getFile();
+            const d = await Host.stat(f.handle);
             f.size = d.size;
             f.lastModified = d.lastModified;
         } catch (e) { /* keep the old numbers */ }

@@ -25,6 +25,7 @@ const places = require('./places');
 const move = require('./move');
 const toolbar = require('./native'); // null without the native module
 const photos = require('./photos'); // the Photos library (photos.library: null without one)
+const fsHost = require('./fs-host'); // the files behind the page's own handles (handles.js)
 
 // macOS 26's own toolbar, in Liquid Glass, for the window's top row (the
 // page's pills mirror into it); before 26, or without the module, the
@@ -77,6 +78,10 @@ function parseArgs(argv) {
 }
 
 const opts = parseArgs(process.argv);
+// The page's folder handles made by the app (handles.js, fs-host.js), in
+// place of Chromium's own: the file layer WebKit will need, proven here
+// first. Off unless asked for (docs/plans/lighter-desktop.md, step 1)
+const HOST_HANDLES = process.env.JEDITOR_HOST_HANDLES === '1' || process.argv.includes('--host-handles');
 if (opts.userData) app.setPath('userData', path.resolve(opts.userData));
 
 const UI = opts.ui ? path.resolve(opts.ui)
@@ -192,15 +197,19 @@ function serve() {
         if (url.host !== HOST) return new Response('Not found', { status: 404 });
         let rel = decodeURIComponent(url.pathname);
         if (rel === '/__host/bridge.js') return fileResponse(path.join(__dirname, 'bridge.js'));
+        if (HOST_HANDLES && rel === '/__host/handles.js') return fileResponse(path.join(__dirname, 'handles.js'));
+        // A file's bytes, for a handle's getFile()
+        if (HOST_HANDLES && rel === '/__fs') return fsHost.respond(url.searchParams.get('p') || '', req.headers.get('range'));
         if (rel.startsWith('/__photos/')) return (await photos.respond(url)) || new Response('Not found', { status: 404 });
         if (rel === '/') rel = '/index.html';
         const file = path.join(UI, rel);
         if (!file.startsWith(UI + path.sep)) return new Response('Not found', { status: 404 });
         if (rel === '/index.html') {
-            // bridge.js runs before jEditor's own scripts
+            // bridge.js (and with the switch, handles.js) runs before jEditor's own scripts
             let html;
             try { html = await fs.promises.readFile(file, 'utf8'); } catch (e) { return fileResponse(file); }
-            return fileResponse(file, html.replace(/<script\b/, '<script src="/__host/bridge.js"></script>\n    <script'));
+            const ours = (HOST_HANDLES ? '<script src="/__host/handles.js"></script>\n    ' : '') + '<script src="/__host/bridge.js"></script>';
+            return fileResponse(file, html.replace(/<script\b/, ours + '\n    <script'));
         }
         return fileResponse(file);
     });
@@ -712,6 +721,28 @@ async function handle(rec, type, data) {
             drivesChanged();
             return why ? { ok: false, error: why } : { ok: true };
         }
+        // ---- The page's own handles (HOST_HANDLES; handles.js) ----
+        case 'fs':
+            if (!HOST_HANDLES) throw new Error('Unknown request: fs');
+            return fsHost.request(data.op, data.data);
+        case 'pickFiles': {
+            const r = await dialog.showOpenDialog(rec.win, {
+                defaultPath: settings.lastPicked || app.getPath('pictures'),
+                properties: ['openFile', ...(data.multiple ? ['multiSelections'] : [])],
+                filters: dialogFilters(data.types, !data.excludeAcceptAllOption)
+            });
+            if (r.canceled || !r.filePaths.length) return { cancelled: true };
+            settings.lastPicked = path.dirname(r.filePaths[0]);
+            saveSettings();
+            return { paths: r.filePaths };
+        }
+        case 'pickSave': {
+            const r = await dialog.showSaveDialog(rec.win, {
+                defaultPath: path.join(settings.lastPicked || app.getPath('pictures'), data.suggestedName || ''),
+                filters: dialogFilters(data.types, true)
+            });
+            return r.canceled || !r.filePath ? { cancelled: true } : { path: r.filePath };
+        }
         case 'pickPath': {
             const r = await dialog.showOpenDialog(rec.win, {
                 title: data.title || 'Choose a folder',
@@ -838,6 +869,16 @@ ipcMain.handle('jeditor', async (e, type, data) => {
         return { error: err.message || String(err) };
     }
 });
+
+// The pickers' types ([{ description, accept: { mime: ['.ext'] } }]) as the dialogs' filters
+function dialogFilters(types, all) {
+    const out = (types || []).map(t => ({
+        name: t.description || 'Files',
+        extensions: Object.values(t.accept || {}).flat().map(e => String(e).replace(/^\./, '')).filter(Boolean)
+    })).filter(f => f.extensions.length);
+    if (all || !out.length) out.push({ name: 'All files', extensions: ['*'] });
+    return out;
+}
 
 function isDir(p) {
     try { return path.isAbsolute(p) && fs.statSync(p).isDirectory(); } catch (e) { return false; }
@@ -1097,6 +1138,7 @@ function createWindow(at = null) {
                 ...(NATIVE_TOOLBAR ? ['--jeditor-native-toolbar'] : []),
                 ...(LINUX ? ['--jeditor-linux'] : []),
                 ...(photos.library && !LINUX ? ['--jeditor-photos'] : []),
+                ...(HOST_HANDLES ? ['--jeditor-host-handles'] : []),
                 ...(LINUX && !APPIMAGE && !PACKAGE && !process.env.JEDITOR_RELEASES ? ['--jeditor-no-updates'] : [])
             ]
         }
