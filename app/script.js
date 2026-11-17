@@ -8132,10 +8132,13 @@ const app = {
             goNext();
             return;
         }
+        // Straightened in Adjust (Geometry): the crop's angle and frame too
+        const geo = ed.geoChanged();
         if (Edits.canKeep()) {
+            const edit = Edits.withAdj(ed.withGeo(file._edit || null), adj);
             this.cancelAdjust();
-            Edits.set([{ file, edit: Edits.withAdj(file._edit || null, adj) }], 'adjustments');
-            if (!quiet) this.showToast(adj ? `Adjusted: kept in jEditor, the original is unchanged. ${Host.say('Ctrl+S')} saves over it` : 'Adjustments taken off', 2200, null, null, { kind: 'adjust' });
+            Edits.set([{ file, edit }], 'adjustments');
+            if (!quiet) this.showToast(adj || (geo && edit) ? `Adjusted: kept in jEditor, the original is unchanged. ${Host.say('Ctrl+S')} saves over it` : 'Adjustments taken off', 2200, null, null, { kind: 'adjust' });
             goNext();
             return;
         }
@@ -8146,7 +8149,7 @@ const app = {
             const { type, quality } = this.getSaveFormat(file.name);
             const fileData = await file.handle.getFile();
             const original = new Uint8Array(await fileData.arrayBuffer());
-            const canvas = await CropEditor.renderSnapshot(fileData, Edits.withAdj(null, adj) || { q: 0, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } }, type, original);
+            const canvas = await CropEditor.renderSnapshot(fileData, Edits.withAdj(ed.withGeo(null), adj) || { q: 0, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } }, type, original);
             if (!canvas) throw new Error('nothing to save');
             const w = canvas.width, h = canvas.height;
             let blob = await new Promise(r => canvas.toBlob(r, type, quality));
