@@ -582,7 +582,7 @@ const PROJECT = `
                 await until(() => Adjust.ready);
                 // Ctrl+click and Shift+click in the strip
                 step = 'strip';
-                const thumb = (n) => [...document.querySelectorAll('#mode-strip .mode-thumb')].find(d => d._file === f(n));
+                const thumb = (n) => [...document.querySelectorAll('#adjust-editor #thumbnail-strip .thumb-item')].find(d => d._file === f(n));
                 thumb('c.jpg').dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
                 thumb('b.jpg').dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
                 out.strip = Adjust.file === f('a.jpg') && thumb('b.jpg').classList.contains('sel') && thumb('c.jpg').classList.contains('sel') && !thumb('a.jpg').classList.contains('sel');
@@ -2095,7 +2095,7 @@ const PROJECT = `
                 const P = PaintEditor;
                 // The film strip's other photo, dragged onto the picture: a layer
                 step = 'strip';
-                const thumb = [...document.querySelectorAll('.mode-thumb')].find(t => t._file === b);
+                const thumb = [...document.querySelectorAll('#paint-editor #thumbnail-strip .thumb-item')].find(t => t._file === b);
                 const dt = new DataTransfer();
                 thumb.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt }));
                 const st = document.getElementById('paint-stage');
@@ -3150,7 +3150,10 @@ const PROJECT = `
                 out.panelEdge = !$('adjust-editor').querySelector('.side-edge-right').classList.contains('hidden');
                 app.showPanel('adjust', true);
                 out.panelBack = getComputedStyle($('adj-panel')).display !== 'none' && $('adjust-editor').querySelector('.side-edge-right').classList.contains('hidden') && !app.uiPrefs.panelsHidden.adjust;
-                out.strip = Modes.strip.parentElement === $('adjust-editor') && Modes.strip.children.length === 3 && Modes.strip.children[0].classList.contains('active');
+                // The film strip is Photos' own, moved in: its items, its height
+                out.strip = Modes.strip === $('thumbnail-strip') && Modes.strip.parentElement === $('adjust-editor') && Modes.strip.children.length === 3 && Modes.strip.children[0].classList.contains('active')
+                    && Modes.strip.children[0].classList.contains('thumb-item') && Math.round(Modes.strip.getBoundingClientRect().height) === app.uiPrefs.stripHeight
+                    && $('strip-resize').parentElement === $('adjust-editor');
                 // Another photo from the strip: still in Adjust, on that one
                 step = 'strip';
                 Modes.strip.children[1].click();
@@ -3181,7 +3184,20 @@ const PROJECT = `
                 // Back to Photos
                 step = 'photos';
                 await Modes.go('photos');
-                out.back = Modes.current() === 'photos' && !PaintEditor.isOpen && !Modes.strip.parentElement;
+                out.back = Modes.current() === 'photos' && !PaintEditor.isOpen && Modes.strip.parentElement === Modes.stripHome.parentNode && Modes.stripHome.nextSibling === $('strip-resize');
+                // And in Photos, the same click: another photo
+                Modes.strip.children[0].click();
+                out.photosClick = app.viewMode === 'single' && app.currentFile === app.viewFiles()[0] && Modes.strip.children[0].classList.contains('active');
+                // Hidden in Photos: hidden in Adjust too, and after stepping there
+                app.toggleThumbnailStrip();
+                await Modes.go('adjust');
+                await until(() => Adjust.ready);
+                await Modes.stepBy(1);
+                await until(() => Adjust.ready && Adjust.file === app.viewFiles()[1]);
+                out.hiddenToo = Modes.strip.parentElement === $('adjust-editor') && Modes.strip.classList.contains('hidden');
+                await Modes.go('photos');
+                app.toggleThumbnailStrip();
+                out.hiddenToo = out.hiddenToo && !Modes.strip.classList.contains('hidden');
                 // The grid: with the sidebar open the row is along its top; closed, the same row floats as a pill
                 step = 'grid';
                 app.setView('grid');
@@ -3238,6 +3254,8 @@ const PROJECT = `
         check('modes: in Adjust the row has Adjust chosen (the sidebar beside it, or the row over its corner), and a strip runs along the bottom', r.chipOver && r.strip, JSON.stringify(r));
         check('modes: Adjust\'s panel hides, leaving a line at the right edge, and comes back, remembered', r.panelHides && r.panelEdge && r.panelBack, JSON.stringify(r));
         check('modes: another photo from the strip opens in the same mode', r.stepped, JSON.stringify(r));
+        check('modes: one film strip: back in Photos after Paint, where a click opens that photo', r.back && r.photosClick, JSON.stringify(r));
+        check('modes: the film strip hidden in Photos stays hidden in Adjust, stepping to another photo too', r.hiddenToo, JSON.stringify(r));
         check('modes: the chip\'s menu switches to Paint, on the same photo', r.menu && r.inPaint, JSON.stringify(r));
         check('modes: what was painted is kept when another photo is chosen', r.kept, JSON.stringify(r));
         check('modes: back to Photos closes it', r.back, JSON.stringify(r));

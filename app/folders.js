@@ -693,7 +693,6 @@ const Folders = {
             }
             this.carryCaches(from, { rel: f.relPath, size: f.size, mtime: f.lastModified }, true);
         }
-        if (inside.includes(app.currentFile)) app.updateStatusBar();
         return newPath;
     },
 

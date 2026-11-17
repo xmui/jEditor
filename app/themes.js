@@ -595,7 +595,7 @@ const Dither = {
 
     run(sizes) {
         if (document.documentElement.dataset.tsThumbs !== 'dither') { this.undo(); return; }
-        for (const im of document.querySelectorAll('#grid-view .grid-item img, #thumbnail-strip .thumb-item img, #mode-strip .mode-thumb img, .recent-print img, img.oc-pic')) {
+        for (const im of document.querySelectorAll('#grid-view .grid-item img, #thumbnail-strip .thumb-item img, .recent-print img, img.oc-pic')) {
             const done = im.dataset.undithered && im.src.startsWith('data:');
             if (done) {
                 // Shown at a new size: again, from its own thumbnail
