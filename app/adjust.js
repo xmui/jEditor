@@ -96,7 +96,8 @@ const Adjust = {
             if (!this.picking || e.button !== 0 || this.space) return;
             e.preventDefault();
             e.stopPropagation();
-            this.pickAt(e);
+            if (this.picking === 'level') this.levelFrom(e);
+            else this.pickAt(e);
         }, true);
         this.el('adj-presets').addEventListener('click', (e) => {
             e.preventDefault();
@@ -124,6 +125,7 @@ const Adjust = {
         this.initLoupe();
         const effects = this.el('adj-effects');
         for (const [k, label] of this.EFFECTS) effects.appendChild(this.slider(k, label));
+        this.initGeo();
         this.el('adj-look-amount').appendChild(this.slider('lookAmount', 'Amount'));
         this.initLookDial();
         const grade = this.el('adj-grade-more');
@@ -235,6 +237,159 @@ const Adjust = {
         return row;
     },
 
+    // ---- Geometry: straighten (the crop's angle, as Photos' Crop sets it) ----
+
+    initGeo() {
+        const angle = this.slider('angle', 'Angle', {
+            range: { min: -45, max: 45, step: 0.1 },
+            get: () => (this.geo && this.geo.angle) || 0,
+            set: (v) => this.applyGeo(this.geoAt(v))
+        });
+        this.el('adj-geo').appendChild(angle);
+        (this.extraRows || (this.extraRows = [])).push(angle);
+        this.el('adj-level').addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.currentTarget.blur();
+            if (!this.busy) this.pickWhite(this.picking !== 'level', 'level');
+        });
+    },
+
+    // The crop's part of an edit (null: the whole photo, as it is)
+    geoOf(e, W, H) {
+        if (!e || Edits.wholePhoto(e)) return null;
+        const g = { q: e.q || 0, angle: e.angle || 0, aspectKey: e.aspectKey || 'free', landscape: !!e.landscape, n: { ...e.n } };
+        if (e.m) g.m = true;
+        if (typeof e.wide === 'boolean') g.wide = e.wide;
+        return g;
+    },
+
+    geoChanged() {
+        return JSON.stringify(this.geo) !== JSON.stringify(this.geo0);
+    },
+
+    // The geometry straightened to `deg`: from the crop it opened with (so
+    // dragging the angle there and back gives the same frame back), its
+    // frame kept inside the turned photo as Crop keeps it
+    geoAt(deg) {
+        deg = Math.max(-45, Math.min(45, Math.round(deg * 100) / 100));
+        const h = this.turned(this.baseGeo(), Object.is(deg, -0) ? 0 : deg);
+        return this.geoOf(h.snapshot(), this.base.width, this.base.height);
+    },
+
+    // The crop it opened with, to straighten from; the whole photo (its
+    // quarter turn and flip kept) when that crop was only the frame a
+    // straighten left, so going back to level gives the whole photo back
+    baseGeo() {
+        const W = this.base.width, H = this.base.height, g = this.geo0;
+        const q = g ? g.q || 0 : 0;
+        const whole = { q, ...(g && g.m ? { m: true } : {}), angle: 0, aspectKey: 'free', landscape: q % 2 ? H >= W : W >= H, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } };
+        if (!g) return whole;
+        const auto = this.turned(whole, g.angle || 0).snapshot().n;
+        const same = ['x0', 'y0', 'x1', 'y1'].every(k => Math.abs(auto[k] - g.n[k]) < 1e-3);
+        return same ? whole : g;
+    },
+
+    // A headless crop of `g`, turned to `deg`, its frame kept inside
+    turned(g, deg) {
+        const h = CropEditor.fromSnapshot(this.base.width, this.base.height, g);
+        h.angle = deg;
+        h.refit();
+        return h;
+    },
+
+    // An edit with this geometry on it (for Save): unchanged when it is
+    withGeo(e) {
+        if (!this.geoChanged()) return e;
+        const out = { ...(e || { q: 0, angle: 0, n: {} }) };
+        for (const k of ['q', 'm', 'angle', 'aspectKey', 'landscape', 'wide', 'n']) delete out[k];
+        Object.assign(out, this.geo || { q: 0, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } });
+        return out;
+    },
+
+    // The picture shown as `g` crops it: the frame, the size, the paint
+    applyGeo(g) {
+        if (!this.base) return;
+        this.geo = g;
+        const W = this.base.width, H = this.base.height;
+        this.cropped = g ? CropEditor.fromSnapshot(W, H, g) : null;
+        this.map = Develop.cropMap(this.cropped, W, H);
+        const o = this.cropped ? this.cropped.outputRect() : { w: W, h: H };
+        this.el('adj-dims').textContent = `${Math.round(o.w * this.fullScale)} × ${Math.round(o.h * this.fullScale)}`;
+        this.PW = o.w * this.fullScale;
+        this.PH = o.h * this.fullScale;
+        this.fullCanvas = this.fullCtx = null;
+        this._fullFor = null;
+        this.hideSharp();
+        this.fitted = true;
+        this.view = null;
+        this._pictureKey = undefined;
+        this.usePicture();
+        this.drawPaint(this._painted);
+        this.layout();
+        AdjustMasks.sync();
+        AdjustSpots.sync();
+    },
+
+    // Straighten by drawing a line: dragged along something that should be
+    // level or upright, the photo turns so it is (Crop's level tool, here)
+    levelFrom(e) {
+        if (!this.ready) return;
+        const a = { x: e.clientX, y: e.clientY };
+        this.levelLine(a, a);
+        const move = (ev) => this.levelLine(a, { x: ev.clientX, y: ev.clientY });
+        const up = (ev) => {
+            removeEventListener('pointermove', move, true);
+            removeEventListener('pointerup', up, true);
+            removeEventListener('pointercancel', up, true);
+            this.levelLine(null);
+            this.pickWhite(false);
+            const t = this.levelAngle(a, { x: ev.clientX, y: ev.clientY });
+            if (t === null) return;
+            this.pushHistory();
+            this.applyGeo(this.geoAt(t));
+            this.changed();
+        };
+        addEventListener('pointermove', move, true);
+        addEventListener('pointerup', up, true);
+        addEventListener('pointercancel', up, true);
+    },
+
+    // The angle that makes the line from a to b (on screen, over the photo
+    // as shown) level, or upright if it's nearer that; null when it's too
+    // short to tell. As crop.js's levelAngle.
+    levelAngle(a, b) {
+        const dx = b.x - a.x, dy = b.y - a.y;
+        if (Math.hypot(dx, dy) < 12) return null;
+        let alpha = Math.atan2(dy, dx) * 180 / Math.PI;
+        if (alpha > 90) alpha -= 180;
+        if (alpha <= -90) alpha += 180;
+        const delta = Math.abs(alpha) <= 45 ? -alpha : (alpha > 0 ? 90 - alpha : -90 - alpha);
+        const now = (this.geo && this.geo.angle) || 0;
+        return Math.max(-45, Math.min(45, Math.round((now + delta) * 100) / 100));
+    },
+
+    // The line being drawn, over the photo (null: none)
+    levelLine(a, b) {
+        let svg = this.el('adj-level-line');
+        if (!a) { if (svg) svg.classList.add('hidden'); return; }
+        const stage = this.el('adj-stage');
+        if (!svg) {
+            svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.id = 'adj-level-line';
+            svg.classList.add('adj-level-line');
+            svg.setAttribute('aria-hidden', 'true');
+            svg.innerHTML = '<line class="adj-level-under"/><line class="adj-level-over"/>';
+            stage.appendChild(svg);
+        }
+        svg.classList.remove('hidden');
+        const r = stage.getBoundingClientRect();
+        for (const l of svg.querySelectorAll('line')) {
+            l.setAttribute('x1', a.x - r.left); l.setAttribute('y1', a.y - r.top);
+            l.setAttribute('x2', b.x - r.left); l.setAttribute('y2', b.y - r.top);
+        }
+    },
+
     // ---- Opening and closing ----
 
     async open(app, file) {
@@ -275,6 +430,11 @@ const Adjust = {
         // Its crop: adjusted as it will be seen. Masks and spots are placed
         // on the photo before it: the map from one to the other
         this.cropped = kept && !Edits.wholePhoto(kept) ? CropEditor.fromSnapshot(bmp.width, bmp.height, kept) : null;
+        // Its geometry (the crop's turn, straighten and frame), changed here
+        // by Geometry: as it opened, and as it is now
+        this.fullScale = scale;
+        this.geo0 = this.geoOf(kept, bmp.width, bmp.height);
+        this.geo = this.geo0;
         this.map = Develop.cropMap(this.cropped, bmp.width, bmp.height);
         // The whole working copy, kept: spots are done on it, before the crop
         const base = document.createElement('canvas');
@@ -286,6 +446,7 @@ const Adjust = {
         this.base = base;
         // Paint goes over everything (paint.js): shown on top, as it will be
         const painted = Paint.has(kept) ? await Paint.prepare(kept).catch(() => null) : null;
+        this._painted = painted;
         if (!current()) { this.dropPicture(); return; }
         const o = this.cropped ? this.cropped.outputRect() : { w: base.width, h: base.height };
         this.el('adj-dims').textContent = `${Math.round(o.w * scale)} × ${Math.round(o.h * scale)}`;
@@ -470,7 +631,7 @@ const Adjust = {
     },
 
     changedSinceOpen() {
-        return JSON.stringify(this.result()) !== this.start;
+        return JSON.stringify(this.result()) !== this.start || this.geoChanged();
     },
 
     // ---- Changing ----
@@ -481,8 +642,19 @@ const Adjust = {
         AdjustSync.changed();
     },
 
+    // A step: the settings and the geometry (Geometry's straighten)
+    state() {
+        return JSON.stringify({ a: this.result(), g: this.geo });
+    },
+
+    putState(s) {
+        const { a, g } = JSON.parse(s);
+        if (JSON.stringify(g) !== JSON.stringify(this.geo)) this.applyGeo(g);
+        this.setAll(a, { history: false });
+    },
+
     pushHistory() {
-        const s = JSON.stringify(this.result());
+        const s = this.state();
         if (this.history[this.history.length - 1] === s) return;
         this.history.push(s);
         if (this.history.length > 200) this.history.shift();
@@ -500,15 +672,15 @@ const Adjust = {
 
     undo() {
         if (!this.history.length) return false;
-        this.future.push(JSON.stringify(this.result()));
-        this.setAll(JSON.parse(this.history.pop()), { history: false });
+        this.future.push(this.state());
+        this.putState(this.history.pop());
         return true;
     },
 
     redo() {
         if (!this.future.length) return false;
-        this.history.push(JSON.stringify(this.result()));
-        this.setAll(JSON.parse(this.future.pop()), { history: false });
+        this.history.push(this.state());
+        this.putState(this.future.pop());
         return true;
     },
 
@@ -527,6 +699,12 @@ const Adjust = {
         if (which === 'grading') { delete a.grade; delete a.gradeBlend; delete a.gradeBalance; }
         if (which === 'effects') for (const [k] of this.EFFECTS) delete a[k];
         if (which === 'detail') for (const [k] of this.DETAIL) delete a[k];
+        if (which === 'geometry') {
+            this.pushHistory();
+            this.applyGeo(this.geoAt(0));
+            this.changed();
+            return;
+        }
         if (which === 'masks') delete a.masks;
         if (which === 'spots') delete a.spots;
         if (which === 'look' || which === 'basic') { delete a.look; delete a.lookAmount; delete a.lookAdj; delete a.lookName; }
@@ -651,7 +829,9 @@ const Adjust = {
         this.root.classList.toggle('adj-picking', !!on);
         this.el('adj-wb-pick').setAttribute('aria-pressed', String(this.picking === 'wb'));
         this.el('adj-restore-pick').setAttribute('aria-pressed', String(this.picking === 'restore'));
-        if (on) this.app.showToast(kind === 'restore' ? 'Click something that should be grey (Esc to stop)' : 'Click something that should be white or grey (Esc to stop)', 2400, null, null, { kind: 'adjust' });
+        this.el('adj-level').setAttribute('aria-pressed', String(this.picking === 'level'));
+        if (!on) this.levelLine(null);
+        if (on) this.app.showToast(kind === 'level' ? 'Drag along something that should be level or upright (Esc to stop)' : kind === 'restore' ? 'Click something that should be grey (Esc to stop)' : 'Click something that should be white or grey (Esc to stop)', 2400, null, null, { kind: 'adjust' });
     },
 
     pickAt(e) {

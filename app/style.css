@@ -6928,6 +6928,32 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     color: var(--accent-text);
 }
 
+/* Adjust's Geometry: the line being drawn to straighten along (adjust.js) */
+.adj-level-line {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 3;
+    overflow: visible;
+}
+
+.adj-level-line line {
+    stroke-linecap: round;
+}
+
+.adj-level-under {
+    stroke: rgb(0 0 0 / 0.5);
+    stroke-width: 4;
+}
+
+.adj-level-over {
+    stroke: var(--accent);
+    stroke-width: 2;
+    stroke-dasharray: 6 4;
+}
+
 /* Duplicates */
 .dupes-head {
     justify-content: flex-start;

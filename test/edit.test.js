@@ -3248,6 +3248,78 @@ const PROJECT = `
     }
 
     // ---- Photos, Adjust and Paint as modes ----
+    // ---- Adjust: Geometry, straighten by drawing a line ----
+    if (wanted('geometry')) {
+        console.log('geometry in Adjust (adjust.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas');
+                c.width = 400; c.height = 300;
+                const g = c.getContext('2d');
+                g.fillStyle = '#808080';
+                g.fillRect(0, 0, 400, 300);
+                await openProject('geo', { 'a.png': await canvasBlob(c), 'b.png': await canvasBlob(c) });
+                const a = app.files.find(f => f.name === 'a.png');
+                app.openSingle(a);
+                await app.enterAdjust(a);
+                await until(() => Adjust.ready);
+                // Draw a line: a line 5° down from level makes the photo turn 5° back
+                step = 'line';
+                document.getElementById('adj-level').click();
+                out.tool = Adjust.picking === 'level';
+                const rc = Adjust.canvas.getBoundingClientRect();
+                const x0 = rc.left + rc.width * 0.2, y0 = rc.top + rc.height * 0.5, len = rc.width * 0.6, t = 5 * Math.PI / 180;
+                const x1 = x0 + len * Math.cos(t), y1 = y0 + len * Math.sin(t);
+                document.getElementById('adj-stage').dispatchEvent(new PointerEvent('pointerdown', { clientX: x0, clientY: y0, button: 0, pointerId: 1, bubbles: true, cancelable: true }));
+                dispatchEvent(new PointerEvent('pointermove', { clientX: x1, clientY: y1, pointerId: 1, bubbles: true }));
+                dispatchEvent(new PointerEvent('pointerup', { clientX: x1, clientY: y1, pointerId: 1, bubbles: true }));
+                out.angle = Adjust.geo && Adjust.geo.angle;
+                out.toolOff = !Adjust.picking;
+                out.smaller = Adjust.PW < 400 && Adjust.PH < 300 && Adjust.PW / Adjust.PH > 1.2;
+                // Ctrl+Z puts it back, Ctrl+Y does it again
+                step = 'undo';
+                Adjust.undo();
+                out.undone = Adjust.geo === null && Adjust.PW === 400 && Adjust.PH === 300;
+                Adjust.redo();
+                out.redone = !!Adjust.geo && Math.abs(Adjust.geo.angle + 5) < 0.05;
+                // The Angle slider
+                step = 'slider';
+                const inp = document.getElementById('adj-angle');
+                inp.value = '2';
+                inp.dispatchEvent(new Event('input', { bubbles: true }));
+                inp.dispatchEvent(new Event('change', { bubbles: true }));
+                out.slider = !!Adjust.geo && Adjust.geo.angle === 2 && document.querySelector('#adj-geo .adj-num').value === '2.00';
+                // Kept with the photo as Crop's straighten, no adjustments
+                step = 'save';
+                await Modes.go('photos');
+                await until(() => !Adjust.isOpen);
+                out.saved = !!a._edit && a._edit.angle === 2 && !a._edit.adj;
+                // Opened again, it's there; Reset Geometry takes it off
+                step = 'again';
+                await app.enterAdjust(a);
+                await until(() => Adjust.ready);
+                out.again = !!Adjust.geo && Adjust.geo.angle === 2 && !Adjust.changedSinceOpen();
+                Adjust.resetSection('geometry');
+                out.reset = Adjust.geo === null && Adjust.changedSinceOpen();
+                await Modes.go('photos');
+                await until(() => !Adjust.isOpen);
+                out.resetSaved = !a._edit;
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('geometry: Draw a line turns the photo so the line is level (5° down: −5°), the tool off after', r.tool && Math.abs(r.angle + 5) < 0.05 && r.toolOff, JSON.stringify(r));
+        check('geometry: straightened, the frame shrinks to stay inside the photo', r.smaller, JSON.stringify(r));
+        check('geometry: Ctrl+Z puts it straight back, Ctrl+Y turns it again', r.undone && r.redone, JSON.stringify(r));
+        check('geometry: the Angle slider sets it', r.slider, JSON.stringify(r));
+        check('geometry: kept with the photo as Crop\'s straighten; opened again, it\'s there', r.saved && r.again, JSON.stringify(r));
+        check('geometry: Reset Geometry takes it off, and nothing is kept', r.reset && r.resetSaved, JSON.stringify(r));
+        check('geometry: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     if (wanted('modes')) {
         console.log('modes: Photos, Adjust and Paint (modes.js), Start in, Paint\'s start (blank.js)');
         const { page, issues } = await open();
