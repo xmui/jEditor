@@ -1466,7 +1466,19 @@ const PaintEditor = {
                 const stroking = i === this.cur && this.drag && this.drag.stroke && this.drag.target && this.drag.target.isMask;
                 const m = l.mask && (stroking ? this.preview(this.drag.target) : l.mask);
                 ctx.save();
-                Paint.adjustCanvas(ctx.canvas, l.adj, m ? (t) => { t.setTransform(LD); t.drawImage(m, 0, 0); } : null, l.opacity);
+                // A filter (slow): kept while what's under it is the same,
+                // and while something's being dragged, until it's let go
+                let key = null;
+                if (Paint.ADJ[l.adj.kind][2]) {
+                    const v = this.view;
+                    key = [l.id, JSON.stringify(l.adj), v.z, v.x, v.y, v.r, ctx.canvas.width, ctx.canvas.height, this.history.length, this.future.length, this.cur, i].join('|');
+                    if (this.drag && this._fxKey && this._fxKey.startsWith(l.id + '|' + JSON.stringify(l.adj) + '|' + [v.z, v.x, v.y, v.r].join('|'))) key = this._fxKey;
+                    else if (!this.drag) this._fxKey = key;
+                }
+                const pr = [[0, 0], [this.OW, 0], [0, this.OH], [this.OW, this.OH]].map(([x, y]) => VD.transformPoint({ x, y }));
+                const px = pr.map(q => q.x), py = pr.map(q => q.y);
+                const rect = { x: Math.min(...px), y: Math.min(...py), w: Math.max(...px) - Math.min(...px), h: Math.max(...py) - Math.min(...py) };
+                Paint.adjustCanvas(ctx.canvas, l.adj, m ? (t) => { t.setTransform(LD); t.drawImage(m, 0, 0); } : null, l.opacity, Math.hypot(LD.a, LD.b), key, rect);
                 ctx.restore();
                 return;
             }
@@ -3181,6 +3193,7 @@ const PaintEditor = {
                 ['Mask', this.maskItems()],
                 ...(n > 1 ? [['—'], ['Delete layer', () => this.deleteLayer(), true]] : [])
             ]],
+            ['Filter', this.adjItems(true)],
             ['Brushes', this.brushItems()],
             ['View', [
                 ['Snap', () => this.toggleSnap(), false, !!this.opts.snap, 'paint.snap'],
@@ -4879,7 +4892,7 @@ const PaintEditor = {
     drawShown(g, l, dx = 0, dy = 0) {
         if (l.adj) {
             const T = g.getTransform().translate(dx, dy);
-            Paint.adjustCanvas(g.canvas, l.adj, l.mask ? (t) => { t.setTransform(T); t.drawImage(l.mask, 0, 0); } : null, l.opacity);
+            Paint.adjustCanvas(g.canvas, l.adj, l.mask ? (t) => { t.setTransform(T); t.drawImage(l.mask, 0, 0); } : null, l.opacity, Math.hypot(T.a, T.b));
             return;
         }
         g.globalAlpha = l.opacity;
@@ -4912,8 +4925,8 @@ const PaintEditor = {
         if (Object.keys(Paint.ADJ[kind][1]).length) this.openAdj(this.cur);
     },
 
-    adjItems() {
-        return Object.entries(Paint.ADJ).map(([k, [name]]) => [name + (Object.keys(Paint.ADJ[k][1]).length ? '…' : ''), () => this.addAdjLayer(k)]);
+    adjItems(filters = false) {
+        return Object.entries(Paint.ADJ).filter(([, v]) => !!v[2] === filters).map(([k, [name]]) => [name + (Object.keys(Paint.ADJ[k][1]).length ? '…' : ''), () => this.addAdjLayer(k)]);
     },
 
     // Its settings, in a card by the layers, live; one step of Undo
@@ -4933,8 +4946,8 @@ const PaintEditor = {
         this.pushState(l.name);
         const set = (k, v) => { l.adj = { ...l.adj, [k]: v }; l.changed = true; this.renderSoon(); };
         const rows = [];
-        const add = (label, k, min, max, step) => {
-            const r = this.slider(label, min, max, step, () => l.adj[k], (v) => set(k, v));
+        const add = (label, k, min, max, step, log = false) => {
+            const r = this.slider(label, min, max, step, () => l.adj[k], (v) => set(k, v), null, log);
             rows.push(r);
             card.appendChild(r);
         };
@@ -4942,6 +4955,11 @@ const PaintEditor = {
         if (a.kind === 'bc') { add('Brightness', 'b', -100, 100, 1); add('Contrast', 'c', -100, 100, 1); }
         if (a.kind === 'hsl') { add('Hue', 'h', -180, 180, 1); add('Saturation', 's', -100, 100, 1); add('Lightness', 'l', -100, 100, 1); }
         if (a.kind === 'levels') { add('Black', 'lo', 0, 253, 1); add('White', 'hi', 2, 255, 1); add('Midtones', 'g', 0.1, 10, 0.01); }
+        if (a.kind === 'gauss' || a.kind === 'highpass') add('Radius', 'r', 0.5, 100, 0.5, true);
+        if (a.kind === 'motion') { add('Angle', 'a', -180, 180, 1); add('Distance', 'd', 1, 200, 1, true); }
+        if (a.kind === 'unsharp') { add('Amount', 'amt', 1, 500, 1); add('Radius', 'r', 0.5, 50, 0.5, true); add('Threshold', 'th', 0, 255, 1); }
+        if (a.kind === 'noise') add('Amount', 'amt', 0, 100, 1);
+        if (a.kind === 'median') add('Radius', 'r', 1, 20, 1);
         const foot = document.createElement('div');
         foot.className = 'paint-adj-foot';
         const btn = (label, cls, fn) => { const b = document.createElement('button'); b.className = cls; b.textContent = label; b.addEventListener('click', () => { b.blur(); fn(); }); foot.appendChild(b); };
