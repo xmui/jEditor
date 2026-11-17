@@ -493,7 +493,7 @@ const Edits = {
             b.id = id;
             b.className = 'btn ghost sm save-btn hidden';
             b.textContent = 'Save';
-            b.title = 'Save over the original: write the edit into the photo (Ctrl+S)';
+            b.title = Host.say('Save over the original: write the edit into the photo (Ctrl+S)');
             b.addEventListener('click', (ev) => { ev.stopPropagation(); this.app.saveOverOriginal(files()); });
             where(b);
         }
