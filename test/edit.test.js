@@ -3078,6 +3078,77 @@ const PROJECT = `
         await page.close();
     }
 
+    // ---- Paint: arrow, rounded rectangle, polygon; fill styles ----
+    if (wanted('paintshapes2')) {
+        console.log('paint: arrow, rounded rectangle and polygon, Outline / Filled / Outline and fill (paint-editor.js, paint.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 400; c.height = 300;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 400, 300);
+                await openProject('s2', { 's.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                P.opts.snap = false;
+                const st = document.getElementById('paint-stage');
+                const sc = (q) => { const sp = P.V().transformPoint(q); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                const down = (q) => st.dispatchEvent(new PointerEvent('pointerdown', { ...sc(q), pointerId: 1, bubbles: true, button: 0 }));
+                const up = (q) => st.dispatchEvent(new PointerEvent('pointerup', { ...sc(q), pointerId: 1, bubbles: true }));
+                const drag = (a, b) => { down(a); st.dispatchEvent(new PointerEvent('pointermove', { ...sc(b), pointerId: 1, bubbles: true })); up(b); };
+                const px = (l, x, y) => [...l.canvas.getContext('2d', { willReadFrequently: true }).getImageData(x, y, 1, 1).data];
+                Object.assign(P.opts, { lineWidth: 4, opacity: 100, shapeLayer: true, shapeFill: 'none', corner: 30 });
+                P.fg = '#ff0000'; P.bg = '#0000ff'; P.syncColours();
+                out.slot = P.GROUPS.find(g => g.includes('rect')).join();
+                // Arrow: a line with its head
+                step = 'arrow';
+                P.setTool('arrow');
+                drag({ x: 20, y: 150 }, { x: 120, y: 150 });
+                out.arrow = [P.layer().name, P.layer().shape.kind, P.layer().shape.arrow, px(P.layer(), 108, 154)[3] > 0, px(P.layer(), 60, 154)[3] === 0];
+                // Rounded rectangle, Outline and fill: its corner cut round, filled with the background colour
+                step = 'round';
+                P.setTool('roundrect');
+                P.opts.shapeFill = 'bg';
+                out.style = [...document.querySelectorAll('#paint-options select')].some(s => [...s.options].map(o => o.text).join() === 'Outline,Filled,Outline and fill');
+                drag({ x: 150, y: 30 }, { x: 350, y: 130 });
+                const rl = P.layer();
+                out.round = [rl.shape.kind, rl.shape.rad, px(rl, 151, 31)[3], px(rl, 250, 80)[2], px(rl, 250, 31)[0]];
+                // Polygon: clicks, then a double-click closes it
+                step = 'poly';
+                P.setTool('polygon');
+                P.opts.shapeFill = 'fg';
+                for (const q of [{ x: 40, y: 200 }, { x: 140, y: 200 }, { x: 90, y: 280 }]) { down(q); up(q); }
+                out.open = !!P.poly && P.poly.pts.length === 3;
+                st.dispatchEvent(new MouseEvent('dblclick', { ...sc({ x: 90, y: 280 }), bubbles: true }));
+                const pl = P.layer();
+                out.poly = [!P.poly, pl.shape.kind, pl.shape.pts.length, px(pl, 90, 220)[0], px(pl, 20, 280)[3]];
+                // Esc lets one go; clicking the first corner closes one too
+                for (const q of [{ x: 200, y: 200 }, { x: 260, y: 200 }]) { down(q); up(q); }
+                pressKey('Escape');
+                out.esc = !P.poly;
+                const n0 = P.layers.length;
+                for (const q of [{ x: 200, y: 200 }, { x: 260, y: 200 }, { x: 230, y: 260 }, { x: 200, y: 200 }]) { down(q); up(q); }
+                out.closed = [!P.poly, P.layers.length - n0];
+                // Kept through Paint.clean
+                const kept = Paint.clean({ id: 'abc', w: 400, h: 300, layers: [{ id: 'l1', rev: 'r1', shape: pl.shape }, { id: 'l2', rev: 'r2', shape: rl.shape }] });
+                out.kept = [kept.layers[0].shape.pts.length, kept.layers[1].shape.rad];
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint shapes: the Shapes slot has line, arrow, rectangle, rounded rectangle, ellipse and polygon', r.slot === 'line,arrow,rect,roundrect,ellipse,polygon', JSON.stringify(r));
+        check('paint shapes: the Arrow draws a line with its head', JSON.stringify(r.arrow) === '["Arrow","arrow",true,true,true]', JSON.stringify(r));
+        check('paint shapes: Style is Outline, Filled or Outline and fill; a rounded rectangle\'s corner is round, filled with the background colour', r.style && JSON.stringify(r.round) === '["roundrect",30,0,255,255]', JSON.stringify(r));
+        check('paint shapes: a polygon from clicks, closed with a double-click, Filled', r.open && JSON.stringify(r.poly) === '[true,"polygon",3,255,0]', JSON.stringify(r));
+        check('paint shapes: Esc lets a polygon go; the first corner again closes it', r.esc && JSON.stringify(r.closed) === '[true,1]', JSON.stringify(r));
+        check('paint shapes: polygons and rounded rectangles are kept with the layers', JSON.stringify(r.kept) === '[3,30]', JSON.stringify(r));
+        check('paint shapes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Restore colour (develop.js: restoreAuto; script.js: restoreColour) ----
     if (wanted('restore')) {
         console.log('restore colour (develop.js, script.js, adjust.js)');

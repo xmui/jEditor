@@ -5235,10 +5235,11 @@ const app = {
             'adjust.zoom100': () => Adjust.zoom100(),
             'adjust.undo': () => { if (!Adjust.undo()) this.showToast('Nothing to undo', 1200); },
             'adjust.redo': () => { if (!Adjust.redo()) this.showToast('Nothing to redo', 1200); },
-            'paint.done': () => { if (PaintEditor.crop) PaintEditor.endCrop(true); else if (PaintEditor.float) PaintEditor.commitFloat(); else Modes.go('photos'); },
+            'paint.done': () => { if (PaintEditor.crop) PaintEditor.endCrop(true); else if (PaintEditor.float) PaintEditor.commitFloat(); else if (PaintEditor.poly) PaintEditor.endPoly(true); else Modes.go('photos'); },
             'paint.cancel': () => {
                 if (PaintEditor.crop) PaintEditor.endCrop(false);
                 else if (PaintEditor.float) PaintEditor.cancelFloat();
+                else if (PaintEditor.poly) PaintEditor.endPoly(false);
                 else if (PaintEditor.ready) Modes.go('photos');
                 else this.cancelPaint();
             },
