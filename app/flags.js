@@ -68,8 +68,6 @@ const Flags = {
         this.query = '';
         this.orphans = new Map();
         this._loadedFor = null;
-        const input = document.getElementById('fb-search');
-        if (input) input.value = '';
         this.syncSearchUI();
     },
 
@@ -402,8 +400,6 @@ const Flags = {
     clearFilter(render = true) {
         this.filter = null;
         this.query = '';
-        const input = document.getElementById('fb-search');
-        if (input) input.value = '';
         this.syncSearchUI();
         if (render) this.refilter(true);
     },
@@ -544,68 +540,18 @@ const Flags = {
         setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     },
 
-    // ---- Search (in the folder pill) ----
+    // ---- The flag filter's chip (in the folder pill). Searching names
+    // and folders is Find anything's (palette.js): Ctrl+F or / opens it ----
 
     initSearch() {
-        const box = document.getElementById('fb-search-box');
-        const input = document.getElementById('fb-search');
-        let timer = null;
-        box.addEventListener('click', (e) => {
-            if (e.target.closest('#fb-search-clear')) {
-                input.value = '';
-                clearTimeout(timer);
-                this.setQuery('');
-                input.blur();
-                return;
-            }
-            input.focus();
-        });
         document.getElementById('fb-filter-chip').addEventListener('click', () => this.setFilter(null));
-        input.addEventListener('input', () => {
-            clearTimeout(timer);
-            timer = setTimeout(() => this.setQuery(input.value.trim()), 120);
-            this.syncSearchUI(input.value);
-        });
-        input.addEventListener('focus', () => box.classList.add('open'));
-        input.addEventListener('blur', () => this.syncSearchUI());
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                e.preventDefault();
-                e.stopPropagation();
-                if (input.value) {
-                    input.value = '';
-                    clearTimeout(timer);
-                    this.setQuery('');
-                }
-                input.blur();
-            } else if (e.key === 'Enter' || e.key === 'ArrowDown') {
-                // Into the results: arrows and shortcuts work on the grid again
-                e.preventDefault();
-                clearTimeout(timer);
-                this.setQuery(input.value.trim());
-                input.blur();
-                this.app.elements.mainInterface.focus();
-            }
-        });
     },
 
-    // Ctrl+F or /: the grid, with the search box ready to type in
     focusSearch() {
-        const app = this.app;
-        if (!app.files.length || !app.dirHandle) return false;
-        if (app.viewMode !== 'grid') app.setView('grid');
-        const input = document.getElementById('fb-search');
-        input.focus();
-        input.select();
+        Palette.open();
     },
 
-    syncSearchUI(typed = null) {
-        const box = document.getElementById('fb-search-box');
-        const input = document.getElementById('fb-search');
-        if (!box || !input) return;
-        const value = typed !== null ? typed : input.value;
-        box.classList.toggle('open', document.activeElement === input || !!value);
-        box.classList.toggle('has-value', !!value);
+    syncSearchUI() {
         const chip = document.getElementById('fb-filter-chip');
         if (chip) {
             chip.classList.toggle('hidden', !this.filter);
