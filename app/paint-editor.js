@@ -55,7 +55,7 @@ const PaintEditor = {
     opts: {
         size: 24, hardness: 80, opacity: 100, flow: 100,
         tolerance: 32, contiguous: true, sampleAll: true, fillWhat: 'match', gaps: 0,
-        lineWidth: 8, shapeFill: 'none', arrow: false, shapeLayer: true,
+        lineWidth: 8, shapeFill: 'none', arrow: false, shapeLayer: true, corner: 16,
         gradient: 'linear', gradTo: 'bg',
         density: 40, range: 30, stamp: 'star', tip: '', quickShape: true, history: false, aligned: true,
         strength: 50, toneRange: 'mid', sponge: 'less',
@@ -235,8 +235,11 @@ const PaintEditor = {
         ['recolor', 'Recolor: click a colour to change it to the brush colour', '<path d="M7 3c2.5 3 4 5.2 4 7a4 4 0 0 1-8 0c0-1.8 1.5-4 4-7z"/><path d="M14 14h6M17 11l3 3-3 3"/><path d="M17 21c-1.5 0-2.5-1-2.5-2.3"/>'],
         ['sep'],
         ['line', 'Line (U)', '<path d="M5 19 19 5"/>'],
+        ['arrow', 'Arrow', '<path d="M5 19 19 5M10 5h9v9"/>'],
         ['rect', 'Rectangle (R)', '<rect x="4" y="6" width="16" height="12" rx="1"/>'],
+        ['roundrect', 'Rounded rectangle', '<rect x="4" y="6" width="16" height="12" rx="4"/>'],
         ['ellipse', 'Ellipse (O)', '<ellipse cx="12" cy="12" rx="9" ry="7"/>'],
+        ['polygon', 'Polygon: click each corner; double-click, Enter or the first corner closes it', '<path d="M12 3l8 6-3 10H7L4 9z"/>'],
         ['text', 'Text (T)', '<path d="M4 7V4h16v3M9 20h6M12 4v16"/>'],
         ['sep'],
         ['picker', 'Colour picker (I)', '<path d="m2 22 1-1h3l9-9M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3z"/>'],
@@ -252,7 +255,7 @@ const PaintEditor = {
         ['eraser', 'eraser-block', 'eraser-soft'],
         ['spot-heal', 'heal', 'clone', 'dodge', 'burn', 'sponge', 'blur', 'sharpen', 'smudge'],
         ['fill', 'gradient', 'recolor'],
-        ['line', 'rect', 'ellipse'],
+        ['line', 'arrow', 'rect', 'roundrect', 'ellipse', 'polygon'],
         ['text'],
         ['picker'],
         ['hand']
@@ -289,6 +292,9 @@ const PaintEditor = {
         line: ['lineWidth', 'arrow', 'opacity', 'shapeLayer'],
         rect: ['lineWidth', 'shapeFill', 'opacity', 'shapeLayer'],
         ellipse: ['lineWidth', 'shapeFill', 'opacity', 'shapeLayer'],
+        arrow: ['lineWidth', 'opacity', 'shapeLayer'],
+        roundrect: ['lineWidth', 'shapeFill', 'corner', 'opacity', 'shapeLayer'],
+        polygon: ['lineWidth', 'shapeFill', 'opacity', 'shapeLayer'],
         text: ['font', 'fontSize', 'bold', 'italic', 'opacity'],
         wand: ['tolerance', 'contiguous', 'sampleAll'],
         'rect-select': [], 'ellipse-select': [], lasso: [], move: [], picker: [], hand: []
@@ -423,7 +429,7 @@ const PaintEditor = {
             const k = Math.exp(-Wheel.pixels(e).y * (e.ctrlKey ? 0.01 : 0.0015));
             this.zoomAt(this.view.z * k, e.clientX - r.left, e.clientY - r.top);
         }, { passive: false });
-        st.addEventListener('dblclick', (e) => { if (this.tool === 'hand') this.fit(); });
+        st.addEventListener('dblclick', (e) => { if (this.tool === 'hand') this.fit(); else if (this.poly) this.endPoly(true); });
         // Space held: the hand
         window.addEventListener('keydown', (e) => {
             if (!this.isOpen || e.code !== 'Space' || this.app.isTypingTarget(e.target)) return;
@@ -1053,7 +1059,7 @@ const PaintEditor = {
 
     // The size the tool has: the brush's, a line's or the text's
     sizeKey() {
-        return ['line', 'rect', 'ellipse'].includes(this.tool) ? 'lineWidth' : this.tool === 'text' ? 'fontSize' : 'size';
+        return this.SHAPES.includes(this.tool) ? 'lineWidth' : this.tool === 'text' ? 'fontSize' : 'size';
     },
 
     // Bigger or smaller by k (the wheel, [ and ]); whole: by a pixel at least
@@ -1104,6 +1110,7 @@ const PaintEditor = {
         if (this.crop) this.endCrop(false);
         if (this.text) this.endText(true);
         if (this.float && id !== 'move') this.commitFloat();
+        if (this.poly && id !== 'polygon') this.endPoly(true);
         this.tool = id;
         this.syncTools();
         this.remember();
@@ -1208,7 +1215,13 @@ const PaintEditor = {
             }
             if (k === 'bold') check('Bold', 'bold');
             if (k === 'italic') check('Italic', 'italic');
-            if (k === 'shapeFill') choose('Fill', 'shapeFill', [['none', 'None'], ['fg', 'Foreground'], ['bg', 'Background']]);
+            if (k === 'shapeFill') {
+                // As MS Paint has them: the outline in the brush colour, the
+                // fill in it too (Filled) or in the background colour
+                const c = choose('Style', 'shapeFill', [['none', 'Outline'], ['fg', 'Filled'], ['bg', 'Outline and fill']]);
+                if (c) c.title = 'Outline: the brush colour. Filled: all the brush colour. Outline and fill: filled with the background colour';
+            }
+            if (k === 'corner') num('Corners', 'corner', 0, 200, 1);
             if (k === 'gradient') choose('Shape', 'gradient', [['linear', 'Linear'], ['radial', 'Radial']]);
             if (k === 'gradTo') choose('To', 'gradTo', [['bg', 'Background colour'], ['clear', 'Nothing']]);
             if (k === 'font') choose('Font', 'font', this.FONTS);
@@ -1671,7 +1684,8 @@ const PaintEditor = {
         // Heal and clone: Alt-click is where they copy from
         if ((t === 'heal' || t === 'clone') && e.altKey) { this.setSource(p); return; }
         if (this.isBrush(t)) return this.startStroke(p, e.shiftKey ? this.lastDab : null);
-        if (['line', 'rect', 'ellipse', 'gradient', 'rect-select', 'ellipse-select'].includes(t)) {
+        if (t === 'polygon') { this.polyClick(p); return; }
+        if (['line', 'arrow', 'rect', 'roundrect', 'ellipse', 'gradient', 'rect-select', 'ellipse-select'].includes(t)) {
             const sp = this.snapPoint(p);
             this.drag = { kind: 'shape', start: sp, end: sp, mode: e.altKey ? 'sub' : e.shiftKey && t.endsWith('select') ? 'add' : 'new' };
             return;
@@ -1763,7 +1777,8 @@ const PaintEditor = {
     },
 
     // The tools Alt turns into the colour picker
-    PICKS: ['brush', 'pencil', 'spray', 'pixel', 'can', 'stamp', 'fill', 'recolor', 'line', 'rect', 'ellipse', 'gradient', 'text'],
+    PICKS: ['brush', 'pencil', 'spray', 'pixel', 'can', 'stamp', 'fill', 'recolor', 'line', 'arrow', 'rect', 'roundrect', 'ellipse', 'polygon', 'gradient', 'text'],
+    SHAPES: ['line', 'arrow', 'rect', 'roundrect', 'ellipse', 'polygon'],
 
     picking() {
         if (this.space || (this.drag && this.drag.kind === 'size')) return false;
@@ -1907,6 +1922,7 @@ const PaintEditor = {
         if (this.crop) { this.endCrop(false); return true; }
         if (this.float) { this.cancelFloat(); return true; }
         if (this.text) { this.endText(false); return true; }
+        if (this.poly) { this.endPoly(false); return true; }
         const e = this.history.pop();
         if (!e) return false;
         this.historyBytes -= e.bytes || 0;
@@ -2860,10 +2876,17 @@ const PaintEditor = {
     },
 
     // A shape's path, in the picture as shown
-    shapePath(kind, a, b) {
+    shapePath(kind, a, b, st = null) {
         const p = new Path2D();
         const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y), w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
-        if (kind === 'rect' || kind === 'rect-select') p.rect(x, y, w, h);
+        if (kind === 'polygon' && st && st.pts) {
+            st.pts.forEach(([px, py], i) => i ? p.lineTo(px, py) : p.moveTo(px, py));
+            p.closePath();
+        } else if (kind === 'roundrect') {
+            const r = Math.max(0, Math.min((st && st.rad) || 0, w / 2, h / 2));
+            if (p.roundRect) p.roundRect(x, y, w, h, r);
+            else p.rect(x, y, w, h);
+        } else if (kind === 'rect' || kind === 'rect-select') p.rect(x, y, w, h);
         else if (kind === 'ellipse' || kind === 'ellipse-select') p.ellipse(x + w / 2, y + h / 2, w / 2 || 0.01, h / 2 || 0.01, 0, 0, Math.PI * 2);
         else { p.moveTo(a.x, a.y); p.lineTo(b.x, b.y); }
         return p;
@@ -2871,19 +2894,21 @@ const PaintEditor = {
 
     // Shape options as drawn: draws onto g (already set to output space)
     shapeStyle(kind = this.tool) {
-        const o = this.opts, line = kind === 'line';
+        const o = this.opts, line = kind === 'line' || kind === 'arrow';
         return {
             stroke: this.fg, lw: o.lineWidth,
             fill: line || o.shapeFill === 'none' ? null : o.shapeFill === 'bg' ? this.bg : this.fg,
-            from: line ? 'none' : o.shapeFill, arrow: line && !!o.arrow
+            from: line ? 'none' : o.shapeFill, arrow: kind === 'arrow' || (line && !!o.arrow),
+            ...(kind === 'roundrect' ? { rad: o.corner } : {})
         };
     },
 
     drawShape(g, kind, a, b, st = this.shapeStyle(kind)) {
-        const path = this.shapePath(kind, a, b);
+        if (kind === 'polygon' && !st.pts && this.poly) st = { ...st, pts: this.poly.pts };
+        const path = this.shapePath(kind, a, b, st);
         g.lineJoin = 'round';
         g.lineCap = 'round';
-        if (kind !== 'line' && st.fill) {
+        if (kind !== 'line' && kind !== 'arrow' && st.fill) {
             g.fillStyle = st.fill;
             g.fill(path);
         }
@@ -2891,7 +2916,7 @@ const PaintEditor = {
             g.strokeStyle = st.stroke;
             g.lineWidth = st.lw;
             g.stroke(path);
-            if (kind === 'line' && st.arrow) {
+            if ((kind === 'line' || kind === 'arrow') && st.arrow) {
                 const ang = Math.atan2(b.y - a.y, b.x - a.x), L = Math.max(10, st.lw * 4);
                 g.beginPath();
                 g.moveTo(b.x, b.y);
@@ -2902,6 +2927,28 @@ const PaintEditor = {
                 g.fill();
             }
         }
+    },
+
+    // ---- Polygon: a click for each corner; double-click, Enter or the
+    // first corner again closes it, Esc lets it go ----
+
+    polyClick(p) {
+        const q = [p.ox, p.oy], near = 8 / this.view.z;
+        if (!this.poly) { this.poly = { pts: [q] }; this.renderSoon(); return; }
+        const pts = this.poly.pts, f = pts[0], last = pts[pts.length - 1];
+        if (pts.length >= 3 && Math.hypot(q[0] - f[0], q[1] - f[1]) <= near) { this.endPoly(true); return; }
+        if (Math.hypot(q[0] - last[0], q[1] - last[1]) > 2 / this.view.z) pts.push(q);
+        this.renderSoon();
+    },
+
+    endPoly(keep) {
+        const poly = this.poly;
+        if (!poly) return;
+        this.poly = null;
+        this.renderSoon();
+        if (!keep || poly.pts.length < 3) return;
+        const xs = poly.pts.map(q => q[0]), ys = poly.pts.map(q => q[1]);
+        this.placeShape('polygon', { x: Math.min(...xs), y: Math.min(...ys) }, { x: Math.max(...xs), y: Math.max(...ys) }, poly.pts);
     },
 
     // A shape's bounds in layer px (for undo)
@@ -2924,8 +2971,16 @@ const PaintEditor = {
             return;
         }
         if (tiny) return;
-        if (t !== 'gradient' && this.opts.shapeLayer && this.layers.length < Paint.MAX_LAYERS) {
-            const rec = { kind: t, a: [a.x, a.y].map(v => +v.toFixed(2)), b: [b.x, b.y].map(v => +v.toFixed(2)), ...this.shapeStyle(t), alpha: +(this.opts.opacity / 100).toFixed(3), m: this.textArr(this.extM().inverse().multiply(this.Ci)) };
+        if (t !== 'gradient') { this.placeShape(t, a, b); return; }
+        this.placeGradient(a, b);
+    },
+
+    // A shape made: a shape layer of its own (by default), or drawn onto
+    // the layer; pts: a polygon's corners
+    placeShape(t, a, b, pts = null) {
+        const st = { ...this.shapeStyle(t), ...(pts ? { pts: pts.map(q => [+q[0].toFixed(2), +q[1].toFixed(2)]) } : {}) };
+        if (this.opts.shapeLayer && this.layers.length < Paint.MAX_LAYERS) {
+            const rec = { kind: t, a: [a.x, a.y].map(v => +v.toFixed(2)), b: [b.x, b.y].map(v => +v.toFixed(2)), ...st, alpha: +(this.opts.opacity / 100).toFixed(3), m: this.textArr(this.extM().inverse().multiply(this.Ci)) };
             this.pushState(this.toolName(t));
             const l = this.makeLayer(this.toolName(t));
             l.shape = rec;
@@ -2942,8 +2997,27 @@ const PaintEditor = {
         g.setTransform(1, 0, 0, 1, 0, 0);
         g.clearRect(0, 0, this.W, this.H);
         g.setTransform(this.Ci);
+        this.drawShape(g, t, a, b, st);
+        const pad = this.opts.lineWidth * (st.arrow ? 4 : 1) + 4;
+        const r = this.layerBounds(pts ? pts.map(q => ({ x: q[0], y: q[1] })) : [a, b, { x: a.x, y: b.y }, { x: b.x, y: a.y }], pad);
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        this.drag = { tool: t };
+        this.putStroke(l.canvas.getContext('2d'));
+        this.drag = null;
+        g.clearRect(0, 0, this.W, this.H);
+        this.endPixels(l, r, { name: this.toolName(t) });
+    },
+
+    placeGradient(a, b) {
+        const t = 'gradient';
+        const l = this.layer();
+        this.beginPixels(l);
+        const g = this.stroke.getContext('2d');
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.clearRect(0, 0, this.W, this.H);
+        g.setTransform(this.Ci);
         let r;
-        if (t === 'gradient') {
+        {
             const o = this.opts;
             const grad = o.gradient === 'radial'
                 ? g.createRadialGradient(a.x, a.y, 0, a.x, a.y, Math.hypot(b.x - a.x, b.y - a.y))
@@ -2954,10 +3028,6 @@ const PaintEditor = {
             g.fillStyle = grad;
             g.fillRect(-1e5, -1e5, 2e5, 2e5);
             r = { x: 0, y: 0, w: this.W, h: this.H };
-        } else {
-            this.drawShape(g, t, a, b);
-            const pad = this.opts.lineWidth * (this.opts.arrow ? 4 : 1) + 4;
-            r = this.layerBounds([a, b, { x: a.x, y: b.y }, { x: b.x, y: a.y }], pad);
         }
         g.setTransform(1, 0, 0, 1, 0, 0);
         this.drag = { tool: t };
@@ -3621,7 +3691,8 @@ const PaintEditor = {
         const sh = l.shape;
         Object.assign(this.opts, { lineWidth: sh.lw, opacity: Math.round(sh.alpha * 100) });
         if (sh.kind === 'line') this.opts.arrow = sh.arrow;
-        else this.opts.shapeFill = sh.from;
+        else if (sh.kind !== 'arrow') this.opts.shapeFill = sh.from;
+        if (sh.kind === 'roundrect') this.opts.corner = sh.rad || 0;
         this.fg = sh.stroke;
         if (sh.from === 'bg' && sh.fill) this.bg = sh.fill;
         this.syncColours();
@@ -4429,6 +4500,21 @@ const PaintEditor = {
                 this.drawShape(ctx, this.tool, a, b);
                 ctx.globalAlpha = 1;
             }
+        }
+        if (this.poly && this.tool === 'polygon') {
+            const pts = this.poly.pts.slice();
+            if (this.hover) pts.push([this.hover.ox, this.hover.oy]);
+            const pl = new Path2D();
+            pts.forEach(([x, y], i) => i ? pl.lineTo(x, y) : pl.moveTo(x, y));
+            ctx.globalAlpha = this.opts.opacity / 100;
+            ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            ctx.strokeStyle = this.fg; ctx.lineWidth = Math.max(this.opts.lineWidth, 1 / z);
+            ctx.stroke(pl);
+            ctx.globalAlpha = 1;
+            const f = this.poly.pts[0];
+            ctx.beginPath(); ctx.arc(f[0], f[1], 5 / z, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff'; ctx.fill();
+            ctx.lineWidth = 1.5 / z; ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.stroke();
         }
         if (d && d.kind === 'lasso' && d.pts.length > 1) {
             const p = new Path2D();

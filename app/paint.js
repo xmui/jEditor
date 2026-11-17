@@ -304,7 +304,7 @@ const Paint = {
     },
 
     cleanShape(t) {
-        if (!t || typeof t !== 'object' || !['line', 'rect', 'ellipse'].includes(t.kind)) return null;
+        if (!t || typeof t !== 'object' || !['line', 'arrow', 'rect', 'roundrect', 'ellipse', 'polygon'].includes(t.kind)) return null;
         const num = (x, lo, hi) => typeof x === 'number' && isFinite(x) && x >= lo && x <= hi;
         const pt = (q) => Array.isArray(q) && q.length === 2 && q.every(x => num(x, -1e6, 1e6));
         const col = (c) => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c);
@@ -315,7 +315,9 @@ const Paint = {
             lw: num(t.lw, 0, 2000) ? t.lw : 8,
             fill: col(t.fill) ? t.fill : null,
             from: ['none', 'fg', 'bg'].includes(t.from) ? t.from : 'none',
-            arrow: !!t.arrow,
+            arrow: !!t.arrow || t.kind === 'arrow',
+            ...(t.kind === 'roundrect' ? { rad: num(t.rad, 0, 10000) ? t.rad : 0 } : {}),
+            ...(t.kind === 'polygon' ? { pts: Array.isArray(t.pts) ? t.pts.filter(pt).slice(0, 1000).map(q => q.slice()) : [] } : {}),
             alpha: num(t.alpha, 0, 1) ? t.alpha : 1,
             m: t.m.slice()
         };
