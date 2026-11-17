@@ -1258,7 +1258,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             const labels = (items) => items.map(i => i[0]).filter(l => typeof l === 'string').join('|');
             return { photo: labels(app.buildContextItems(null, true)), grid: labels(app.buildContextItems(null, false)) };
         });
-        check('... its menus have no Move, Rename, Convert or Delete, and no Add to Photos (it\'s there)', /Rotate left/.test(menus.photo) && /Adjust/.test(menus.photo) && !/Move|Rename|Convert|Delete|Add to Photos/.test(menus.photo) && !/New folder|Rename all|Clean up|Add all/.test(menus.grid) && !/—\|—/.test(menus.photo), JSON.stringify(menus));
+        check('... its menus have no Move, Rename, Convert or Delete, and no Add to Photos (it\'s there)', /Turn and flip|Rotate left/.test(menus.photo) && /Adjust/.test(menus.photo) && !/Move|Rename|Convert|Delete|Add to Photos/.test(menus.photo) && !/New folder|Rename all|Clean up|Add all/.test(menus.grid) && !/—\|—/.test(menus.photo), JSON.stringify(menus));
         check('... it\'s marked in the sidebar, and it isn\'t in Recent', o.active && !o.recent, JSON.stringify(o));
         const whole = await page.evaluate(async () => {
             await Places.open('photos-library:');
