@@ -55,7 +55,14 @@ const Paint = {
         hsl: ['Hue/Saturation', { h: 0, s: 0, l: 0 }],
         levels: ['Levels', { lo: 0, hi: 255, g: 1 }],
         bw: ['Black & white', {}],
-        invert: ['Invert', {}]
+        invert: ['Invert', {}],
+        // Filters (⋯ → Filter): sizes in the picture's own pixels
+        gauss: ['Gaussian blur', { r: 4 }, true],
+        motion: ['Motion blur', { a: 0, d: 20 }, true],
+        unsharp: ['Unsharp mask', { amt: 100, r: 2, th: 0 }, true],
+        noise: ['Add noise', { amt: 10 }, true],
+        median: ['Median', { r: 2 }, true],
+        highpass: ['High pass', { r: 10 }, true]
     },
 
     cleanAdj(a) {
@@ -67,11 +74,105 @@ const Paint = {
             const lo = num(a.lo, 0, 253, 0);
             return { kind: 'levels', lo, hi: num(a.hi, lo + 2, 255, 255), g: num(a.g, 0.1, 10, 1) };
         }
+        if (a.kind === 'gauss' || a.kind === 'highpass') return { kind: a.kind, r: num(a.r, 0.5, 100, a.kind === 'gauss' ? 4 : 10) };
+        if (a.kind === 'motion') return { kind: 'motion', a: num(a.a, -180, 180, 0), d: num(a.d, 1, 200, 20) };
+        if (a.kind === 'unsharp') return { kind: 'unsharp', amt: num(a.amt, 1, 500, 100), r: num(a.r, 0.5, 50, 2), th: num(a.th, 0, 255, 0) };
+        if (a.kind === 'noise') return { kind: 'noise', amt: num(a.amt, 0, 100, 10) };
+        if (a.kind === 'median') return { kind: 'median', r: num(a.r, 1, 20, 2) };
         return { kind: a.kind };
     },
 
+    // Box blur of RGBA (in place), r px each way, rows then columns
+    boxBlur(d, w, h, r) {
+        r = Math.max(0, Math.round(r));
+        if (!r) return;
+        const tmp = new Float32Array(Math.max(w, h) * 4), n = 2 * r + 1;
+        const pass = (len, count, at) => {
+            for (let k = 0; k < count; k++) {
+                let s0 = 0, s1 = 0, s2 = 0, s3 = 0;
+                for (let i = -r; i <= r; i++) { const j = at(k, Math.min(len - 1, Math.max(0, i))); s0 += d[j]; s1 += d[j + 1]; s2 += d[j + 2]; s3 += d[j + 3]; }
+                for (let i = 0; i < len; i++) {
+                    tmp[i * 4] = s0 / n; tmp[i * 4 + 1] = s1 / n; tmp[i * 4 + 2] = s2 / n; tmp[i * 4 + 3] = s3 / n;
+                    const o = at(k, Math.max(0, i - r)), q = at(k, Math.min(len - 1, i + r + 1));
+                    s0 += d[q] - d[o]; s1 += d[q + 1] - d[o + 1]; s2 += d[q + 2] - d[o + 2]; s3 += d[q + 3] - d[o + 3];
+                }
+                for (let i = 0; i < len; i++) { const j = at(k, i); d[j] = tmp[i * 4]; d[j + 1] = tmp[i * 4 + 1]; d[j + 2] = tmp[i * 4 + 2]; d[j + 3] = tmp[i * 4 + 3]; }
+            }
+        };
+        pass(w, h, (y, x) => (y * w + x) * 4);
+        pass(h, w, (x, y) => (y * w + x) * 4);
+    },
+
+    // Near enough to a Gaussian of that radius: three box blurs
+    gaussBlur(d, w, h, r) {
+        const b = Math.max(0, r / 1.7);
+        for (let i = 0; i < 3; i++) this.boxBlur(d, w, h, b);
+    },
+
+    // The filters, on w × h px; k: screen (or canvas) px to the picture's
+    filterPixels(d, a, w, h, k) {
+        if (a.kind === 'gauss') { this.gaussBlur(d, w, h, a.r * k); return; }
+        if (a.kind === 'unsharp' || a.kind === 'highpass') {
+            const b = new Uint8ClampedArray(d);
+            this.gaussBlur(b, w, h, a.r * k);
+            const amt = a.kind === 'unsharp' ? a.amt / 100 : 1, th = a.th || 0;
+            for (let i = 0; i < d.length; i += 4) for (let c = 0; c < 3; c++) {
+                const diff = d[i + c] - b[i + c];
+                if (a.kind === 'highpass') d[i + c] = 128 + diff;
+                else if (Math.abs(diff) >= th) d[i + c] = d[i + c] + diff * amt;
+            }
+            return;
+        }
+        if (a.kind === 'motion') {
+            const src = new Uint8ClampedArray(d), dist = a.d * k, n = Math.max(2, Math.min(64, Math.round(dist)));
+            const dx = Math.cos(a.a * Math.PI / 180) * dist, dy = -Math.sin(a.a * Math.PI / 180) * dist;
+            const offs = [];
+            for (let i = 0; i < n; i++) { const t = i / (n - 1) - 0.5; offs.push([Math.round(dx * t), Math.round(dy * t)]); }
+            for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+                let s0 = 0, s1 = 0, s2 = 0, s3 = 0;
+                for (const [ox, oy] of offs) {
+                    const j = (Math.min(h - 1, Math.max(0, y + oy)) * w + Math.min(w - 1, Math.max(0, x + ox))) * 4;
+                    s0 += src[j]; s1 += src[j + 1]; s2 += src[j + 2]; s3 += src[j + 3];
+                }
+                const i = (y * w + x) * 4;
+                d[i] = s0 / n; d[i + 1] = s1 / n; d[i + 2] = s2 / n; d[i + 3] = s3 / n;
+            }
+            return;
+        }
+        if (a.kind === 'noise') {
+            // (the same grain each time it's drawn)
+            const amt = a.amt * 2.55;
+            let seed = 12345;
+            for (let i = 0; i < d.length; i += 4) {
+                seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+                const v = ((seed / 0x7fffffff) - 0.5) * 2 * amt;
+                d[i] += v; d[i + 1] += v; d[i + 2] += v;
+            }
+            return;
+        }
+        if (a.kind === 'median') {
+            const r = Math.max(1, Math.min(20, Math.round(a.r * k))), src = new Uint8ClampedArray(d);
+            const hist = new Uint32Array(256);
+            for (let c = 0; c < 3; c++) for (let y = 0; y < h; y++) {
+                hist.fill(0);
+                let cnt = 0;
+                const y0 = Math.max(0, y - r), y1 = Math.min(h - 1, y + r);
+                const col = (x, s) => { if (x < 0 || x >= w) return; for (let yy = y0; yy <= y1; yy++) { hist[src[(yy * w + x) * 4 + c]] += s; cnt += s; } };
+                for (let x = -r; x <= r; x++) col(x, 1);
+                for (let x = 0; x < w; x++) {
+                    let half = cnt / 2, acc = 0, v = 0;
+                    for (; v < 256; v++) { acc += hist[v]; if (acc > half) break; }
+                    d[(y * w + x) * 4 + c] = v;
+                    col(x - r, -1);
+                    col(x + r + 1, 1);
+                }
+            }
+        }
+    },
+
     // The pixels (RGBA, in place) as the adjustment makes them
-    adjPixels(d, a) {
+    adjPixels(d, a, w = 0, h = 0, k = 1) {
+        if (this.ADJ[a.kind] && this.ADJ[a.kind][2]) { this.filterPixels(d, a, w, h, k); return; }
         const n = d.length;
         if (a.kind === 'bw') {
             for (let i = 0; i < n; i += 4) { const y = Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]); d[i] = d[i + 1] = d[i + 2] = y; }
@@ -116,20 +217,63 @@ const Paint = {
     // What's on canvas so far, adjusted, put back over it (at opacity,
     // through the mask drawMask draws, if any; each pixel as see-through
     // as it was)
-    adjustCanvas(canvas, adj, drawMask, opacity = 1) {
-        const w = canvas.width, h = canvas.height;
-        if (!w || !h || !opacity) return;
+    // key: a filter's result kept under it (a slow one, in the editor),
+    // used again while nothing under it has changed; r: the part of the
+    // canvas that's the picture (filters reach no further)
+    adjustCanvas(canvas, adj, drawMask, opacity = 1, k = 1, key = null, r = null) {
+        const W = canvas.width, H = canvas.height;
+        if (!W || !H || !opacity) return;
+        r = r || { x: 0, y: 0, w: W, h: H };
+        const x0 = Math.max(0, Math.floor(r.x)), y0 = Math.max(0, Math.floor(r.y));
+        const w = Math.min(W, Math.ceil(r.x + r.w)) - x0, h = Math.min(H, Math.ceil(r.y + r.h)) - y0;
+        if (w <= 0 || h <= 0) return;
         let t = this._adjC;
-        if (!t || t.width !== w || t.height !== h) { t = this._adjC = document.createElement('canvas'); t.width = w; t.height = h; }
+        if (!t || t.width !== W || t.height !== H) { t = this._adjC = document.createElement('canvas'); t.width = W; t.height = H; }
         const tg = t.getContext('2d', { willReadFrequently: true });
         tg.setTransform(1, 0, 0, 1, 0, 0);
         tg.globalAlpha = 1;
-        tg.globalCompositeOperation = 'copy';
-        tg.drawImage(canvas, 0, 0);
         tg.globalCompositeOperation = 'source-over';
-        const img = tg.getImageData(0, 0, w, h);
-        this.adjPixels(img.data, adj);
-        tg.putImageData(img, 0, 0);
+        tg.clearRect(0, 0, W, H);
+        this._fx = this._fx || new Map();
+        const kept = key && this._fx.get(key);
+        if (kept && kept.width === w && kept.height === h) {
+            tg.drawImage(kept, x0, y0);
+        } else {
+            if (adj.kind === 'motion') {
+                // Shifted copies averaged, on the GPU: copy i at 1/(i+1)
+                const dist = adj.d * k, n = Math.max(2, Math.min(48, Math.round(dist)));
+                const dx = Math.cos(adj.a * Math.PI / 180) * dist, dy = -Math.sin(adj.a * Math.PI / 180) * dist;
+                // (its edges carried on outwards, so none of the outside comes in)
+                const p = Math.ceil(dist / 2) + 2, src = document.createElement('canvas');
+                src.width = w + 2 * p; src.height = h + 2 * p;
+                const sg = src.getContext('2d');
+                sg.drawImage(canvas, x0, y0, w, h, p, p, w, h);
+                sg.drawImage(canvas, x0, y0, 1, h, 0, p, p, h);
+                sg.drawImage(canvas, x0 + w - 1, y0, 1, h, p + w, p, p, h);
+                sg.drawImage(src, 0, p, w + 2 * p, 1, 0, 0, w + 2 * p, p);
+                sg.drawImage(src, 0, p + h - 1, w + 2 * p, 1, 0, p + h, w + 2 * p, p);
+                tg.save();
+                tg.beginPath(); tg.rect(x0, y0, w, h); tg.clip();
+                for (let i = 0; i < n; i++) {
+                    const f = i / (n - 1) - 0.5;
+                    tg.globalAlpha = 1 / (i + 1);
+                    tg.drawImage(src, x0 - p + dx * f, y0 - p + dy * f);
+                }
+                tg.restore();
+                src.width = src.height = 0;
+            } else {
+                const img = canvas.getContext('2d', { willReadFrequently: true }).getImageData(x0, y0, w, h);
+                this.adjPixels(img.data, adj, w, h, k);
+                tg.putImageData(img, x0, y0);
+            }
+            if (key) {
+                const c = document.createElement('canvas');
+                c.width = w; c.height = h;
+                c.getContext('2d').drawImage(t, x0, y0, w, h, 0, 0, w, h);
+                this._fx.set(key, c);
+                while (this._fx.size > 4) { const [k0, c0] = this._fx.entries().next().value; c0.width = c0.height = 0; this._fx.delete(k0); }
+            }
+        }
         if (drawMask) {
             tg.save();
             tg.globalCompositeOperation = 'destination-in';
@@ -141,7 +285,7 @@ const Paint = {
         g.setTransform(1, 0, 0, 1, 0, 0);
         g.globalAlpha = opacity;
         g.globalCompositeOperation = 'source-atop';
-        g.drawImage(t, 0, 0);
+        g.drawImage(t, x0, y0, w, h, x0, y0, w, h);
         g.restore();
     },
 
@@ -407,7 +551,7 @@ const Paint = {
         ctx.save();
         for (const l of prepared.layers) {
             if (l.adj) {
-                this.adjustCanvas(canvas, l.adj, l.src ? (t) => this.drawThrough(t, ed, l.src, canvas.width, canvas.height, prepared, at) : null, l.opacity);
+                this.adjustCanvas(canvas, l.adj, l.src ? (t) => this.drawThrough(t, ed, l.src, canvas.width, canvas.height, prepared, at) : null, l.opacity, at.w / (ed ? ed.outputRect().w : prepared.w), null, at);
                 continue;
             }
             ctx.globalAlpha = l.opacity;

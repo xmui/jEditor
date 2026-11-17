@@ -1642,7 +1642,7 @@ const PROJECT = `
                 // The ⋯ menu's Select: invert (twice, back again), grow, shrink
                 const more = P.moreItems();
                 const sub = (n) => (more.find(i => i[0] === n) || [, []])[1];
-                out.menu = more.map(i => i[0]).join().startsWith('Image,Select,Layer,Brushes,View,—,History,QuickShape') && typeof more.find(i => i[0].startsWith('QuickShape'))[3] === 'boolean' && sub('Select').some(i => i[0] === 'Invert') &&
+                out.menu = more.map(i => i[0]).join().startsWith('Image,Select,Layer,Filter,Brushes,View,—,History,QuickShape') && typeof more.find(i => i[0].startsWith('QuickShape'))[3] === 'boolean' && sub('Select').some(i => i[0] === 'Invert') &&
                     sub('Smoothing').map(i => i[0]).join() === 'Off,Some,More,Most' && sub('Pen pressure').filter(i => i[3]).map(i => i[0]).join() === 'Size';
                 const w0 = P.sel.box.w;
                 P.invertSelection();
@@ -1748,7 +1748,7 @@ const PROJECT = `
         check('paint: the fill takes the photo\'s blue square, not beyond it; text is drawn', r.fill && r.fill[0][0] === 255 && r.fill[0][1] === 255 && r.fill[1] === 0 && r.text > 50, JSON.stringify(r));
         check('paint: the fill can fill the whole layer (only what\'s selected, with a selection), without the colour options; Ctrl+Z undoes it', r.wholeOpts && r.wholeSel && String(r.wholeSel[0]) === '255,0,255,255' && r.wholeSel[1] === 0 && String(r.whole) === '255,0,255,255,255,0,255,255' && r.wholeUndone, JSON.stringify([r.wholeOpts, r.wholeSel, r.whole, r.wholeUndone]));
         check('paint: a selection; Delete clears only inside it', r.selected && r.cleared[0] === 0 && r.cleared[1] === 255, JSON.stringify(r));
-        check('paint: the ⋯ menu has Image, Select, Layer, Brushes and View (and History and QuickShape, ticked when on, Smoothing and Pen pressure); Invert, Grow and Shrink change the selection', r.menu && r.inverted && JSON.stringify(r.reshaped) === '[6,0]', JSON.stringify([r.menu, r.inverted, r.reshaped]));
+        check('paint: the ⋯ menu has Image, Select, Layer, Filter, Brushes and View (and History and QuickShape, ticked when on, Smoothing and Pen pressure); Invert, Grow and Shrink change the selection', r.menu && r.inverted && JSON.stringify(r.reshaped) === '[6,0]', JSON.stringify([r.menu, r.inverted, r.reshaped]));
         check('paint: the wand selects by colour; Move drags it, Enter puts it down', r.wand && r.moved[0] === 0 && r.moved[1][3] === 255 && r.notDone, JSON.stringify(r));
         check('paint: Done keeps it with the photo (layers in the project\'s folder), the file untouched', r.kept && r.files === 2 && r.fileSame, JSON.stringify(r));
         check('paint: shown painted; opened again, the layers come back', r.shown && r.shown[0][0] > 200 && r.shown[1][1] > 200 && r.shown[2][0] > 200 && r.reopened, JSON.stringify(r));
@@ -3012,6 +3012,69 @@ const PROJECT = `
         check('paint adjustment layers: kept with the layers, settings kept in range', r.kept && r.kept[0] === '{"kind":"levels","lo":10,"hi":12,"g":10}' && r.kept[1] === false, JSON.stringify(r));
         check('paint adjustment layers: the viewer and Export draw them; nothing to move', r.viewer === 127 && r.noMove, JSON.stringify(r));
         check('paint adjustment layers: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- Paint: filters (filter layers) ----
+    if (wanted('paintfx')) {
+        console.log('paint: filters as layers (paint.js, paint-editor.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 200; c.height = 200;
+                const cg = c.getContext('2d');
+                cg.fillStyle = '#808080'; cg.fillRect(0, 0, 200, 200);
+                cg.fillStyle = '#000000'; cg.fillRect(0, 0, 100, 200);
+                cg.fillStyle = '#ffffff'; cg.fillRect(150, 150, 1, 1);
+                await openProject('fx', { 'f.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                P.opts.sampleAll = true;
+                const shown = (x, y) => { const k = P.newCanvas(); P.compose(k.getContext('2d')); return k.getContext('2d').getImageData(x, y, 1, 1).data[0]; };
+                out.menu = (P.moreItems().find(i => i[0] === 'Filter') || [, []])[1].map(i => i[0]).join('|');
+                const tryFx = (kind, set, at) => {
+                    P.addAdjLayer(kind);
+                    const l = P.layer();
+                    Object.assign(l.adj, set);
+                    P.closeAdj();
+                    const v = at.map(([x, y]) => shown(x, y));
+                    P.deleteLayer();
+                    return v;
+                };
+                step = 'gauss';
+                P.addAdjLayer('gauss');
+                out.card = !!document.querySelector('.paint-adj-card') && document.querySelector('.paint-adj-card').textContent.includes('Radius');
+                P.closeAdj(); P.deleteLayer();
+                out.gauss = tryFx('gauss', { r: 6 }, [[99, 50], [101, 50], [50, 50]]);
+                step = 'motion';
+                out.motion = tryFx('motion', { a: 0, d: 30 }, [[99, 50], [50, 50]]);
+                step = 'unsharp';
+                out.unsharp = tryFx('unsharp', { amt: 200, r: 3, th: 0 }, [[102, 50], [97, 50], [170, 50]]);
+                step = 'median';
+                out.median = tryFx('median', { r: 1 }, [[150, 150], [151, 151]]);
+                step = 'highpass';
+                out.highpass = tryFx('highpass', { r: 5 }, [[170, 50], [30, 50], [101, 50]]);
+                step = 'noise';
+                const n1 = tryFx('noise', { amt: 20 }, [[170, 40], [171, 40], [172, 40]]), n2 = tryFx('noise', { amt: 20 }, [[170, 40], [171, 40], [172, 40]]);
+                out.noise = [n1.some(v => v !== 128), n1.join() === n2.join()];
+                out.kept = JSON.stringify(Paint.cleanAdj({ kind: 'motion', a: 999, d: 0 }));
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint filters: ⋯ → Filter has the six, each a layer with its settings card', r.menu === 'Gaussian blur…|Motion blur…|Unsharp mask…|Add noise…|Median…|High pass…' && r.card, JSON.stringify(r));
+        check('paint filters: Gaussian blur softens an edge, leaving flat parts', r.gauss && r.gauss[0] > 5 && r.gauss[1] < 125 && r.gauss[2] === 0, JSON.stringify(r));
+        check('paint filters: Motion blur smears across', r.motion && r.motion[0] > 20 && r.motion[1] === 0, JSON.stringify(r));
+        check('paint filters: Unsharp mask makes an edge stand out', r.unsharp && r.unsharp[0] > 140 && r.unsharp[1] === 0 && r.unsharp[2] === 128, JSON.stringify(r));
+        check('paint filters: Median takes out a speck', r.median && r.median[0] === 128, JSON.stringify(r));
+        check('paint filters: High pass leaves flat parts grey, edges not', r.highpass && r.highpass[0] === 128 && r.highpass[1] === 128 && r.highpass[2] > 140, JSON.stringify(r));
+        check('paint filters: Add noise adds grain, the same each time it\'s drawn', r.noise && r.noise[0] && r.noise[1], JSON.stringify(r));
+        check('paint filters: settings kept in range', r.kept === '{"kind":"motion","a":180,"d":1}', JSON.stringify(r));
+        check('paint filters: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
