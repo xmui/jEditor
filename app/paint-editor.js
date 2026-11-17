@@ -60,7 +60,7 @@ const PaintEditor = {
         density: 40, range: 30, stamp: 'star', tip: '', quickShape: true, history: false, aligned: true,
         strength: 50, toneRange: 'mid', sponge: 'less',
         smoothing: 0, pressure: 'size',
-        font: 'system-ui, sans-serif', fontSize: 72, bold: false, italic: false,
+        font: 'system-ui, sans-serif', fontSize: 72, bold: false, italic: false, align: 'left', outline: 0,
         snap: true,
         sizeFor: 1500   // the long side of the layers the sizes were for
     },
@@ -295,7 +295,7 @@ const PaintEditor = {
         arrow: ['lineWidth', 'opacity', 'shapeLayer'],
         roundrect: ['lineWidth', 'shapeFill', 'corner', 'opacity', 'shapeLayer'],
         polygon: ['lineWidth', 'shapeFill', 'opacity', 'shapeLayer'],
-        text: ['font', 'fontSize', 'bold', 'italic', 'opacity'],
+        text: ['font', 'fontSize', 'bold', 'italic', 'align', 'outline', 'opacity'],
         wand: ['tolerance', 'contiguous', 'sampleAll'],
         'rect-select': [], 'ellipse-select': [], lasso: [], move: [], picker: [], hand: []
     },
@@ -1137,7 +1137,7 @@ const PaintEditor = {
         if (this.float) { this.transformOptions(box); return; }
         const o = this.opts;
         this.loadShapeStyle();
-        const save = () => { this.remember(); this.restyleSoon(); };
+        const save = () => { this.remember(); this.restyleSoon(); if (this.text) this.positionText(); };
         const add = (el) => { box.appendChild(el); return el; };
         const check = (label, key) => {
             const l = document.createElement('label');
@@ -1215,6 +1215,11 @@ const PaintEditor = {
             }
             if (k === 'bold') check('Bold', 'bold');
             if (k === 'italic') check('Italic', 'italic');
+            if (k === 'align') choose('Align', 'align', [['left', 'Left'], ['center', 'Centre'], ['right', 'Right']]);
+            if (k === 'outline') {
+                const c = num('Outline', 'outline', 0, 50);
+                if (c) c.title = 'An outline round the letters, in the background colour';
+            }
             if (k === 'shapeFill') {
                 // As MS Paint has them: the outline in the brush colour, the
                 // fill in it too (Filled) or in the background colour
@@ -3577,7 +3582,7 @@ const PaintEditor = {
 
     // Text goes on a layer of its own that keeps its words, font, colour
     // and where it is (l.text: { v, font, size, bold, italic, color, alpha,
-    // m }, m from its own space, its top left at 0,0, to the photo's,
+    // m, align?, outline?, ocolor? }, m from its own space, its top left at 0,0, to the photo's,
     // as paint.js keeps it), so the Text tool clicked on it opens it again.
     // Painting on it makes it pixels; moving or transforming it doesn't
 
@@ -3608,8 +3613,9 @@ const PaintEditor = {
         const t = l.text;
         this.cur = i;
         this.onMask = false;
-        Object.assign(this.opts, { font: t.font, fontSize: t.size, bold: t.bold, italic: t.italic, opacity: Math.round(t.alpha * 100) });
+        Object.assign(this.opts, { font: t.font, fontSize: t.size, bold: t.bold, italic: t.italic, align: t.align || 'left', outline: t.outline || 0, opacity: Math.round(t.alpha * 100) });
         this.fg = t.color;
+        if (t.outline) this.bg = t.ocolor;
         this.syncColours();
         const M = this.C.multiply(this.textM(t)), o = M.transformPoint({ x: 0, y: 0 });
         this.text = { ox: o.x, oy: o.y, rot: Math.atan2(M.b, M.a), k: Math.hypot(M.a, M.b) || 1, layer: l };
@@ -3631,6 +3637,11 @@ const PaintEditor = {
         ta.style.font = this.font(this.view.z * t.k);
         ta.style.color = this.fg;
         ta.style.opacity = String(this.opts.opacity / 100);
+        ta.style.textAlign = this.opts.align;
+        // (The outline outside the letters, as it'll be drawn: twice as wide, under them)
+        const ow = this.opts.outline * this.view.z * t.k;
+        ta.style.webkitTextStroke = ow ? `${ow * 2}px ${this.bg}` : '';
+        ta.style.paintOrder = ow ? 'stroke fill' : '';
         this.sizeText();
     },
 
@@ -3745,12 +3756,31 @@ const PaintEditor = {
         g.setTransform(1, 0, 0, 1, 0, 0);
         g.clearRect(0, 0, canvas.width, canvas.height);
         g.setTransform(this.textM(t));
-        g.font = this.textFont(t);
-        g.fillStyle = t.color;
         g.globalAlpha = t.alpha;
-        g.textBaseline = 'top';
-        t.v.split('\n').forEach((line, i) => g.fillText(line, 0, i * t.size * 1.2 + t.size * 0.1));
+        this.textLines(g, t, 0, 0);
         g.restore();
+    },
+
+    // Its lines set out from x, y (its top left): each lined up left, in
+    // the middle or right of the widest, with its outline (in its own
+    // colour, outside the letters) under them. Its width back
+    textLines(g, t, x, y) {
+        g.font = this.textFont(t);
+        g.textBaseline = 'top';
+        const lines = t.v.split('\n'), ws = lines.map(line => g.measureText(line).width), w = Math.max(...ws);
+        const f = { center: 0.5, right: 1 }[t.align] || 0;
+        g.lineJoin = 'round';
+        lines.forEach((line, i) => {
+            const lx = x + (w - ws[i]) * f, ly = y + i * t.size * 1.2 + t.size * 0.1;
+            if (t.outline) {
+                g.strokeStyle = t.ocolor;
+                g.lineWidth = t.outline * 2;
+                g.strokeText(line, lx, ly);
+            }
+            g.fillStyle = t.color;
+            g.fillText(line, lx, ly);
+        });
+        return w;
     },
 
     // The top shown text layer under p, or -1
@@ -3759,7 +3789,7 @@ const PaintEditor = {
             const l = this.layers[i];
             if (!l.text || l.hidden) continue;
             const q = this.textM(l.text).inverse().transformPoint(this.Ci.transformPoint({ x: p.ox, y: p.oy }));
-            const b = this.textSize(l.text), m = 4;
+            const b = this.textSize(l.text), m = 4 + (l.text.outline || 0);
             if (q.x >= -m && q.y >= -m && q.x <= b.w + m && q.y <= b.h + m) return i;
         }
         return -1;
@@ -3768,7 +3798,9 @@ const PaintEditor = {
     // The text as typed, with the Text tool's options now
     textRec(v, m) {
         const o = this.opts;
-        return { v, font: o.font, size: o.fontSize, bold: !!o.bold, italic: !!o.italic, color: this.fg, alpha: +(o.opacity / 100).toFixed(3), m };
+        // (Left and no outline aren't kept, as text from before them)
+        return { v, font: o.font, size: o.fontSize, bold: !!o.bold, italic: !!o.italic, color: this.fg, alpha: +(o.opacity / 100).toFixed(3), m,
+            ...(o.align !== 'left' ? { align: o.align } : {}), ...(o.outline > 0 ? { outline: o.outline, ocolor: this.bg } : {}) };
     },
 
     textName(v) {
@@ -3826,22 +3858,15 @@ const PaintEditor = {
         g.setTransform(1, 0, 0, 1, 0, 0);
         g.clearRect(0, 0, this.W, this.H);
         g.setTransform(this.Ci);
-        g.font = this.font();
-        g.fillStyle = this.fg;
-        g.textBaseline = 'top';
         const lines = value.split('\n'), lh = this.opts.fontSize * 1.2;
-        let w = 0;
-        lines.forEach((line, i) => {
-            g.fillText(line, t.ox, t.oy + i * lh + this.opts.fontSize * 0.1);
-            w = Math.max(w, g.measureText(line).width);
-        });
+        const w = this.textLines(g, this.textRec(value, null), t.ox, t.oy);
         g.setTransform(1, 0, 0, 1, 0, 0);
         this.drag = { tool: 'text' };
         this.putStroke(l.canvas.getContext('2d'));
         this.drag = null;
         g.clearRect(0, 0, this.W, this.H);
         const h = lines.length * lh;
-        this.endPixels(l, this.layerBounds([{ x: t.ox, y: t.oy }, { x: t.ox + w, y: t.oy }, { x: t.ox, y: t.oy + h }, { x: t.ox + w, y: t.oy + h }], this.opts.fontSize * 0.5));
+        this.endPixels(l, this.layerBounds([{ x: t.ox, y: t.oy }, { x: t.ox + w, y: t.oy }, { x: t.ox, y: t.oy + h }, { x: t.ox + w, y: t.oy + h }], this.opts.fontSize * 0.5 + this.opts.outline));
         this.renderSoon();
     },
 

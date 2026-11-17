@@ -299,7 +299,9 @@ const Paint = {
             size: t.size, bold: !!t.bold, italic: !!t.italic,
             color: typeof t.color === 'string' && /^#[0-9a-f]{6}$/i.test(t.color) ? t.color : '#000000',
             alpha: num(t.alpha, 0, 1) ? t.alpha : 1,
-            m: t.m.slice()
+            m: t.m.slice(),
+            ...(['center', 'right'].includes(t.align) ? { align: t.align } : {}),
+            ...(num(t.outline, 0.5, 50) ? { outline: t.outline, ocolor: typeof t.ocolor === 'string' && /^#[0-9a-f]{6}$/i.test(t.ocolor) ? t.ocolor : '#ffffff' } : {})
         };
     },
 
