@@ -8089,6 +8089,9 @@ const app = {
         this.stopSlideshow();
         try {
             if (file._rotationQueue) await file._rotationQueue;
+            // The film strip moved in first, so it opens fitted beside it
+            // (modes.js; Modes.render puts it back if it can't open)
+            Modes.placeStrip('adjust');
             await Adjust.open(this, file);
         } catch (err) {
             console.error('Adjust open failed:', err);
@@ -8190,6 +8193,9 @@ const app = {
         this.stopSlideshow();
         try {
             if (file._rotationQueue) await file._rotationQueue;
+            // The film strip moved in first, so it opens fitted beside it
+            // (modes.js; Modes.render puts it back if it can't open)
+            Modes.placeStrip('paint');
             await PaintEditor.open(this, file);
         } catch (err) {
             console.error('Paint open failed:', err);
