@@ -1465,6 +1465,21 @@ header:has(.header-controls.expanded) {
     color: var(--accent-text);
 }
 
+/* Save: only while there's an edit not in the photo yet (edits.js
+   updateSave), in the accent, as the pencil beside it */
+.btn.save-btn,
+:root:not([data-skin]) .mode-head .mode-head-acts .btn.save-btn {
+    color: var(--accent-text);
+}
+
+.file-info .save-btn {
+    height: calc(var(--ctl-md) - 6px);
+    margin-left: var(--sp-1);
+    padding: 0 var(--sp-2);
+    border-radius: var(--r-pill);
+    pointer-events: auto;
+}
+
 /* ---- 7. Folder pill, folder list, flags, search ---- */
 
 /* Folder pill in grid view, top left, level with the header pills. Kept
@@ -1486,6 +1501,16 @@ header:has(.header-controls.expanded) {
 
 .folder-bar .seg > button {
     height: calc(var(--ctl-lg) - 14px);
+    border-radius: var(--r-pill);
+}
+
+/* All photos / Folders: pills, as the pill they're in (the look's own
+   rounding for a switch, below, would square them off) */
+:root:not([data-skin]) .folder-bar .fb-modes.seg {
+    border-radius: var(--r-pill);
+}
+
+:root:not([data-skin]) .folder-bar .seg > button {
     border-radius: var(--r-pill);
 }
 

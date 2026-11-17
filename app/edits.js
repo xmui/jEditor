@@ -480,6 +480,39 @@ const Edits = {
         const e = app.currentFile && app.currentFile._edit;
         el.classList.toggle('hidden', !e);
         if (e) el.title = this.describe(e);
+        this.updateSave();
+    },
+
+    // Save, in the file pill and in Adjust's and Paint's heads: shown only
+    // while there's an edit not yet in the photo (or one of those selected
+    // in the grid). It's Save over the original (Ctrl+S).
+    saveButton(id, where, files) {
+        let b = document.getElementById(id);
+        if (!b && where) {
+            b = document.createElement('button');
+            b.id = id;
+            b.className = 'btn ghost sm save-btn hidden';
+            b.textContent = 'Save';
+            b.title = 'Save over the original: write the edit into the photo (Ctrl+S)';
+            b.addEventListener('click', (ev) => { ev.stopPropagation(); this.app.saveOverOriginal(files()); });
+            where(b);
+        }
+        return b;
+    },
+
+    updateSave() {
+        const app = this.app;
+        if (!app || !app.elements || !app.elements.fileName) return;
+        const tool = app.cropState && app.cropState.active ? app.cropState.tool : null;
+        const grid = app.viewMode === 'grid';
+        const picked = () => grid && app.selection && app.selection.size ? [...app.selection] : [app.currentFile];
+        const photos = this.saveButton('file-save', (b) => (document.getElementById('file-edit') || app.elements.fileName).after(b), picked);
+        if (photos) photos.classList.toggle('hidden', !!tool || !picked().some(f => f && f._edit));
+        const unsaved = (M) => !!(M && M.file && (M.file._edit || M.changedSinceOpen()));
+        const adj = this.saveButton('adj-save');
+        if (adj) adj.classList.toggle('hidden', tool !== 'adjust' || !unsaved(Adjust));
+        const paint = this.saveButton('paint-save');
+        if (paint) paint.classList.toggle('hidden', tool !== 'paint' || !unsaved(PaintEditor));
     },
 
     // The pencil's tooltip

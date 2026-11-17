@@ -329,6 +329,7 @@ const PaintEditor = {
         bind('paint-redo', () => this.redo());
         // ⋯: Select and Layer (the plan: every new command lands in a menu,
         // so the bar never grows)
+        this.el('paint-save').addEventListener('click', () => this.app.saveOverOriginal([this.file]));
         this.el('paint-more').addEventListener('click', (e) => {
             const b = e.currentTarget;
             e.stopPropagation(); // not to the window, which closes menus
@@ -964,6 +965,7 @@ const PaintEditor = {
         this.before = this.newCanvas();
         this.showDims();
         this.ready = true;
+        Edits.updateSave();
         this.syncColours();
         this.setTool(this.tool);
         this.sizeCanvas();
@@ -4866,6 +4868,7 @@ const PaintEditor = {
         this.el('paint-layer-delete').disabled = this.layers.length <= 1;
         this.el('paint-undo').disabled = !this.history.length && !this.float;
         this.el('paint-redo').disabled = !this.future.length;
+        Edits.updateSave();
     },
 
     // A group's row: its eye, open or closed, its name

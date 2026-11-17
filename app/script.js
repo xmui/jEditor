@@ -3986,6 +3986,7 @@ const app = {
 
     // Grid highlight: only tiles whose state changed are touched
     updateSelectionUI() {
+        Edits.updateSave();
         const shown = this._shownSelected || new Set();
         for (const f of shown) {
             if (!this.selection.has(f) && f._gridEl) f._gridEl.classList.remove('selected');
@@ -4021,6 +4022,7 @@ const app = {
     },
 
     setView(mode) {
+        queueMicrotask(() => Edits.updateSave()); // the selection's edits in grid, the photo's in single
         // Single view needs a photo in the folder being shown
         if (mode === 'single' && !Folders.inView(this.currentFile)) {
             const first = this.viewFiles()[0];

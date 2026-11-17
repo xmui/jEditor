@@ -476,6 +476,8 @@
             <span id="adj-sync-chip" class="adj-sync-chip hidden" role="status">Auto sync: <span id="adj-sync-n"></span><button id="adj-sync-off" class="adj-sync-x" title="Turn Auto Sync off (Ctrl+Alt+Shift+S)" aria-label="Turn Auto Sync off">✕</button></span>
             <!-- No Done bar: what's done is kept; the mode switch (or Esc) goes back to Photos -->
             <span class="mode-head-acts" role="toolbar" aria-label="Adjust">
+                <!-- Only while there's an edit not in the photo yet (edits.js updateSave) -->
+                <button id="adj-save" class="btn ghost sm save-btn hidden" title="Save over the original: write the edit into the photo (Ctrl+S)">Save</button>
                 <button id="adj-before" class="btn ghost sm" aria-pressed="false" title="Before and after (\)">Before</button>
                 <button id="adj-reset" class="btn ghost sm" title="Reset everything (R)">Reset</button>
                 <span class="mode-head-sep" aria-hidden="true"></span>
@@ -691,6 +693,7 @@
                 <button id="paint-redo" class="btn ghost sm icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
             </span></span>
             <span class="mode-head-acts" role="toolbar" aria-label="Paint">
+                <button id="paint-save" class="btn ghost sm save-btn hidden" title="Save over the original: write the edit into the photo (Ctrl+S)">Save</button>
                 <button id="paint-more" class="btn ghost sm adj-more" title="More: Image, Select, Layer and the rest" aria-label="More" aria-haspopup="menu"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.25" fill="currentColor"/><circle cx="12" cy="12" r="1.25" fill="currentColor"/><circle cx="19" cy="12" r="1.25" fill="currentColor"/></svg></button>
             </span>
         </div>
