@@ -13,6 +13,10 @@ const os = require('os');
 const path = require('path');
 const { _electron: electron } = require('playwright-core');
 const { QUIET_FIRST_OPEN, floatingBoxes, overTopBar } = require('./page-helpers.js');
+const { CONFORMANCE, EXPECTED, KNOWN } = require('./handles-conformance.js');
+// JEDITOR_HOST_HANDLES=1: the whole suite with the app's own folder handles
+// (mac/handles.js), not Chromium's (docs/plans/lighter-desktop.md, step 1)
+const HOST_HANDLES = process.env.JEDITOR_HOST_HANDLES === '1';
 
 const ROOT = path.join(__dirname, '..');
 const MAC = path.join(ROOT, 'mac');
@@ -78,6 +82,8 @@ async function launch(profile, args = [], env = {}) {
     page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
     await page.waitForFunction(() => typeof app !== 'undefined' && app.elements && window.JEditorNative);
     await page.evaluate(QUIET_FIRST_OPEN);
+    // (the page read its settings before that: Keep edits off now too)
+    await page.evaluate(() => { try { if (JSON.parse(localStorage.getItem('jeditor.ui') || '{}').keepEdits === false) app.uiPrefs.keepEdits = false; } catch (e) { /* no storage */ } });
     // Themes are paused, under Settings → Experimental (off to start with):
     // on here, for the tests that use one (a test of it being off sets it)
     await page.evaluate(() => { if (!Experiments.on('themes')) Experiments.set('themes', true); });
@@ -162,6 +168,24 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await page.evaluate(() => app.undo());
         check('... and Ctrl+Z puts it back', fs.existsSync(path.join(smith, 'photo2.jpg')));
         check('no .jeditor folder in the project', !fs.existsSync(path.join(smith, '.jeditor')), fs.readdirSync(smith).join());
+        check('no JS errors', errors.length === 0, errors.join('; '));
+        await app.close();
+    }
+
+    console.log(`mac: folder handles, ${HOST_HANDLES ? 'the app\'s own (handles.js)' : 'Chromium\'s'}`);
+    {
+        // The file operations the page does, on a folder on disk: Chromium's
+        // own handles give what test/handles-conformance.js records, and
+        // the app's own (JEDITOR_HOST_HANDLES=1) the same
+        const dir = fs.mkdtempSync(path.join(tmp, 'conformance-'));
+        const { app, page, errors } = await launch(path.join(tmp, 'profile-conformance'));
+        const r = await page.evaluate(`(async () => { const root = await JEditorNative.folderHandle(${JSON.stringify(dir)}); const r = await (${CONFORMANCE})(root); r.ours = !!(window.HostHandles && HostHandles.isOurs(root)); return r; })()`);
+        const want = (k) => (HOST_HANDLES && k in KNOWN ? KNOWN[k] : EXPECTED[k]);
+        const diff = Object.keys(EXPECTED).filter(k => r[k] !== want(k));
+        check(HOST_HANDLES ? 'the app makes the handles (the switch is on)' : 'Chromium makes the handles (the switch is off)', r.ours === HOST_HANDLES);
+        check(`every file operation gives what Chromium's own handles do (${Object.keys(EXPECTED).length})`, diff.length === 0,
+            diff.map(k => `${k}: wanted ${JSON.stringify(want(k))}, got ${JSON.stringify(r[k])}`).join('; '));
+        check('nothing left in the folder', fs.readdirSync(dir).length === 0, fs.readdirSync(dir).join());
         check('no JS errors', errors.length === 0, errors.join('; '));
         await app.close();
     }
@@ -1234,7 +1258,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             const labels = (items) => items.map(i => i[0]).filter(l => typeof l === 'string').join('|');
             return { photo: labels(app.buildContextItems(null, true)), grid: labels(app.buildContextItems(null, false)) };
         });
-        check('... its menus have no Move, Rename, Convert or Delete, and no Add to Photos (it\'s there)', /Rotate left/.test(menus.photo) && /Adjust/.test(menus.photo) && !/Move|Rename|Convert|Delete|Add to Photos/.test(menus.photo) && !/New folder|Rename all|Clean up|Add all/.test(menus.grid) && !/—\|—/.test(menus.photo), JSON.stringify(menus));
+        check('... its menus have no Move, Rename, Convert or Delete, and no Add to Photos (it\'s there)', /Turn and flip|Rotate left/.test(menus.photo) && /Adjust/.test(menus.photo) && !/Move|Rename|Convert|Delete|Add to Photos/.test(menus.photo) && !/New folder|Rename all|Clean up|Add all/.test(menus.grid) && !/—\|—/.test(menus.photo), JSON.stringify(menus));
         check('... it\'s marked in the sidebar, and it isn\'t in Recent', o.active && !o.recent, JSON.stringify(o));
         const whole = await page.evaluate(async () => {
             await Places.open('photos-library:');

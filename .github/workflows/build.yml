@@ -36,6 +36,8 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
+      # WebKit, for the app's own folder handles in it (test/handles.test.js)
+      - run: npx playwright-core install --with-deps webkit
       - run: npm test
         env:
           CHROME_PATH: /usr/bin/google-chrome
@@ -167,6 +169,12 @@ jobs:
       # The Mac app's tests run here too, as the Mac app and as the Linux one
       - name: App tests
         run: xvfb-run -a node test/mac.test.js
+      # Again with the app's own folder handles in place of Chromium's (off
+      # in the app for now; docs/plans/lighter-desktop.md, step 1)
+      - name: App tests, the app's own folder handles
+        run: xvfb-run -a node test/mac.test.js
+        env:
+          JEDITOR_HOST_HANDLES: '1'
       - name: Build
         run: node build.js
         working-directory: mac

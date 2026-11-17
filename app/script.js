@@ -347,6 +347,8 @@ const app = {
         if (readWrite) {
             options.mode = 'readwrite';
         }
+        // A handle that can't be asked (WebKit's own) has the access it has
+        if (typeof fileHandle.queryPermission !== 'function') return true;
         // Check if permission was already granted. If so, return true.
         if ((await fileHandle.queryPermission(options)) === 'granted') {
             return true;
@@ -1979,8 +1981,8 @@ const app = {
             // A photo a scanner is writing right now is left for the folder
             // watch to add once it's whole (only just-changed files are checked)
             // (a library photo is always whole)
-            const whole = await Promise.all(datas.map((d, j) => d && !(d instanceof Blob) ? true : d && Date.now() - d.lastModified < Watch.SETTLED_MS
-                ? Watch.complete(d, batch[j].entry.name) : true));
+            const whole = await Promise.all(datas.map((d, j) => d && Date.now() - d.lastModified < Watch.SETTLED_MS
+                ? Watch.whole(d, batch[j].entry, batch[j].entry.name) : true));
             if (gen !== this._openGen) return;
             batch.forEach(({ entry, relPath, parentDir }, j) => {
                 const fileData = datas[j];
@@ -3481,7 +3483,9 @@ const app = {
             // orientation applied, or null to decode in full instead.
             // Off for the session where the decoder can't do it (no
             // orientation reported, or it keeps failing): no double decodes
-            let scaledOff = typeof ImageDecoder === 'undefined', scaledFails = 0;
+            // WebKit's ImageDecoder decodes in full whatever size is asked for,
+            // with no orientation, and can hang on a stream: off there from the start
+            let scaledOff = typeof ImageDecoder === 'undefined' || typeof VideoFrame === 'undefined' || !('rotation' in VideoFrame.prototype), scaledFails = 0;
             const decodeScaled = async (file, need) => {
                 if (scaledOff) return null;
                 const size = await jpegSize(file);
