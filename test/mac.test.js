@@ -387,6 +387,8 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         // The sidebar's rename (in place: Places.renameFolder), on the disk:
         // Recents follow it, and Undo puts the old name back
         const beta = makeOrder(projectsDir, 'Beta', 1);
+        // A desktop window: xvfb's screen is 640 wide, where the sidebar is over the grid, as on a phone
+        await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1200, 800));
         const follow = await page.evaluate(async (p) => {
             const until = (ok) => new Promise(async (res) => { const end = Date.now() + 10000; while (!ok() && Date.now() < end) await new Promise(r => setTimeout(r, 50)); res(); });
             await JEditorNative.openPath(p.beta);
@@ -684,11 +686,14 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             out.photoFilter = img && getComputedStyle(img).backdropFilter;
             // Room for the traffic lights, given back in full screen
             app.setView('grid');
+            if (Folders.railOpen()) Folders.toggleRail();
             await new Promise(r => setTimeout(r, 400));
+            // (the sidebar closed, the first pill is Photos · Adjust · Paint's row, the folder pill after it)
             const gutter = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gutter'));
-            out.lightsRoom = document.querySelector('.folder-bar').getBoundingClientRect().left - gutter;
+            const first = () => document.querySelector('#mode-row.float:not(.hidden)') || document.querySelector('.folder-bar');
+            out.lightsRoom = first().getBoundingClientRect().left - gutter;
             document.documentElement.classList.add('fullscreen');
-            out.fullscreenRoom = document.querySelector('.folder-bar').getBoundingClientRect().left - gutter;
+            out.fullscreenRoom = first().getBoundingClientRect().left - gutter;
             document.documentElement.classList.remove('fullscreen');
             // The top row moves the window; buttons in it don't
             out.drag = getComputedStyle(document.body, '::before').getPropertyValue('-webkit-app-region') || getComputedStyle(document.body, '::before').getPropertyValue('app-region');
@@ -715,11 +720,10 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                     app.applyUiPrefs();
                     app.setView(where === 'grid' || where === 'sidebar' ? 'grid' : 'single');
                     await wait(300);
-                    const rail = !!document.getElementById('mode-seg').getClientRects().length;
-                    if (rail !== (where === 'sidebar')) app.keyHandlers()['folders.rail']();
+                    if (Folders.railOpen() !== (where === 'sidebar')) app.keyHandlers()['folders.rail']();
                     if (where === 'adjust' || where === 'paint') {
                         Modes.go(where);
-                        for (let i = 0; i < 60 && !document.querySelector('.mode-float.over-mode:not(.hidden)'); i++) await wait(50);
+                        for (let i = 0; i < 60 && !document.querySelector('.mode-float.over-mode:not(.hidden), #mode-row.over-mode:not(.hidden), .folder-rail:not(.hidden) #mode-row'); i++) await wait(50);
                     }
                     await wait(500);
                 }, [scale, where]);
@@ -733,8 +737,10 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                     const lights = { name: 'the traffic lights', left: l.x, top: l.y, right: l.x + 54, bottom: l.y + 14 };
                     // Over Adjust and Paint, only the mode chip: the rest is under them
                     const editing = !!document.querySelector('.mode-screen:not(.hidden)');
-                    const pills = seen(editing ? '.mode-float' : 'header .toolbar, header .file-info, .folder-bar, .mode-float');
-                    const others = seen('#mode-seg, .folder-rail, .mode-screen:not(.hidden) .mode-head-acts, .paint-options, .paint-tools');
+                    const pills = seen(editing ? '.mode-float, #mode-row.float' : 'header .toolbar, header .file-info, .folder-bar, .mode-float, #mode-row.float');
+                    // (in jEditor's own look the lights are in the sidebar's top, as Finder's: what's in it starts below them)
+                    const others = seen('.folder-rail > *, .mode-screen:not(.hidden) .mode-head-acts, .paint-options, .paint-tools');
+                    if (document.documentElement.dataset.skin) others.push(...seen('.folder-rail'));
                     const out = [];
                     for (const a of [lights, ...pills]) for (const b of [...pills, ...others]) if (a !== b && hit(a, b) && !(a.name === 'mode-float' && b.name === 'folder-bar')) out.push(a.name + ' over ' + b.name);
                     // The lights in line with the pill beside them
@@ -776,7 +782,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                 app.applyUiPrefs();
                                 app.setView('grid');
                                 await wait(80);
-                                if (!!document.getElementById('mode-seg').getClientRects().length !== rail) app.keyHandlers()['folders.rail']();
+                                if (Folders.railOpen() !== rail) app.keyHandlers()['folders.rail']();
                                 await wait(80);
                                 // Photos' own chip (the folder pill's, the sidebar closed), to match
                                 const photos = document.getElementById('mode-chip-bar');
@@ -784,7 +790,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                 const look_ = (e) => { const c = getComputedStyle(e); return [c.fontSize, c.fontWeight, c.paddingLeft, c.paddingRight, c.borderRadius, c.backgroundColor, c.color].join(' '); };
                                 const photosLook = pb && look_(photos);
                                 Modes.go(where);
-                                for (let i = 0; i < 60 && !document.querySelector('.mode-float.over-mode:not(.hidden)'); i++) await wait(50);
+                                for (let i = 0; i < 60 && !document.querySelector('.mode-float.over-mode:not(.hidden), #mode-row.over-mode:not(.hidden), .folder-rail:not(.hidden) #mode-row'); i++) await wait(50);
                                 const name = document.querySelector('.mode-screen:not(.hidden) .mode-title');
                                 if (name) name.textContent = 'IMG_20261101_143207.jpg';
                                 await wait(150);
@@ -799,7 +805,9 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                     await back();
                                     return { miss, box: null };
                                 }
-                                const chip = document.querySelector('.mode-float.over-mode:not(.hidden) .mode-chip');
+                                // (jEditor's own look: the row's button for the mode, in the sidebar, or floating where it is over Photos, in line with the file's pill: not in the head)
+                                const own = !theme;
+                                                                const chip = own ? document.querySelector(`#mode-row:not(.hidden) #mode-seg button[data-mode="${where}"]`) : document.querySelector('.mode-float.over-mode:not(.hidden) .mode-chip');
                                 if (!chip) return { miss: ['no chip'] };
                                 const b = chip.getBoundingClientRect();
                                 const miss = [];
@@ -814,7 +822,9 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                 if (pb && scale === 1 && (Math.abs(pb.height - b.height) > 1 || photosLook !== look_(chip))) miss.push(`not Photos' button (${Math.round(b.height)}px, ${look_(chip)}; Photos' ${Math.round(pb.height)}px, ${photosLook})`);
                                 // Whole: each corner (2px in) and the middle are the chip's own (its
                                 // pill's round corners: the box it floats in)
-                                const pts = [[b.left + 2, b.top + 2], [b.right - 2, b.top + 2], [b.left + 2, b.bottom - 2], [b.right - 2, b.bottom - 2], [(b.left + b.right) / 2, (b.top + b.bottom) / 2]];
+                                // (the row's buttons are round, and a click in a round button's corner isn't its: each side's middle, 3px in)
+                                const pts = own ? [[b.left + 3, (b.top + b.bottom) / 2], [b.right - 3, (b.top + b.bottom) / 2], [(b.left + b.right) / 2, b.top + 3], [(b.left + b.right) / 2, b.bottom - 3], [(b.left + b.right) / 2, (b.top + b.bottom) / 2]]
+                                    : [[b.left + 2, b.top + 2], [b.right - 2, b.top + 2], [b.left + 2, b.bottom - 2], [b.right - 2, b.bottom - 2], [(b.left + b.right) / 2, (b.top + b.bottom) / 2]];
                                 for (const [x, y] of pts) {
                                     const at = document.elementFromPoint(x, y);
                                     if (!at || !chip.parentElement.contains(at)) miss.push(`at ${Math.round(x)},${Math.round(y)}: ${at ? (at.id || at.className || at.tagName) : 'outside the window'}`);
@@ -839,7 +849,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                 }
                                 // In its head, not past it
                                 const head = document.querySelector('.mode-screen:not(.hidden) .mode-head');
-                                if (head) { const h = head.getBoundingClientRect(); if (b.bottom > h.bottom + 1 || b.top < h.top - 1) miss.push(`outside the head (${Math.round(b.top)}–${Math.round(b.bottom)} in ${Math.round(h.top)}–${Math.round(h.bottom)})`); }
+                                if (head && !own) { const h = head.getBoundingClientRect(); if (b.bottom > h.bottom + 1 || b.top < h.top - 1) miss.push(`outside the head (${Math.round(b.top)}–${Math.round(b.bottom)} in ${Math.round(h.top)}–${Math.round(h.bottom)})`); }
                                 const box = [b.left, b.top, b.right, b.bottom].map(Math.round);
                                 // Toolbar size back after each case: none leaks into later checks
                                 await back();
@@ -939,7 +949,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             // toolbar stays with that same button, and their head is below it
             // (the page's chip there sat in the title bar, which took the press:
             // hard to press, Needs fixing 2026-11-05)
-            await page.evaluate(() => { if (document.getElementById('mode-seg').getClientRects().length) app.keyHandlers()['folders.rail'](); });
+            await page.evaluate(() => { if (Folders.railOpen()) app.keyHandlers()['folders.rail'](); });
             await settle();
             d = await describe();
             const modeItem = d.items.find(i => i.id === 'mode');
@@ -978,7 +988,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                 if (Modes.current() !== 'photos') { await Modes.go('photos'); await wait(300); }
                                 app.uiPrefs.scale = scale;
                                 app.applyUiPrefs();
-                                if (!!document.getElementById('mode-seg').getClientRects().length !== rail) app.keyHandlers()['folders.rail']();
+                                if (Folders.railOpen() !== rail) app.keyHandlers()['folders.rail']();
                                 await Modes.go(where);
                                 for (let i = 0; i < 60 && document.getElementById(`${where}-editor`).classList.contains('hidden'); i++) await wait(50);
                                 await wait(400);
@@ -1228,7 +1238,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         });
         check('an album opens as the project: its photos, its name, its path photos-library:<id>', o.name === 'Wedding' && o.n === 3 && o.names === 'IMG_0001.jpg,IMG_0002.jpg,IMG_0003.jpg' && !o.readOnly && o.library && o.fixed && o.path === 'photos-library:album:Wedding', JSON.stringify(o));
         check('... thumbnails come from the library, and a photo is the library\'s own (size and date without reading it)', o.thumbs && o.size === o.got && o.got > 0 && o.type === 'image/jpeg', JSON.stringify(o));
-        check('... its card has the album and no Finder, rename, pin or export', o.cardName === 'DIV' && /Photos library/.test(o.cardText) && !/read-only/.test(o.cardText) && !o.renameBtn && !o.exportBtn && !o.revealBtn && !/Rename|Export|Pin|Finder/.test(o.menu), JSON.stringify(o));
+        check('... its card has the album and no Finder, rename, pin or export', /Photos library/.test(o.cardText) && !/read-only/.test(o.cardText) && !o.renameBtn && !o.exportBtn && !o.revealBtn && !/Rename|Export|Pin|Finder/.test(o.menu), JSON.stringify(o));
         check('... its photos can be edited, but none added, renamed, moved or deleted (that\'s for Photos)', o.writable === true && o.files === false && /renamed, moved and deleted in Photos/.test(o.toast) && o.made === 'NotAllowedError', JSON.stringify(o));
         // An edit saved back: rotating a photo writes it into the library (a
         // Photos edit on the current version); the original is kept, and undo

@@ -141,7 +141,10 @@ const Fit = {
         const bar = grid && this.shown(fb) ? fb : null;
         // In the single view the mode chip has the top left (modes.js)
         const chip = this.el('mode-float');
-        const left = bar || (chip && !chip.classList.contains('over-mode') && chip.getClientRects().length ? chip : null);
+        // (jEditor's own look: the row of modes, floating, the sidebar closed)
+        const row = this.el('mode-row');
+        const float = row && row.classList.contains('float') && !row.classList.contains('over-mode') && row.getClientRects().length ? row : null;
+        const left = bar || float || (chip && !chip.classList.contains('over-mode') && chip.getClientRects().length ? chip : null);
         // Start from everything shown, the folder pill as small as it goes
         for (const b of hc.querySelectorAll('[data-squeezed]')) delete b.dataset.squeezed;
         this.syncMore(hc, more);

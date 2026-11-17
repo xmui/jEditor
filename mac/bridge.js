@@ -863,6 +863,8 @@
             steps.listed = a.files.length > 1 || `${a.files.length} photos listed`;
             const bytes = async () => new Uint8Array(await (await file.handle.getFile()).arrayBuffer()).join();
             const before = file && await bytes();
+            // (writes the turn into the file, as with Settings → Saving's keeping off: the handle's write is what's checked)
+            if (a.uiPrefs) a.uiPrefs.keepEdits = false;
             steps.rotated = file && await a.rotateImage(file, 90) !== false ? true : 'not turned';
             if (file && file._rotationQueue) await Promise.race([file._rotationQueue, new Promise(r => setTimeout(r, 10000))]);
             if (steps.rotated === true && await bytes() === before) steps.rotated = 'the file didn\'t change on disk';

@@ -9821,6 +9821,11 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     padding-top: var(--top-row);
 }
 
+/* (Adjust's head lies over its photo, from the top: below the toolbar too) */
+:root.native-toolbar:not([data-skin]) .adj-head {
+    top: var(--top-row);
+}
+
 /* The page lies under the toolbar (Electron's hidden title bar), so it,
    not AppKit, gets a press on the toolbar's empty space: that press moves
    the window only where the page says so. The toolbar's own buttons are
