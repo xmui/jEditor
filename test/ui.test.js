@@ -3420,9 +3420,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.capped = await names();
             // Click reopens it, at the start
             Folders.setScope(null);
+            // A click while the last folder is still loading is ignored (Recents.open), so it's let finish
+            for (let i = 0; i < 250 && app.isLoading; i++) await new Promise(res => setTimeout(res, 20));
             const target = [...document.querySelectorAll('#recent-list li')].find(li => li.querySelector('.recent-name').textContent === 'rec 3');
             target.querySelector('.recent-open').click();
-            for (let i = 0; i < 100 && !(app.dirHandle && app.dirHandle.name === 'rec 3' && app.files.length); i++) await new Promise(res => setTimeout(res, 20));
+            for (let i = 0; i < 250 && !(app.dirHandle && app.dirHandle.name === 'rec 3' && app.files.length); i++) await new Promise(res => setTimeout(res, 20));
             await Recents.saving;
             out.clicked = app.dirHandle.name === 'rec 3' && app.files.length === 1 && (await names()).startsWith('rec 3,');
             // × forgets it (the folder stays)
