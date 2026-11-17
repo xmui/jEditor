@@ -279,6 +279,8 @@ const Modes = {
     render() {
         const app = this.app;
         if (!app) return;
+        // Save shows in the mode's head, or the file pill (edits.js)
+        if (typeof Edits !== 'undefined') Edits.updateSave();
         const shown = this.shown();
         const any = shown.length > 1;
         const mode = this.current();

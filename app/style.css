@@ -1465,6 +1465,21 @@ header:has(.header-controls.expanded) {
     color: var(--accent-text);
 }
 
+/* Save: only while there's an edit not in the photo yet (edits.js
+   updateSave), in the accent, as the pencil beside it */
+.btn.save-btn,
+:root:not([data-skin]) .mode-head .mode-head-acts .btn.save-btn {
+    color: var(--accent-text);
+}
+
+.file-info .save-btn {
+    height: calc(var(--ctl-md) - 6px);
+    margin-left: var(--sp-1);
+    padding: 0 var(--sp-2);
+    border-radius: var(--r-pill);
+    pointer-events: auto;
+}
+
 /* ---- 7. Folder pill, folder list, flags, search ---- */
 
 /* Folder pill in grid view, top left, level with the header pills. Kept
@@ -1486,6 +1501,16 @@ header:has(.header-controls.expanded) {
 
 .folder-bar .seg > button {
     height: calc(var(--ctl-lg) - 14px);
+    border-radius: var(--r-pill);
+}
+
+/* All photos / Folders: pills, as the pill they're in (the look's own
+   rounding for a switch, below, would square them off) */
+:root:not([data-skin]) .folder-bar .fb-modes.seg {
+    border-radius: var(--r-pill);
+}
+
+:root:not([data-skin]) .folder-bar .seg > button {
     border-radius: var(--r-pill);
 }
 
@@ -1545,85 +1570,12 @@ header:has(.header-controls.expanded) {
     padding: 0 2px;
 }
 
-/* Search: an icon that opens into a field */
-.fb-search {
-    display: flex;
-    align-items: center;
-    flex-shrink: 0;
-    gap: 6px;
-    height: calc(var(--ctl-lg) - 8px);
-    padding: 0 8px;
-    border-radius: var(--r-pill);
-    color: var(--text-2);
-    cursor: text;
-    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
-}
-
-.fb-search .i {
-    width: var(--icon-sm);
-    height: var(--icon-sm);
-    stroke-width: 2;
-}
-
-.fb-search:hover,
-.fb-search.open {
-    color: var(--text-1);
-    background: var(--tb-hover);
-}
-
-.fb-search:focus-within {
-    outline: 2px solid var(--accent-text);
-    outline-offset: -2px;
-}
-
-.fb-search input {
-    width: 0;
-    padding: 0;
-    border: none;
-    outline: none;
-    background: transparent;
-    color: var(--text-1);
-    font-size: var(--fs-body);
-    transition: width var(--dur-slow) var(--ease-in-out);
-}
-
-.fb-search input::-webkit-search-cancel-button {
-    display: none;
-}
-
-.fb-search input::placeholder {
-    color: var(--text-2);
-}
-
-.fb-search.open input {
-    width: 160px;
-}
-
-.folder-bar.tight .fb-search.open input {
-    width: 90px;
-}
-
-.folder-bar .fb-search-clear {
-    display: none;
-    align-items: center;
-    justify-content: center;
-    width: 18px;
-    height: 18px;
-    padding: 0;
-    border: none;
-    border-radius: 50%;
-    background: var(--tb-pressed);
-    color: var(--text-1);
-}
-
 /* Small marks that still need a comfortable target */
-.folder-bar .fb-search-clear,
 .fr-caret,
 .toast-action {
     position: relative;
 }
 
-.folder-bar .fb-search-clear::before,
 .fr-caret::before {
     content: '';
     position: absolute;
@@ -1636,15 +1588,7 @@ header:has(.header-controls.expanded) {
     inset: -4px -2px;
 }
 
-.fb-search.has-value .fb-search-clear {
-    display: flex;
-}
-
-.folder-bar .fb-search-clear:hover {
-    background: var(--border-input);
-}
-
-/* The flag filter in force, beside the search */
+/* The flag filter in force */
 .fb-filter-chip {
     display: inline-flex;
     align-items: center;

@@ -4192,10 +4192,10 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.clearLabel = clearBtn && clearBtn.textContent;
             if (clearBtn) clearBtn.click();
             out.cleared = app.viewFiles().length === 7 && !Flags.query && !app.elements.gridView.classList.contains('grid-no-match');
-            // Ctrl+F opens the search box
+            // Ctrl+F opens Find anything (the folder pill's search box is gone)
             key('f', { ctrlKey: true });
-            out.focus = document.activeElement && document.activeElement.id === 'fb-search';
-            document.activeElement.blur();
+            out.focus = Palette.isOpen() && !document.getElementById('fb-search');
+            Palette.close();
 
             // The rescan list
             out.listText = Flags.listText(app.files.filter(x => Flags.has(x, 'rescan')), 'rescan');
@@ -4215,7 +4215,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('flags: the folder list has a Flags section with counts', r.list.startsWith('star,rescan,blue') && r.list.endsWith('none'), r.list);
         check('search: by folder, by words, by is:flag; no match says so, and its Clear search button shows everything', r.searchFolder === 'vows.jpg' && r.searchWords === 5 && r.searchFlag === 'IMG_0002.jpg,vows.jpg' && r.noMatch && r.cleared,
             `${r.searchFolder} / ${r.searchWords} / ${r.searchFlag}`);
-        check('search: Ctrl+F opens the search box', r.focus);
+        check('search: Ctrl+F opens Find anything', r.focus);
         check('flags: rescan list names each photo with its folder', /Needs rescan \(2\)/.test(r.listText) && r.listText.includes('Ceremony/vows.jpg'), r.listText);
         check('flags: Clean Up Folder removes them', r.cleanedUp);
         check('flags suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));

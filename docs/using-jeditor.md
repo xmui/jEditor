@@ -52,7 +52,7 @@ Flags are kept with the order, in `.jeditor/flags.json`, so they follow renames 
 
 ## Search
 
-`Ctrl+F` or `/` (or the magnifier in the folder pill) searches the photos by name and folder as you type. Every word must match, in any order: `smith 004` finds `Smith_0042.jpg`, `ceremony` finds everything in the Ceremony folder. `is:star`, `is:rescan`, `is:flagged`, `is:unflagged` and `is:red` (or another colour) match flags. `Enter` goes back to the grid with the results; `Esc` clears the search. The arrow keys, film strip and `Ctrl+A` cover the results only.
+`Ctrl+F` or `/` opens Find anything (as `Ctrl+K` does), which finds photos and folders by name as you type, along with commands and projects. Pick one to go to it. The flags in the sidebar's Flags list filter the grid.
 
 ## Find anything
 
@@ -324,7 +324,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `Shift+A` | Auto crop (the selection in grid view) |
 | `Shift+P` | Crop the selection like the last crop (grid view) |
 | `Shift+U` | Turn upright (the selection, or the photo) |
-| `Ctrl+F`, `/` | Search |
+| `Ctrl+F`, `/` | Find a photo or folder (Find anything) |
 | `Ctrl+K` | Find anything: photos, folders, projects and commands |
 | `Shift+N` | New folder |
 | `A` | Switch between All photos and folders (grid view) |

@@ -1570,8 +1570,6 @@ const app = {
         if (grid.contains('grid-no-match')) {
             text = 'No photos match the search or the flag filter.';
             actions.push(['Clear search', () => {
-                const input = document.getElementById('fb-search');
-                if (input) input.value = '';
                 if (Flags.filter) Flags.setFilter(null);
                 Flags.setQuery('');
             }, true]);
@@ -3986,6 +3984,7 @@ const app = {
 
     // Grid highlight: only tiles whose state changed are touched
     updateSelectionUI() {
+        Edits.updateSave();
         const shown = this._shownSelected || new Set();
         for (const f of shown) {
             if (!this.selection.has(f) && f._gridEl) f._gridEl.classList.remove('selected');
@@ -4021,6 +4020,7 @@ const app = {
     },
 
     setView(mode) {
+        queueMicrotask(() => Edits.updateSave()); // the selection's edits in grid, the photo's in single
         // Single view needs a photo in the folder being shown
         if (mode === 'single' && !Folders.inView(this.currentFile)) {
             const first = this.viewFiles()[0];
@@ -4933,7 +4933,7 @@ const app = {
         ['app.convert', 'global', 'App', 'Convert: format, quality and storage…', []],
         ['app.import', 'global', 'App', 'Import from a camera or card…', ['Ctrl+I']],
         ['app.refresh', 'global', 'App', 'Rescan folder', ['R']],
-        ['app.search', 'global', 'App', 'Search photos', ['Ctrl+F', '/']],
+        ['app.search', 'global', 'App', 'Find a photo or folder (Find anything)', ['Ctrl+F', '/']],
         ['app.palette', 'global', 'App', 'Find anything: photos, folders, projects and commands', ['Ctrl+K']],
         ['app.shortcuts', 'global', 'App', 'Keyboard shortcuts', ['?']],
         ['app.guide', 'global', 'App', 'Guide: how-tos and shortcuts', ['F1']],
