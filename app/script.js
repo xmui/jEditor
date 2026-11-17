@@ -1333,7 +1333,10 @@ const app = {
     CONTROLS_NEAR_PX: 48,
 
     singleControls() {
-        return this.elements.thumbnailStrip.parentElement.querySelector('.controls');
+        // Found once: the film strip they sit beside moves into Adjust and
+        // Paint while those are open (modes.js), the controls don't
+        if (!this._singleControls) this._singleControls = this.elements.thumbnailStrip.parentElement.querySelector('.controls');
+        return this._singleControls;
     },
 
     initControlsAutoHide() {
@@ -4036,7 +4039,7 @@ const app = {
         document.getElementById('main-view').classList.toggle('hidden', grid);
         this.elements.imageContainer.classList.toggle('hidden', grid);
         this.elements.gridView.classList.toggle('hidden', !grid);
-        this.elements.thumbnailStrip.parentElement.querySelector('.controls').classList.toggle('hidden', grid); // the floating controls
+        this.singleControls().classList.toggle('hidden', grid); // the floating controls
         this.elements.thumbnailStrip.classList.toggle('hidden', grid || !!this._stripOff);
         if (this.elements.stripResize) this.elements.stripResize.classList.toggle('hidden', grid || !!this._stripOff);
         this.elements.gridControls.classList.toggle('hidden', !grid);
