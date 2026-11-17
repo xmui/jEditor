@@ -3149,6 +3149,66 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('painttext2')) {
+        console.log('paint: text lined up left, centre or right, with an outline (paint-editor.js, paint.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 400; c.height = 300;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 400, 300);
+                await openProject('t2', { 't.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                P.setTool('text');
+                out.opts = [...document.querySelectorAll('#paint-options .paint-opt > span')].map(x => x.textContent).filter(x => ['Align', 'Outline'].includes(x)).join();
+                Object.assign(P.opts, { fontSize: 40, opacity: 100, align: 'right', outline: 3, bold: true });
+                P.fg = '#ff0000'; P.bg = '#00ff00'; P.syncColours();
+                step = 'type';
+                P.text = { ox: 20, oy: 20, rot: 0, k: 1 };
+                P.openTextBox('');
+                const ta = document.getElementById('paint-text');
+                ta.value = 'WWWWWW\nI';
+                P.positionText();
+                out.box = [ta.style.textAlign, !!ta.style.webkitTextStroke];
+                P.endText(true);
+                const l = P.layer(), t = l.text;
+                out.rec = [t.align, t.outline, t.ocolor];
+                // The short line sits at the right of the long one; green round the letters
+                const g = l.canvas.getContext('2d', { willReadFrequently: true });
+                const M = P.textM(t), w = P.textSize(t).w;
+                const at = (x, y) => { const q = M.transformPoint({ x, y }); return [...g.getImageData(Math.round(q.x), Math.round(q.y), 1, 1).data]; };
+                const row = (y, x0, x1) => { const hits = []; for (let x = x0; x <= x1; x++) { const d = at(x, y); if (d[3] > 200 && d[0] > 200) hits.push(x); } return hits; };
+                const second = row(68, -5, w + 5);
+                out.right = second.length > 0 && Math.min(...second) > w * 0.6;
+                let green = false;
+                for (let x = -6; x < w + 6 && !green; x++) for (let y = 0; y < 50 && !green; y++) { const d = at(x, y); if (d[1] > 200 && d[0] < 60 && d[3] > 200) green = true; }
+                out.green = green;
+                step = 'reopen';
+                Object.assign(P.opts, { align: 'left', outline: 0 });
+                P.editText(P.cur);
+                out.back = [P.opts.align, P.opts.outline, P.bg];
+                P.endText(true);
+                // Old text (no align or outline) unchanged; kept through Paint.clean
+                const kept = Paint.clean({ id: 'abc', w: 400, h: 300, layers: [{ id: 'l1', rev: 'r1', text: t }, { id: 'l2', rev: 'r2', text: { ...t, align: 'up', outline: 999 } }] });
+                out.kept = [kept.layers[0].text.align, kept.layers[0].text.outline, kept.layers[0].text.ocolor, 'align' in kept.layers[1].text, 'outline' in kept.layers[1].text];
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint text: Align and Outline are the Text tool\'s options', r.opts === 'Align,Outline', JSON.stringify(r));
+        check('paint text: the box being typed in shows the alignment and outline', JSON.stringify(r.box) === '["right",true]', JSON.stringify(r));
+        check('paint text: the text layer keeps its alignment and outline (in the background colour)', JSON.stringify(r.rec) === '["right",3,"#00ff00"]', JSON.stringify(r));
+        check('paint text: lined up right, a short line sits at the right; the outline is round the letters', r.right && r.green, JSON.stringify(r));
+        check('paint text: opened again, the options are the text\'s', JSON.stringify(r.back) === '["right",3,"#00ff00"]', JSON.stringify(r));
+        check('paint text: alignment and outline are kept with the layers, and bad ones dropped', JSON.stringify(r.kept) === '["right",3,"#00ff00",false,false]', JSON.stringify(r));
+        check('paint text: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Restore colour (develop.js: restoreAuto; script.js: restoreColour) ----
     if (wanted('restore')) {
         console.log('restore colour (develop.js, script.js, adjust.js)');
