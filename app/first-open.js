@@ -43,7 +43,7 @@ const FirstOpen = {
             `<div class="dialog-body fo-body">` +
             (places ? `<section class="fo-part"><h3 class="fo-sub">Where your projects are</h3><p class="fo-help">${FolderMove.ADVICE}</p>` +
                 `<div class="fo-row"><span id="fo-dir" class="fo-dir"></span><button id="fo-choose" class="btn secondary">Choose…</button></div></section>` : '') +
-            `<p class="fo-note">Your edits are kept in jEditor and the photos stay as they are. Save over the original (${Host.say('Ctrl+S')}) writes an edit into its photo; Export makes edited copies. Settings → Projects → Saving can turn keeping off.</p>` +
+            `<p class="fo-note">Your edits are kept in jEditor and the photos stay as they are. Write edits to file (${Host.say('Ctrl+S')}) writes an edit into its photo file; Export makes edited copies. Settings → Projects → Saving can turn keeping off.</p>` +
             (places ? `<p class="fo-note">You can change the folder later in Settings → Projects, and from the foot of Open a folder.</p>` : '') +
             `</div>` +
             `<div class="dialog-foot"><span></span><span class="dialog-actions"><button id="fo-ok" class="btn primary">Continue</button></span></div>` +

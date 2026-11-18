@@ -1427,57 +1427,38 @@ header:has(.header-controls.expanded) {
     gap: 5px;
 }
 
-/* Save edits when done (edits.js): a pencil on edited photos, top left */
+/* Edited in jEditor (edits.js): a small neutral dot, top left. Its
+   tooltip says so; it takes the pointer only for that */
 .tile-edit {
     position: absolute;
-    top: 6px;
-    left: 6px;
-    display: inline-flex;
-    padding: 4px;
-    border-radius: var(--r-pill);
-    background: var(--on-photo-bg);
-    color: var(--on-photo-text);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    pointer-events: none;
+    top: 8px;
+    left: 8px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--on-photo-text);
+    box-shadow: 0 0 0 1.5px var(--on-photo-bg), 0 1px 3px rgb(0 0 0 / 0.35);
     animation: pop-in var(--dur-slow) var(--ease-spring);
 }
 
+/* A little more to point at than it shows */
+.tile-edit::before {
+    content: '';
+    position: absolute;
+    inset: -5px;
+}
+
 .thumb-item .tile-edit {
-    top: 3px;
-    left: 3px;
-    padding: 2px;
-}
-
-.thumb-item .tile-edit svg {
-    width: 10px;
-    height: 10px;
-}
-
-:root[data-glass="opaque"] .tile-edit {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+    top: 4px;
+    left: 4px;
+    width: 6px;
+    height: 6px;
 }
 
 .file-edit {
     display: inline-flex;
     margin-left: 4px;
     color: var(--accent-text);
-}
-
-/* Save: only while there's an edit not in the photo yet (edits.js
-   updateSave), in the accent, as the pencil beside it */
-.btn.save-btn,
-:root:not([data-skin]) .mode-head .mode-head-acts .btn.save-btn {
-    color: var(--accent-text);
-}
-
-.file-info .save-btn {
-    height: calc(var(--ctl-md) - 6px);
-    margin-left: var(--sp-1);
-    padding: 0 var(--sp-2);
-    border-radius: var(--r-pill);
-    pointer-events: auto;
 }
 
 /* ---- 7. Folder pill, folder list, flags, search ---- */

@@ -286,7 +286,7 @@ const Export = {
         html += `</div><div class="ex-row">${again}</div>`;
         html += `<label class="ex-field">The disc's name <input id="ex-label" class="field" type="text" maxlength="16" spellcheck="false" value="${this.esc(this.label)}"></label>`;
         const n = Edits.count();
-        if (n) html += `<label class="ex-check"><input type="checkbox" id="ex-save-first"${this.saveFirst ? ' checked' : ''}> Save over the original${n === 1 ? '' : 's'} of the ${n.toLocaleString()} edited photo${n === 1 ? '' : 's'} first (else the disc gets them as they are)</label>`;
+        if (n) html += `<label class="ex-check"><input type="checkbox" id="ex-save-first"${this.saveFirst ? ' checked' : ''}> Write edits to file${n === 1 ? '' : 's'} for the ${n.toLocaleString()} edited photo${n === 1 ? '' : 's'} first (else the disc gets them as they are)</label>`;
         html += this.ejectBox();
         const pick = b.find(x => x.id === this.burner);
         const fits = !(pick && pick.canWrite && bytes && bytes > pick.free);

@@ -104,7 +104,7 @@ const History = {
             case 'flags': return { what: this.flagWhat(e), detail: one(e.items) };
             case 'auto-crop': return { what: e.label ? label(e.label) : 'Auto crop', detail: one(e.items) };
             case 'edits': return { what: e.label === 'edits' ? 'Discard edits' : `${label(e.label)} (kept)`, detail: one(e.items) };
-            case 'saved-edits': return { what: 'Save over the original', detail: one(e.edits) };
+            case 'saved-edits': return { what: 'Write edits to file', detail: one(e.edits) };
             case 'trash': return { what: 'Delete', detail: one(e.items, it => it.file ? it.file.name : it.name) };
             case 'convert': return { what: 'Convert', detail: `${photos(e.items.length || e.copies.length)} as ${Codec.FORMATS[e.format].label}` };
             case 'relocate': return { what: e.copy ? 'Copy' : 'Move', detail: `${photos(e.items.length)} to ${base(e.dest)}` };

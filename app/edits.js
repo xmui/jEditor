@@ -7,7 +7,7 @@
 // strip and viewer show each photo as it will be saved, with a pencil on
 // the edited ones. Nothing nags about them: they're kept, not at risk.
 //
-// The one choice is Save over the original (Ctrl+S,
+// The one choice is Write edits to file (Ctrl+S,
 // the right-click menus, ⋯ in Adjust and Paint: app.saveOverOriginal),
 // which writes the edit into the photo; the original goes to originals/
 // so Ctrl+Z puts it back, edit and all. Export makes edited copies and
@@ -85,7 +85,7 @@ const Edits = {
     // This photo's crops and turns are kept as an edit, not written: in a
     // project, or it has an edit kept already (adjustments and paint
     // always are), or it's a RAW or a HEIC (raw.js, codec.js: never written), an AVIF or a
-    // JPEG XL (written only by Save over the original, through the codecs: codec.js)
+    // JPEG XL (written only by Write edits to file, through the codecs: codec.js)
     keeps(f) {
         return this.on() || !!(this.canKeep() && f && (f._edit || Raw.is(f.name) || Codec.isHeif(f.name) || Codec.of(f.name)));
     },
@@ -408,7 +408,7 @@ const Edits = {
 
     // ---- Saving ----
 
-    // Save over the original: the edits written into their photos (the
+    // Write edits to file: the edits written into their photos (the
     // originals kept for Ctrl+Z). True when it was done.
     async saveAll({ list = null } = {}) {
         const app = this.app;
@@ -436,7 +436,7 @@ const Edits = {
         }
         const ok = await UI.confirm({
             title: `Clear ${n.toLocaleString()} edit${n === 1 ? '' : 's'} stored for ${app.dirHandle.name}?`,
-            message: 'The crops, turns, adjustments and painting kept in jEditor for this project are removed. The photos on disk stay exactly as they are, and so does anything already saved over the originals or exported.',
+            message: 'The crops, turns, adjustments and painting kept in jEditor for this project are removed. The photos on disk stay exactly as they are, and so does anything already written to the files or exported.',
             ok: 'Clear edits',
             danger: true
         });
@@ -456,10 +456,10 @@ const Edits = {
             if (b) b.remove();
             return;
         }
+        // A small neutral dot: edited in jEditor, the file as it was
         if (!b) {
             b = document.createElement('span');
             b.className = 'tile-edit';
-            b.innerHTML = this.ICON;
             el.appendChild(b);
         }
         b.title = this.describe(f._edit);
@@ -480,44 +480,10 @@ const Edits = {
         const e = app.currentFile && app.currentFile._edit;
         el.classList.toggle('hidden', !e);
         if (e) el.title = this.describe(e);
-        this.updateSave();
     },
 
-    // Save, in the file pill and in Adjust's and Paint's heads: shown only
-    // while there's an edit not yet in the photo (or one of those selected
-    // in the grid). It's Save over the original (Ctrl+S).
-    saveButton(id, where, files) {
-        let b = document.getElementById(id);
-        if (!b && where) {
-            b = document.createElement('button');
-            b.id = id;
-            b.className = 'btn ghost sm save-btn hidden';
-            b.textContent = 'Save';
-            b.title = Host.say('Save over the original: write the edit into the photo (Ctrl+S)');
-            b.addEventListener('click', (ev) => { ev.stopPropagation(); this.app.saveOverOriginal(files()); });
-            where(b);
-        }
-        return b;
-    },
-
-    updateSave() {
-        const app = this.app;
-        if (!app || !app.elements || !app.elements.fileName) return;
-        const tool = app.cropState && app.cropState.active ? app.cropState.tool : null;
-        const grid = app.viewMode === 'grid';
-        const picked = () => grid && app.selection && app.selection.size ? [...app.selection] : [app.currentFile];
-        const photos = this.saveButton('file-save', (b) => (document.getElementById('file-edit') || app.elements.fileName).after(b), picked);
-        if (photos) photos.classList.toggle('hidden', !!tool || !picked().some(f => f && f._edit));
-        const unsaved = (M) => !!(M && M.file && (M.file._edit || M.changedSinceOpen()));
-        const adj = this.saveButton('adj-save');
-        if (adj) adj.classList.toggle('hidden', tool !== 'adjust' || !unsaved(Adjust));
-        const paint = this.saveButton('paint-save');
-        if (paint) paint.classList.toggle('hidden', tool !== 'paint' || !unsaved(PaintEditor));
-    },
-
-    // The pencil's tooltip
-    describe(e) {
-        const what = e.paint ? 'Painted' : e.adj ? 'Adjusted' : 'Edited';
-        return `${what}: kept in jEditor, the original is unchanged. Save over the original (Ctrl+S) or Export writes it`;
+    // The dot's tooltip (and the pencil's by the name), in two lines
+    describe() {
+        return Host.say('Edited — the original file is untouched\nCtrl+S writes your edits into the file');
     }
 };

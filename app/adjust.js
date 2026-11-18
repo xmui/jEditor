@@ -52,7 +52,6 @@ const Adjust = {
         });
         bind('adj-before', () => this.toggleBefore());
         bind('adj-reset', () => this.reset());
-        bind('adj-save', () => this.app.saveOverOriginal([this.file]));
         // ⋯: what isn't Before (the plan: extras go in menus, not on bars)
         this.el('adj-more').addEventListener('click', (e) => {
             const b = e.currentTarget;
@@ -460,7 +459,6 @@ const Adjust = {
         if (this.gl && this.gl.lost) this.useCpu();
         this.usePicture();
         this.ready = true;
-        Edits.updateSave();
         this.drawPaint(painted);
         this.layout();
         AdjustMasks.reset();
@@ -642,7 +640,6 @@ const Adjust = {
         this.sync();
         this.schedule();
         AdjustSync.changed();
-        Edits.updateSave();
     },
 
     // A step: the settings and the geometry (Geometry's straighten)
@@ -735,7 +732,7 @@ const Adjust = {
             ['—'],
             ['Show clipping', () => this.toggleClip(), false, !!this.clip, 'adjust.clip'],
             ['Before and after', () => this.toggleBefore(), false, !!this.before, 'adjust.before'],
-            ...(Edits.canKeep() ? [['—'], ['Save over the original', () => this.app.saveOverOriginal([this.file]), false, undefined, 'adjust.saveOver']] : [])
+            ...(Edits.canKeep() ? [['—'], ['Write edits to file', () => this.app.saveOverOriginal([this.file]), false, undefined, 'adjust.saveOver']] : [])
         ];
     },
 

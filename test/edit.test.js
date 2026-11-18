@@ -947,12 +947,12 @@ const PROJECT = `
                 const exB = await (await ex.getFileHandle('b.jpg')).getFile();
                 const sz = async (b) => { const bm = await createImageBitmap(b); const s = [bm.width, bm.height]; bm.close(); return s; };
                 out.exported = [...await sz(exA), ...await sz(exB)];
-                // Save over the original: RAWs exported, never written
+                // Write edits to file: RAWs exported, never written
                 step = 'save';
                 const choose = UI.choose;
                 UI.choose = async () => 'ok';
                 UI.prompt = async () => '';
-                await Edits.saveAll({ list: [f('a.dng'), f('b.cr3')] }); // (Save over the original)
+                await Edits.saveAll({ list: [f('a.dng'), f('b.cr3')] }); // (Write edits to file)
                 UI.choose = choose;
                 UI.prompt = prompt0;
                 out.saveNotWritten = await same('a.dng', dngBlob) && await same('b.cr3', cr3Blob) && !!f('b.cr3')._edit;
@@ -962,7 +962,7 @@ const PROJECT = `
         check('raw: RAW files are listed with the photos and get thumbnails', r.listed && r.thumbs, JSON.stringify(r));
         check('raw: shown from the JPEG inside', r.viewer && r.viewer[0] === 400 && r.viewer[2] > 150, JSON.stringify(r));
         check('raw: turns and adjustments are kept as edits, the RAW never written', r.turnKept && r.adjustKept, JSON.stringify(r));
-        check('raw: Export writes JPEG copies (turned, adjusted); Save over the original exports them instead of writing', JSON.stringify(r.exported) === '[300,200,300,400]' && r.saveNotWritten, JSON.stringify(r));
+        check('raw: Export writes JPEG copies (turned, adjusted); Write edits to file exports them instead of writing', JSON.stringify(r.exported) === '[300,200,300,400]' && r.saveNotWritten, JSON.stringify(r));
         check('raw: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -1035,11 +1035,11 @@ const PROJECT = `
                 await app.exportCopies([f('IMG_1.heic')]);
                 const ex = await (await (await dir.getDirectoryHandle('jEditor Export')).getFileHandle('IMG_1.jpg')).getFile();
                 out.exported = [ex.type || 'image/jpeg', (await pixels(ex)).width, new Uint8Array(await ex.slice(0, 2).arrayBuffer()).join()];
-                // Save over the original: exported, never written
+                // Write edits to file: exported, never written
                 step = 'save';
                 const choose = UI.choose;
                 UI.choose = async () => 'ok';
-                await Edits.saveAll({ list: [f('IMG_1.heic')] }); // (Save over the original)
+                await Edits.saveAll({ list: [f('IMG_1.heic')] }); // (Write edits to file)
                 UI.choose = choose;
                 UI.prompt = prompt0;
                 out.saveNotWritten = await same() && !!f('IMG_1.heic')._edit;
@@ -1057,7 +1057,7 @@ const PROJECT = `
         check('heic: a grid thumbnail is the HEIC\'s own when it has one, turned as the photo is', String(r.ownThumb) === '240,320,true,true', JSON.stringify(r));
         check('heic: ...and made from the photo when it has none', String(r.noOwnThumb) === '64,64', JSON.stringify(r));
         check('heic: a cached thumbnail is used without decoding the HEIC again', String(r.cached) === 'true,none', JSON.stringify(r));
-        check('heic: a turn is kept as an edit, the HEIC never written; Save over the original exports instead', r.turnKept && r.saveNotWritten, JSON.stringify(r));
+        check('heic: a turn is kept as an edit, the HEIC never written; Write edits to file exports instead', r.turnKept && r.saveNotWritten, JSON.stringify(r));
         check('heic: Export writes a JPEG copy, IMG_1.jpg', r.exported && r.exported[1] === 64 && r.exported[2] === '255,216', JSON.stringify(r));
         check('heic: Convert encodes it (to WebP)', String(r.converted) === '64,64,true', JSON.stringify(r));
         check('heic: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
@@ -3709,7 +3709,7 @@ const PROJECT = `
             await app.flipFiles([c], 'v');
             await app.flipFiles([c], 'v');
             out.twiceNothing = !c._edit;
-            // Flipped and turned: Save over the original writes it losslessly, as one
+            // Flipped and turned: Write edits to file writes it losslessly, as one
             await app.flipFiles([c], 'h');
             await app.rotateBulk(90, new Map([[c, 90]]));
             const cBefore = await bytesOf(c);
@@ -3769,7 +3769,7 @@ const PROJECT = `
         check('flip: with Keep edits in jEditor, kept as an edit with its crop mirrored, the file untouched', r.kept && r.diskUntouched, JSON.stringify([r.kept, r.diskUntouched]));
         check('flip: the kept edit shows the left half, flipped', r.keptLook === 'red red green red', r.keptLook);
         check('flip: flipped twice is the edit it was; upside down twice is no edit', r.twice && r.twiceNothing, JSON.stringify([r.twice, r.twiceNothing]));
-        check('flip: flipped and turned, Save over the original writes it losslessly in one go (orientation 7), and Ctrl+Z keeps the edit again', r.saved[0] === 7 && r.saved[1] && r.saved[2] && r.savedUndo[0] === 1 && r.savedUndo[1], JSON.stringify([r.saved, r.savedUndo]));
+        check('flip: flipped and turned, Write edits to file writes it losslessly in one go (orientation 7), and Ctrl+Z keeps the edit again', r.saved[0] === 7 && r.saved[1] && r.saved[2] && r.savedUndo[0] === 1 && r.savedUndo[1], JSON.stringify([r.saved, r.savedUndo]));
         check('flip: the crop editor\'s geometry goes there and back, flipped', r.roundTrip);
         check('flip: Adjust\'s masks are placed through the flip (Develop.cropMap)', r.maskMap);
         check('flip: Paint\'s layers and the crop are drawn flipped', r.paint === 'blue red' && r.drawOutput === 'blue red', JSON.stringify([r.paint, r.drawOutput]));

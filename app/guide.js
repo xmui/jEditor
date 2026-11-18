@@ -41,7 +41,7 @@ const Guide = {
         ['files', 'sidebar', 'The sidebar', 'The project\'s folders, your projects, pinned folders and drives. Drag its edge to resize it; drag it right in to hide it, and from the line at the window\'s edge to bring it back.', ['folders.rail']],
         ['files', 'convert', 'Convert to save room', 'AVIF, WebP or JPEG XL, for some photos or a whole folder.', []],
         ['files', 'export', 'Export copies', 'Where they go, what they\'re called, the format and the size, with the edits in them.', []],
-        ['files adjust', 'export', 'Save over the original', 'Edits are kept in jEditor and the photos stay as they are (a pencil marks the edited ones). Save over the original writes an edit into its photo, and Ctrl+Z puts the original back. Export makes edited copies instead.', ['edit.saveOver']],
+        ['files adjust', 'export', 'Write edits to file', 'Edits are kept in jEditor and the photos stay as they are (a small dot marks the edited ones). Write edits to file writes an edit into its photo file, and Ctrl+Z puts the original back. Export makes edited copies instead.', ['edit.saveOver']],
         ['files', 'scan', 'Scan', 'Straight into the project; each print on the glass becomes a photo.', [], 'scan'],
         ['files', 'camera', 'Shoot from the camera', 'Photos taken on a cable come straight into the project.', [], 'camera'],
         ['adjust', 'light', 'Open Adjust', 'Esc goes back to Photos, keeping what you did.', ['edit.adjust']],

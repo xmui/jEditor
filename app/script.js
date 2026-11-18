@@ -3984,7 +3984,6 @@ const app = {
 
     // Grid highlight: only tiles whose state changed are touched
     updateSelectionUI() {
-        Edits.updateSave();
         const shown = this._shownSelected || new Set();
         for (const f of shown) {
             if (!this.selection.has(f) && f._gridEl) f._gridEl.classList.remove('selected');
@@ -4020,7 +4019,6 @@ const app = {
     },
 
     setView(mode) {
-        queueMicrotask(() => Edits.updateSave()); // the selection's edits in grid, the photo's in single
         // Single view needs a photo in the folder being shown
         if (mode === 'single' && !Folders.inView(this.currentFile)) {
             const first = this.viewFiles()[0];
@@ -4893,7 +4891,7 @@ const app = {
         ['edit.copyAdjust', 'global', 'Edit', 'Copy the photo\'s adjustments', ['Ctrl+Shift+C']],
         ['edit.pasteAdjust', 'global', 'Edit', 'Paste adjustments (onto the selection in grid)', ['Ctrl+Shift+V']],
         ['edit.syncAdjust', 'global', 'Edit', 'Sync: the outlined photo\'s adjustments onto the rest of the selection', ['Ctrl+Shift+S']],
-        ['edit.saveOver', 'global', 'Edit', 'Save over the original: write the edit into the photo (the selection in grid; Ctrl+Z puts the original back)', ['Ctrl+S']],
+        ['edit.saveOver', 'global', 'Edit', 'Write edits to file: the original file is untouched until this writes your edits into it (the selection in grid; Ctrl+Z puts the original back)', ['Ctrl+S']],
         ['edit.copyImage', 'global', 'Edit', 'Copy the photo as it looks, to paste into another app', ['Ctrl+C']],
         ['edit.pasteImage', 'global', 'Edit', 'Paste an image from another app: a new picture, in Paint', ['Ctrl+V']],
         ['edit.rename', 'global', 'Edit', 'Rename (the selection in grid view)', ['F2']],
@@ -4979,7 +4977,7 @@ const app = {
         ['adjust.paste', 'adjust', 'Adjust', 'Paste adjustments', ['Ctrl+Shift+V']],
         ['adjust.sync', 'adjust', 'Adjust', 'Sync: these settings onto the others selected in the strip', ['Ctrl+Shift+S']],
         ['adjust.autoSync', 'adjust', 'Adjust', 'Auto Sync: what you change goes onto the others selected in the strip too', ['Ctrl+Alt+Shift+S']],
-        ['adjust.saveOver', 'adjust', 'Adjust', 'Save over the original: write the adjustments into the photo', ['Ctrl+S']],
+        ['adjust.saveOver', 'adjust', 'Adjust', 'Write edits to file: the original file is untouched until this writes your edits into it', ['Ctrl+S']],
         ['adjust.copyImage', 'adjust', 'Adjust', 'Copy the photo as it looks, to paste into another app', ['Ctrl+C']],
         ['adjust.pasteImage', 'adjust', 'Adjust', 'Paste an image from another app: a new picture, in Paint', ['Ctrl+V']],
         ['adjust.zoomIn', 'adjust', 'Adjust', 'Zoom in (Ctrl+wheel or a pinch zooms where the pointer is)', ['Ctrl+=', 'Ctrl++']],
@@ -5031,7 +5029,7 @@ const app = {
         ['paint.deselect', 'paint', 'Paint', 'Select nothing', ['Ctrl+D']],
         ['paint.invert', 'paint', 'Paint', 'Invert the selection', ['Ctrl+Shift+I']],
         ['paint.clear', 'paint', 'Paint', 'Delete what\'s selected', ['Delete', 'Backspace']],
-        ['paint.saveOver', 'paint', 'Paint', 'Save over the original: write the painting into the photo', ['Ctrl+S']],
+        ['paint.saveOver', 'paint', 'Paint', 'Write edits to file: the original file is untouched until this writes your edits into it', ['Ctrl+S']],
         ['paint.copy', 'paint', 'Paint', 'Copy what\'s selected', ['Ctrl+C']],
         ['paint.copyMerged', 'paint', 'Paint', 'Copy merged: the photo and the layers shown, as they look', ['Ctrl+Shift+C']],
         ['paint.paste', 'paint', 'Paint', 'Paste (an image copied in another app comes in as a layer)', ['Ctrl+V']],
@@ -7482,7 +7480,7 @@ const app = {
         if (!blob) return null;
         if (meta === 'none') return blob;
         if (to === 'webp') return new Blob([Codec.withExif(new Uint8Array(await blob.arrayBuffer()), 'webp', tiff, w, h)], { type });
-        // From the same kind of file: its metadata as Save over the original copies it
+        // From the same kind of file: its metadata as Write edits to file copies it
         const kind = ImageMeta.jpegSegments(original, { partial: true }) ? 'jpeg' : ImageMeta.pngChunks(original, { partial: true }) ? 'png' : null;
         if (kind === (type === 'image/png' ? 'png' : 'jpeg')) {
             const moved = await ImageMeta.transplant(original, blob, type, w, h);
@@ -7641,7 +7639,7 @@ const app = {
                     ...(Adjust.clipboard() ? [[`Paste adjustments onto ${n}`, () => this.pasteAdjust(sel)]] : []),
                     [`Sync adjustments from ${file.name}…`, () => this.syncAdjust(file, sel)],
                     ...(sel.some(f => f._edit) ? [
-                        [`Save over the original${sel.filter(f => f._edit).length === 1 ? '' : 's'} of ${sel.filter(f => f._edit).length.toLocaleString()}`, () => this.saveOverOriginal(sel), false, undefined, 'edit.saveOver'],
+                        [`Write edits to file${sel.filter(f => f._edit).length === 1 ? '' : 's'} (${sel.filter(f => f._edit).length.toLocaleString()})`, () => this.saveOverOriginal(sel), false, undefined, 'edit.saveOver'],
                         [`Discard edits on ${sel.filter(f => f._edit).length.toLocaleString()}`, () => Edits.discard(sel)]] : []),
                     ['—'],
                     [`Move ${n} to…`, () => Folders.openPicker(sel, 'move')],
@@ -7667,7 +7665,7 @@ const app = {
                 ...(file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
                 ...(Adjust.clipboard() ? [['Paste adjustments', () => this.pasteAdjust([file])]] : []),
                 ['Paint…', () => this.enterPaint(file), false, undefined, 'edit.paint'],
-                ...(file._edit ? [['Save over the original', () => this.saveOverOriginal([file]), false, undefined, 'edit.saveOver'], ['Discard edit', () => Edits.discard([file])]] : []),
+                ...(file._edit ? [['Write edits to file', () => this.saveOverOriginal([file]), false, undefined, 'edit.saveOver'], ['Discard edit', () => Edits.discard([file])]] : []),
                 ['—'],
                 ['Move to…', () => Folders.openPicker([file], 'move')],
                 ['Copy to…', () => Folders.openPicker([file], 'copy')],
@@ -7693,7 +7691,7 @@ const app = {
                 ...(file && file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
                 ...(Adjust.clipboard() ? [['Paste adjustments', () => this.pasteAdjust([file])]] : []),
                 ['Paint…', () => this.enterPaint(), false, undefined, 'edit.paint'],
-                ...(file && file._edit ? [['Save over the original', () => this.saveOverOriginal([file]), false, undefined, 'edit.saveOver'], ['Discard edit', () => Edits.discard([file])]] : []),
+                ...(file && file._edit ? [['Write edits to file', () => this.saveOverOriginal([file]), false, undefined, 'edit.saveOver'], ['Discard edit', () => Edits.discard([file])]] : []),
                 ['—'],
                 ['Move to…', () => Folders.openPicker([file], 'move')],
                 ['Copy to…', () => Folders.openPicker([file], 'copy')],
@@ -7727,7 +7725,7 @@ const app = {
             ['Full screen', () => this.toggleFullscreen()],
             ['—'],
             ...(this.dirHandle && !this.readOnlyMode && Edits.count() ? [
-                [`Save over the original${Edits.count() === 1 ? '' : 's'} of ${Edits.count().toLocaleString()} edited`, () => this.saveOverOriginal(Edits.edited())]
+                [`Write edits to file${Edits.count() === 1 ? '' : 's'} (${Edits.count().toLocaleString()} edited)`, () => this.saveOverOriginal(Edits.edited())]
             ] : []),
             ...(this.canAddToPhotos() && this.files.length ? [['Add all to Photos library', () => this.addToPhotos(this.viewFiles())]] : []),
             ['Clean up folder…', () => this.cleanUpFolder()]
@@ -7752,7 +7750,7 @@ const app = {
         const kept = files.filter(f => f._edit);
         if (kept.length) {
             const n = kept.length;
-            this.showToast(`${n === files.length ? (n === 1 ? 'It has' : 'They have') : `${n.toLocaleString()} of them have`} edits kept in jEditor: Save over the original first, so Photos gets them`, 5000);
+            this.showToast(`${n === files.length ? (n === 1 ? 'It has' : 'They have') : `${n.toLocaleString()} of them have`} edits kept in jEditor: Write edits to file first, so Photos gets them`, 5000);
             return 0;
         }
         let access = await native.photosAccess().catch(() => 'denied');
@@ -8490,7 +8488,7 @@ const app = {
             if (none && !(had && !Edits.wholePhoto(had))) this.showToast('No changes', 1500);
             else {
                 Edits.set([{ file, edit: Edits.withAdj(none ? null : snap, had && had.adj, had) }], 'crop');
-                this.cropSavedToast(none ? 'Back to the whole photo' : `Crop kept in jEditor; ${Host.say('Ctrl+S')} saves over the original`, snap, next || none);
+                this.cropSavedToast(none ? 'Back to the whole photo' : `Crop kept in jEditor; ${Host.say('Ctrl+S')} writes it to the file`, snap, next || none);
             }
             goNext();
             return;
@@ -8781,7 +8779,7 @@ const app = {
         if (noEdge) notes.push(`no print found on ${noEdge}`);
         if (items.length - cropped) notes.push(`${items.length - cropped} already cropped`);
         if (failed) notes.push(`${failed} failed`);
-        const msg = (cropped ? `Auto-cropped ${cropped} photo${cropped === 1 ? '' : 's'} — check them, then Export or Save over the originals` : 'Nothing was cropped') +
+        const msg = (cropped ? `Auto-cropped ${cropped} photo${cropped === 1 ? '' : 's'} — check them, then Export or Write edits to files` : 'Nothing was cropped') +
             (notes.length ? ` — ${notes.join(', ')}` : '');
         const entry = (this._undoStack || [])[(this._undoStack || []).length - 1];
         this.showToast(msg, cropped ? 6000 : 4000, null, items.length ? {
@@ -9023,7 +9021,7 @@ const app = {
         if (edits.length) Edits.set(edits, 'crop');
         if (entry.items.length) this.pushUndo(entry);
         const msg = (cropped ? `Cropped ${cropped} photo${cropped === 1 ? '' : 's'} the same way` : 'Nothing was cropped') +
-            (failed ? ` — ${failed} failed` : '') + (cropped && kept.length && !written.length ? ' — check them, then Export or Save over the originals' : '');
+            (failed ? ` — ${failed} failed` : '') + (cropped && kept.length && !written.length ? ' — check them, then Export or Write edits to files' : '');
         const last = (this._undoStack || [])[(this._undoStack || []).length - 1];
         this.showToast(msg, cropped ? 5000 : 3000, null, cropped ? {
             label: 'Undo',
@@ -9075,7 +9073,7 @@ const app = {
     // originals/ first, as for batch Auto crop, and one Ctrl+Z puts every
     // photo back with its edit kept again. True when all were saved.
 
-    // Save over the original (Ctrl+S, the right-click menus, ⋯ in Adjust
+    // Write edits to file (Ctrl+S, the right-click menus, ⋯ in Adjust
     // and Paint): the photos' kept edits written into them (saveEdits).
     // From Adjust or Paint, what's there is kept first and the mode left,
     // as leaving it would
@@ -9095,7 +9093,7 @@ const app = {
         return Edits.saveAll({ list });
     },
 
-    // Save over the original is writing kept edits into the photos: a new
+    // Write edits to file is writing kept edits into the photos: a new
     // edit made meanwhile could be dropped or applied twice, so it waits
     editsSaving() {
         if (!this._savingEdits) return false;
@@ -9106,7 +9104,7 @@ const app = {
     async saveEdits(list) {
         if (!this.ensureWritable()) return false;
         if (!this.dirHandle) {
-            this.showToast('Saving over the original needs a folder opened with Open folder');
+            this.showToast('Writing edits to the file needs a folder opened with Open folder');
             return false;
         }
         // RAW and HEIC files are never written (raw.js, codec.js): JPEG copies of them instead
@@ -9128,7 +9126,7 @@ const app = {
         const group = { type: 'group', label: 'rotation', items: [], done: new Promise(res => { batchDone = res; }) };
         const entry = { type: 'saved-edits', items: [], group, edits: [] };
         let done = 0, failed = 0, changed = 0;
-        const label = () => `Saving over the originals ${done}/${total}`;
+        const label = () => `Writing edits to files ${done}/${total}`;
         this.beginTask(key, label());
         try {
             await this.verifyPermission(this.dirHandle, true);
