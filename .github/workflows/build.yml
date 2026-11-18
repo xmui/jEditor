@@ -30,6 +30,9 @@ jobs:
     # (a label added: only what it asks for runs)
     if: github.event.action != 'labeled'
     runs-on: ubuntu-latest
+    # A hung test stops here, not at GitHub's 6 hours (a normal run is
+    # 7 to 9 minutes)
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
