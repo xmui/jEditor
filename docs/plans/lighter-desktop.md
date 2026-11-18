@@ -1,6 +1,6 @@
 # Lighter desktop apps: Mac and Linux off Electron
 
-*Planned 2026-11-11. Tauri v2 picked (the owner's go came through the Wrangler). **Done:** step 0, the spike (results below), and step 1, the app's own handles behind a switch, off by default (#251, with the Mac and Linux app tests fixed in #253). **Next:** step 2, the host's core in Rust. Releases stay on Electron.*
+*Planned 2026-11-11. Tauri v2 picked (the owner's go came through the Wrangler). **Done:** step 0, the spike (results below), step 1, the app's own handles behind a switch, off by default (#251, with the Mac and Linux app tests fixed in #253); and step 2, the host's core in Rust, `desktop/core`, with tests of its own. **Next:** step 3, the Mac on Tauri, built on betas next to Electron. Releases stay on Electron.*
 
 **Goal:** jEditor's desktop apps as native and fast as possible, still on Windows, Mac and Linux. Windows already runs the page in the system's own web view (WebView2, `src/`). Step 1 moves the Mac and Linux host (`mac/`, Electron 44) onto the system's web view as well: WKWebView on the Mac, WebKitGTK on Linux.
 
@@ -141,6 +141,24 @@ Measured on Linux only, in a container with no GPU and no Mac (Xvfb). The tools 
 - `test/handles-conformance.js`: 49 behaviour checks, with answers recorded from Chromium's real handles. `test/handles.test.js` runs them in Chromium and Playwright WebKit, then jEditor in WebKit on a real folder. `test/mac.test.js` runs them in Electron with the switch off and on.
 - #253 brought the Mac and Linux app tests back to green (the docked sidebar, the row of modes, the traffic lights), and fixed two layout bugs they found.
 
+## Step 2: done (the host's core in Rust)
+
+`desktop/core` is a Rust library, `jeditor-core`, with no window and no network. The Tauri shell (step 3) wires it to the window. Each module is the Rust twin of a part of the Electron host, and gives the same answers:
+
+| Module | Twin of | What it does |
+|---|---|---|
+| `fs_host` | `mac/fs-host.js` | The page's file requests (list, stat, child, remove, move, open/write/seek/truncate/close/abort), with Chromium's error names; `getFile()`'s bytes, Range included, for the `jfs://` scheme |
+| `places` | `mac/places.js` | Drives (`/Volumes`; `/media`, `/run/media` and `/proc/mounts` on Linux; `JEDITOR_VOLUMES` for tests), the usual folders (XDG names on Linux), a folder's folders and photos, projects newest first, photo counts, new folders, renames, eject, a whole folder copied |
+| `moves` | `mac/move.js`, `src/FolderMove.cs` | The projects folder moved item by item: renamed on one disk; across disks copied, checked byte by byte, then the original removed |
+| `update` | Updates in `mac/main.js` | Which release is newer (betas and `-N` included), which download is this app's, a download hashed as it comes and used only if its SHA-256 matches, the Mac app swapped in place, the package installer's command |
+
+The shell does what needs the system or the network: fetching, `hdiutil` and `codesign`, the relaunch, watching the drive folders (`Places::drive_dirs`).
+
+**Tests:**
+- `cargo test` in `desktop/core`: 34 tests on real folders, including a move across disks where the runner has one (`/dev/shm`).
+- The `jeditor-core` binary serves the file requests a JSON line at a time. With `JEDITOR_CORE` set, `test/handles.test.js` runs all 49 conformance checks on it in Chromium and WebKit, then jEditor itself in WebKit (open, thumbnails, rotate, rename, delete, undo, Recents). All pass, the same as Node's `fs-host.js`.
+- CI's `tests` job builds the core, runs its tests, and sets `JEDITOR_CORE` for `npm test`.
+
 ## Migration order
 
 0. **Spike (done; results above):**
@@ -150,7 +168,7 @@ Measured on Linux only, in a container with no GPU and no Mac (Xvfb). The tools 
 1. **The handles (done: #251, #253):** the JS handles and the host's file calls.
    - Prove them first **under Electron**, with a switch: `test/mac.test.js` passes on Chromium with the new handles, so their bugs are kept apart from WebKit's.
    - Then in Playwright WebKit.
-2. **The host's core in Rust:** the requests, drives, moves and the updater, with Rust tests of their own. The window is kept apart from them, so they can be tested without one.
+2. **The host's core in Rust (done):** the requests, drives, moves and the updater, with Rust tests of their own. The window is kept apart from them, so they can be tested without one.
 3. **The Mac on Tauri:**
    - The window, menus, `toolbar.mm`, `photos.mm`, signing, the `.dmg` and the Homebrew cask.
    - Built on betas next to the Electron build; releases stay on Electron until the Mac suite passes.
