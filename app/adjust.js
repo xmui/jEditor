@@ -1381,13 +1381,18 @@ const Adjust = {
         }, 250);
     },
 
+    // What the full-size picture is made from: its spots, perspective and
+    // geometry (it's made again when they change)
+    fullKey() {
+        return JSON.stringify([this.a.spots || [], Retouch.cleanPersp(this.a.persp), this.geo]);
+    },
+
     // The photo at full size, cropped as it's being adjusted (for 1:1)
     loadFull() {
         const file = this.file;
-        // Made again when the spots change (they're done on it first)
-        // (and the perspective and geometry: the same picture as the working copy)
+        // Made again when what it's made from changes (fullKey)
         const spots = this.a.spots, persp = this.a.persp, geo = this.geo;
-        const key = JSON.stringify([spots || [], Retouch.cleanPersp(persp), geo]);
+        const key = this.fullKey();
         if (this._fullFor === file && this._fullKey === key) return this._fullPromise;
         this._fullFor = file;
         this._fullKey = key;
@@ -1427,7 +1432,7 @@ const Adjust = {
         const cv = this.el('adj-loupe');
         if (!cv || !this.ready || !this.detailOpen()) return;
         this.placeLoupeBox();
-        if (this.fullCanvas && this._fullKey !== JSON.stringify(this.a.spots || [])) {
+        if (this.fullCanvas && this._fullKey !== this.fullKey()) {
             this.loadFull().then(c => { if (c) this.renderLoupe(); });
         }
         if (!this.fullCanvas) {

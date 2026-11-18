@@ -243,7 +243,7 @@ const PROJECT = `
                 const det = document.getElementById('adj-detail-sec');
                 det.open = true;
                 det.dispatchEvent(new Event('toggle'));
-                await until(() => Adjust.fullCanvas && Adjust._fullKey === JSON.stringify(Adjust.a.spots));
+                await until(() => Adjust.fullCanvas && Adjust._fullKey === Adjust.fullKey());
                 out.full = Adjust.fullCtx.getImageData(200, 240, 1, 1).data[1] > 80;
                 det.open = false;
                 det.dispatchEvent(new Event('toggle'));
