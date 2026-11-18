@@ -1357,7 +1357,7 @@ const PROJECT = `
                 const menuNow = document.getElementById('context-menu');
                 const retroMenu = menuNow ? [...menuNow.children].map(e => e.textContent.replace(/\s+$/, '')).join('|') : '';
                 app.closeContextMenu();
-                out.retro = [cell.join(), stamped.join(), dots > 20 && soft === 0 && outside === 0, retroMenu.replace(/(Brush|Pencil)[A-Z]\|/g, "$1|") === "Brush|Soft round|Hard round|Pencil|Ink|Marker|Airbrush|Spray|Retro|Pixel pencil|Spray can|Stamp|Yours|Your brush" ? 'menu' : retroMenu];
+                out.retro = [cell.join(), stamped.join(), dots > 20 && soft === 0 && outside === 0, retroMenu.replace(/(Brush|Pencil)[A-Z]\|/g, "$1|") === "Brush|Soft round|Hard round|Pencil|Ink|Marker|Airbrush|Spray|Painters|Charcoal|Watercolour|Texture brush|Mixer|Retro|Pixel pencil|Spray can|Stamp|Yours|Your brush" ? 'menu' : retroMenu];
                 P.setTool('brush'); P.opts.size = 10; P.opts.density = 40;
                 // Heal and clone (paint-heal.js): clone copies from where
                 // Alt was clicked; heal copies its texture in the colours
@@ -1741,7 +1741,7 @@ const PROJECT = `
             JSON.stringify(r.canvas) === JSON.stringify({ big: [true, 440, 320, 440, 320, 40, 20, 440, true], painted: 255, turned: ['{"l":20,"t":40,"r":0,"b":0}', 320, 440, true, '{"l":40,"t":0,"r":0,"b":20}'], record: [400, 300, '{"l":40,"t":0,"r":0,"b":20}', '{"l":40,"t":0,"r":0,"b":20}', '#ffffff'], exported: [440, 320, '0,255,0', '255,255,255', '128,128,128'], onlyPhoto: [440, 320], cropping: true, cropped: [500, 320, 60, 'Crop'], undone: [440, 400, 400, true, true] }), JSON.stringify(r.canvas));
         check('paint: heal and clone: clone copies from the Alt-click (nothing without one); heal copies in the colours round it; spot heal fills a mark from round it; one undo each; their own slot; J and S', JSON.stringify(r.heal) === '[true,"true,0",true,"Clone stamp",true,true,"Spot heal",3,"Spot heal|Heal|Clone stamp|Dodge|Burn|Sponge|Blur|Sharpen|Smudge","spot-heal,heal,clone"]', JSON.stringify(r.heal));
         check('paint: tone and focus: dodge lightens, burn darkens, sponge takes colour out, blur softens an edge, sharpen crisps it, smudge drags a colour; in the Heal slot under Tone and Focus; one undo each', JSON.stringify(r.tone) === '[true,true,true,true,true,true,true,"Dodge|Burn|Sponge|Blur|Sharpen|Smudge","Spot heal|Heal|Clone stamp|Tone|Dodge|Burn|Sponge|Focus|Blur|Sharpen|Smudge",true]', JSON.stringify(r.tone));
-        check('paint: more brushes: hard and soft rounds; the marker darker where it crosses; ink thinner when fast; the airbrush builds as it\'s held; the block eraser square, E through the erasers; smoothing steadies a shaky line; a pen\'s pressure as opacity; all in the Brush slot', JSON.stringify(r.brushes) === '["true,true",true,true,true,true,true,"0,0,255","eraser-block,eraser-soft,eraser",true,true,"Brush|Soft round|Hard round|Pencil|Ink|Marker|Airbrush|Spray|Retro|Pixel pencil|Spray can|Stamp|Yours|Your brush"]', JSON.stringify(r.brushes));
+        check('paint: more brushes: hard and soft rounds; the marker darker where it crosses; ink thinner when fast; the airbrush builds as it\'s held; the block eraser square, E through the erasers; smoothing steadies a shaky line; a pen\'s pressure as opacity; all in the Brush slot', JSON.stringify(r.brushes) === '["true,true",true,true,true,true,true,"0,0,255","eraser-block,eraser-soft,eraser",true,true,"Brush|Soft round|Hard round|Pencil|Ink|Marker|Airbrush|Spray|Painters|Charcoal|Watercolour|Texture brush|Mixer|Retro|Pixel pencil|Spray can|Stamp|Yours|Your brush"]', JSON.stringify(r.brushes));
         check('paint: Retro: the pixel pencil fills one square of its grid; the stamp paints our star (not its corners); the spray can sprays hard dots inside its round; listed under Retro in the brush slot', JSON.stringify(r.retro) === '["255,255,0,0,0","255,0,255,0,Stamp",true,"menu"]', JSON.stringify(r.retro));
         check('paint: a pen\'s pressure sizes the brush', r.pressure && r.pressure[0] > 200 && r.pressure[1] === 0, String(r.pressure));
         check('paint: a new layer; a filled rectangle on it', r.layers && r.rect && r.rect[0][1] === 255 && r.rect[1] === 0, JSON.stringify(r));
@@ -2240,7 +2240,7 @@ const PROJECT = `
         });
         check('paint brushes: nothing selected, nothing made', r.noSel, JSON.stringify(r));
         check('paint brushes: made from what\'s selected, named and kept, cropped to what\'s dark; Your brush picked', r.defined && r.defined[0] && r.defined[1] === 'Name the brush' && r.defined[2] === 1 && r.defined[3] === 'Bar' && r.defined[4] === '40x10' && r.defined[5] === 'custom' && r.defined[6] && r.defined[7] === 40, JSON.stringify(r));
-        check('paint brushes: listed in ⋯ → Brushes (with Make and Delete) and as the Tip along the top', r.menu === 'Make a brush from what\'s selected…|Make a brush from a picture…|—|Bar|—|Delete a brush' && r.optTip, JSON.stringify(r));
+        check('paint brushes: listed in ⋯ → Brushes (with Make and Delete) and as the Tip along the top', r.menu === 'Save the brush as a preset…|—|Make a brush from what\'s selected…|Make a brush from a picture…|—|Bar|—|Delete a brush' && r.optTip, JSON.stringify(r));
         check('paint brushes: it paints its shape in the brush colour', r.painted && r.painted[0] === '0,255,0,255' && r.painted[1] && r.painted[2] === 0, JSON.stringify(r));
         check('paint brushes: from a see-through picture, its shape', r.fromFile && r.fromFile[0] && r.fromFile[1] === 2 && r.fromFile[2] === '40x40', JSON.stringify(r));
         check('paint brushes: deleted again', r.deleted === 'Bar', JSON.stringify(r));
@@ -3263,6 +3263,98 @@ const PROJECT = `
         check('paint puff: none with Settings → Animations off', r.off, JSON.stringify(r));
         check('paint puff: none going along the history', r.batch, JSON.stringify(r));
         check('paint puff: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- Paint: the painters' brushes, tilt, presets (paint-editor.js) ----
+    if (wanted('paintbrush2')) {
+        console.log('paint: charcoal, watercolour, texture, mixer, tilt, presets (paint-editor.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const W = 400, H = 300;
+                const c = document.createElement('canvas'); c.width = W; c.height = H;
+                c.getContext('2d').fillStyle = '#ffffff'; c.getContext('2d').fillRect(0, 0, W, H);
+                await openProject('brushes2', { 'p.png': await canvasBlob(c) });
+                localStorage.removeItem('jeditor.paintPresets');
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                P.opts.quickShape = false; P.opts.smoothing = 0; P.opts.pressure = 'size';
+                const l = P.layers[0], lg = l.canvas.getContext('2d', { willReadFrequently: true });
+                const st = document.getElementById('paint-stage');
+                const at = (x, y) => { const sp = P.V().transformPoint(P.C.transformPoint({ x, y })); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                const pe = (type, x, y, more = {}) => st.dispatchEvent(new PointerEvent(type, { ...at(x, y), pointerId: 1, bubbles: true, button: 0, buttons: type === 'pointerup' ? 0 : 1, ...more }));
+                const line = (x0, x1, y, more) => { pe('pointerdown', x0, y, more); for (let x = x0; x <= x1; x += 4) pe('pointermove', x, y, more); pe('pointerup', x1, y, more); };
+                const a = (x, y) => [...lg.getImageData(x, y, 1, 1).data];
+                const clear = () => lg.clearRect(0, 0, P.W, P.H);
+                // In the Brush slot, under their own heading
+                step = 'slot';
+                out.slot = ['charcoal', 'watercolour', 'texture', 'mixer'].every(t => P.GROUPS[2].includes(t)) && P.HEADINGS.charcoal === 'Painters';
+                // Charcoal: grainy, some of the paper showing through
+                step = 'charcoal';
+                clear(); P.setTool('charcoal'); P.fg = '#000000'; P.opts.size = 40; P.opts.opacity = 100;
+                line(60, 340, 150);
+                let full = 0, none = 0;
+                for (let x = 100; x < 300; x++) { const v = a(x, 150)[3]; if (v > 200) full++; if (v < 90) none++; }
+                out.charcoal = [full, none];
+                // The texture brush: through canvas, its weave showing
+                step = 'texture';
+                clear(); P.setTool('texture'); P.opts.texture = 'canvas'; P.opts.hardness = 100; P.opts.flow = 100;
+                out.textureOpt = [...document.querySelectorAll('#paint-options select')].some(sl => [...sl.options].some(o => o.textContent === 'Paper'));
+                line(60, 340, 150);
+                const vals = new Set();
+                for (let x = 100; x < 140; x++) vals.add(a(x, 150)[3] >> 5);
+                out.texture = vals.size;
+                // Watercolour: one dab, darker at its edge than in its middle
+                step = 'watercolour';
+                clear(); P.setTool('watercolour'); P.opts.size = 100; P.opts.flow = 100;
+                pe('pointerdown', 200, 150); pe('pointerup', 200, 150);
+                out.water = [a(200, 150)[3], a(239, 150)[3]];
+                // The mixer: red into blue, then the blue carried into yellow
+                step = 'mixer';
+                clear(); lg.fillStyle = '#0000ff'; lg.fillRect(0, 0, 150, H); lg.fillStyle = '#ffff00'; lg.fillRect(150, 0, W, H);
+                P.setTool('mixer'); P.fg = '#ff0000'; P.opts.size = 30; P.opts.wet = 60; P.opts.hardness = 100;
+                line(40, 260, 150);
+                out.mixer = [a(42, 150), a(165, 150)];
+                // Tilt: a pen leaning sideways lays the round on its side
+                step = 'tilt';
+                clear(); P.setTool('hard-round'); P.fg = '#000000'; P.opts.size = 40;
+                const pen = { pointerType: 'pen', pressure: 1, tiltX: 60, tiltY: 0 };
+                pe('pointerdown', 200, 150, pen); pe('pointerup', 200, 150, pen);
+                out.tilt = [a(235, 150)[3], a(200, 175)[3], a(200, 160)[3]];
+                clear();
+                pe('pointerdown', 200, 150, { ...pen, tiltX: 0 }); pe('pointerup', 200, 150, { ...pen, tiltX: 0 });
+                out.upright = [a(235, 150)[3], a(200, 160)[3]];
+                // Presets: the brush and its settings, saved, used, deleted
+                step = 'presets';
+                P.setTool('texture'); P.opts.size = 33; P.opts.texture = 'paper'; P.opts.hardness = 40;
+                const b = await P.savePreset('Rough');
+                P.setTool('brush'); P.opts.size = 10; P.opts.texture = 'canvas';
+                const menu = () => P.moreItems().find(i => i[0] === 'Brushes')[1].map(i => i[0]).join('|');
+                out.menu = menu();
+                P.usePreset(b.id);
+                out.used = [P.tool, P.opts.size, P.opts.texture, P.opts.hardness, 'fg' in b.opts, 'texture' in b.opts];
+                UI.confirm = async () => true;
+                await P.deletePreset(b.id);
+                out.deleted = P.presets().length;
+                app.cancelPaint();
+                localStorage.removeItem('jeditor.paintPresets');
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        const R = JSON.stringify(r);
+        check('paint brushes 2: charcoal, watercolour, texture and mixer in the Brush slot, under Painters', r.slot, R);
+        check('paint brushes 2: charcoal is grainy (paper shows through a stroke)', r.charcoal && r.charcoal[0] > 20 && r.charcoal[1] > 20, R);
+        check('paint brushes 2: the texture brush paints through its texture, chosen along the top', r.textureOpt && r.texture >= 3, R);
+        check('paint brushes 2: watercolour pools at its edge', r.water && r.water[1] > r.water[0] && r.water[0] > 0, R);
+        check('paint brushes 2: the mixer blends its red with the blue under it, and carries the blue on into yellow', r.mixer && r.mixer[0][0] > 40 && r.mixer[0][2] > 40 && r.mixer[1][2] > 40 && r.mixer[1][1] > 40, R);
+        check('paint brushes 2: a pen tilted lays the brush on its side; upright, round', r.tilt && r.tilt[0] > 0 && r.tilt[1] === 0 && r.tilt[2] > 0 && r.upright[0] === 0 && r.upright[1] > 0, R);
+        check('paint brushes 2: presets saved, listed in ⋯ → Brushes, used (tool and settings, not the colour), deleted', /^Save the brush as a preset…\|—\|Rough\|Delete a preset\|—\|/.test(r.menu || '') && JSON.stringify(r.used) === '["texture",33,"paper",40,false,true]' && r.deleted === 0, R);
+        check('paint brushes 2: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
