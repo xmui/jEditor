@@ -5027,9 +5027,16 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.selection = new Set(app.files);
             app.updateSelectionUI();
             out.selMenu = !!app.buildContextItems(f('scan1.jpg')._gridEl, false).find(it => it[0] === 'Write edits to files (3)');
+            // It asks first: into the originals, or as copies, with Don't ask again
+            const choose0 = UI.choose;
+            let askedWrite = null;
+            UI.choose = async (o) => { askedWrite = o; return { answer: 'ok', checked: false }; };
             window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true, bubbles: true }));
             await until(() => app._savingEdits, 40);
             await until(() => !app._savingEdits, 1200);
+            UI.choose = choose0;
+            out.askedWrite = !!askedWrite && askedWrite.ok === 'Apply to the originals' && askedWrite.alt === 'Save as copies' &&
+                !!askedWrite.check && /Don't ask again/.test(askedWrite.check.label) && /kept in jEditor either way/.test(askedWrite.message) && app.uiPrefs.writeEdits !== 'originals';
             app.selection.clear();
             app.updateSelectionUI();
             out.saved = [await dims(dir, 'scan1.jpg'), await dims(dir, 'scan2.jpg'), await dims(dir, 'plain.jpg')];
@@ -5046,6 +5053,26 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await app.undo();
             const upright = (await dims(dir, 'plain.jpg')).join('x') === '400x300';
             out.undoSave = await same('scan1.jpg') && await same('scan2.jpg') && upright && Edits.count() === 3;
+
+            // Save as copies, Don't ask again: an edited copy next to the
+            // photo (Export's plain name gets " edited"), the photo and its
+            // edit as they were; next time it doesn't ask
+            step = 'Save as copies';
+            let askedCopies = 0;
+            UI.choose = async () => { askedCopies++; return { answer: 'alt', checked: true }; };
+            const copied = await app.saveOverOriginal([f('scan2.jpg')]);
+            out.copyDims = await dims(dir, 'scan2 edited.jpg').catch(() => null);
+            out.copies = copied && askedCopies === 1 && app.uiPrefs.writeEdits === 'copies' &&
+                !!out.copyDims && await same('scan2.jpg') && !!f('scan2.jpg')._edit && Edits.count() === 3;
+            out.copiesNoAsk = await app.askWriteEdits([f('scan1.jpg')]) === 'copies' && askedCopies === 1;
+            UI.choose = choose0;
+            app.toggleCustomizePanel(true);
+            out.copiesSetting = document.getElementById('cust-write-edits').value === 'copies';
+            const sel = document.getElementById('cust-write-edits');
+            sel.value = 'ask';
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+            out.copiesSetting = out.copiesSetting && app.uiPrefs.writeEdits === 'ask';
+            app.toggleCustomizePanel(false);
 
             // Settings → Saving: Clear… takes every kept edit off, after asking; the photos stay
             step = 'Settings: Clear edits stored in jEditor';
@@ -5088,6 +5115,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('kept edits: export copies all photos with their edits, photos untouched', r.exported[0].join('x') === '600x400' && inside(r.exported[1]) && r.exported[2].join('x') === '300x400' && r.exportLeavesEdits, JSON.stringify(r.exported));
         check('kept edits: Ctrl+S on the selection saves over the originals (a turn losslessly), originals kept', r.selMenu && r.saved[0].join('x') === '600x400' && inside(r.saved[1]) && r.saved[2].join('x') === '300x400' && r.plainLossless && r.savedClears && r.backups === 2, JSON.stringify(r.saved) + ' ' + r.backups);
         check('kept edits: Ctrl+Z after saving puts the photos back with the edits kept', r.undoSave);
+        check('kept edits: Write edits to file asks: Apply to the originals or Save as copies, with Don\'t ask again', r.askedWrite, JSON.stringify(r.askedWrite));
+        check('kept edits: Save as copies writes an edited copy next to the photo ("scan2 edited.jpg"), the photo and its edit untouched', r.copies && inside(r.copyDims), JSON.stringify([r.copies, r.copyDims]));
+        check('kept edits: Don\'t ask again is kept, and Settings → Projects → Saving shows it and puts Ask back', r.copiesNoAsk && r.copiesSetting, JSON.stringify([r.copiesNoAsk, r.copiesSetting]));
         check('kept edits: Settings → Saving → Clear… asks, then takes every kept edit off and leaves the photos', r.settings && r.cleared && r.clearedSettings, JSON.stringify([r.settings, r.cleared, r.clearedSettings]));
         check('kept edits: with Keep edits in jEditor off, a turn goes straight into the photo', r.off);
         check('kept edits suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
@@ -6357,10 +6387,14 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await app.enterAdjust();
             await until(() => Adjust.ready);
             out.adjustMenu = !!Adjust.moreItems().find(it => it[0] === 'Write edits to file');
+            const choose1 = UI.choose;
+            let askedInAdjust = false;
+            UI.choose = async (o) => { askedInAdjust = /Apply to the original/.test(o.ok); return { answer: 'ok', checked: false }; };
             key('s', { ctrlKey: true });
             await until(() => !Adjust.isOpen && app._savingEdits, 40);
             await until(() => !app._savingEdits && !f('a.jpg')._edit, 400);
-            out.savedFromAdjust = !Adjust.isOpen && !f('a.jpg')._edit && !(await same('a.jpg'));
+            UI.choose = choose1;
+            out.savedFromAdjust = askedInAdjust && !Adjust.isOpen && !f('a.jpg')._edit && !(await same('a.jpg'));
             return out;
             })(); } catch (e) { return { error: step + ': ' + e.message }; }
         });

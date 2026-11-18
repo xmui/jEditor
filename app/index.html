@@ -972,6 +972,15 @@
                             <input type="checkbox" id="cust-keep-edits" class="switch">
                         </div>
                         <div class="set-row">
+                            <label class="set-label" for="cust-write-edits">Write edits to file
+                                <small>What Write edits to file (Ctrl+S) does: ask each time, apply the edits to the original photos, or save edited copies next to them.</small></label>
+                            <select id="cust-write-edits" class="field">
+                                <option value="ask">Ask each time</option>
+                                <option value="originals">Apply to the originals</option>
+                                <option value="copies">Save as copies</option>
+                            </select>
+                        </div>
+                        <div class="set-row">
                             <span class="set-label">Edits stored in jEditor
                                 <small id="set-edits-count">The edits kept for the open project. Clearing them leaves the photos on disk as they are.</small></span>
                             <button id="set-edits-clear" class="btn secondary">Clear…</button>

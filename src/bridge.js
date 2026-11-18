@@ -612,7 +612,7 @@
         let lastScanned = null; // the scan step's last photo, moved by the windows step
         const file = a.files[0];
         // (edits are kept in jEditor: Write edits to file writes the turn)
-        const rotated = file ? (await a.rotateImage(file, 90) !== false && (!file._edit || await a.saveOverOriginal([file]) !== false)) : false;
+        const rotated = file ? (await a.rotateImage(file, 90) !== false && (!file._edit || await a.saveOverOriginal([file], { how: 'originals' }) !== false)) : false;
         // The engine: a thumbnail of the first photo, made by the app
         // (Engine.cs) from the file on disk, 64 px wide
         if (window.JEditorNative.features.includes('engine') && file) {

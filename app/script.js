@@ -513,6 +513,7 @@ const app = {
             accent: null, // the accent colour (#rrggbb); null is the standard blue
             singleControls: true, // previous / rotate / next above the film strip in single view
             startIn: 'photos', // the landing page's Start in (modes.js): photos, adjust or paint
+            writeEdits: 'ask', // Write edits to file: ask, 'originals' or 'copies' (askWriteEdits; Settings → Projects → Saving)
             modes: 1, // 1.43: Adjust and Paint are modes (modes.js), off the toolbar's main row
             theme: 'dark',
             skin: '', // a theme (themes.js): 'xp/royale'; '' is jEditor's own look
@@ -595,6 +596,7 @@ const app = {
                 if (['photos', 'adjust', 'paint'].includes(saved.startIn)) this.uiPrefs.startIn = saved.startIn;
                 // The home page's Settings menu (start.js)
                 if (typeof saved.keepEdits === 'boolean') this.uiPrefs.keepEdits = saved.keepEdits;
+                if (['ask', 'originals', 'copies'].includes(saved.writeEdits)) this.uiPrefs.writeEdits = saved.writeEdits;
                 if (['home', 'last', 'pick'].includes(saved.onOpen)) this.uiPrefs.onOpen = saved.onOpen;
                 if (typeof saved.onOpenId === 'string') this.uiPrefs.onOpenId = saved.onOpenId;
                 if (typeof saved.onOpenName === 'string') this.uiPrefs.onOpenName = saved.onOpenName;
@@ -885,6 +887,7 @@ const app = {
         // Folder
         $('cust-on-open').addEventListener('change', (e) => Start.onOpenChanged(e.target.value));
         $('cust-keep-edits').addEventListener('change', (e) => Edits.setKeeping(e.target.checked));
+        $('cust-write-edits').addEventListener('change', (e) => { this.uiPrefs.writeEdits = e.target.value; this.saveUiPrefs(); });
         $('set-edits-clear').addEventListener('click', async () => { await Edits.clearStored(); this.renderCustomizePanel(); });
         $('cust-auto-check').addEventListener('change', (e) => {
             this.uiPrefs.autoCheck = e.target.checked;
@@ -999,6 +1002,7 @@ const app = {
         $('cust-folder-cache').checked = this.uiPrefs.folderCache !== false;
         $('cust-auto-check').checked = this.uiPrefs.autoCheck !== false;
         $('cust-keep-edits').checked = Edits.keeping();
+        $('cust-write-edits').value = this.uiPrefs.writeEdits || 'ask';
         {
             // The open project's stored edits (edits.js)
             const n = Edits.canKeep() ? Edits.count() + Edits.orphans.size : 0;
@@ -9077,7 +9081,8 @@ const app = {
     // and Paint): the photos' kept edits written into them (saveEdits).
     // From Adjust or Paint, what's there is kept first and the mode left,
     // as leaving it would
-    async saveOverOriginal(files) {
+    // how: 'originals' or 'copies' to write without asking (the smoke test)
+    async saveOverOriginal(files, { how = null } = {}) {
         files = (files || []).filter(Boolean);
         const tool = this.cropState.active ? this.cropState.tool : null;
         // No project: Adjust and Paint write into the photo when left
@@ -9090,7 +9095,71 @@ const app = {
             this.showToast(files.length > 1 ? 'None of these has an edit to save' : 'No edits to save: the photo is as it is on disk', 2500);
             return false;
         }
+        how = how || await this.askWriteEdits(list);
+        if (!how) return false;
+        if (how === 'copies') return this.saveEditCopies(list);
         return Edits.saveAll({ list });
+    },
+
+    // Write edits to file asks, unless told not to (Settings → Projects →
+    // Saving, uiPrefs.writeEdits): into the originals, or as copies.
+    // 'originals' | 'copies', or null (canceled)
+    async askWriteEdits(list) {
+        const set = this.uiPrefs.writeEdits;
+        if (set === 'originals' || set === 'copies') return set;
+        const n = list.length;
+        const a = await UI.choose({
+            title: n === 1 ? 'Write the edit to file' : `Write the edits of ${n.toLocaleString()} photos`,
+            message: Host.say('Your edits are kept in jEditor either way.\n\n' +
+                `Apply to the original${n === 1 ? '' : 's'} writes them into the photo file${n === 1 ? '' : 's'} (Ctrl+Z puts ${n === 1 ? 'it' : 'them'} back).\n` +
+                `Save as cop${n === 1 ? 'y' : 'ies'} writes edited cop${n === 1 ? 'y' : 'ies'} next to ${n === 1 ? 'it' : 'them'}, named as Export names them, and leaves the original${n === 1 ? '' : 's'} untouched.`),
+            ok: `Apply to the original${n === 1 ? '' : 's'}`,
+            alt: `Save as cop${n === 1 ? 'y' : 'ies'}`,
+            check: { label: 'Don\'t ask again', note: 'Settings → Projects → Saving can change this', value: false }
+        });
+        if (!a) return null;
+        const how = a.answer === 'alt' ? 'copies' : 'originals';
+        if (a.checked) {
+            this.uiPrefs.writeEdits = how;
+            this.saveUiPrefs();
+        }
+        return how;
+    },
+
+    // Save as copies: each edited photo's copy next to it, in its own
+    // folder, named, sized and in the format Export's settings say. Never
+    // over a photo: a name already there gets a new one (keep both), and
+    // Export's plain {name} becomes "{name} edited". The originals and
+    // their kept edits stay as they are.
+    async saveEditCopies(list) {
+        if (!this.ensureWritable({ files: true })) return false;
+        const saved = Export.saved();
+        Export.loadCopies(saved);
+        let pattern = (Export.pattern || '').trim();
+        if (!pattern || pattern === '{name}') pattern = '{name} edited';
+        const byFolder = new Map();
+        for (const f of list) {
+            const d = Folders.dirOf(f);
+            if (!byFolder.has(d)) byFolder.set(d, []);
+            byFolder.get(d).push(f);
+        }
+        let done = 0;
+        for (const [d, files] of byFolder) {
+            let dir;
+            try { dir = await Folders.handleFor(d); } catch (e) {
+                this.showToast(`Couldn't open the folder ${d || 'of the project'}: ${e.message}`);
+                continue;
+            }
+            const r = await this.exportCopies(files, {
+                maxEdge: Export.size || 0, dir, where: d ? `"${Folders.baseName(d)}"` : 'the project folder',
+                format: Export.format, quality: Export.quality, meta: Export.meta, colour: Export.colour,
+                pattern, project: (this.dirHandle && this.dirHandle.name) || '', clash: 'both'
+            });
+            if (r) done += r.done;
+        }
+        // The copies are photos in the project now
+        if (done) await Watch.rescan();
+        return done > 0;
     },
 
     // Write edits to file is writing kept edits into the photos: a new
