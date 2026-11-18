@@ -51,6 +51,8 @@
 //           everything else, inside the colour table
 //   spots:  spot, dust and scratch removal (retouch.js): done on the photo itself,
 //           before it's cropped, so not part of the tables at all
+//   persp:  perspective (keystone, retouch.js): the photo warped before
+//           its spots and crop, so not part of the tables either
 
 const Develop = {
     SLIDERS: {
@@ -216,6 +218,7 @@ const Develop = {
         out.masks = (this.cleanMasks(a.masks) || []).map(m => JSON.parse(JSON.stringify(m)));
         out.spots = ((typeof Retouch !== 'undefined' && Retouch.cleanSpots(a.spots)) || []).map(s => ({ ...s }));
         out.restore = this.cleanRestore(a.restore);
+        out.persp = (typeof Retouch !== 'undefined' && Retouch.cleanPersp(a.persp)) || null;
         return out;
     },
 
@@ -472,6 +475,8 @@ const Develop = {
         if (masks) out.masks = masks;
         const spots = typeof Retouch !== 'undefined' ? Retouch.cleanSpots(v.spots) : null;
         if (spots) out.spots = spots;
+        const persp = typeof Retouch !== 'undefined' ? Retouch.cleanPersp(v.persp) : null;
+        if (persp) out.persp = persp;
         const restore = this.cleanRestore(v.restore);
         if (restore) out.restore = restore;
         const lk = this.lookOf(v);
@@ -487,12 +492,13 @@ const Develop = {
         return !!this.clean(adj);
     },
 
-    // Anything for the tables to do (spots aside: they're done before
-    // the crop, by retouch.js), as settings without the spots, or null
+    // Anything for the tables to do (spots and perspective aside: they're
+    // done before the crop, by retouch.js), as settings without the spots, or null
     tonal(adj) {
         const c = this.clean(adj);
         if (!c) return null;
         delete c.spots;
+        delete c.persp;
         return Object.keys(c).length ? c : null;
     },
 
@@ -544,12 +550,13 @@ const Develop = {
     },
 
     // Auto Sync's: target's settings with source's for these settings
-    // (top-level keys, as in clean) only, masks and spots never
+    // (top-level keys, as in clean) only, masks, spots and perspective
+    // never (each photo's is its own)
     syncedKeys(target, source, keys) {
         const out = this.clean(target) || {};
         const src = this.clean(source) || {};
         for (const k of keys) {
-            if (k === 'masks' || k === 'spots') continue;
+            if (k === 'masks' || k === 'spots' || k === 'persp') continue;
             if (k in src) out[k] = JSON.parse(JSON.stringify(src[k]));
             else delete out[k];
         }

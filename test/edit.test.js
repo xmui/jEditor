@@ -3380,6 +3380,99 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('perspective')) {
+        console.log('perspective in Adjust (retouch.js, adjust.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                // White, with a black column at x 40–60 from top to bottom
+                const c = document.createElement('canvas');
+                c.width = 400; c.height = 300;
+                const g = c.getContext('2d');
+                g.fillStyle = '#fff';
+                g.fillRect(0, 0, 400, 300);
+                g.fillStyle = '#000';
+                g.fillRect(40, 0, 20, 300);
+                const px = (cv, x, y) => cv.getContext('2d').getImageData(x, y, 1, 1).data[0];
+                // The maths: the warped photo's corners come from perspQuad's
+                step = 'maths';
+                const p = { v: -100, h: 40 };
+                const M = Retouch.perspMap(p), Q = Retouch.perspQuad(p);
+                out.corners = [[0, 0], [1, 0], [1, 1], [0, 1]].every(([u, v], i) => {
+                    const [x, y] = Retouch.perspPoint(M, u, v);
+                    return Math.abs(x - Q[i][0]) < 1e-9 && Math.abs(y - Q[i][1]) < 1e-9;
+                });
+                const I = Retouch.perspMap({});
+                out.identity = Math.abs(Retouch.perspPoint(I, 0.3, 0.7)[0] - 0.3) < 1e-9 && Math.abs(Retouch.perspPoint(I, 0.3, 0.7)[1] - 0.7) < 1e-9;
+                out.clean = JSON.stringify(Retouch.cleanPersp({ v: -250, h: 0.2 })) === '{"v":-100}' && Retouch.cleanPersp({ v: 0 }) === null;
+                // Vertical −100: the top spread out, so the column (near the
+                // left) is gone off the top row and still at the bottom
+                step = 'warp';
+                const w = Retouch.warp(c, { v: -100 });
+                out.warp = w.width === 400 && w.height === 300 && px(w, 50, 1) > 200 && px(w, 50, 298) < 60;
+                // In Adjust: the Vertical slider
+                step = 'open';
+                await openProject('persp', { 'a.png': await canvasBlob(c), 'b.png': await canvasBlob(c) });
+                const a = app.files.find(f => f.name === 'a.png');
+                const b = app.files.find(f => f.name === 'b.png');
+                app.openSingle(a);
+                await app.enterAdjust(a);
+                await until(() => Adjust.ready);
+                step = 'slider';
+                const inp = document.getElementById('adj-persp-v');
+                out.row = !!inp && !!inp.closest('#adj-persp');
+                inp.value = '-60';
+                inp.dispatchEvent(new Event('input', { bubbles: true }));
+                inp.dispatchEvent(new Event('change', { bubbles: true }));
+                Adjust.draw();
+                out.set = !!Adjust.a.persp && Adjust.a.persp.v === -60 && Adjust.base !== Adjust.raw && Adjust.changedSinceOpen();
+                out.base = px(Adjust.base, 50, 1) > 200 && px(Adjust.raw, 50, 1) < 60;
+                step = 'undo';
+                Adjust.undo();
+                Adjust.draw();
+                out.undone = !Adjust.a.persp && Adjust.base === Adjust.raw;
+                Adjust.redo();
+                Adjust.draw();
+                out.redone = !!Adjust.a.persp && Adjust.a.persp.v === -60 && Adjust.base !== Adjust.raw;
+                // Kept with the photo's adjustments, and shown everywhere
+                step = 'save';
+                await Modes.go('photos');
+                await until(() => !Adjust.isOpen);
+                out.saved = !!a._edit && !!a._edit.adj && !!a._edit.adj.persp && a._edit.adj.persp.v === -60 && !Develop.tonal(a._edit.adj);
+                const shown = (await app.drawEdited(await canvasBlob(c), a._edit, 400, 300)).canvas;
+                out.shown = px(shown, 50, 1) > 200 && px(shown, 50, 298) < 60;
+                // Not copied to other photos by Sync (each photo's own)
+                step = 'sync';
+                out.notSynced = !(Develop.syncedKeys({}, a._edit.adj, ['persp']) || {}).persp && !(Develop.synced({}, a._edit.adj, Develop.SYNC.map(x => x.id)) || {}).persp;
+                out.bUntouched = !b._edit;
+                // Opened again it's there; Reset Geometry takes it off
+                step = 'again';
+                await app.enterAdjust(a);
+                await until(() => Adjust.ready);
+                Adjust.draw();
+                out.again = !!Adjust.a.persp && Adjust.a.persp.v === -60 && !Adjust.changedSinceOpen() && document.getElementById('adj-persp-v').value === '-60';
+                Adjust.resetSection('geometry');
+                Adjust.draw();
+                out.reset = !Adjust.a.persp && Adjust.base === Adjust.raw && Adjust.changedSinceOpen();
+                await Modes.go('photos');
+                await until(() => !Adjust.isOpen);
+                out.resetSaved = !a._edit;
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('perspective: the warp\'s corners come from where it says, none is no warp, and settings are kept in range', r.corners && r.identity && r.clean, JSON.stringify(r));
+        check('perspective: Vertical −100 spreads the top out (the photo keeps its size)', r.warp, JSON.stringify(r));
+        check('perspective: Adjust\'s Vertical slider warps the picture being adjusted', r.row && r.set && r.base, JSON.stringify(r));
+        check('perspective: Ctrl+Z takes it off, Ctrl+Y puts it back', r.undone && r.redone, JSON.stringify(r));
+        check('perspective: kept with the photo\'s adjustments, and shown in Photos warped', r.saved && r.shown, JSON.stringify(r));
+        check('perspective: never synced to other photos', r.notSynced && r.bUntouched, JSON.stringify(r));
+        check('perspective: opened again it\'s there; Reset Geometry takes it off, and nothing is kept', r.again && r.reset && r.resetSaved, JSON.stringify(r));
+        check('perspective: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     if (wanted('modes')) {
         console.log('modes: Photos, Adjust and Paint (modes.js), Start in, Paint\'s start (blank.js)');
         const { page, issues } = await open();

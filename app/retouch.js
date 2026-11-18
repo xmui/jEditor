@@ -33,6 +33,19 @@
 // lighter than what's round them, on smooth parts of the photo (not on
 // edges or texture), and puts a heal spot on each, its source picked from
 // the surroundings that match best.
+//
+// Perspective (Adjust's Geometry) is done here too, first of all: the
+// photo is warped, then the spots are done on the warped photo (so their
+// places, and masks', are on the photo as it's straightened up).
+//
+//   persp: { v, h }  -100–100 each
+//     v: vertical keystone. Below 0 the top is spread out (buildings shot
+//        from below stop leaning back); above 0, the bottom is.
+//     h: horizontal. Below 0 the left side is made taller; above 0, the
+//        right side.
+//   The photo keeps its size: the part of it the warp keeps is spread out
+//   to fill it, so no empty corners ever show, as straightening's crop
+//   keeps none.
 
 const Retouch = {
     MAX_SPOTS: 500,
@@ -81,23 +94,126 @@ const Retouch = {
         return (adj && Array.isArray(adj.spots) && adj.spots.length) ? adj.spots : null;
     },
 
-    // Anything to do to the photo before it's cropped (its spots)
+    // Anything to do to the photo before it's cropped (its perspective
+    // and its spots)
     needed(edit) {
-        return !!this.spotsOf(edit);
+        return !!(this.spotsOf(edit) || this.perspOf(edit));
     },
 
-    // The whole photo (an ImageBitmap or canvas, as on disk) with its
-    // spots: a canvas, or `src` itself when there's nothing to do
+    // The whole photo (an ImageBitmap or canvas, as on disk) warped and
+    // with its spots: a canvas, or `src` itself when there's nothing to do
     async retouched(src, edit) {
         if (!this.needed(edit)) return src;
-        const c = document.createElement('canvas');
-        c.width = src.width;
-        c.height = src.height;
-        const ctx = c.getContext('2d', { willReadFrequently: true });
-        ctx.drawImage(src, 0, 0);
+        const persp = this.perspOf(edit);
+        const c = persp ? this.warp(src, persp) : document.createElement('canvas');
+        if (!persp) {
+            c.width = src.width;
+            c.height = src.height;
+            c.getContext('2d', { willReadFrequently: true }).drawImage(src, 0, 0);
+        }
         const spots = this.spotsOf(edit);
-        if (spots) this.applySpots(ctx, c.width, c.height, spots);
+        if (spots) this.applySpots(c.getContext('2d', { willReadFrequently: true }), c.width, c.height, spots);
         return c;
+    },
+
+    // ---- Perspective ----
+
+    PERSP_MAX: 100,
+    // How far in a side's ends come at ±100 (a part of the photo's width
+    // or height, each end)
+    PERSP_K: 0.2,
+
+    cleanPersp(p) {
+        if (!p || typeof p !== 'object') return null;
+        const out = {};
+        for (const k of ['v', 'h']) {
+            const x = p[k];
+            if (typeof x !== 'number' || !isFinite(x)) continue;
+            const r = Math.round(Math.min(this.PERSP_MAX, Math.max(-this.PERSP_MAX, x)));
+            if (r) out[k] = r;
+        }
+        return Object.keys(out).length ? out : null;
+    },
+
+    // An edit's (or adjustments') perspective, or null
+    perspOf(e) {
+        const adj = e && (e.adj !== undefined ? e.adj : e);
+        return adj ? this.cleanPersp(adj.persp) : null;
+    },
+
+    // Where the warped photo's corners come from on the photo (0–1):
+    // top left, top right, bottom right, bottom left
+    perspQuad(p) {
+        const k = this.PERSP_K / this.PERSP_MAX;
+        const v = (p && p.v) || 0, h = (p && p.h) || 0;
+        const top = Math.max(0, -v) * k, bottom = Math.max(0, v) * k;
+        const left = Math.max(0, -h) * k, right = Math.max(0, h) * k;
+        return [
+            [top, left], [1 - top, right],
+            [1 - bottom, 1 - right], [bottom, 1 - left]
+        ];
+    },
+
+    // The map from the warped photo (u, v: 0–1) to the photo (0–1): a
+    // homography from the unit square to perspQuad (Heckbert's), as
+    // [a, b, c, d, e, f, g, h]: x = (a u + b v + c) / (g u + h v + 1),
+    // y = (d u + e v + f) / (g u + h v + 1)
+    perspMap(p) {
+        const [[x0, y0], [x1, y1], [x2, y2], [x3, y3]] = this.perspQuad(p);
+        const dx3 = x0 - x1 + x2 - x3, dy3 = y0 - y1 + y2 - y3;
+        if (Math.abs(dx3) < 1e-12 && Math.abs(dy3) < 1e-12) {
+            return [x1 - x0, x2 - x1, x0, y1 - y0, y2 - y1, y0, 0, 0];
+        }
+        const dx1 = x1 - x2, dx2 = x3 - x2, dy1 = y1 - y2, dy2 = y3 - y2;
+        const det = dx1 * dy2 - dx2 * dy1;
+        const g = (dx3 * dy2 - dx2 * dy3) / det;
+        const h = (dx1 * dy3 - dx3 * dy1) / det;
+        return [x1 - x0 + g * x1, x3 - x0 + h * x3, x0, y1 - y0 + g * y1, y3 - y0 + h * y3, y0, g, h];
+    },
+
+    // A point on the warped photo (0–1) to where it is on the photo
+    perspPoint(M, u, v) {
+        const w = M[6] * u + M[7] * v + 1;
+        return [(M[0] * u + M[1] * v + M[2]) / w, (M[3] * u + M[4] * v + M[5]) / w];
+    },
+
+    // The whole photo (W × H) warped: a canvas the same size, each pixel
+    // read (bilinear) from where perspMap puts it
+    warp(src, persp) {
+        const W = src.width, H = src.height;
+        const s = document.createElement('canvas');
+        s.width = W;
+        s.height = H;
+        const sg = s.getContext('2d', { willReadFrequently: true });
+        sg.drawImage(src, 0, 0);
+        const from = sg.getImageData(0, 0, W, H).data;
+        const out = sg.createImageData(W, H);
+        const to = out.data;
+        const M = this.perspMap(persp);
+        const [a, b, c, d, e, f, g, h] = M;
+        let o = 0;
+        for (let y = 0; y < H; y++) {
+            const v = (y + 0.5) / H;
+            const bx = b * v + c, by = e * v + f, bw = h * v + 1;
+            for (let x = 0; x < W; x++, o += 4) {
+                const u = (x + 0.5) / W;
+                const w = g * u + bw;
+                let fx = (a * u + bx) / w * W - 0.5, fy = (d * u + by) / w * H - 0.5;
+                if (fx < 0) fx = 0; else if (fx > W - 1) fx = W - 1;
+                if (fy < 0) fy = 0; else if (fy > H - 1) fy = H - 1;
+                const ix = fx | 0, iy = fy | 0;
+                const tx = fx - ix, ty = fy - iy;
+                const ix1 = ix + 1 < W ? ix + 1 : ix, iy1 = iy + 1 < H ? iy + 1 : iy;
+                const p00 = (iy * W + ix) * 4, p10 = (iy * W + ix1) * 4, p01 = (iy1 * W + ix) * 4, p11 = (iy1 * W + ix1) * 4;
+                const w00 = (1 - tx) * (1 - ty), w10 = tx * (1 - ty), w01 = (1 - tx) * ty, w11 = tx * ty;
+                to[o] = from[p00] * w00 + from[p10] * w10 + from[p01] * w01 + from[p11] * w11;
+                to[o + 1] = from[p00 + 1] * w00 + from[p10 + 1] * w10 + from[p01 + 1] * w01 + from[p11 + 1] * w11;
+                to[o + 2] = from[p00 + 2] * w00 + from[p10 + 2] * w10 + from[p01 + 2] * w01 + from[p11 + 2] * w11;
+                to[o + 3] = from[p00 + 3] * w00 + from[p10 + 3] * w10 + from[p01 + 3] * w01 + from[p11 + 3] * w11;
+            }
+        }
+        sg.putImageData(out, 0, 0);
+        return s;
     },
 
     // ---- Doing them ----

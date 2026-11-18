@@ -247,6 +247,14 @@ const Adjust = {
         });
         this.el('adj-geo').appendChild(angle);
         (this.extraRows || (this.extraRows = [])).push(angle);
+        // Perspective (retouch.js warps the photo before its spots and crop)
+        const persp = [['v', 'Vertical'], ['h', 'Horizontal']].map(([k, label]) => this.slider('persp-' + k, label, {
+            range: { min: -Retouch.PERSP_MAX, max: Retouch.PERSP_MAX, step: 1 },
+            get: () => (this.a.persp && this.a.persp[k]) || 0,
+            set: (v) => { this.a.persp = Retouch.cleanPersp({ ...(this.a.persp || {}), [k]: v }); }
+        }));
+        this.el('adj-persp').append(...persp);
+        this.extraRows.push(...persp);
         this.el('adj-level').addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -443,7 +451,8 @@ const Adjust = {
         base.getContext('2d').drawImage(bmp, 0, 0);
         bmp.close();
         this.dropPicture();
-        this.base = base;
+        this.raw = this.base = base;
+        this._baseKey = 'null';
         // Paint goes over everything (paint.js): shown on top, as it will be
         const painted = Paint.has(kept) ? await Paint.prepare(kept).catch(() => null) : null;
         this._painted = painted;
@@ -473,11 +482,13 @@ const Adjust = {
     // adding one, or dragging the one added last, doesn't do them all again.
 
     dropPicture() {
+        if (this.raw && this.raw !== this.base) this.raw.width = this.raw.height = 0;
         for (const k of ['base', '_pre', '_all']) {
             const c = k === 'base' ? this.base : this[k] && this[k].canvas;
             if (c) c.width = c.height = 0;
         }
-        this.base = null;
+        this.raw = this.base = null;
+        this._baseKey = undefined;
         this._pre = this._all = null;
         this._pictureKey = undefined;
     },
@@ -524,6 +535,20 @@ const Adjust = {
     // The picture made again if the spots changed: true when it was
     usePicture() {
         if (!this.base) return false;
+        // The working copy warped (perspective), first: the spots are done
+        // on it, so they're all done again when it changes
+        const persp = Retouch.cleanPersp(this.a.persp);
+        const baseKey = JSON.stringify(persp);
+        if (baseKey !== this._baseKey) {
+            if (this.base !== this.raw) this.base.width = this.base.height = 0;
+            for (const k of ['_pre', '_all']) if (this[k]) this[k].canvas.width = this[k].canvas.height = 0;
+            this._pre = this._all = null;
+            this.base = persp ? Retouch.warp(this.raw, persp) : this.raw;
+            this._baseKey = baseKey;
+            this._pictureKey = undefined;
+            AdjustSpots._Y = null;
+            this.hideSharp();
+        }
         const spots = this.a.spots || [];
         const key = JSON.stringify(spots);
         if (key === this._pictureKey) return false;
@@ -702,7 +727,8 @@ const Adjust = {
         if (which === 'geometry') {
             this.pushHistory();
             this.applyGeo(this.geoAt(0));
-            this.changed();
+            delete a.persp;
+            this.setAll(a, { history: false });
             return;
         }
         if (which === 'masks') delete a.masks;
@@ -1359,18 +1385,18 @@ const Adjust = {
     loadFull() {
         const file = this.file;
         // Made again when the spots change (they're done on it first)
-        const key = JSON.stringify(this.a.spots || []);
+        // (and the perspective and geometry: the same picture as the working copy)
+        const spots = this.a.spots, persp = this.a.persp, geo = this.geo;
+        const key = JSON.stringify([spots || [], Retouch.cleanPersp(persp), geo]);
         if (this._fullFor === file && this._fullKey === key) return this._fullPromise;
         this._fullFor = file;
         this._fullKey = key;
-        const kept = Edits.get(file);
-        const spots = this.a.spots;
         this._fullPromise = (async () => {
             const bmp = await createImageBitmap(await this.app.readImage(file));
-            const base = await Retouch.retouched(bmp, { adj: { spots } });
+            const base = await Retouch.retouched(bmp, { adj: { spots, persp } });
             let c;
-            if (kept && !Edits.wholePhoto(kept)) {
-                c = CropEditor.fromSnapshot(bmp.width, bmp.height, kept).drawOutput(base);
+            if (geo) {
+                c = CropEditor.fromSnapshot(bmp.width, bmp.height, geo).drawOutput(base);
                 if (base !== bmp) base.width = base.height = 0;
             } else if (base !== bmp) {
                 c = base;
