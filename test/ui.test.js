@@ -3653,7 +3653,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const welcome = FirstOpen.welcome();
             await wait(() => document.getElementById('first-open'));
             const fo = document.getElementById('first-open');
-            out.welcome = !fo.querySelector('input[type="radio"]') && /Save over the original/.test(fo.textContent) && /Export makes edited copies/.test(fo.textContent);
+            out.welcome = !fo.querySelector('input[type="radio"]') && /Write edits to file/.test(fo.textContent) && /Export makes edited copies/.test(fo.textContent);
             document.getElementById('fo-ok').click();
             await welcome;
             out.welcomeGone = !document.getElementById('first-open') && FirstOpen.asked();
@@ -4875,7 +4875,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
-    // ---- 7s2. Edits kept in jEditor; Save over the original ----
+    // ---- 7s2. Edits kept in jEditor; Write edits to file ----
     console.log('keep edits in jEditor');
     {
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
@@ -4947,7 +4947,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.badges = !!f('scan1.jpg')._gridEl.querySelector('.tile-edit') && !f('plain.jpg')._gridEl.querySelector('.tile-edit');
             out.barCount = Edits.count();
             out.noNagEdited = noNag();
-            out.saveInMenu = !!app.buildContextItems(null, false).find(it => it[0] === 'Save over the originals of 2 edited');
+            out.saveInMenu = !!app.buildContextItems(null, false).find(it => it[0] === 'Write edits to files (2 edited)');
             // Shown as it will be saved: the thumbnail and preview are of the print
             step = 'Shown as it will be saved: the thumbnail and preview are of the print';
             await until(() => f('scan1.jpg').thumbnailUrl && !f('scan1.jpg')._thumbStale);
@@ -5020,13 +5020,13 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.exported = [await dims(exp, 'scan1.jpg'), await dims(exp, 'scan2.jpg'), await dims(exp, 'plain.jpg')];
             out.exportLeavesEdits = Edits.count() === 3 && await untouched();
 
-            // Save over the original: Ctrl+S on the selection
-            step = 'Save over the original';
+            // Write edits to file: Ctrl+S on the selection
+            step = 'Write edits to file';
             await until(() => Edits.count() === 3 && !app._savingEdits);
             app.setView('grid');
             app.selection = new Set(app.files);
             app.updateSelectionUI();
-            out.selMenu = !!app.buildContextItems(f('scan1.jpg')._gridEl, false).find(it => it[0] === 'Save over the originals of 3');
+            out.selMenu = !!app.buildContextItems(f('scan1.jpg')._gridEl, false).find(it => it[0] === 'Write edits to files (3)');
             window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true, bubbles: true }));
             await until(() => app._savingEdits, 40);
             await until(() => !app._savingEdits, 1200);
@@ -5077,7 +5077,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         const inside = (d) => d[0] < 900 && d[1] < 700 && d[0] > 450 && d[1] > 300;
         check('kept edits: kept to start with, no setting in the menus, no bar counting edits', r.barOffAtFirst && r.menuUnticked && r.on, JSON.stringify(r));
         check('kept edits: batch Auto crop keeps crops as edits, nothing written', r.autoKept && /check them, then Export/.test(r.autoToast), r.autoToast);
-        check('kept edits: pencil on edited photos, nothing nagging; Save over the originals on the grid\'s right-click', r.badges && r.barCount === 2 && r.noNagEdited && r.saveInMenu, JSON.stringify([r.barCount, r.noNagEdited, r.saveInMenu]));
+        check('kept edits: a dot on edited photos, nothing nagging; Write edits to files on the grid\'s right-click', r.badges && r.barCount === 2 && r.noNagEdited && r.saveInMenu, JSON.stringify([r.barCount, r.noNagEdited, r.saveInMenu]));
         check('kept edits: thumbnail and viewer show the photo as it will be saved', r.thumbAspect > 1.33 && r.tileShows && inside(r.shown), `${r.thumbAspect} ${r.tileShows} ${r.shown}`);
         check('kept edits: recrop opens on the whole photo at the kept crop', r.editorWhole && r.editorAtKept && r.doneLabel === 'Done');
         check('kept edits: a new crop replaces the kept one, still nothing written', r.recropped && r.recropShown.join('x') === '600x400', String(r.recropShown));
@@ -6343,7 +6343,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             })();
             out.exported = Math.max(Math.abs(exPx[0] - exPx[1]), Math.abs(exPx[1] - exPx[2])) <= 3 && await same('b.jpg');
 
-            // Save over the original: written into the photo, the edit gone
+            // Write edits to file: written into the photo, the edit gone
             step = 'save into photo';
             const choose = UI.choose;
             UI.choose = async () => 'ok';
@@ -6356,7 +6356,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.openSingle(f('a.jpg'));
             await app.enterAdjust();
             await until(() => Adjust.ready);
-            out.adjustMenu = !!Adjust.moreItems().find(it => it[0] === 'Save over the original');
+            out.adjustMenu = !!Adjust.moreItems().find(it => it[0] === 'Write edits to file');
             key('s', { ctrlKey: true });
             await until(() => !Adjust.isOpen && app._savingEdits, 40);
             await until(() => !app._savingEdits && !f('a.jpg')._edit, 400);
@@ -6382,8 +6382,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('adjust: an adjusted photo\'s turn is kept with it; Ctrl+Z takes both back', r.turnKept && r.undone, JSON.stringify(r));
         check('adjust: Ctrl+Shift+C / V copy the adjustments onto other photos', r.pasted, JSON.stringify(r));
         check('adjust: still there when the project is opened again', r.reopened, JSON.stringify(r));
-        check('adjust: Export writes them, Save over the original writes them into the photo', r.exported && r.saved, JSON.stringify(r));
-        check('adjust: ⋯ has Save over the original, and Ctrl+S in Adjust saves over it', r.adjustMenu && r.savedFromAdjust, JSON.stringify([r.adjustMenu, r.savedFromAdjust]));
+        check('adjust: Export writes them, Write edits to file writes them into the photo', r.exported && r.saved, JSON.stringify(r));
+        check('adjust: ⋯ has Write edits to file, and Ctrl+S in Adjust saves over it', r.adjustMenu && r.savedFromAdjust, JSON.stringify([r.adjustMenu, r.savedFromAdjust]));
 
         // Without a project (photos picked on a phone): Done writes the photo
         const p = await page.evaluate(async () => {

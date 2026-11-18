@@ -46,7 +46,7 @@ const Palette = {
         'edit.undo': 'revert back',
         'edit.moveTo': 'file',
         'edit.rename': 'name',
-        'edit.saveOver': 'save write overwrite apply keep edits',
+        'edit.saveOver': 'save write file overwrite apply original keep edits',
         'flag.star': 'favourite favorite pick like keep',
         'flag.rescan': 'redo reject bad',
         'flag.clear': 'unflag',
