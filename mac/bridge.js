@@ -38,8 +38,21 @@
         log('error', text);
     });
 
+    // ---- The app's own folder handles (handles.js), with the switch on ----
+    // (main.js: HOST_HANDLES). Then a path's handle is simply made, and
+    // the pickers and drops give them too
+    const host = mac.hostHandles && window.HostHandles ? window.HostHandles.install({
+        call: (op, data) => mac.request('fs', { op, data }),
+        fileUrl: (p) => '/__fs?p=' + encodeURIComponent(p),
+        pathOf: (file) => mac.pathForFile(file),
+        pick: {
+            files: async (o) => { const r = await answer('pickFiles', o); return r.cancelled ? null : r.paths; },
+            save: async (o) => { const r = await answer('pickSave', o); return r.cancelled ? null : r.path; }
+        }
+    }) : null;
+
     // ---- A folder handle for a path ----
-    // The app drops the folder onto the page; the drop (and the drag before
+    // With Chromium's handles, the app drops the folder onto the page; the drop (and the drag before
     // it) is taken here, so jEditor never sees it. One at a time.
     let waiting = null; // { resolve, reject } for the drop on its way
     let queue = Promise.resolve();
@@ -62,6 +75,11 @@
     }, true);
 
     function handleFor(path) {
+        if (host) {
+            const h = host.folder(path);
+            remember(h, path);
+            return Promise.resolve(h);
+        }
         const run = queue.then(() => new Promise((resolve, reject) => {
             const timer = setTimeout(() => {
                 waiting = null;
@@ -146,6 +164,7 @@
     // → the folder's path, or null if it never came through here
     async function folderPath(handle) {
         if (!handle || handle.kind !== 'directory') return null;
+        if (host && host.isOurs(handle)) return host.pathOf(handle);
         if (typeof handle.photosLibrary === 'string') return LIBRARY + handle.photosLibrary;
         const name = String(handle.name || '').toLowerCase();
         const nameOf = (p) => (p.split('/').filter(Boolean).pop() || '').toLowerCase();
@@ -844,6 +863,8 @@
             steps.listed = a.files.length > 1 || `${a.files.length} photos listed`;
             const bytes = async () => new Uint8Array(await (await file.handle.getFile()).arrayBuffer()).join();
             const before = file && await bytes();
+            // (writes the turn into the file, as with Settings → Saving's keeping off: the handle's write is what's checked)
+            if (a.uiPrefs) a.uiPrefs.keepEdits = false;
             steps.rotated = file && await a.rotateImage(file, 90) !== false ? true : 'not turned';
             if (file && file._rotationQueue) await Promise.race([file._rotationQueue, new Promise(r => setTimeout(r, 10000))]);
             if (steps.rotated === true && await bytes() === before) steps.rotated = 'the file didn\'t change on disk';

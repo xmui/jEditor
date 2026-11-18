@@ -1,6 +1,6 @@
 # Lighter desktop apps: Mac and Linux off Electron
 
-*Plan only (2026-11-11); nothing is built yet. Waiting for the owner's pick.*
+*Planned 2026-11-11. Tauri v2 picked (the owner's go came through the Wrangler). **Done:** step 0, the spike (results below), and step 1, the app's own handles behind a switch, off by default (#251, with the Mac and Linux app tests fixed in #253). **Next:** step 2, the host's core in Rust. Releases stay on Electron.*
 
 **Goal:** jEditor's desktop apps as native and fast as possible, still on Windows, Mac and Linux. Windows already runs the page in the system's own web view (WebView2, `src/`). Step 1 moves the Mac and Linux host (`mac/`, Electron 44) onto the system's web view as well: WKWebView on the Mac, WebKitGTK on Linux.
 
@@ -116,13 +116,38 @@ The figures are typical numbers for these stacks, not jEditor's. Step 0 measures
 
 **Linux moves only if WebKitGTK passes step 0** (Adjust and Paint fast enough on a big scan, on Ubuntu LTS and Fedora). If it doesn't, Linux stays on Electron for now. With the shared handles and bridge, keeping that host is cheap, and the Mac still moves.
 
+## Step 0: what the spike found
+
+Measured on Linux only, in a container with no GPU and no Mac (Xvfb). The tools and full notes are on the branch `claude/desktop-spike` (`spike/desktop/RESULTS.md`); nothing from it shipped.
+
+| Check | Result |
+|---|---|
+| `test/ui.test.js` in Playwright WebKit, with stubbed handles | 549 pass, 44 fail (Chromium: 609, 0). Most failures are WebKit's own handles: `move(newName)` throws and there's no `queryPermission`, which the host's handles cover (step 1). 3 are the Liquid glass bend, as expected. A few are real: grid zoom drifts 2–5 px, GPU and CPU grading differ slightly, clipboard copy, the zip download |
+| Size (Linux) | Tauri ~7 MB compressed (a 9.9 MB binary with `app/` inside), against Electron ~91 MB |
+| Start, to the page loaded | Tauri 0.9 s, Electron 0.4 s. The page itself loads equally fast in both (~0.2 s); the gap is WebKitGTK starting on a box with no GPU (a blank page takes 0.73 s). To measure again on a real desktop and a Mac |
+| Memory, idle | Tauri ~230 MB (438 MB counting Xvfb's DMA-BUF cost), Electron 488 MB |
+| `ImageDecoder` | Exists in WebKit but never scales, and **hangs at random when fed by `file.stream()`**, as the page does. Fixed in step 1: the scaled path is skipped when `VideoFrame` has no `rotation`, and the scan uses `Host.stat()` instead of reading files |
+| Canvas limits | 80 live 3000² layers and one 16384² canvas are fine on Linux. The Mac's cap is still untested |
+| Adjust on a 35 MP scan | WebGL export is faster in WebKit (1.5 s, against 3.9 s). The CPU JavaScript (Detail) is 2–2.5× slower: export with Detail 15 s, against 9 s. Move Detail to WebGL or WASM, or later the engine |
+| Paint on the same scan | Fine: a stroke 8 ms; compositing 64 ms, against 28 ms |
+
+**In short:** nothing rules Tauri out. To plan for: the handles' gaps (done in step 1), the `ImageDecoder` hang (worked around in step 1), and Detail on JavaScriptCore. Still open, and needing a real machine: Linux start time on a desktop with a GPU, and everything on the Mac.
+
+## Step 1: done (#251, #253)
+
+- `mac/handles.js` and `mac/fs-host.js`: the app's own directory and file handles, backed by the host. Errors carry Chromium's names. Writes go to a swap file beside the photo and replace it only on `close()`. A file's bytes come from `/__fs` with Range support. The handles survive IndexedDB, so Recents works; the pickers and drag-and-drop go through the host.
+- They switch on with `JEDITOR_HOST_HANDLES=1` or `--host-handles`, and are **off by default**.
+- `Host.stat()` gives a file's size and date without reading it; Watch and the scan use it.
+- `test/handles-conformance.js`: 49 behaviour checks, with answers recorded from Chromium's real handles. `test/handles.test.js` runs them in Chromium and Playwright WebKit, then jEditor in WebKit on a real folder. `test/mac.test.js` runs them in Electron with the switch off and on.
+- #253 brought the Mac and Linux app tests back to green (the docked sidebar, the row of modes, the traffic lights), and fixed two layout bugs they found.
+
 ## Migration order
 
-0. **Spike (2–3 days, nothing shipped):**
+0. **Spike (done; results above):**
    - Run `test/ui.test.js` in Playwright's WebKit with a stub of the handles, to list what breaks in the engine.
    - Make a Tauri shell that loads `app/` on the Mac and Linux, and measure size, start time and memory against 1.51.0.
    - Check `ImageDecoder`, canvas limits and Adjust/Paint speed on a 600 dpi scan.
-1. **The handles (about a week):** the JS handles and the host's file calls.
+1. **The handles (done: #251, #253):** the JS handles and the host's file calls.
    - Prove them first **under Electron**, with a switch: `test/mac.test.js` passes on Chromium with the new handles, so their bugs are kept apart from WebKit's.
    - Then in Playwright WebKit.
 2. **The host's core in Rust:** the requests, drives, moves and the updater, with Rust tests of their own. The window is kept apart from them, so they can be tested without one.

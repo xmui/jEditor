@@ -174,6 +174,21 @@ jobs:
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
       - run: node scripts/set-build.js ${{ needs.tag.outputs.tag }}
 
+      # The engine (engine/, Rust): nasm for libjpeg's SIMD; cargo's builds kept
+      - uses: ilammy/setup-nasm@v1
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engine
+      # HEIC in the engine: libheif and libde265 from vcpkg, as DLLs (LGPL);
+      # vcpkg's built packages kept between runs
+      - uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\vcpkg\archives
+          key: vcpkg-libheif-${{ hashFiles('scripts/engine-heif.ps1') }}
+          restore-keys: vcpkg-libheif-
+      - name: libheif (vcpkg)
+        shell: pwsh
+        run: ./scripts/engine-heif.ps1
       - name: Build
         shell: pwsh
         run: ./scripts/build.ps1 -Tag ${{ needs.tag.outputs.tag }}
@@ -186,14 +201,24 @@ jobs:
         run: ./scripts/smoke-test.ps1
       - name: Standalone page
         run: node scripts/build-standalone.js
+      # A beta goes out with the apps that were built: a Mac or Linux job
+      # cancelled waiting for a runner leaves its app out, and Windows and
+      # the web page are still published. A release needs every app
+      # (Homebrew and the Mac and Linux updaters), so there it stops here.
+      - name: Every app, for a release
+        if: needs.tag.outputs.beta == 'false' && (needs.mac.result != 'success' || needs.linux.result != 'success')
+        shell: pwsh
+        run: |
+          Write-Output "::error::A release needs the Mac and Linux apps (mac: ${{ needs.mac.result }}, linux: ${{ needs.linux.result }}). Run it again."
+          exit 1
       - name: The Mac app
-        if: needs.tag.outputs.mac == 'true'
+        if: needs.mac.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: jEditor-mac
           path: dist
       - name: The Linux app
-        if: needs.tag.outputs.linux == 'true'
+        if: needs.linux.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: jEditor-linux
@@ -205,9 +230,9 @@ jobs:
           $notes = node scripts/release-notes.js ${{ needs.tag.outputs.version }}
           if ($LASTEXITCODE -ne 0) { $notes = '' }
           $beta = if ('${{ needs.tag.outputs.beta }}' -eq 'true') { "**This is a beta**, for trying what's coming before it's released. It may have rough edges. In the apps, Settings → Updates → Beta builds keeps you on betas.`n`n" } else { '' }
-          # A beta may have only some of the apps (see the top)
-          $mac = if ('${{ needs.tag.outputs.mac }}' -eq 'true') { "**Mac:** download **jEditor-${{ needs.tag.outputs.version }}-mac.dmg**, open it and drag jEditor to Applications. It isn't signed by Apple yet: the first time, macOS won't open it; go to System Settings → Privacy & Security and click **Open Anyway**. It only asks once. Or with Homebrew: **brew tap xmui/jeditor https://github.com/xmui/jEditor**, then **brew install --cask xmui/jeditor/jeditor**.`n`n" } else { '' }
-          $linux = if ('${{ needs.tag.outputs.linux }}' -eq 'true') { "**Linux** (64-bit): download **jEditor-${{ needs.tag.outputs.version }}-linux.AppImage**, make it executable and open it (it updates itself). Or install **jEditor-${{ needs.tag.outputs.version }}-linux.deb** (**sudo apt install ./jEditor-${{ needs.tag.outputs.version }}-linux.deb**) on Debian, Ubuntu and Mint, or **jEditor-${{ needs.tag.outputs.version }}-linux.pacman** (**sudo pacman -U jEditor-${{ needs.tag.outputs.version }}-linux.pacman**) on Arch.`n`n" } else { '' }
+          # A beta may have only some of the apps (see the top): the ones built
+          $mac = if ('${{ needs.mac.result }}' -eq 'success') { "**Mac:** download **jEditor-${{ needs.tag.outputs.version }}-mac.dmg**, open it and drag jEditor to Applications. It isn't signed by Apple yet: the first time, macOS won't open it; go to System Settings → Privacy & Security and click **Open Anyway**. It only asks once. Or with Homebrew: **brew tap xmui/jeditor https://github.com/xmui/jEditor**, then **brew install --cask xmui/jeditor/jeditor**.`n`n" } else { '' }
+          $linux = if ('${{ needs.linux.result }}' -eq 'success') { "**Linux** (64-bit): download **jEditor-${{ needs.tag.outputs.version }}-linux.AppImage**, make it executable and open it (it updates itself). Or install **jEditor-${{ needs.tag.outputs.version }}-linux.deb** (**sudo apt install ./jEditor-${{ needs.tag.outputs.version }}-linux.deb**) on Debian, Ubuntu and Mint, or **jEditor-${{ needs.tag.outputs.version }}-linux.pacman** (**sudo pacman -U jEditor-${{ needs.tag.outputs.version }}-linux.pacman**) on Arch.`n`n" } else { '' }
           $beta + @"
           **Windows:** download **jEditor-Setup-${{ needs.tag.outputs.version }}.exe** and run it: it installs for you only and doesn't need admin rights. The first time, Windows may say it protected your PC: click **More info**, then **Run anyway**. Or unzip **jEditor-${{ needs.tag.outputs.version }}-portable.zip** anywhere and run jEditor.exe.
 

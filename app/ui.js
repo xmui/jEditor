@@ -136,7 +136,8 @@ const UI = {
 
     // opts: { title, message, items: [text], note, ok, cancel, danger, input: { label, value, placeholder, inputMode },
     //        alt, altDanger (choose), check: { label, note, value } (a switch under
-    //        a prompt: it then answers { value, checked }, or null) }
+    //        a prompt: it then answers { value, checked }, or null; under a
+    //        choose: { answer: 'ok' | 'alt', checked }, or null) }
     // Text only, never HTML: file names go in safely.
     show(kind, opts) {
         this.init();
@@ -218,7 +219,10 @@ const UI = {
         this.el('ui-dialog').classList.add('hidden');
         if (p.kind === 'alert') p.resolve();
         else if (p.kind === 'confirm') p.resolve(!!yes);
-        else if (p.kind === 'choose') p.resolve(yes === 'alt' ? 'alt' : yes ? 'ok' : null);
+        else if (p.kind === 'choose') {
+            const a = yes === 'alt' ? 'alt' : yes ? 'ok' : null;
+            p.resolve(p.check && a ? { answer: a, checked: this.el('uid-check-box').checked } : a);
+        }
         else if (p.check) p.resolve(yes ? { value: this.el('uid-input').value, checked: this.el('uid-check-box').checked } : null);
         else p.resolve(yes ? this.el('uid-input').value : null);
     },

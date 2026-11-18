@@ -345,7 +345,7 @@ const Watch = {
         const out = new Array(handles.length);
         for (let i = 0; i < handles.length; i += this.STAT_BATCH) {
             const part = handles.slice(i, i + this.STAT_BATCH);
-            const datas = await Promise.all(part.map(h => h.getFile().catch(() => null)));
+            const datas = await Promise.all(part.map(h => Host.stat(h).catch(() => null)));
             datas.forEach((d, j) => { out[i + j] = d; });
         }
         return out;
@@ -379,6 +379,16 @@ const Watch = {
             return false; // can't be read yet: still being written
         }
         return true;
+    },
+
+    // complete() for a size and date (Host.stat, a handle's peek): a file
+    // changed just now is read for it; a Photos library photo (a peek, no
+    // stat) is always whole
+    async whole(d, handle, name) {
+        if (!d) return false;
+        if (!(d instanceof Blob) && typeof handle.stat !== 'function') return true;
+        if (d instanceof Blob || Date.now() - d.lastModified >= this.SETTLED_MS) return this.complete(d, name);
+        try { return this.complete(await handle.getFile(), name); } catch (e) { return false; }
     },
 
     // ---- One scan ----
@@ -454,7 +464,7 @@ const Watch = {
                 continue;
             }
             if (this._unreadable) this._unreadable.delete(p.relPath);
-            if (!(await this.complete(d, p.name))) {
+            if (!(await this.whole(d, p.handle, p.name))) {
                 unfinished.add(Folders.parentOf(p.relPath));
                 continue;
             }

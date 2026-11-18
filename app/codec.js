@@ -175,7 +175,7 @@ const Codec = {
 
     // A HEIC or HEIF (iPhones; Sony's .hif). Never written: nothing here
     // writes HEIC, so like a RAW its turns, crops and adjustments are kept
-    // as an edit, and Save edits and Export write JPEG copies
+    // as an edit, and Write edits to file and Export write JPEG copies
     isHeif(name) {
         return /\.(heic|heif|hif)$/i.test(name || '');
     },

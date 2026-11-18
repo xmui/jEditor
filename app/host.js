@@ -22,13 +22,30 @@
 //   folderMove   a new projects folder can take the projects along: each
 //                copied, checked and only then removed (folder-move.js)
 //   cacheFolder  Settings → Projects: where the cache is kept (folder-move.js)
-//   themes       Settings → Appearance's themes, with their own title bar (themes.js)
+//   themes       Settings → Appearance's themes, with their own title bar (themes.js);
+//                paused, under Settings → Experimental (experiments.js)
 //   photosLibrary  the Mac's Photos library in the sidebar (places.js): its albums
 //                open as the project (photosAlbum: a folder handle); an edit is
 //                saved back as a Photos edit on the photo as it is now, and
 //                nothing is added, renamed or removed (app.fixedFiles)
 //   photosAdd    Add to Photos library: a project's photos into Photos, in an
 //                album named after it (script.js: addToPhotos)
+//   engine       the app's own engine (engine/, Rust; docs/plans/fast-engine.md):
+//                JPEG and RAW grid thumbnails (a RAW's from the JPEG inside
+//                it), and the viewer's screen-sized picture of a RAW, made
+//                from the file on disk, much faster than decoding the whole
+//                photo in the page (script.js: engineThumbnail and
+//                enginePreview; JEditorNative.engineThumb and enginePreview).
+//                Today's code is the fallback, for the web and for whatever
+//                the engine can't do
+//   engineHeic   the engine does HEICs too, grid thumbnails and the viewer's
+//                picture (libheif, with libde265; its DLLs beside the
+//                engine's), natively and on every core, rather than the
+//                page's decoder (the fallback)
+//
+// Files: an app may give the page folder handles of its own (mac/handles.js,
+// for web views without File System Access). Those say a file's size and
+// date without reading it: Host.stat(handle). Elsewhere it's getFile().
 //
 // Wording that names the system's own things comes from here too: in a
 // text, {files} is Explorer, Finder or Files, {computer} this PC or this Mac, and
@@ -50,6 +67,13 @@ const Host = {
     has(feature) {
         const n = this.get();
         return !!n && Array.isArray(n.features) && n.features.includes(feature);
+    },
+
+    // A file's size and date → { size, lastModified }, without reading it
+    // where the handle can say (the app's own handles: stat()); else from
+    // getFile(), which with Chromium's handles doesn't read the file either
+    stat(handle) {
+        return typeof handle.stat === 'function' ? handle.stat() : handle.getFile();
     },
 
     mac() {

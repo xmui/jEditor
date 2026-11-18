@@ -36,6 +36,8 @@ function launchOptions() {
 
 // Shared in-page helpers, injected into every test page.
 const PAGE_HELPERS = `
+    // Settings → Saving → Keep edits in jEditor (edits.js), on or off
+    window.keepEdits = (on) => { app.uiPrefs.keepEdits = !!on; };
     // A fake FileSystemFileHandle backed by in-memory bytes.
     window.makeHandle = (name, bytes, type) => {
         const h = {
@@ -193,9 +195,16 @@ const PAGE_HELPERS = `
 `;
 
 // The first-time questions (first-open.js) answered already, so they
-// don't cover what a test clicks; the tests of them clear this
+// don't cover what a test clicks; the tests of them clear this. And Keep
+// edits in jEditor off (Settings → Saving; edits.js), so a turn or a crop
+// is written into the photo as the tests check; the tests of keeping turn
+// it on (keepEdits(true))
 const QUIET_FIRST_OPEN = () => {
-    try { if (!localStorage.getItem('jeditor.firstOpen')) localStorage.setItem('jeditor.firstOpen', JSON.stringify({ asked: true, ask: false })); } catch (e) { /* no storage */ }
+    try { if (!localStorage.getItem('jeditor.firstOpen')) localStorage.setItem('jeditor.firstOpen', JSON.stringify({ asked: true })); } catch (e) { /* no storage */ }
+    try {
+        const ui = JSON.parse(localStorage.getItem('jeditor.ui') || '{}') || {};
+        if (typeof ui.keepEdits !== 'boolean') localStorage.setItem('jeditor.ui', JSON.stringify({ ...ui, keepEdits: false }));
+    } catch (e) { /* no storage */ }
 };
 
 async function newPage(browser, url) {
@@ -216,7 +225,8 @@ async function newPage(browser, url) {
 // Everything that floats over the page, opened one at a time and measured:
 // dialogs, the guide, Find anything, right-click menus (one at the very
 // top, a long one pushed up from the bottom), a message, the first-time
-// questions, the Open a folder card, and the tour's card at each stop.
+// questions, the Open a folder card, the project picker, and the tour's
+// card at each stop.
 // → [{ name, left, top, right, bottom }] of what showed. For the checks
 // that nothing goes up into the window's top bar (style.css: --top-safe).
 async function floatingBoxes(page, { tour = true } = {}) {
@@ -239,7 +249,9 @@ async function floatingBoxes(page, { tour = true } = {}) {
         ['the guide', () => Guide.open(), '.guide'],
         ['Find anything', () => Palette.open(), '.palette'],
         ['the first-time questions', () => { FirstOpen.welcome(); }, '.first-open'],
-        ['the Open a folder card', () => { if (typeof OpenCard !== 'undefined' && OpenCard.available()) OpenCard.open(); }, '#open-card:not(.hidden) .dialog']
+        ['the Open a folder card', () => { if (typeof OpenCard !== 'undefined' && OpenCard.available()) OpenCard.open(); }, '#open-card:not(.hidden) .dialog'],
+        // (the apps': a click on the project's name in the sidebar)
+        ['the project picker', () => { const n = document.querySelector('#sb-card .sb-card-name'); if (n && n.offsetParent && typeof Picker !== 'undefined') Picker.open(n); }, '#sb-picker:not([hidden])']
     ];
     for (const [name, open, selector] of each) {
         await page.evaluate(open).catch(() => null);

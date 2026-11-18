@@ -38,6 +38,7 @@
     <script src="adjust-spots.js"></script>
     <script src="adjust-sync.js"></script>
     <script src="paint.js"></script>
+    <script src="paint-heal.js"></script>
     <script src="paint-editor.js"></script>
     <script src="history.js"></script>
     <script src="watch.js"></script>
@@ -109,7 +110,7 @@
                             <li class="ghosted" aria-hidden="true"><span class="recent-pile"><span class="recent-print ghost"></span><span class="recent-print ghost"></span><span class="recent-print ghost"></span></span></li>
                             <li class="ghosted" aria-hidden="true"><span class="recent-pile"><span class="recent-print ghost"></span><span class="recent-print ghost"></span><span class="recent-print ghost"></span></span></li>
                         </ul>
-                        <p>Folders you open lie here as stacks of prints, newest first.</p>
+                        <p>Folders you open lie here as stacks of their photos, newest first.</p>
                     </div>
                     <!-- Photos picked here are converted here: how far, and what it did (convert.js) -->
                     <div id="start-convert-run" class="start-convert-run hidden" role="status" aria-live="polite"></div>
@@ -119,11 +120,14 @@
                 <p class="drop-hint">Drop a folder or photos anywhere in this window<span data-needs="places"> · <button id="home-all" type="button" class="link-btn">All projects…</button></span></p>
                 <div class="home-tiles">
                     <button id="btn-browse-folder" type="button" class="home-tile primary"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg><span class="home-tile-text"><span class="home-tile-name">Open a folder</span><span class="home-tile-sub">or a project</span></span></button>
-                    <button id="start-capture" type="button" class="home-tile hidden"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="8" rx="2"/><path d="M6 11V5h12v6M7 15h4"/></svg><span class="home-tile-text"><span class="home-tile-name">Scan or Capture</span><span class="home-tile-sub">scanner or camera</span></span></button>
-                    <button id="start-blank" type="button" class="home-tile hidden"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8M8 12h8"/></svg><span class="home-tile-text"><span class="home-tile-name">New canvas</span><span class="home-tile-sub">a blank page</span></span></button>
+                    <button id="start-blank" type="button" class="home-tile" title="A new project: a folder for photos, or a blank canvas"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8M8 12h8"/></svg><span class="home-tile-text"><span class="home-tile-name">New project</span><span class="home-tile-sub">photos or a canvas</span></span></button>
                     <button id="start-convert" type="button" class="home-tile" aria-haspopup="menu"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h13l-3-3M20 17H7l3 3"/></svg><span class="home-tile-text"><span class="home-tile-name">Convert</span><span class="home-tile-sub">photos or a folder</span></span></button>
-                    <button id="start-adjust" type="button" class="home-tile"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg><span class="home-tile-text"><span class="home-tile-name">Adjust a photo</span><span class="home-tile-sub">light and colour</span></span></button>
-                    <button id="start-paint" type="button" class="home-tile"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.4 2.6a2 2 0 0 1 2.9 2.9L12 14.8 9.2 12z"/><path d="M9.2 12c-2.5 0-4.2 1.6-4.2 4 0 1.5-.8 2.6-2.4 3.4C4.4 21 6.3 21.5 8 21.5c3 0 5-1.9 4.9-4.6z"/></svg><span class="home-tile-text"><span class="home-tile-name">Paint a photo</span><span class="home-tile-sub">or a new canvas</span></span></button>
+                </div>
+                <!-- The rest, as a quiet row: the two ways to start, and Convert, are the tiles -->
+                <div class="home-more">
+                    <button id="start-capture" type="button" class="home-tile hidden"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="8" rx="2"/><path d="M6 11V5h12v6M7 15h4"/></svg><span class="home-tile-text"><span class="home-tile-name">Scan or Capture</span><span class="home-tile-sub">scanner or camera</span></span></button>
+                    <button id="start-adjust" type="button" class="home-tile" title="Open one photo in Adjust: light and colour"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg><span class="home-tile-text"><span class="home-tile-name">Adjust a photo</span><span class="home-tile-sub">light and colour</span></span></button>
+                    <button id="start-paint" type="button" class="home-tile" title="Open one photo in Paint, to draw on it"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.4 2.6a2 2 0 0 1 2.9 2.9L12 14.8 9.2 12z"/><path d="M9.2 12c-2.5 0-4.2 1.6-4.2 4 0 1.5-.8 2.6-2.4 3.4C4.4 21 6.3 21.5 8 21.5c3 0 5-1.9 4.9-4.6z"/></svg><span class="home-tile-text"><span class="home-tile-name">Paint a photo</span><span class="home-tile-sub">draw on a photo</span></span></button>
                 </div>
                 <!-- All projects: the projects folder, pinned folders and drives (places.js, the apps) -->
                 <div id="home-places" class="home-places hidden" role="dialog" aria-label="All projects" data-needs="places">
@@ -234,15 +238,6 @@
                 </div>
             </header>
 
-            <!-- Save edits when done (edits.js): what's waiting -->
-            <div id="edits-bar" class="edits-bar toolbar hidden" role="toolbar" aria-label="Edits not saved yet">
-                <span class="edits-icon" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></svg></span>
-                <span id="edits-text" class="edits-text" aria-live="polite"></span>
-                <button id="edits-off" class="btn ghost sm" title="Save each edit straight away again">Turn off</button>
-                <button id="edits-discard" class="btn ghost sm" title="Put the photos back as they are on disk">Discard</button>
-                <button id="edits-save" class="btn primary sm" title="Save the edits into the photos, or export edited copies">Save…</button>
-            </div>
-
             <!-- Main image area -->
             <main id="main-view">
                 <div id="image-container" class="image-contain hidden">
@@ -283,13 +278,6 @@
                 <div id="fb-crumbs" class="fb-crumbs"></div>
                 <span id="fb-filter-chip" class="fb-filter-chip hidden"></span>
                 <span id="fb-dupes-chip" class="fb-filter-chip hidden"></span>
-                <div id="fb-search-box" class="fb-search" title="Search names and folders (Ctrl+F)">
-                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
-                    <input id="fb-search" type="search" placeholder="Search" autocomplete="off" spellcheck="false" aria-label="Search photos">
-                    <button id="fb-search-clear" class="fb-search-clear" title="Clear the search and filter" aria-label="Clear the search" tabindex="-1">
-                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17" /></svg>
-                    </button>
-                </div>
             </nav>
             <aside id="folder-rail" class="folder-rail hidden" aria-label="Sidebar">
                 <!-- The open project (places.js, the Windows app) -->
@@ -310,6 +298,9 @@
                 </div>
                 <div class="side-grip" data-side="rail" data-edge="right" title="Drag to resize; double-click for its own width" aria-hidden="true"></div>
             </aside>
+            <!-- The sidebar hidden: a thin line at the window's edge, to
+                 drag it back out from (script.js: initSidebarResize) -->
+            <div id="rail-edge" class="side-edge hidden" data-side="rail" data-edge="right" data-for="folder-rail" title="Drag to show the sidebar" aria-hidden="true"></div>
 
             <!-- Grid view -->
             <div id="grid-view" class="grid-view hidden" tabindex="-1" aria-label="Photos">
@@ -385,8 +376,6 @@
                 <dl id="info-list"></dl>
             </div>
 
-            <!-- Path chip (bottom left, single view) -->
-            <div id="status-bar" class="status-bar hidden"></div>
         </div>
     </div>
 
@@ -472,8 +461,9 @@
     <!-- Adjust: light, color, levels, curves (adjust.js; the maths in develop.js) -->
     <div id="adjust-editor" class="adjust-editor mode-screen hidden">
         <div class="mode-head adj-head">
-            <span id="adj-file" class="mode-title"></span>
-            <span id="adj-dims" class="crop-dims"></span>
+            <!-- The file, as Photos' file pill (jEditor's own look: style.css) -->
+            <span class="mode-file"><span id="adj-file" class="mode-title"></span>
+            <span id="adj-dims" class="crop-dims"></span></span>
             <span id="adj-before-tag" class="adj-tag hidden">Before</span>
             <!-- Auto Sync on (adjust-sync.js): what's changed goes onto the others selected in the strip -->
             <span id="adj-sync-chip" class="adj-sync-chip hidden" role="status">Auto sync: <span id="adj-sync-n"></span><button id="adj-sync-off" class="adj-sync-x" title="Turn Auto Sync off (Ctrl+Alt+Shift+S)" aria-label="Turn Auto Sync off">✕</button></span>
@@ -484,40 +474,69 @@
                 <span class="mode-head-sep" aria-hidden="true"></span>
                 <button id="adj-copy" class="btn ghost sm" title="Copy these adjustments, to paste onto other photos (Ctrl+Shift+C)">Copy</button>
                 <button id="adj-paste" class="btn ghost sm" title="Paste the adjustments copied last (Ctrl+Shift+V)">Paste</button>
+                <!-- jEditor's own look: Before and this; Reset, Copy and Paste are in it (style.css) -->
+                <button id="adj-more" class="btn ghost sm adj-more" title="More: reset, copy, paste, sync, show clipping" aria-label="More" aria-haspopup="menu"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.25" fill="currentColor"/><circle cx="12" cy="12" r="1.25" fill="currentColor"/><circle cx="19" cy="12" r="1.25" fill="currentColor"/></svg></button>
             </span>
         </div>
         <div class="adj-body">
             <div id="adj-stage" class="adj-stage"><canvas id="adj-canvas"></canvas><canvas id="adj-sharp" class="adj-sharp hidden" aria-hidden="true"></canvas><canvas id="adj-paint" class="adj-paint hidden" aria-hidden="true"></canvas><div id="adj-loupe-box" class="adj-loupe-box hidden" aria-hidden="true"></div><canvas id="adj-overlay" class="adj-overlay hidden"></canvas><canvas id="adj-spot-overlay" class="adj-overlay hidden"></canvas>
                 <!-- Zoom (adjust.js): Ctrl+wheel or a pinch, Ctrl+= and Ctrl+−, double-click; Fit and 100% here -->
                 <div id="adj-zoom" class="adj-zoom" role="group" aria-label="Zoom"><span id="adj-zoom-level" class="adj-zoom-level hidden"></span><button id="adj-zoom-fit" class="adj-zoom-btn" aria-pressed="true" title="Fit the photo (Ctrl+0). Ctrl+wheel or pinch zooms; double-click goes between Fit and 100%">Fit</button><button id="adj-zoom-100" class="adj-zoom-btn" aria-pressed="false" title="Show at 100% (Ctrl+1). Zoomed in, drag (or hold Space and drag) to move about">100%</button></div></div>
+            <!-- Hidden (dragged away), a line at the window's right edge drags it back out -->
+            <div class="side-edge side-edge-right hidden" data-side="adjust" data-edge="left" data-for="adj-panel" title="Drag to show the panel" aria-hidden="true"></div>
+            <!-- The sidebar hidden: its line, at the left (folders.js) -->
+            <div class="side-edge hidden" data-side="rail" data-edge="right" data-for="folder-rail" title="Drag to show the sidebar" aria-hidden="true"></div>
             <div class="side-grip" data-side="adjust" data-edge="left" title="Drag to resize; double-click for its own width" aria-hidden="true"></div>
             <aside id="adj-panel" class="adj-panel" aria-label="Adjustments">
-                <section class="adj-sec adj-hist-box" aria-label="Histogram and levels">
+                <section class="adj-sec adj-hist-box" aria-label="Histogram and levels" data-reset="levels" data-reset-name="levels">
                     <div class="adj-sec-head">
                         <span class="adj-chan adj-tabs" role="tablist" aria-label="Channel"></span>
-                        <span class="adj-sec-acts">
-                            <button id="adj-auto" class="btn ghost sm" title="Auto: set the levels from the photo (Shift+A)">Auto</button>
-                            <button id="adj-auto-color" class="btn ghost sm" title="Auto color: each channel on its own too, which takes the cast off a faded print (Shift+C)">Auto color</button>
-                        </span>
                     </div>
                     <canvas id="adj-hist" class="adj-hist"></canvas>
                     <canvas id="adj-levels" class="adj-levels" title="Levels: drag the black, grey and white handles; the lower two set the output (double-click to reset)"></canvas>
-                    <div class="adj-levels-foot"><span id="adj-levels-read" class="adj-read"></span><button class="btn ghost sm adj-sec-reset" data-reset="levels">Reset</button></div>
+                    <div class="adj-levels-foot"><span id="adj-levels-read" class="adj-read"></span></div>
                 </section>
-                <!-- Edit: the sliders, in Lightroom's order; Retouch and Masks: tools used on the photo -->
-                <div id="adj-panes" class="adj-tabs adj-pane-tabs" role="tablist" aria-label="Adjust">
-                    <button class="adj-tab" role="tab" data-pane="edit" aria-selected="true">Edit</button>
-                    <button class="adj-tab" role="tab" data-pane="retouch" aria-selected="false" title="Heal and clone spots, and dust on scans">Retouch</button>
-                    <button class="adj-tab" role="tab" data-pane="masks" aria-selected="false" title="Adjust part of the photo">Masks</button>
+                <!-- The four tools: Edit (the sliders, in Lightroom's order),
+                     Restore (scans: faded colour, red-eye, dust), Heal (spots)
+                     and Masks (part of the photo) -->
+                <div id="adj-panes" class="adj-pane-tabs" role="tablist" aria-label="Adjust">
+                    <button class="adj-tool" role="tab" data-pane="edit" aria-selected="true" aria-label="Edit" title="Edit: light, colour, curve and the rest"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg></button>
+                    <button class="adj-tool" role="tab" data-pane="restore" aria-selected="false" aria-label="Restore" title="Restore: a faded scan's colour, red-eye, dust, scratches and a print's dots"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6"/><path d="M4 16l4.5-4.5 4 4 2-2L20 18"/><path d="M19 2.5v5M16.5 5h5"/></svg></button>
+                    <button class="adj-tool" role="tab" data-pane="heal" aria-selected="false" aria-label="Heal" title="Heal: take spots off, or clone over them"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="8.5" width="19" height="7" rx="3.5" transform="rotate(-45 12 12)"/><path d="M10.6 10.6h.01M13.4 13.4h.01M13.4 10.6h.01M10.6 13.4h.01"/></svg></button>
+                    <button class="adj-tool" role="tab" data-pane="masks" aria-selected="false" aria-label="Masks" title="Masks: adjust part of the photo"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg></button>
                 </div>
                 <div class="adj-pane" data-pane="edit">
-                    <details id="adj-basic-sec" class="adj-sec" open>
+                    <details id="adj-basic-sec" class="adj-sec" open data-reset="basic" data-reset-name="Basic">
                         <summary><span>Basic</span><span class="adj-sec-acts">
-                            <button id="adj-presets" class="btn ghost sm" title="Your presets: settings saved under a name">Presets</button>
-                            <button class="btn ghost sm adj-sec-reset" data-reset="basic">Reset</button></span></summary>
-                        <div class="adj-sec-head"><span id="adj-look-tabs" class="adj-tabs adj-look-tabs" role="tablist" aria-label="Process"></span></div>
-                        <div id="adj-looks" class="adj-looks" role="group" aria-label="Film looks"></div>
+                            <button id="adj-presets" class="btn ghost sm" title="Your presets: settings saved under a name">Presets</button></span></summary>
+                        <div class="adj-fixes" role="group" aria-label="Quick fixes">
+                            <button id="adj-auto" class="btn secondary sm" title="Auto: set the levels from the photo (Shift+A). Auto color is in the ⋯ menu">Auto</button>
+                            <button id="adj-restore" class="btn secondary sm" title="Restore color: brings back a faded print's or slide's colours and takes off its cast (red, yellow, blue), with a strength">Restore color</button>
+                            <button id="adj-backlight" class="btn secondary sm" title="Backlight: lifts what's in front of a bright sky or window and holds the bright part back, worked out from the photo">Backlight</button>
+                        </div>
+                        <div class="adj-look-row">
+                            <span class="adj-look-label">Look</span>
+                            <button id="adj-look-pick" class="adj-look-pick" aria-haspopup="menu" title="A film look: negative, slide, cinema, black and white, or a darkroom look">
+                                <span id="adj-look-name">None</span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 10l4 4 4-4"/></svg></button>
+                        </div>
                         <div id="adj-look-amount" class="adj-rows hidden"></div>
+                        <details id="adj-look-dial" class="adj-look-dial hidden">
+                            <summary><span>Dial in</span></summary>
+                            <div id="adj-look-tone" class="adj-rows"></div>
+                            <div class="adj-sub">Tint</div>
+                            <div id="adj-look-tint" class="adj-rows"></div>
+                            <div class="adj-sub">Colour</div>
+                            <div id="adj-look-colour" class="adj-rows"></div>
+                            <div class="adj-sub adj-sub-acts"><span>Colour response</span>
+                                <span class="adj-look-mix-tabs adj-tabs" role="tablist" aria-label="Change">
+                                    <button class="adj-tab" role="tab" data-mix="hue">Hue</button>
+                                    <button class="adj-tab" role="tab" data-mix="sat">Saturation</button>
+                                    <button class="adj-tab" role="tab" data-mix="lum">Luminance</button>
+                                </span></div>
+                            <div id="adj-look-mixer" class="adj-rows"></div>
+                            <div class="adj-sub">Film</div>
+                            <div id="adj-look-film" class="adj-rows"></div>
+                        </details>
                         <div class="adj-sub adj-sub-acts"><span>White balance</span>
                             <button id="adj-wb-pick" class="btn ghost sm" aria-pressed="false" title="White balance: click something in the photo that should be white or grey (W)">Pick grey</button></div>
                         <div id="adj-wb" class="adj-rows"></div>
@@ -526,13 +545,13 @@
                         <div class="adj-sub">Presence</div>
                         <div id="adj-color" class="adj-rows"></div>
                     </details>
-                    <details class="adj-sec">
-                        <summary><span>Tone curve</span><button class="btn ghost sm adj-sec-reset" data-reset="curve">Reset</button></summary>
+                    <details class="adj-sec" data-reset="curve" data-reset-name="Tone curve">
+                        <summary><span>Tone curve</span></summary>
                         <div class="adj-sec-head"><span class="adj-chan adj-tabs" role="tablist" aria-label="Channel"></span></div>
                         <canvas id="adj-curve" class="adj-curve" title="Click to add a point and drag it; drag a point off the side, or double-click it, to take it away"></canvas>
                     </details>
-                    <details class="adj-sec">
-                        <summary><span>Color mixer</span><button class="btn ghost sm adj-sec-reset" data-reset="mixer">Reset</button></summary>
+                    <details class="adj-sec" data-reset="mixer" data-reset-name="Color mixer">
+                        <summary><span>Color mixer</span></summary>
                         <div class="adj-sec-head">
                             <span class="adj-mix-tabs adj-tabs" role="tablist" aria-label="Change">
                                 <button class="adj-tab" role="tab" data-mix="hue">Hue</button>
@@ -542,25 +561,69 @@
                         </div>
                         <div id="adj-mixer" class="adj-rows"></div>
                     </details>
-                    <details class="adj-sec">
-                        <summary><span>Color grading</span><button class="btn ghost sm adj-sec-reset" data-reset="grading">Reset</button></summary>
+                    <details class="adj-sec" data-reset="grading" data-reset-name="Color grading">
+                        <summary><span>Color grading</span></summary>
                         <div id="adj-wheels" class="adj-wheels"></div>
                         <div id="adj-grade-more" class="adj-rows"></div>
                     </details>
-                    <details id="adj-detail-sec" class="adj-sec">
-                        <summary><span>Detail</span><button class="btn ghost sm adj-sec-reset" data-reset="detail">Reset</button></summary>
+                    <details id="adj-detail-sec" class="adj-sec" data-reset="detail" data-reset-name="Detail">
+                        <summary><span>Detail</span></summary>
                         <canvas id="adj-loupe" class="adj-loupe" title="1:1, from the full photo: click the photo to look somewhere else"></canvas>
                         <p class="adj-hint">1:1 — click the photo to look elsewhere</p>
                         <div id="adj-detail" class="adj-rows"></div>
                     </details>
-                    <details class="adj-sec">
-                        <summary><span>Effects</span><button class="btn ghost sm adj-sec-reset" data-reset="effects">Reset</button></summary>
+                    <!-- Geometry (adjust.js): straighten, as Crop's angle -->
+                    <details id="adj-geo-sec" class="adj-sec" data-reset="geometry" data-reset-name="Geometry">
+                        <summary><span>Geometry</span></summary>
+                        <div class="adj-sub adj-sub-acts"><span>Straighten</span>
+                            <button id="adj-level" class="btn ghost sm" aria-pressed="false" title="Straighten: drag along something that should be level or upright">Draw a line</button></div>
+                        <div id="adj-geo" class="adj-rows"></div>
+                    </details>
+                    <details class="adj-sec" data-reset="effects" data-reset-name="Effects">
+                        <summary><span>Effects</span></summary>
                         <div id="adj-effects" class="adj-rows"></div>
                     </details>
                 </div>
-                <div class="adj-pane hidden" data-pane="retouch">
-                    <details id="adj-spots-sec" class="adj-sec">
-                        <summary><span>Spot removal</span><button class="btn ghost sm adj-sec-reset" data-reset="spots">Reset</button></summary>
+                <div class="adj-pane hidden" data-pane="restore">
+                    <details id="adj-restore-sec" class="adj-sec" open>
+                        <summary><span>Restore</span></summary>
+                        <div class="adj-sub">Faded colour</div>
+                        <div class="adj-fixes">
+                            <button id="adj-restore-fade" class="btn secondary sm" title="Restore color: brings back a faded print's or slide's colours and takes off its cast (red, yellow, blue); its strength is under the histogram">Restore color</button>
+                            <button id="adj-restore-pick" class="btn ghost sm" aria-pressed="false" title="Restore color from a grey: click something in the photo that should be grey">Pick grey</button>
+                        </div>
+                        <div id="adj-restore-opts" class="hidden">
+                            <div class="adj-tabs" role="group" aria-label="Restore color">
+                                <button id="adj-restore-fix" class="adj-tab" aria-pressed="true" title="Each dye brought back by itself, which takes off the cast">Fix the colours</button>
+                                <button id="adj-restore-keep" class="adj-tab" aria-pressed="false" title="The colours kept as they are (a sunset, a field of grass): only the light and any stain are fixed">Keep the colours</button>
+                            </div>
+                            <p id="adj-restore-found" class="adj-hint"></p>
+                        </div>
+                        <div class="adj-sub">Red-eye</div>
+                        <p class="adj-hint">Click an eye that's red from a flash. Drag a spot to move it; right-click takes it off</p>
+                        <div id="adj-eye-tools" class="adj-rows"></div>
+                        <div class="adj-sub">Dust on scans</div>
+                        <div id="adj-dust-tools" class="adj-rows"></div>
+                        <div class="adj-mask-add">
+                            <button id="adj-dust-find" class="btn secondary sm" title="Put a heal spot on every speck of dust found">Find dust</button>
+                            <button id="adj-dust-clear" class="btn ghost sm" title="Take off the dust spots and scratches Find dust and Find scratches put on" disabled>Clear found</button>
+                        </div>
+                        <div class="adj-sub">Scratches and creases</div>
+                        <p class="adj-hint">Drag along a scratch or crease to take it off</p>
+                        <div class="adj-mask-add">
+                            <button id="adj-scratch-find" class="btn secondary sm" title="Put a line on every scratch and crease found: check them, and right-click any that aren't">Find scratches</button>
+                        </div>
+                        <p id="adj-spot-count" class="adj-hint"></p>
+                        <div class="adj-sub">Printed photos</div>
+                        <div id="adj-descreen-tools" class="adj-rows hidden"></div>
+                        <div class="adj-mask-add">
+                            <button id="adj-descreen" class="btn secondary sm" title="Descreen: finds the dot pattern of a photo printed in a magazine, newspaper or book, and takes it off (zoom to 100% to see it)">Descreen</button>
+                        </div>
+                    </details>
+                </div>
+                <div class="adj-pane hidden" data-pane="heal">
+                    <details id="adj-spots-sec" class="adj-sec" data-reset="spots" data-reset-name="spots">
+                        <summary><span>Spot removal</span></summary>
                         <div class="adj-tabs adj-brush-mode" role="group" aria-label="Spot tool">
                             <button id="adj-spot-heal" class="adj-tab" aria-pressed="true" title="Heal: texture from nearby, blended into the colour and brightness round the spot">Heal</button>
                             <button id="adj-spot-clone" class="adj-tab" aria-pressed="false" title="Clone: copied from nearby exactly">Clone</button>
@@ -568,21 +631,14 @@
                         <p id="adj-spot-hint" class="adj-hint"></p>
                         <div id="adj-spot-tools" class="adj-rows"></div>
                         <div class="adj-mask-opts">
-                            <label class="adj-check"><input type="checkbox" id="adj-spot-show" checked> Show spots</label>
+                            <label class="adj-switch">Show spots<input type="checkbox" id="adj-spot-show" class="switch" checked></label>
                             <button id="adj-spot-delete" class="btn ghost sm danger-text" disabled>Delete</button>
                         </div>
-                        <div class="adj-sub">Dust on scans</div>
-                        <div id="adj-dust-tools" class="adj-rows"></div>
-                        <div class="adj-mask-add">
-                            <button id="adj-dust-find" class="btn secondary sm" title="Put a heal spot on every speck of dust found">Find dust</button>
-                            <button id="adj-dust-clear" class="btn ghost sm" title="Take off the spots Find dust put on" disabled>Clear found</button>
-                        </div>
-                        <p id="adj-spot-count" class="adj-hint"></p>
                     </details>
                 </div>
                 <div class="adj-pane hidden" data-pane="masks">
-                    <details id="adj-masks-sec" class="adj-sec">
-                        <summary><span>Masks</span><button class="btn ghost sm adj-sec-reset" data-reset="masks">Reset</button></summary>
+                    <details id="adj-masks-sec" class="adj-sec" data-reset="masks" data-reset-name="masks">
+                        <summary><span>Masks</span></summary>
                         <div class="adj-mask-add">
                             <button class="btn secondary sm" data-add-mask="linear" title="A gradient across the photo: full where you start dragging, none where you stop">Linear</button>
                             <button class="btn secondary sm" data-add-mask="radial" title="An oval, feathered at its edge: drag out from its middle">Radial</button>
@@ -596,8 +652,8 @@
                         <div id="adj-mask-list" class="adj-mask-list"></div>
                         <div id="adj-mask-edit" class="hidden">
                             <div class="adj-mask-opts">
-                                <label class="adj-check"><input type="checkbox" id="adj-mask-show"> Show mask</label>
-                                <label class="adj-check"><input type="checkbox" id="adj-mask-invert"> Invert</label>
+                                <label class="adj-switch">Show mask<input type="checkbox" id="adj-mask-show" class="switch"></label>
+                                <label class="adj-switch">Invert<input type="checkbox" id="adj-mask-invert" class="switch"></label>
                                 <button id="adj-mask-delete" class="btn ghost sm danger-text">Delete</button>
                             </div>
                             <div id="adj-brush-tools-box" class="hidden">
@@ -619,14 +675,16 @@
     <!-- Paint (paint-editor.js; layers kept by paint.js) -->
     <div id="paint-editor" class="paint-editor mode-screen hidden">
         <div class="mode-head paint-head">
-            <span id="paint-file" class="mode-title"></span>
+            <!-- The top, in three places: the file and Undo at the left, the
+                 tool's options in the middle (placed by layoutTop), ⋯ at the right -->
+            <span class="mode-file"><span id="paint-file" class="mode-title"></span>
             <span id="paint-dims" class="crop-dims"></span>
+            <span class="paint-undo-redo" role="group" aria-label="Undo and redo">
+                <button id="paint-undo" class="btn ghost sm icon" title="Undo (Ctrl+Z)" aria-label="Undo"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+                <button id="paint-redo" class="btn ghost sm icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+            </span></span>
             <span class="mode-head-acts" role="toolbar" aria-label="Paint">
-                <button id="paint-undo" class="btn ghost sm" title="Undo (Ctrl+Z)">Undo</button>
-                <button id="paint-redo" class="btn ghost sm" title="Redo (Ctrl+Shift+Z)">Redo</button>
-                <span class="mode-head-sep" aria-hidden="true"></span>
-                <button id="paint-zoom-fit" class="btn ghost sm" title="Fit the photo (0)">Fit</button>
-                <button id="paint-zoom-1" class="btn ghost sm" title="Actual pixels (1)">100%</button>
+                <button id="paint-more" class="btn ghost sm adj-more" title="More: Image, Select, Layer and the rest" aria-label="More" aria-haspopup="menu"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.25" fill="currentColor"/><circle cx="12" cy="12" r="1.25" fill="currentColor"/><circle cx="19" cy="12" r="1.25" fill="currentColor"/></svg></button>
             </span>
         </div>
         <div id="paint-options" class="paint-options" role="toolbar" aria-label="Tool options"></div>
@@ -634,10 +692,19 @@
             <div id="paint-tools" class="paint-tools" role="toolbar" aria-label="Tools" aria-orientation="vertical"></div>
             <div id="paint-stage" class="paint-stage">
                 <canvas id="paint-canvas"></canvas>
+                <!-- Zoom: at the bottom in the middle, as in Adjust -->
+                <div id="paint-zoom" class="adj-zoom paint-zoom" role="toolbar" aria-label="Zoom">
+                    <button id="paint-zoom-fit" class="adj-zoom-btn" title="Fit the photo (0)">Fit</button>
+                    <button id="paint-zoom-1" class="adj-zoom-btn" title="Actual pixels (1)">100%</button>
+                    <span id="paint-zoom-level" class="adj-zoom-level" aria-live="off"></span>
+                    <button id="paint-view-angle" class="adj-zoom-btn paint-view-angle hidden" title="The view is turned: click to put it straight"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 5v7" stroke="#ff453a"/></svg><span></span></button>
+                </div>
                 <textarea id="paint-text" class="paint-text hidden" spellcheck="false" aria-label="Text"></textarea>
             </div>
+            <div class="side-edge side-edge-right hidden" data-side="paint" data-edge="left" data-for="paint-panel" title="Drag to show the panel" aria-hidden="true"></div>
+            <div class="side-edge hidden" data-side="rail" data-edge="right" data-for="folder-rail" title="Drag to show the sidebar" aria-hidden="true"></div>
             <div class="side-grip" data-side="paint" data-edge="left" title="Drag to resize; double-click for its own width" aria-hidden="true"></div>
-            <aside class="paint-panel" aria-label="Colours and layers">
+            <aside id="paint-panel" class="paint-panel" aria-label="Colours and layers">
                 <section class="paint-sec">
                     <div class="paint-sec-head"><span>Colour</span></div>
                     <div class="paint-colors">
@@ -645,8 +712,9 @@
                         <label class="paint-swatch paint-bg" title="Background colour (gradients, shape fills)"><input type="color" id="paint-bg" value="#ffffff" aria-label="Background colour"></label>
                         <button id="paint-swap" class="btn ghost sm" title="Swap the colours (X)">Swap</button>
                         <button id="paint-default" class="btn ghost sm" title="Black and white (D)">Reset</button>
+                        <button id="paint-choose" class="btn ghost sm" title="The system's colour picker, for the brush colour">Choose a colour…</button>
                     </div>
-                    <div id="paint-palette" class="paint-palette" role="group" aria-label="Colours"></div>
+                    <div id="paint-palette" class="paint-palette" role="group" aria-label="Saved colours"></div>
                 </section>
                 <section class="paint-sec paint-layers-sec">
                     <div class="paint-sec-head">
@@ -668,6 +736,10 @@
                         </label>
                         <div id="paint-layer-opacity" class="adj-rows"></div>
                     </div>
+                </section>
+                <section id="paint-history-sec" class="paint-sec paint-history-sec hidden">
+                    <div class="paint-sec-head"><span>History</span></div>
+                    <div id="paint-history" class="paint-history" role="listbox" aria-label="History: click a step, or drag along them, to go back and forth"></div>
                 </section>
             </aside>
         </div>
@@ -892,6 +964,27 @@
 
                     <section id="set-page-projects" class="settings-section" data-page="projects" role="tabpanel" aria-labelledby="set-h-folder">
                         <h3 id="set-h-folder" class="settings-page-title">Projects</h3>
+                        <!-- Saving (edits.js): kept in jEditor, or straight into the photos -->
+                        <h4 class="set-group">Saving</h4>
+                        <div class="set-row">
+                            <label class="set-label" for="cust-keep-edits">Keep edits in jEditor
+                                <small>Crops, turns, adjustments and painting are kept in jEditor and the photos on disk stay as they are. Write edits to file (Ctrl+S) writes an edit into its photo file. Off: edits are saved straight into the photo.</small></label>
+                            <input type="checkbox" id="cust-keep-edits" class="switch">
+                        </div>
+                        <div class="set-row">
+                            <label class="set-label" for="cust-write-edits">Write edits to file
+                                <small>What Write edits to file (Ctrl+S) does: ask each time, apply the edits to the original photos, or save edited copies next to them.</small></label>
+                            <select id="cust-write-edits" class="field">
+                                <option value="ask">Ask each time</option>
+                                <option value="originals">Apply to the originals</option>
+                                <option value="copies">Save as copies</option>
+                            </select>
+                        </div>
+                        <div class="set-row">
+                            <span class="set-label">Edits stored in jEditor
+                                <small id="set-edits-count">The edits kept for the open project. Clearing them leaves the photos on disk as they are.</small></span>
+                            <button id="set-edits-clear" class="btn secondary">Clear…</button>
+                        </div>
                         <!-- Where projects and the cache are kept (folder-move.js) -->
                         <div id="set-folders" class="native-only">
                             <h4 class="set-group">Folders</h4>
@@ -922,16 +1015,6 @@
                             <label class="set-label" for="cust-on-open">When jEditor opens
                                 <small>The home page, the project you had open last, or one you pick</small></label>
                             <select id="cust-on-open" class="field"></select>
-                        </div>
-                        <div class="set-row">
-                            <label class="set-label" for="cust-defer-new">Save edits when done
-                                <small>Projects opened from now on keep crops and turns until you save them. Each project can change it in its card.</small></label>
-                            <input type="checkbox" id="cust-defer-new" class="switch">
-                        </div>
-                        <div class="set-row">
-                            <label class="set-label" for="cust-ask-defer">Ask about saving edits when opening a folder
-                                <small>The first time each folder is opened. Off: it follows Save edits when done</small></label>
-                            <input type="checkbox" id="cust-ask-defer" class="switch">
                         </div>
                         <div class="set-row">
                             <label class="set-label" for="cust-auto-check">Watch the folder for changes

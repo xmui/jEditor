@@ -104,7 +104,7 @@ const History = {
             case 'flags': return { what: this.flagWhat(e), detail: one(e.items) };
             case 'auto-crop': return { what: e.label ? label(e.label) : 'Auto crop', detail: one(e.items) };
             case 'edits': return { what: e.label === 'edits' ? 'Discard edits' : `${label(e.label)} (kept)`, detail: one(e.items) };
-            case 'saved-edits': return { what: 'Save edits', detail: one(e.edits) };
+            case 'saved-edits': return { what: 'Write edits to file', detail: one(e.edits) };
             case 'trash': return { what: 'Delete', detail: one(e.items, it => it.file ? it.file.name : it.name) };
             case 'convert': return { what: 'Convert', detail: `${photos(e.items.length || e.copies.length)} as ${Codec.FORMATS[e.format].label}` };
             case 'relocate': return { what: e.copy ? 'Copy' : 'Move', detail: `${photos(e.items.length)} to ${base(e.dest)}` };
@@ -112,6 +112,7 @@ const History = {
             case 'folder-out': return { what: e.copy ? 'Copy' : 'Move', detail: e.where ? `${photos(e.items.length)} to ${e.where}` : photos(e.items.length) };
             case 'folder-create': return { what: 'New folder', detail: (e.paths || []).map(base).join(', ') };
             case 'folder-rename': return { what: 'Rename folder', detail: `${e.name} → ${base(e.path)}` };
+            case 'project-rename': return { what: 'Rename project', detail: `${e.name} → ${String(e.path).split(/[\\/]/).filter(Boolean).pop()}` };
             case 'folder-delete': return { what: 'Delete folder', detail: base(e.path) };
             default: return { what: label(e.label || e.type), detail: '' };
         }

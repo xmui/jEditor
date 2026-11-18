@@ -2,7 +2,7 @@
 // Windows' own IMAPI2). The Export window (export.js) chooses the burner,
 // checks for a blank disc and its room against the project's size, names
 // the disc (the project's name, as much as a disc keeps) and offers to
-// save edits not saved yet first (the disc gets the photos as they are on
+// write edits to the files of edited photos first (the disc gets the photos as they are on
 // disk); this burns it, with how far it's got, and ejects it if asked.
 
 const Disc = {
@@ -24,7 +24,7 @@ const Disc = {
     },
 
     // Burns the project at `path` onto the disc in `pick`, called `label`;
-    // edits not saved yet saved into the photos first if `saveEdits`; the
+    // edited photos saved over their originals first if `saveEdits`; the
     // disc ejected after if `eject`
     async burn(pick, path, label, { saveEdits = false, eject = true } = {}) {
         const app = this.app;

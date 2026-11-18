@@ -952,8 +952,10 @@ const CropEditor = {
             // Its adjustments (adjust.js), after the crop
             if (adj) Develop.applyCanvas(canvas, snap.adj, { map: Develop.cropMap(ed, bmp.width, bmp.height) });
             // And paint over it all (paint.js)
-            await Paint.onto(canvas, snap, ed);
-            return canvas;
+            // (a new canvas when Paint's canvas is bigger or smaller)
+            const out = await Paint.onto(canvas, snap, ed);
+            if (out !== canvas) canvas.width = canvas.height = 0;
+            return out;
         } finally {
             bmp.close();
         }

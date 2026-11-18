@@ -1,0 +1,11 @@
+{
+  "mean": 3.197,
+  "cases": {
+    "family/cmyk@4": 3.95,
+    "beach/cmyk@6": 2.154,
+    "interior/cmyk@9": 2.752,
+    "grass/cmyk@5": 3.37,
+    "family/mono@7": 2.024,
+    "beach/mono@3": 4.933
+  }
+}

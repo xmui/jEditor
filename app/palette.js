@@ -28,7 +28,7 @@ const Palette = {
 
     // Commands that act on the selection in the grid
     ON_SELECTION: new Set(['edit.rotateLeft', 'edit.rotateRight', 'edit.rotate180', 'edit.flipH', 'edit.flipV', 'edit.rename',
-        'edit.trash', 'edit.pasteAdjust', 'edit.autoCrop', 'edit.cropLike', 'edit.upright', 'edit.moveTo', 'edit.copyTo',
+        'edit.trash', 'edit.saveOver', 'edit.pasteAdjust', 'edit.autoCrop', 'edit.cropLike', 'edit.upright', 'edit.moveTo', 'edit.copyTo',
         'flag.star', 'flag.rescan', 'flag.red', 'flag.yellow', 'flag.green', 'flag.blue', 'flag.purple', 'flag.clear', 'menu.export']),
 
     // Other words for the same thing
@@ -46,6 +46,7 @@ const Palette = {
         'edit.undo': 'revert back',
         'edit.moveTo': 'file',
         'edit.rename': 'name',
+        'edit.saveOver': 'save write file overwrite apply original keep edits',
         'flag.star': 'favourite favorite pick like keep',
         'flag.rescan': 'redo reject bad',
         'flag.clear': 'unflag',

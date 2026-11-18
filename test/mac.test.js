@@ -13,6 +13,10 @@ const os = require('os');
 const path = require('path');
 const { _electron: electron } = require('playwright-core');
 const { QUIET_FIRST_OPEN, floatingBoxes, overTopBar } = require('./page-helpers.js');
+const { CONFORMANCE, EXPECTED, KNOWN } = require('./handles-conformance.js');
+// JEDITOR_HOST_HANDLES=1: the whole suite with the app's own folder handles
+// (mac/handles.js), not Chromium's (docs/plans/lighter-desktop.md, step 1)
+const HOST_HANDLES = process.env.JEDITOR_HOST_HANDLES === '1';
 
 const ROOT = path.join(__dirname, '..');
 const MAC = path.join(ROOT, 'mac');
@@ -78,6 +82,11 @@ async function launch(profile, args = [], env = {}) {
     page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
     await page.waitForFunction(() => typeof app !== 'undefined' && app.elements && window.JEditorNative);
     await page.evaluate(QUIET_FIRST_OPEN);
+    // (the page read its settings before that: Keep edits off now too)
+    await page.evaluate(() => { try { if (JSON.parse(localStorage.getItem('jeditor.ui') || '{}').keepEdits === false) app.uiPrefs.keepEdits = false; } catch (e) { /* no storage */ } });
+    // Themes are paused, under Settings → Experimental (off to start with):
+    // on here, for the tests that use one (a test of it being off sets it)
+    await page.evaluate(() => { if (!Experiments.on('themes')) Experiments.set('themes', true); });
     return { app, page, errors };
 }
 
@@ -159,6 +168,24 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await page.evaluate(() => app.undo());
         check('... and Ctrl+Z puts it back', fs.existsSync(path.join(smith, 'photo2.jpg')));
         check('no .jeditor folder in the project', !fs.existsSync(path.join(smith, '.jeditor')), fs.readdirSync(smith).join());
+        check('no JS errors', errors.length === 0, errors.join('; '));
+        await app.close();
+    }
+
+    console.log(`mac: folder handles, ${HOST_HANDLES ? 'the app\'s own (handles.js)' : 'Chromium\'s'}`);
+    {
+        // The file operations the page does, on a folder on disk: Chromium's
+        // own handles give what test/handles-conformance.js records, and
+        // the app's own (JEDITOR_HOST_HANDLES=1) the same
+        const dir = fs.mkdtempSync(path.join(tmp, 'conformance-'));
+        const { app, page, errors } = await launch(path.join(tmp, 'profile-conformance'));
+        const r = await page.evaluate(`(async () => { const root = await JEditorNative.folderHandle(${JSON.stringify(dir)}); const r = await (${CONFORMANCE})(root); r.ours = !!(window.HostHandles && HostHandles.isOurs(root)); return r; })()`);
+        const want = (k) => (HOST_HANDLES && k in KNOWN ? KNOWN[k] : EXPECTED[k]);
+        const diff = Object.keys(EXPECTED).filter(k => r[k] !== want(k));
+        check(HOST_HANDLES ? 'the app makes the handles (the switch is on)' : 'Chromium makes the handles (the switch is off)', r.ours === HOST_HANDLES);
+        check(`every file operation gives what Chromium's own handles do (${Object.keys(EXPECTED).length})`, diff.length === 0,
+            diff.map(k => `${k}: wanted ${JSON.stringify(want(k))}, got ${JSON.stringify(r[k])}`).join('; '));
+        check('nothing left in the folder', fs.readdirSync(dir).length === 0, fs.readdirSync(dir).join());
         check('no JS errors', errors.length === 0, errors.join('; '));
         await app.close();
     }
@@ -331,6 +358,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         // New project: a folder in the projects folder, opened
         await page.evaluate(async () => {
             UI.prompt = async () => 'Gamma';
+            UI.choose = async () => 'ok'; // (which kind: a folder for photos)
             await Places.newProject();
             const until = Date.now() + 10000;
             while ((!app.dirHandle || app.dirHandle.name !== 'Gamma') && Date.now() < until) await new Promise(res => setTimeout(res, 50));
@@ -355,6 +383,41 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         const alphaTo = path.join(projectsDir, 'Alpha Smith');
         check('Rename renames the folder on disk', renamed.to === alphaTo && fs.existsSync(alphaTo) && !fs.existsSync(alpha), renamed.to);
         check('... and its flags go with it', renamed.star && renamed.orderPath === alphaTo && !renamed.oldStore, JSON.stringify(renamed));
+
+        // The sidebar's rename (in place: Places.renameFolder), on the disk:
+        // Recents follow it, and Undo puts the old name back
+        const beta = makeOrder(projectsDir, 'Beta', 1);
+        // A desktop window: xvfb's screen is 640 wide, where the sidebar is over the grid, as on a phone
+        await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1200, 800));
+        const follow = await page.evaluate(async (p) => {
+            const until = (ok) => new Promise(async (res) => { const end = Date.now() + 10000; while (!ok() && Date.now() < end) await new Promise(r => setTimeout(r, 50)); res(); });
+            await JEditorNative.openPath(p.beta);
+            await until(() => app.dirHandle && app.dirHandle.name === 'Beta');
+            await JEditorNative.openPath(p.alphaTo);
+            await until(() => app.dirHandle && app.dirHandle.name === 'Alpha Smith');
+            await Recents.saving;
+            const to = await Places.renameFolder(p.beta, 'Beta Jones');
+            const list = await Recents.list();
+            const paths = await Promise.all(list.map(r => JEditorNative.folderPath(r.handle)));
+            const step = (app._undoStack || []).slice(-1)[0];
+            // The docked sidebar: against the window's left edge, full height; the folder pill beside it
+            app.setView('grid');
+            if (!Folders.railOpen()) Folders.toggleRail();
+            await new Promise(r => setTimeout(r, 300));
+            const rail = document.getElementById('folder-rail').getBoundingClientRect();
+            const bar = document.getElementById('folder-bar').getBoundingClientRect();
+            const docked = { left: rail.left, top: rail.top, full: Math.round(rail.bottom) === innerHeight, beside: bar.left >= rail.right };
+            // Recents in the sidebar: Beta Jones, not the open one
+            await Places.draw();
+            const recents = [...document.querySelectorAll('#sb-places .sb-recent .fr-name')].map(n => n.textContent);
+            await app.undo();
+            return { to, names: list.map(r => r.name), paths, step: step && step.type, docked, recents };
+        }, { beta, alphaTo });
+        const betaTo = path.join(projectsDir, 'Beta Jones');
+        check('the sidebar\'s Rename: Recents follow it to its new name', follow.to === betaTo && follow.names.includes('Beta Jones') && !follow.names.includes('Beta') && follow.paths.includes(betaTo), JSON.stringify(follow));
+        check('... and Undo puts the old name back on the disk', follow.step === 'project-rename' && fs.existsSync(beta) && !fs.existsSync(betaTo), JSON.stringify([follow.step, fs.existsSync(beta)]));
+        check('the sidebar is docked: the window\'s left edge, its full height, the folder pill beside it', follow.docked.left === 0 && follow.docked.top === 0 && follow.docked.full && follow.docked.beside, JSON.stringify(follow.docked));
+        check('Recents lists the others opened, not the open project', follow.recents.includes('Beta Jones') && !follow.recents.includes('Alpha Smith'), JSON.stringify(follow.recents));
 
         // A whole folder onto the drive; again: a free name
         const copied = await page.evaluate(async (p) => {
@@ -623,11 +686,14 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             out.photoFilter = img && getComputedStyle(img).backdropFilter;
             // Room for the traffic lights, given back in full screen
             app.setView('grid');
+            if (Folders.railOpen()) Folders.toggleRail();
             await new Promise(r => setTimeout(r, 400));
+            // (the sidebar closed, the first pill is Photos · Adjust · Paint's row, the folder pill after it)
             const gutter = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gutter'));
-            out.lightsRoom = document.querySelector('.folder-bar').getBoundingClientRect().left - gutter;
+            const first = () => document.querySelector('#mode-row.float:not(.hidden)') || document.querySelector('.folder-bar');
+            out.lightsRoom = first().getBoundingClientRect().left - gutter;
             document.documentElement.classList.add('fullscreen');
-            out.fullscreenRoom = document.querySelector('.folder-bar').getBoundingClientRect().left - gutter;
+            out.fullscreenRoom = first().getBoundingClientRect().left - gutter;
             document.documentElement.classList.remove('fullscreen');
             // The top row moves the window; buttons in it don't
             out.drag = getComputedStyle(document.body, '::before').getPropertyValue('-webkit-app-region') || getComputedStyle(document.body, '::before').getPropertyValue('app-region');
@@ -654,11 +720,10 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                     app.applyUiPrefs();
                     app.setView(where === 'grid' || where === 'sidebar' ? 'grid' : 'single');
                     await wait(300);
-                    const rail = !!document.getElementById('mode-seg').getClientRects().length;
-                    if (rail !== (where === 'sidebar')) app.keyHandlers()['folders.rail']();
+                    if (Folders.railOpen() !== (where === 'sidebar')) app.keyHandlers()['folders.rail']();
                     if (where === 'adjust' || where === 'paint') {
                         Modes.go(where);
-                        for (let i = 0; i < 60 && !document.querySelector('.mode-float.over-mode:not(.hidden)'); i++) await wait(50);
+                        for (let i = 0; i < 60 && !document.querySelector('.mode-float.over-mode:not(.hidden), #mode-row.over-mode:not(.hidden), .folder-rail:not(.hidden) #mode-row'); i++) await wait(50);
                     }
                     await wait(500);
                 }, [scale, where]);
@@ -672,8 +737,10 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                     const lights = { name: 'the traffic lights', left: l.x, top: l.y, right: l.x + 54, bottom: l.y + 14 };
                     // Over Adjust and Paint, only the mode chip: the rest is under them
                     const editing = !!document.querySelector('.mode-screen:not(.hidden)');
-                    const pills = seen(editing ? '.mode-float' : 'header .toolbar, header .file-info, .folder-bar, .mode-float');
-                    const others = seen('#mode-seg, .folder-rail, .mode-screen:not(.hidden) .mode-head-acts, .paint-options, .paint-tools');
+                    const pills = seen(editing ? '.mode-float, #mode-row.float' : 'header .toolbar, header .file-info, .folder-bar, .mode-float, #mode-row.float');
+                    // (in jEditor's own look the lights are in the sidebar's top, as Finder's: what's in it starts below them)
+                    const others = seen('.folder-rail > *, .mode-screen:not(.hidden) .mode-head-acts, .paint-options, .paint-tools');
+                    if (document.documentElement.dataset.skin) others.push(...seen('.folder-rail'));
                     const out = [];
                     for (const a of [lights, ...pills]) for (const b of [...pills, ...others]) if (a !== b && hit(a, b) && !(a.name === 'mode-float' && b.name === 'folder-bar')) out.push(a.name + ' over ' + b.name);
                     // The lights in line with the pill beside them
@@ -715,7 +782,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                 app.applyUiPrefs();
                                 app.setView('grid');
                                 await wait(80);
-                                if (!!document.getElementById('mode-seg').getClientRects().length !== rail) app.keyHandlers()['folders.rail']();
+                                if (Folders.railOpen() !== rail) app.keyHandlers()['folders.rail']();
                                 await wait(80);
                                 // Photos' own chip (the folder pill's, the sidebar closed), to match
                                 const photos = document.getElementById('mode-chip-bar');
@@ -723,7 +790,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                 const look_ = (e) => { const c = getComputedStyle(e); return [c.fontSize, c.fontWeight, c.paddingLeft, c.paddingRight, c.borderRadius, c.backgroundColor, c.color].join(' '); };
                                 const photosLook = pb && look_(photos);
                                 Modes.go(where);
-                                for (let i = 0; i < 60 && !document.querySelector('.mode-float.over-mode:not(.hidden)'); i++) await wait(50);
+                                for (let i = 0; i < 60 && !document.querySelector('.mode-float.over-mode:not(.hidden), #mode-row.over-mode:not(.hidden), .folder-rail:not(.hidden) #mode-row'); i++) await wait(50);
                                 const name = document.querySelector('.mode-screen:not(.hidden) .mode-title');
                                 if (name) name.textContent = 'IMG_20261101_143207.jpg';
                                 await wait(150);
@@ -738,7 +805,9 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                     await back();
                                     return { miss, box: null };
                                 }
-                                const chip = document.querySelector('.mode-float.over-mode:not(.hidden) .mode-chip');
+                                // (jEditor's own look: the row's button for the mode, in the sidebar, or floating where it is over Photos, in line with the file's pill: not in the head)
+                                const own = !theme;
+                                                                const chip = own ? document.querySelector(`#mode-row:not(.hidden) #mode-seg button[data-mode="${where}"]`) : document.querySelector('.mode-float.over-mode:not(.hidden) .mode-chip');
                                 if (!chip) return { miss: ['no chip'] };
                                 const b = chip.getBoundingClientRect();
                                 const miss = [];
@@ -753,7 +822,9 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                 if (pb && scale === 1 && (Math.abs(pb.height - b.height) > 1 || photosLook !== look_(chip))) miss.push(`not Photos' button (${Math.round(b.height)}px, ${look_(chip)}; Photos' ${Math.round(pb.height)}px, ${photosLook})`);
                                 // Whole: each corner (2px in) and the middle are the chip's own (its
                                 // pill's round corners: the box it floats in)
-                                const pts = [[b.left + 2, b.top + 2], [b.right - 2, b.top + 2], [b.left + 2, b.bottom - 2], [b.right - 2, b.bottom - 2], [(b.left + b.right) / 2, (b.top + b.bottom) / 2]];
+                                // (the row's buttons are round, and a click in a round button's corner isn't its: each side's middle, 3px in)
+                                const pts = own ? [[b.left + 3, (b.top + b.bottom) / 2], [b.right - 3, (b.top + b.bottom) / 2], [(b.left + b.right) / 2, b.top + 3], [(b.left + b.right) / 2, b.bottom - 3], [(b.left + b.right) / 2, (b.top + b.bottom) / 2]]
+                                    : [[b.left + 2, b.top + 2], [b.right - 2, b.top + 2], [b.left + 2, b.bottom - 2], [b.right - 2, b.bottom - 2], [(b.left + b.right) / 2, (b.top + b.bottom) / 2]];
                                 for (const [x, y] of pts) {
                                     const at = document.elementFromPoint(x, y);
                                     if (!at || !chip.parentElement.contains(at)) miss.push(`at ${Math.round(x)},${Math.round(y)}: ${at ? (at.id || at.className || at.tagName) : 'outside the window'}`);
@@ -778,7 +849,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                 }
                                 // In its head, not past it
                                 const head = document.querySelector('.mode-screen:not(.hidden) .mode-head');
-                                if (head) { const h = head.getBoundingClientRect(); if (b.bottom > h.bottom + 1 || b.top < h.top - 1) miss.push(`outside the head (${Math.round(b.top)}–${Math.round(b.bottom)} in ${Math.round(h.top)}–${Math.round(h.bottom)})`); }
+                                if (head && !own) { const h = head.getBoundingClientRect(); if (b.bottom > h.bottom + 1 || b.top < h.top - 1) miss.push(`outside the head (${Math.round(b.top)}–${Math.round(b.bottom)} in ${Math.round(h.top)}–${Math.round(h.bottom)})`); }
                                 const box = [b.left, b.top, b.right, b.bottom].map(Math.round);
                                 // Toolbar size back after each case: none leaks into later checks
                                 await back();
@@ -878,7 +949,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             // toolbar stays with that same button, and their head is below it
             // (the page's chip there sat in the title bar, which took the press:
             // hard to press, Needs fixing 2026-11-05)
-            await page.evaluate(() => { if (document.getElementById('mode-seg').getClientRects().length) app.keyHandlers()['folders.rail'](); });
+            await page.evaluate(() => { if (Folders.railOpen()) app.keyHandlers()['folders.rail'](); });
             await settle();
             d = await describe();
             const modeItem = d.items.find(i => i.id === 'mode');
@@ -917,7 +988,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                 if (Modes.current() !== 'photos') { await Modes.go('photos'); await wait(300); }
                                 app.uiPrefs.scale = scale;
                                 app.applyUiPrefs();
-                                if (!!document.getElementById('mode-seg').getClientRects().length !== rail) app.keyHandlers()['folders.rail']();
+                                if (Folders.railOpen() !== rail) app.keyHandlers()['folders.rail']();
                                 await Modes.go(where);
                                 for (let i = 0; i < 60 && document.getElementById(`${where}-editor`).classList.contains('hidden'); i++) await wait(50);
                                 await wait(400);
@@ -1167,7 +1238,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         });
         check('an album opens as the project: its photos, its name, its path photos-library:<id>', o.name === 'Wedding' && o.n === 3 && o.names === 'IMG_0001.jpg,IMG_0002.jpg,IMG_0003.jpg' && !o.readOnly && o.library && o.fixed && o.path === 'photos-library:album:Wedding', JSON.stringify(o));
         check('... thumbnails come from the library, and a photo is the library\'s own (size and date without reading it)', o.thumbs && o.size === o.got && o.got > 0 && o.type === 'image/jpeg', JSON.stringify(o));
-        check('... its card has the album and no Finder, rename, pin or export', o.cardName === 'DIV' && /Photos library/.test(o.cardText) && !/read-only/.test(o.cardText) && !o.renameBtn && !o.exportBtn && !o.revealBtn && !/Rename|Export|Pin|Finder/.test(o.menu), JSON.stringify(o));
+        check('... its card has the album and no Finder, rename, pin or export', /Photos library/.test(o.cardText) && !/read-only/.test(o.cardText) && !o.renameBtn && !o.exportBtn && !o.revealBtn && !/Rename|Export|Pin|Finder/.test(o.menu), JSON.stringify(o));
         check('... its photos can be edited, but none added, renamed, moved or deleted (that\'s for Photos)', o.writable === true && o.files === false && /renamed, moved and deleted in Photos/.test(o.toast) && o.made === 'NotAllowedError', JSON.stringify(o));
         // An edit saved back: rotating a photo writes it into the library (a
         // Photos edit on the current version); the original is kept, and undo
@@ -1197,7 +1268,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             const labels = (items) => items.map(i => i[0]).filter(l => typeof l === 'string').join('|');
             return { photo: labels(app.buildContextItems(null, true)), grid: labels(app.buildContextItems(null, false)) };
         });
-        check('... its menus have no Move, Rename, Convert or Delete, and no Add to Photos (it\'s there)', /Rotate left/.test(menus.photo) && /Adjust/.test(menus.photo) && !/Move|Rename|Convert|Delete|Add to Photos/.test(menus.photo) && !/New folder|Rename all|Clean up|Add all/.test(menus.grid) && !/—\|—/.test(menus.photo), JSON.stringify(menus));
+        check('... its menus have no Move, Rename, Convert or Delete, and no Add to Photos (it\'s there)', /Turn and flip|Rotate left/.test(menus.photo) && /Adjust/.test(menus.photo) && !/Move|Rename|Convert|Delete|Add to Photos/.test(menus.photo) && !/New folder|Rename all|Clean up|Add all/.test(menus.grid) && !/—\|—/.test(menus.photo), JSON.stringify(menus));
         check('... it\'s marked in the sidebar, and it isn\'t in Recent', o.active && !o.recent, JSON.stringify(o));
         const whole = await page.evaluate(async () => {
             await Places.open('photos-library:');

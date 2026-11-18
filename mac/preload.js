@@ -14,5 +14,7 @@ contextBridge.exposeInMainWorld('jeditorMac', {
     platform: process.argv.includes('--jeditor-linux') ? 'linux' : 'mac',
     updates: !process.argv.includes('--jeditor-no-updates'),
     // The Photos library: the native module, or the tests' stand-in (photos.js)
-    photos: process.argv.includes('--jeditor-photos')
+    photos: process.argv.includes('--jeditor-photos'),
+    // Folder handles made by the app (handles.js), not Chromium's (main.js: HOST_HANDLES)
+    hostHandles: process.argv.includes('--jeditor-host-handles')
 });

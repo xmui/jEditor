@@ -339,8 +339,9 @@ const FAKE_NATIVE = `
             const parent = p.slice(0, p.lastIndexOf(BS));
             if (parent === window.__orderRoot) {
                 const disk = await sub('disk');
-                const h = await disk.getDirectoryHandle(p.slice(parent.length + 1));
-                if (h.move) await h.move(name);
+                // (where the browser can't move a folder, it stays where it was)
+                const h = await disk.getDirectoryHandle(p.slice(parent.length + 1)).catch(() => null);
+                if (h && h.move) await h.move(name);
             }
             return parent + BS + name;
         },
@@ -1718,11 +1719,11 @@ async function newPage(context, baseUrl, host = null) {
             out.dropped = window.__transfer;
             await wait(() => app.files.some(f => f.relPath === 'Ceremony/photo2.jpg'));
             out.arrived = app.files.some(f => f.relPath === 'Ceremony/photo2.jpg');
-            // Ctrl+click a project in the sidebar: a window of its own
+            // Ctrl+click a project (All projects…): a window of its own
             window.__newWindow = null;
             localStorage.setItem('jeditor.projectsFolder', JSON.stringify(window.__orderRoot));
             await Places.refresh();
-            const otherRow = [...$('sb-places').querySelectorAll('.sb-row')].find(r => r.querySelector('.fr-name').textContent === 'Other');
+            const otherRow = [...$('start-places').querySelectorAll('.sb-row')].find(r => r.querySelector('.fr-name').textContent === 'Other');
             otherRow.querySelector('.sb-main').dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
             await wait(() => window.__newWindow);
             out.ctrlClick = window.__newWindow;
@@ -1782,6 +1783,10 @@ async function newPage(context, baseUrl, host = null) {
             // New project: named, made in the projects folder, opened, listed
             window.__opened = null;
             UI.prompt = async () => 'Gamma';
+            // (which kind is asked first: a folder for photos)
+            const chooseKind = UI.choose;
+            let askedKind = null;
+            UI.choose = async (o) => { askedKind = `${o.title}: ${o.ok} / ${o.alt}`; return 'ok'; };
             start.querySelector('[data-act="newproject"]').click();
             await wait(() => window.__opened);
             out.made = window.__opened;
@@ -1793,35 +1798,67 @@ async function newPage(context, baseUrl, host = null) {
             start.querySelector('[data-act="newproject"]').click();
             await wait(() => said);
             out.twice = said;
+            out.askedKind = askedKind;
+            UI.choose = chooseKind;
             // Rename (right-click): a pinned one's pin follows it
             Places.pin(window.__orderRoot + String.fromCharCode(92) + 'Gamma', 'Gamma');
             await wait(() => rowOf(start, 'Gamma'));
             rowOf(start, 'Gamma').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 50, clientY: 50 }));
             const item = [...document.querySelectorAll('#context-menu [role="menuitem"]')].find(b => b.textContent === 'Rename…');
             out.menu = [...document.querySelectorAll('#context-menu [role="menuitem"]')].map(b => b.textContent).join(', ');
-            UI.prompt = async () => 'Gamma Smith';
             item.click();
+            // (in place: the name a field, typed over, Enter)
+            const nameField = start.querySelector('.sb-rename');
+            out.startInPlace = !!nameField && nameField.value === 'Gamma';
+            nameField.value = 'Gamma Smith';
+            nameField.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
             await wait(() => window.__renamed && Places.pins().some(p => p.name === 'Gamma Smith'));
             out.renamed = window.__renamed;
             out.pinMoved = Places.pins().find(p => p.name === 'Gamma Smith').path;
 
-            // A project open: its card, and it's marked in the list
+            // A project open: its name heads the sidebar; it isn't under
+            // Recents, which lists the others opened before (one highlight at a time)
+            await Recents.remember(await (await opfs('disk')).getDirectoryHandle('Beta'));
             const dir = await (await opfs('disk')).getDirectoryHandle('Alpha');
             await openOrder(dir);
             app.setView('grid');
             if (!Folders.railOpen()) Folders.toggleRail();
             const side = $('sb-places');
-            await wait(() => $('sb-card').textContent.includes('Alpha') && rowOf(side, 'Alpha'));
-            await wait(() => rowOf(side, 'Alpha').classList.contains('active'));
+            await wait(() => $('sb-card').textContent.includes('Alpha') && rowOf(side, 'Beta'));
             out.card = $('sb-card').textContent.replace(/\s+/g, ' ').trim();
-            out.active = rowOf(side, 'Alpha').classList.contains('active');
+            out.recents = [...side.querySelectorAll('.sb-recent .fr-name')].map(n => n.textContent);
+            out.oneActive = !rowOf(side, 'Alpha') && !!side.querySelector('.sb-sec[data-sec="recents"]') && !side.querySelector('.sb-sec[data-sec="projects"]');
             // Counting stops at 1,000 ("1,000+"), but the open project's photos are all known
             window.__counts = { 'D:\\Orders\\Alpha': 1000, 'D:\\Orders\\Beta': 1000 };
             Places.counts.clear();
             await Places.refresh();
             await wait(() => rowOf(side, 'Beta') && rowOf(side, 'Beta').querySelector('.fr-count').textContent);
-            out.listCounts = ['Alpha', 'Beta'].map(n => rowOf(side, n).querySelector('.fr-count').textContent).join();
-            window.__counts = null;
+            out.listCounts = rowOf(side, 'Beta').querySelector('.fr-count').textContent;
+            // The project picker: a click on the name. Recents first, the open one ticked
+            const picker = $('sb-picker');
+            const picks = () => [...picker.querySelectorAll('.sb-pick[data-path] .sb-pick-name')].map(n => n.textContent);
+            $('sb-card').querySelector('.sb-card-name').click();
+            await wait(() => !picker.hidden && picks().includes('Beta') && [...picker.querySelectorAll('.sb-pick-count')].some(c => c.textContent === '3'));
+            out.pickerOpen = !picker.hidden && document.activeElement === picker.querySelector('input') && $('sb-card').querySelector('.sb-card-name').getAttribute('aria-expanded') === 'true';
+            out.pickerFirst = picks()[0] === 'Alpha' && !!picker.querySelector('.sb-pick[data-path] .sb-pick-tick').textContent;
+            out.pickerMarked = picker.querySelector('.sb-pick.on .sb-pick-name').textContent;
+            out.pickerActions = [...picker.querySelectorAll('.sb-pick:not([data-path]) .sb-pick-name')].map(n => n.textContent).join();
+            out.pickerCount = [...picker.querySelectorAll('.sb-pick[data-path]')].find(b => /Alpha/.test(b.textContent)).querySelector('.sb-pick-count').textContent;
+            // Typed: any project, the match in bold; Enter opens the one marked
+            const find = picker.querySelector('input');
+            find.value = 'bet';
+            find.dispatchEvent(new Event('input', { bubbles: true }));
+            out.pickerFound = picks().join() + '|' + (picker.querySelector('.sb-pick-name b') || {}).textContent;
+            window.__opened = null;
+            find.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            await wait(() => window.__opened);
+            out.pickerOpened = window.__opened;
+            out.pickerClosed = picker.hidden;
+            // Esc closes it
+            $('sb-card').querySelector('.sb-card-name').click();
+            await wait(() => !picker.hidden);
+            find.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            out.pickerEsc = picker.hidden;
             $('sb-card').querySelector('[data-act="reveal"]').click();
             await wait(() => window.__revealed);
             out.revealed = window.__revealed;
@@ -1829,74 +1866,102 @@ async function newPage(context, baseUrl, host = null) {
             out.scanOpen = Scan.visible();
             Scan.close();
             $('sb-card').querySelector('[data-act="pin"]').click();
-            // A pinned project: first in Projects, not again under Pinned
-            const projNames = () => [...side.querySelectorAll('.sb-projects > .sb-row .fr-name')].map(n => n.textContent);
-            await wait(() => projNames()[0] === 'Alpha');
             out.pinned = Places.pins().map(p => p.name).join();
-            out.pinnedFirst = projNames()[0] === 'Alpha' && ![...side.querySelectorAll('.sb-pinned .fr-name')].some(n => n.textContent === 'Alpha');
-            // Three shown, then Show more (Show less once open)
+            // The full projects list is the home page's (All projects…): a
+            // pinned one first (not again under Pinned), three shown, Show more
+            const projNames = () => [...start.querySelectorAll('.sb-projects > .sb-row .fr-name')].map(n => n.textContent);
+            await wait(() => projNames()[0] === 'Alpha');
+            out.pinnedFirst = projNames()[0] === 'Alpha' && ![...start.querySelectorAll('.sb-pinned .fr-name')].some(n => n.textContent === 'Alpha');
             await makeOrder('Delta', 1);
             await makeOrder('Epsilon', 1);
             window.__modified = { ...window.__modified, Delta: Date.now() - 1000, Epsilon: Date.now() - 2000 };
             await Places.refresh();
-            await wait(() => Places.projects && Places.projects.length >= 5 && side.querySelector('.sb-more'));
-            out.three = projNames().length + ' ' + side.querySelector('.sb-more').textContent;
-            side.querySelector('.sb-more').click();
+            await wait(() => Places.projects && Places.projects.length >= 5 && start.querySelector('.sb-more'));
+            out.three = projNames().length + ' ' + start.querySelector('.sb-more').textContent;
+            start.querySelector('.sb-more').click();
             await wait(() => projNames().length >= 5);
-            out.more = projNames().length + ' ' + side.querySelector('.sb-more').textContent;
-            side.querySelector('.sb-more').click();
+            out.more = projNames().length + ' ' + start.querySelector('.sb-more').textContent;
+            start.querySelector('.sb-more').click();
             await wait(() => projNames().length === 3);
-            out.less = projNames().length + ' ' + side.querySelector('.sb-more').textContent;
+            out.less = projNames().length + ' ' + start.querySelector('.sb-more').textContent;
+            // Recents in the sidebar: the last four opened, then Show all… (the picker, every project by name)
+            for (const n of ['Delta', 'Epsilon', 'Gamma']) await Recents.remember(await (await opfs('disk')).getDirectoryHandle(n));
+            await Places.draw();
+            await wait(() => side.querySelectorAll('.sb-recent').length === 4);
+            out.newestFirst = [...side.querySelectorAll('.sb-recent .fr-name')].map(n => n.textContent).join();
+            out.recentFour = side.querySelectorAll('.sb-recent').length + ' ' + side.querySelector('.sb-all').textContent;
+            side.querySelector('.sb-all').click();
+            await wait(() => !picker.hidden && picks().length >= 5);
+            out.showAll = picks().join() + '|' + picker.querySelector('.sb-picker-head').textContent;
+            find.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
             // Search and New project: icons in the heading; the search box shows when asked for
-            const searchBox = () => side.querySelector('.sb-search');
-            out.searchHidden = !!searchBox() && searchBox().hidden && !!side.querySelector('.sb-sec-icon[data-act="newproject"]');
-            side.querySelector('.sb-sec-icon[data-act="search"]').click();
+            const searchBox = () => start.querySelector('.sb-search');
+            out.searchHidden = !!searchBox() && searchBox().hidden && !!start.querySelector('.sb-sec-icon[data-act="newproject"]');
+            start.querySelector('.sb-sec-icon[data-act="search"]').click();
             await wait(() => searchBox() && !searchBox().hidden);
-            out.searchShown = document.activeElement === searchBox();
+            out.searchShown = !searchBox().hidden;
             searchBox().value = 'eps';
             searchBox().dispatchEvent(new Event('input', { bubbles: true }));
             await wait(() => projNames().join() === 'Epsilon');
-            out.searched = projNames().join() + (side.querySelector('.sb-more') ? ' +more' : '');
+            out.searched = projNames().join() + (start.querySelector('.sb-more') ? ' +more' : '');
             searchBox().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
             await wait(() => searchBox() && searchBox().hidden && projNames().length === 3);
             out.searchEsc = searchBox().hidden && Places.query === '';
-            // Renaming the open project: closed, renamed, opened again at its new name
+            // A project in Recents, right-clicked: a short menu
+            rowOf(side, 'Beta').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 60, clientY: 60 }));
+            out.recentMenu = [...document.querySelectorAll('#context-menu [role^="menuitem"]')].map(b => b.textContent).join(', ');
+            app.closeContextMenu();
+            // The name, right-clicked: Rename… first; it renames in place (Enter),
+            // the open project closed, renamed and opened again; Undo puts it back
+            $('sb-card').querySelector('.sb-card-name').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 60, clientY: 60 }));
+            const cardMenu = [...document.querySelectorAll('#context-menu [role^="menuitem"]')];
+            out.cardMenu = cardMenu.map(b => b.textContent).join(', ');
+            cardMenu.find(b => b.textContent === 'Rename…').click();
+            const field = $('sb-card').querySelector('.sb-rename');
+            out.inPlace = !!field && document.activeElement === field && field.value === 'Alpha' && field.selectionEnd === 5;
             window.__opened = null;
-            UI.prompt = async () => 'Alpha Smith';
-            // No rename button among the card's buttons: the name itself, with a pencil by it, renames on a click
-            out.noRenameButton = !$('sb-card').querySelector('.btn[data-act="rename"]') && !!$('sb-card').querySelector('button.sb-card-name[data-act="rename"] .sb-card-edit');
-            $('sb-card').querySelector('.sb-card-name span').click();
+            field.value = 'Alpha Smith';
+            field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
             await wait(() => window.__opened);
             out.reopened = window.__opened;
             out.pinRenamed = Places.pins().map(p => p.name).join();
-            const back = await (await opfs('disk')).getDirectoryHandle('Alpha Smith').catch(() => null) || await (await opfs('disk')).getDirectoryHandle('Alpha');
+            await wait(() => /Renamed Alpha to Alpha Smith/.test(toasts()));
+            // Recents follow it (where the browser here can move a folder at all)
+            const movable = !!(await (await opfs('disk')).getDirectoryHandle('Alpha Smith').catch(() => null));
+            const recentNames = (await Recents.list()).map(x => x.name);
+            out.recentsFollow = !movable || (recentNames.includes('Alpha Smith') && !recentNames.includes('Alpha'));
+            out.recentsFollowWhy = movable + ' ' + recentNames.join();
+            out.undoStep = (app._undoStack || []).slice(-1)[0];
+            out.undoLabel = History.describe ? JSON.stringify(History.describe(out.undoStep)) : '';
+            window.__renamed = null;
+            await app.undo();
+            await wait(() => window.__renamed);
+            out.undone = window.__renamed && window.__renamed.join(' → ');
+            const back = await (await opfs('disk')).getDirectoryHandle('Alpha').catch(() => null) || await (await opfs('disk')).getDirectoryHandle('Alpha Smith');
             await openOrder(back);
-            await wait(() => $('sb-card').querySelector('.sb-card-name[data-act="rename"]'));
-            // Save edits when done, for this project: kept with its data on the PC
-            const deferBox = $('sb-card').querySelector('input[data-act="defer"]');
-            out.deferOff = !!deferBox && !deferBox.checked;
-            deferBox.click();
-            await wait(() => Edits.on());
+            await wait(() => app.dirHandle && /Alpha$/.test(Places._currentPath || '') && $('sb-card').querySelector('.sb-card-name[data-act="picker"]'));
+            // Esc leaves it as it was
+            window.__renamed = null;
+            Places.cardAction('rename');
+            const field2 = $('sb-card').querySelector('.sb-rename');
+            field2.value = 'Nope';
+            field2.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            await new Promise(r => setTimeout(r, 100));
+            out.escKept = !window.__renamed && !$('sb-card').querySelector('.sb-rename');
+            // No setting on the card: edits are kept in jEditor (edits.js),
+            // with the project's data on the PC
+            out.deferOff = !$('sb-card').querySelector('input[data-act="defer"], .sb-card-defer');
+            const pf = app.files[0];
+            Edits.set([{ file: pf, edit: { q: 1, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } } }], 'rotation');
             await Edits.flush();
             const kept = await store();
-            out.deferKept = JSON.parse(await (await (await kept.getFileHandle('edits.json')).getFile()).text()).defer === true &&
-                !$('edits-bar').classList.contains('hidden');
-            // While it's on, edits waiting: "N edits to save · Save now" on the card
-            const pending = () => $('sb-card').querySelector('.sb-card-pending');
-            out.pendingNone = !!pending() && pending().hidden;
-            const pf = app.files[0];
-            pf._edit = { q: 1, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } };
-            Edits.updateBar();
-            out.pendingText = pending().hidden ? '' : pending().textContent;
-            const saveAll0 = Edits.saveAll;
-            let savedNow = false;
-            Edits.saveAll = async () => { savedNow = true; return true; };
-            pending().querySelector('[data-act="savenow"]').click();
-            Edits.saveAll = saveAll0;
-            out.savedNow = savedNow;
-            delete pf._edit;
-            Edits.updateBar();
-            out.pendingGone = pending().hidden;
+            out.deferKept = !!JSON.parse(await (await (await kept.getFileHandle('edits.json')).getFile()).text()).edits[pf.relPath || pf.name];
+            // Edits kept: no count and no Save now anywhere (Lightroom's
+            // way: the pencils show them, Export makes copies)
+            Places.drawCard();
+            out.noNag = !$('edits-bar') && !$('sb-card').querySelector('.sb-card-pending, [data-act="savenow"]');
+            Edits.set([{ file: pf, edit: null }], 'edits');
+            await Edits.flush();
 
             // A drive opens out; a folder in it opens as the project
             rowOf(side, 'USB drive (E:)').querySelector('.sb-main').click();
@@ -1945,20 +2010,20 @@ async function newPage(context, baseUrl, host = null) {
                 src.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }));
                 return label;
             };
-            const projRow = [...side.querySelectorAll('.sb-projects .sb-row')].find(r => r.querySelector('.fr-name').textContent === 'Beta');
+            const projRow = rowOf(side, 'Beta');
             out.dragLabel = drag(projRow, fRow);
             await wait(() => /Copied Beta to Backup \(F:\)/.test(toasts()));
             out.copied = JSON.stringify(window.__copies) + ' | ' + toasts();
             // …onto the sidebar's empty part: pinned
             const area = side.querySelector('.sb-sec-body') || side;
             await new Promise(r => setTimeout(r, 300)); // the sidebar draws again after a copy
-            out.pinLabel = drag([...side.querySelectorAll('.sb-projects .sb-row')].find(r => r.querySelector('.fr-name').textContent === 'Beta'), side);
+            out.pinLabel = drag(rowOf(side, 'Beta'), side);
             out.pinned2 = Places.pins().some(p => p.name === 'Beta');
             // A failed copy says why
             window.__copyError = 'Not enough room on F:';
             UI.alert = async (o) => { out.copyError = o.title + ': ' + o.message; };
             await wait(() => rowOf(side, 'Backup (F:)') && !side.querySelector('.sb-pin-target'));
-            drag([...side.querySelectorAll('.sb-projects .sb-row')].find(r => r.querySelector('.fr-name').textContent === 'Beta'), rowOf(side, 'Backup (F:)'));
+            drag(rowOf(side, 'Beta'), rowOf(side, 'Backup (F:)'));
             await wait(() => out.copyError);
             window.__copyError = null;
             void area;
@@ -1973,18 +2038,24 @@ async function newPage(context, baseUrl, host = null) {
         check('the projects folder\'s projects are listed, newest first, with photo counts', r.projects === 'Beta,Alpha' && r.counts && r.folderName === 'Orders', JSON.stringify([r.projects, r.counts, r.folderName]));
         check('search finds a project', r.search === 'Beta', r.search);
         check('clicking a project opens it', r.opened === 'D:\\Orders\\Beta', r.opened);
-        check('Rename on a project\'s right-click menu; its pin follows it', /Rename…/.test(r.menu) && /Show in Explorer/.test(r.menu) && r.renamed && r.renamed[1] === 'Gamma Smith' && r.pinMoved === 'D:\\Orders\\Gamma Smith', JSON.stringify([r.menu, r.renamed, r.pinMoved]));
+        check('Rename on a project\'s right-click menu, in place; its pin follows it', /Rename…/.test(r.menu) && /Show in Explorer/.test(r.menu) && r.startInPlace && r.renamed && r.renamed[1] === 'Gamma Smith' && r.pinMoved === 'D:\\Orders\\Gamma Smith', JSON.stringify([r.menu, r.startInPlace, r.renamed, r.pinMoved]));
+        check('New project asks which kind first: a folder for photos, or a blank canvas', r.askedKind === 'New project: A folder for photos / A blank canvas', r.askedKind);
         check('New project: makes the folder in the projects folder, opens it and lists it; a name taken says so', r.made === 'D:\\Orders\\Gamma' && r.listed && /already a Gamma/.test(r.twice || ''), JSON.stringify([r.made, r.listed, r.twice]));
         check('the project card: name, path, photos', /Alpha/.test(r.card) && /D:\\Orders\\Alpha/.test(r.card) && /\d photos/.test(r.card), r.card);
-        check('the open project is marked in the list', r.active);
-        check('... with its real photo count; others counted up to 1,000+', r.listCounts === '3,1,000+', r.listCounts);
-        check('card: no rename button; the name renames on a click, as the file name in the top pill, with a pencil by it', r.noRenameButton);
-        check('card: Rename closes the open project, renames it and opens it again', r.reopened === 'D:\\Orders\\Alpha Smith' && r.pinRenamed.split(',').includes('Alpha Smith') && !r.pinRenamed.split(',').includes('Alpha'), JSON.stringify([r.reopened, r.pinRenamed]));
-        check('projects: a pinned one is first (not again under Pinned); three shown, Show more and Show less', r.pinnedFirst && r.three === '3 Show more' && r.more === '5 Show less' && r.less === '3 Show more', JSON.stringify([r.pinnedFirst, r.three, r.more, r.less]));
+        check('the sidebar: the open project heads it, Recents lists the others (one highlight at a time)', r.oneActive && r.recents.includes('Beta') && !r.recents.includes('Alpha'), JSON.stringify([r.oneActive, r.recents]));
+        check('... counted up to 1,000+', r.listCounts === '1,000+', r.listCounts);
+        check('the project picker: a click on the name; Recents first, the open one ticked, the last one before it marked; its real photo count', r.pickerOpen && r.pickerFirst && r.pickerMarked !== 'Alpha' && r.pickerActions === 'All projects…,New project…,Open a folder…' && r.pickerCount === '3', JSON.stringify([r.pickerOpen, r.pickerFirst, r.pickerMarked, r.pickerActions, r.pickerCount]));
+        check('... typing finds any project, the match in bold; Enter opens it; Esc closes it', r.pickerFound === 'Beta|Bet' && r.pickerOpened === 'D:\\Orders\\Beta' && r.pickerClosed && r.pickerEsc, JSON.stringify([r.pickerFound, r.pickerOpened, r.pickerEsc]));
+        check('Recents: the last four opened, newest first, then Show all… (every project, by name, in the picker)', r.recentFour === '4 Show all…' && r.newestFirst === 'Gamma,Epsilon,Delta,Beta' && /^All projects in Orders/.test(r.showAll.split('|')[1]) && r.showAll.split('|')[0].split(',').length >= 5, JSON.stringify([r.recentFour, r.showAll]));
+        check('a project in Recents: Open, Rename…, Show in Explorer, Remove from Recents', /^Open, Open in a new window, Rename…, Show in Explorer, Remove from Recents$/.test(r.recentMenu), r.recentMenu);
+        check('the name\'s right-click menu: Rename… first, then Show in Explorer, Scan, Export', /^Rename…, Show in Explorer, Scan…, Export…(, |$)/.test(r.cardMenu) && !/Keep edits/.test(r.cardMenu), r.cardMenu);
+        check('Rename… renames in place: the name chosen in a field, Enter renames; Recents follow it', r.inPlace && r.recentsFollow && r.reopened === 'D:\\Orders\\Alpha Smith' && r.pinRenamed.split(',').includes('Alpha Smith') && !r.pinRenamed.split(',').includes('Alpha'), JSON.stringify([r.inPlace, r.recentsFollowWhy, r.reopened, r.pinRenamed]));
+        check('... a step to undo (Rename project), and Undo puts the old name back; Esc leaves it as it was', r.undoStep && r.undoStep.type === 'project-rename' && /Rename project/.test(r.undoLabel) && r.undone === 'D:\\Orders\\Alpha Smith → Alpha' && r.escKept, JSON.stringify([r.undoStep, r.undoLabel, r.undone, r.escKept]));
+        check('projects (All projects…): a pinned one is first (not again under Pinned); three shown, Show more and Show less', r.pinnedFirst && r.three === '3 Show more' && r.more === '5 Show less' && r.less === '3 Show more', JSON.stringify([r.pinnedFirst, r.three, r.more, r.less]));
         check('projects: Search and New project are icons in the heading; the search box shows when asked, Esc hides it', r.searchHidden && r.searchShown && r.searched === 'Epsilon' && r.searchEsc, JSON.stringify([r.searchHidden, r.searchShown, r.searched, r.searchEsc]));
         check('card buttons: Explorer, Scan, Pin', r.revealed === 'D:\\Orders\\Alpha' && r.scanOpen && r.pinned.split(',').includes('Alpha'), JSON.stringify([r.revealed, r.scanOpen, r.pinned]));
-        check('card: Save edits when done turns on for the project, kept on the PC', r.deferOff && r.deferKept, JSON.stringify([r.deferOff, r.deferKept]));
-        check('card: while it\'s on and edits wait, "1 edit to save · Save now"; Save now saves them; gone when none wait', r.pendingNone && r.pendingText === '1 edit to saveSave now' && r.savedNow && r.pendingGone, JSON.stringify([r.pendingNone, r.pendingText, r.savedNow, r.pendingGone]));
+        check('card: no saving switch; edits are kept with the project\'s data on the PC', r.deferOff && r.deferKept, JSON.stringify([r.deferOff, r.deferKept]));
+        check('card: with edits waiting, nothing counts them or nags to save', r.noNag);
         check('a drive opens out to its folders, in number order', r.inside === 'Order 9,Order 10', r.inside);
         check('browsing: clicking a folder only opens it out, it isn\'t loaded', r.browseOnly);
         check('... Open makes it the project, and so does a double-click', r.openedUsb === 'E:\\Order 9' && r.dblOpened === 'E:\\Order 10', JSON.stringify([r.openedUsb, r.dblOpened]));
@@ -2137,7 +2208,7 @@ async function newPage(context, baseUrl, host = null) {
         check('drives: opened from the drive, the project\'s flags and edits are taken in', r.carried && r.jeditorGone, JSON.stringify(r));
         check('import: a camera\'s card plugged in is offered to import', r.offered, JSON.stringify(r));
         check('import: its photos (not its videos) copied into the project; nothing new the second time', r.imported && r.importToast && /Import 3 photos/.test(r.goLabel || '') && /3 photos/.test(r.summary || '') && r.nothingNew, JSON.stringify(r));
-        check('burn: in Export, the burner and its blank disc, edits offered to save first, the disc named, burnt, and said', /Save the edits into 1 photo first/.test(r.burnAsked || '') && /Blank DVD-R/.test(r.burnAsked || '') && r.burnPrompt === 'Export Alpha / Alpha / Burn to the DVD-R' && r.burnt && r.burnt.label === 'Alpha 2026' && r.burnt.path === 'D:\\Orders\\Alpha' && r.burnt.eject === true && r.burnEjectBox && r.burnToast, JSON.stringify(r));
+        check('burn: in Export, the burner and its blank disc, edits offered to save first, the disc named, burnt, and said', /Write edits to file for the 1 edited photo first/.test(r.burnAsked || '') && /Blank DVD-R/.test(r.burnAsked || '') && r.burnPrompt === 'Export Alpha / Alpha / Burn to the DVD-R' && r.burnt && r.burnt.label === 'Alpha 2026' && r.burnt.path === 'D:\\Orders\\Alpha' && r.burnt.eject === true && r.burnEjectBox && r.burnToast, JSON.stringify(r));
         check('burn: no blank disc in the drive says so, and Burn waits', /^true Put a blank disc in/.test(r.noDisc || ''), JSON.stringify(r));
         check('drives suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
@@ -2182,23 +2253,27 @@ async function newPage(context, baseUrl, host = null) {
             const pill = (k) => $('ex-body').querySelector(`[data-pill="${k}"]`);
             const menu = (k) => { pill(k).click(); return [...document.querySelectorAll('#context-menu button')]; };
             const choose = (k, re) => menu(k).find(b => re.test(b.textContent)).click();
+            const exBody = () => $('ex-body');
+            const sec = (k) => { const h = exBody().querySelector(`[data-sec="${k}"]`); if (h.getAttribute('aria-expanded') !== 'true') h.click(); };
+            const type = (id, v) => { $(id).value = v; $(id).dispatchEvent(new Event('input', { bubbles: true })); };
+            const set = (id, v) => { $(id).value = v; $(id).dispatchEvent(new Event('change', { bubbles: true })); };
             Export.open({ files: [f('photo1.jpg')] });
             out.copiesTab = [...$('ex-tabs').querySelectorAll('button.active')].map(b => b.textContent).join();
-            out.presets = [...$('ex-body').querySelectorAll('input[name="ex-preset"]')].map(i => i.parentElement.textContent.trim() + (i.checked ? '*' : '')).join(' | ');
-            out.pills = [...$('ex-body').querySelectorAll('.ex-pill')].map(b => b.textContent.trim()).join(' | ');
-            out.sum = $('ex-body').querySelector('.ex-sum').textContent;
+            // No presets come with it: only the way to save one. Sections, closed, each saying what it's set to
+            out.noPresets = !exBody().querySelector('input[name="ex-preset"]') && !!exBody().querySelector('[data-act="save-preset"]') && !exBody().querySelector('.ex-prev');
+            out.secs = [...exBody().querySelectorAll('.ex-sec-head')].map(b => `${b.querySelector('b').textContent}: ${b.querySelector('em').textContent}` + (b.getAttribute('aria-expanded') === 'true' ? '*' : '')).join(' | ');
+            out.sum = $('ex-note').querySelector('.ex-sum').textContent;
+            sec('where');
             out.folder = $('ex-folder').value;
-            out.which = menu('which').map(b => b.textContent).join(' | ');
-            app.closeContextMenu();
+            sec('which');
+            out.which = [...exBody().querySelectorAll('input[name="ex-which"]')].map(i => i.parentElement.textContent.trim() + (i.checked ? '*' : '')).join(' | ');
             // (Other…: a size typed)
             const prompt0 = UI.prompt;
             UI.prompt = async () => '100';
-            [...$('ex-body').querySelectorAll('input[name="ex-preset"]')].find(i => i.value === 'custom').click();
-            $('ex-size').value = 'other';
-            $('ex-size').dispatchEvent(new Event('change', { bubbles: true }));
+            sec('size');
+            set('ex-size', 'other');
             await wait(() => $('ex-size') && $('ex-size').value === '100');
             UI.prompt = prompt0;
-            out.custom = $('ex-body').querySelector('input[name="ex-preset"]:checked').value;
             out.copiesGo = $('ex-go').textContent;
             $('ex-go').click();
             await wait(() => /Exported 1 to "Beta export"/.test(toasts()));
@@ -2207,31 +2282,83 @@ async function newPage(context, baseUrl, host = null) {
             out.size = Math.max(bmp.width, bmp.height);
             // Left out of the project: Rescan doesn't list them
             out.leftOut = Watch.skipDir('Beta export') && !Watch.skipDir('Beta');
-            // Remembered: Custom and its size, not the drive
+            // Remembered: the settings and their size, not the drive
             out.kept = JSON.parse(localStorage.getItem('jeditor.export'));
-            // Email: JPEG at 80%, 2048 px, sRGB, without the location; the folder named after it
+            // Again into the same folder: asked, as the system's file copy does. Keep both: the copy numbered
+            const chooseWas = UI.choose;
+            let asked = null, say = 'ok';
+            UI.choose = async (o) => { asked = o; return say; };
+            Export.open({ files: [f('photo1.jpg')] });
+            out.asksFirst = Export.clash;
+            $('ex-go').click();
+            await wait(() => /Exported 1 to "Beta export"/.test(toasts()) && !$('export-panel').classList.contains('hidden') === false);
+            const inExport = async () => { const a = []; for await (const k of (await dir.getDirectoryHandle('Beta export')).keys()) a.push(k); return a.sort().join(); };
+            await wait(async () => /\(2\)/.test(await inExport()));
+            out.both = await inExport();
+            out.asked = asked && `${asked.title} | ${asked.ok} | ${asked.alt} | ${!!asked.check}`;
+            // Replace: written over, nothing new. Cancel: nothing written
+            say = 'alt';
+            asked = null;
+            Export.open({ files: [f('photo1.jpg')] });
+            $('ex-go').click();
+            await wait(() => asked);
+            await new Promise(r => setTimeout(r, 500));
+            out.replaced = await inExport();
+            say = null;
+            Export.open({ files: [f('photo1.jpg')] });
+            $('ex-go').click();
+            await wait(() => /Export canceled/.test(toasts()));
+            out.canceled = await inExport();
+            UI.choose = chooseWas;
+            Export.open({ files: [f('photo1.jpg')] });
+            sec('where');
+            set('ex-clash', 'skip');
+            $('ex-go').click();
+            await wait(() => /1 skipped/.test(toasts()));
+            out.skipped = await inExport();
+            // The settings saved as a preset of your own: picked, its name in the folder's; a setting changed and it's no longer picked; picked again, its settings are back; removed
             Export.open({ tab: 'copies' });
-            [...$('ex-body').querySelectorAll('input[name="ex-preset"]')].find(i => i.value === 'email').click();
-            out.web = [...$('ex-body').querySelectorAll('.ex-chip')].map(b => b.textContent).join(' | ');
-            out.webMore = Export.meta + ' ' + Export.colour + ' ' + $('ex-folder').value + ' ' + menu('where').some(b => /Leave them out/.test(b.textContent));
+            UI.prompt = async () => 'Small';
+            exBody().querySelector('[data-act="save-preset"]').click();
+            await wait(() => exBody().querySelector('input[name="ex-preset"]:checked'));
+            UI.prompt = prompt0;
+            sec('where');
+            out.preset = exBody().querySelector('input[name="ex-preset"]:checked').value + ' / ' + $('ex-folder').value;
+            sec('meta');
+            set('ex-meta', 'nogps');
+            out.presetOff = !exBody().querySelector('input[name="ex-preset"]:checked') && Export.meta === 'nogps';
+            exBody().querySelector('input[name="ex-preset"]').click();
+            out.presetBack = Export.meta === 'all' && Export.size === 100 && Export.clash === 'skip' && !!exBody().querySelector('input[name="ex-preset"]:checked');
+            out.whereMenu = menu('where').some(b => /Leave them out/.test(b.textContent));
             app.closeContextMenu();
-            $('ex-folder').value = 'a/b';
-            $('ex-folder').dispatchEvent(new Event('input', { bubbles: true }));
+            // The preview: off to start with, shown when asked, remembered
+            exBody().querySelector('[data-act="preview"]').click();
+            out.preview = !!exBody().querySelector('.ex-prev') && $('ex-prev-name').textContent + ' ' + JSON.parse(localStorage.getItem('jeditor.export')).preview;
+            exBody().querySelector('[data-act="preview"]').click();
+            type('ex-folder', 'a/b');
             out.badName = $('ex-go').disabled && /can't contain/.test($('ex-note').textContent);
             $('ex-cancel').click();
-            // The starred, onto the USB drive, numbered
+            // The starred, onto the USB drive, named in pieces
             Export.open({ tab: 'copies' });
-            choose('which', /starred/);
+            exBody().querySelector('[data-act="drop-preset"]').click();
+            out.presetGone = !exBody().querySelector('input[name="ex-preset"]') && !JSON.parse(localStorage.getItem('jeditor.export')).presets.length;
+            sec('which');
+            exBody().querySelector('input[name="ex-which"][value="star"]').click();
+            sec('where');
+            set('ex-clash', 'both');
             choose('where', /USB drive/);
-            choose('names', /^Numbered/);
+            sec('naming');
+            type('ex-pattern', '{project} {n}');
+            out.eg = exBody().querySelector('.ex-eg').textContent;
             out.starGo = $('ex-go').textContent;
-            out.starSum = $('ex-body').querySelector('.ex-sum').textContent;
+            out.starSum = $('ex-note').querySelector('.ex-sum').textContent;
             // Eject when done, for copies onto a drive too (off, remembered from the copy above: on again)
+            sec('after');
             out.copiesEjectOff = !!$('ex-eject') && !$('ex-eject').checked;
             $('ex-eject').click();
             $('ex-go').click();
             await wait(() => /Exported 2 to USB drive/.test(toasts()));
-            const onUsb = await (await opfs('usb-E')).getDirectoryHandle('Beta – to email');
+            const onUsb = await (await opfs('usb-E')).getDirectoryHandle('Beta export');
             const names = [];
             for await (const k of onUsb.keys()) names.push(k);
             out.onUsb = names.sort().join();
@@ -2275,17 +2402,24 @@ async function newPage(context, baseUrl, host = null) {
             $('ex-cancel').click();
             return out;
         });
-        check('export: the project card opens one window: USB drive or card, CD or DVD, Copies', r.tabs === 'USB drive or card*, CD or DVD, Copies', r.tabs);
+        check('export: the project card opens one window: Copies, USB drive or card, CD or DVD (no Save tab without edits)', r.tabs === 'Copies, USB drive or card*, CD or DVD', r.tabs);
         check('... USB: the drive, its room and whether it fits; Eject after offered', /USB drive \(E:\)/.test(r.usb) && /free of/.test(r.usb) && /Fits/.test(r.usb) && /Eject when done/.test(r.usb) && r.usbGo === 'Copy to USB drive (E:)', JSON.stringify([r.usb, r.usbGo]));
         check('... its flags and edits: an option, off to start with; no .jeditor folder on the drive', r.withDataOff && r.noJeditor, JSON.stringify([r.withDataOff, r.noJeditor]));
         check('... copied in one step (no more questions), not ejected when that\'s off', r.copied && !r.askedAgain && !r.ejected, JSON.stringify(r));
-        check('... Copies: presets, a sentence, pills, the folder named after the preset', r.copiesTab === 'Copies' && r.presets === 'Full quality* | Email | Web | Social | Print | Archive | Custom' && r.pills === '1 selected | Keep names | In this project' && /^1 photo, about .+, into Beta – full quality in this project\.$/.test(r.sum) && r.folder === 'Beta – full quality', JSON.stringify([r.presets, r.pills, r.sum, r.folder]));
-        check('... the photos selected, a size typed (Custom), into "Beta export", left out of the project', /✓ The photo selected/.test(r.which) && /2 starred/.test(r.which) && r.custom === 'custom' && r.copiesGo === 'Export 1 copy' && r.size === 100 && r.leftOut, JSON.stringify(r));
-        check('... the starred onto the USB drive, numbered, in their own folder', r.starGo === 'Export 2 copies' && /on USB drive/.test(r.starSum) && r.onUsb === 'Beta – to email 001.jpg,Beta – to email 002.jpg', JSON.stringify([r.starGo, r.starSum, r.onUsb]));
+        check('... Copies: no presets of its own, the sections of an export window (location, naming, file settings, sizing, metadata, after) closed and saying their settings, the line by the buttons, the folder named after the project', r.copiesTab === 'Copies' && r.noPresets &&
+            r.secs === 'Photos: 1 selected | Export location: Beta export, in this project | File naming: Original names · photo1.jpg | File settings: Original format | Image sizing: Full size | Metadata: All metadata | After export: Do nothing' &&
+            /^1 photo, about .+, into Beta export in this project\.$/.test(r.sum) && r.folder === 'Beta export', JSON.stringify([r.noPresets, r.secs, r.sum, r.folder]));
+        check('... the photo selected, a size typed, into "Beta export", left out of the project', /The photo selected\*/.test(r.which) && /2 starred/.test(r.which) && r.copiesGo === 'Export 1 photo' && r.size === 100 && r.leftOut, JSON.stringify(r));
+        check('... a name already there is asked about: keep both (the copy numbered), replace, or cancel', r.asksFirst === 'ask' && r.asked === '“photo1.jpg” is already there | Keep both | Replace | false'
+            && r.both === 'photo1 (2).jpg,photo1.jpg' && r.replaced === r.both && r.canceled === r.both, JSON.stringify([r.asksFirst, r.asked, r.both, r.replaced, r.canceled]));
+        check('... or, set to skip, the photo is skipped', r.skipped === r.both, r.skipped);
+        check('... the settings saved as a preset of your own: in the folder\'s name, off when a setting changes, back when picked, removed', r.preset === 'Small / Beta – Small' && r.presetOff && r.presetBack && r.presetGone, JSON.stringify([r.preset, r.presetOff, r.presetBack, r.presetGone]));
+        check('... the preview is off to start with, shown when asked and remembered', /^\S+\.jpg true$/.test(String(r.preview)), String(r.preview)); // (the first of the photos it would export)
+        check('... the starred onto the USB drive, named in pieces with an example, in their own folder', r.starGo === 'Export 2 photos' && /on USB drive/.test(r.starSum) && /Beta 001\.jpg, Beta 002\.jpg/.test(r.eg) && r.onUsb === 'Beta 001.jpg,Beta 002.jpg', JSON.stringify([r.starGo, r.starSum, r.eg, r.onUsb]));
         check('... Eject when done for copies onto a drive (remembered), and it ejects', r.copiesEjectOff && r.copiesEjected === 'E:\\', JSON.stringify([r.copiesEjectOff, r.copiesEjected]));
-        check('... Email: JPEG at 80%, 2048 px, sRGB, no location, its own folder; Leave out is in Where; a bad folder name stops it', r.web === 'JPEG 80% | 2,048 px | sRGB | No location' && r.webMore === 'nogps srgb Beta – to email true' && r.badName, JSON.stringify([r.web, r.webMore, r.badName]));
-        check('... Custom is remembered, a drive isn\'t', r.kept.preset === 'custom' && r.kept.custom.size === 100 && r.keptWhere === 'project', JSON.stringify(r.kept));
-        check('... ⋯ on the selection bar opens it, on the selection', r.menu === 'Export 2…' && r.fromMenu === 'Export 2 photos / Export 2 copies' && r.closed, JSON.stringify([r.menu, r.fromMenu]));
+        check('... Leave out is in Where; a bad folder name stops it', r.whereMenu && r.badName, JSON.stringify([r.whereMenu, r.badName]));
+        check('... the settings are remembered, a drive isn\'t', !r.kept.preset && r.kept.custom.size === 100 && r.keptWhere === 'project', JSON.stringify(r.kept));
+        check('... ⋯ on the selection bar opens it, on the selection', r.menu === 'Export 2…' && r.fromMenu === 'Export 2 photos / Export 2 photos' && r.closed, JSON.stringify([r.menu, r.fromMenu]));
         check('right-click a USB drive: Export or Copy the project to it, each opening Export there', r.usbMenu === 'Export Beta to USB drive (E:)… | Copy Beta to USB drive (E:)…' && r.fromDrive === 'Copies / drive:E:\\' && r.copyFromDrive === 'USB drive or card / Copy to USB drive (E:)', JSON.stringify([r.usbMenu, r.fromDrive, r.copyFromDrive]));
         check('right-click a disc drive: Burn the project, with that drive\'s burner', r.discMenu === 'Burn Beta to a disc…' && r.burnerPicked === 'b1', JSON.stringify([r.discMenu, r.burnerPicked]));
         check('export: no JS errors', errors.length === 0, errors.join('; '));

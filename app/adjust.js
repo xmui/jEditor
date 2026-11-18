@@ -5,8 +5,8 @@
 // it's being changed (on the GPU, so the sliders keep up on a big scan),
 // with its histogram, and Done keeps the settings with the photo: in a
 // project, as an edit (edits.js), never in the file, so they can be
-// changed again later from the photo as it was; Export, or Save edits,
-// writes the result. Without a project (photos picked on a phone,
+// changed again later from the photo as it was; Export, or Save over the
+// original, writes the result. Without a project (photos picked on a phone,
 // dropped photos) Done writes them into the photo, as a crop does.
 //
 // The photo is adjusted as it's cropped (an edit's crop is applied
@@ -22,7 +22,7 @@ const Adjust = {
     before: false,
 
     LIGHT: [['exposure', 'Exposure'], ['contrast', 'Contrast'], ['highlights', 'Highlights'], ['shadows', 'Shadows'], ['whites', 'Whites'], ['blacks', 'Blacks']],
-    COLOR: [['temp', 'Temperature'], ['tint', 'Tint'], ['vibrance', 'Vibrance'], ['saturation', 'Saturation']],
+    COLOR: [['temp', 'Temperature'], ['tint', 'Tint'], ['texture', 'Texture'], ['clarity', 'Clarity'], ['dehaze', 'Dehaze'], ['vibrance', 'Vibrance'], ['saturation', 'Saturation']],
     DETAIL: [['sharpen', 'Sharpening'], ['sharpRadius', 'Radius'], ['sharpMask', 'Masking'], ['noise', 'Noise reduction'], ['colorNoise', 'Color noise']],
     EFFECTS: [['vignette', 'Vignette'], ['vigMid', 'Midpoint'], ['vigFeather', 'Feather'], ['vigRound', 'Roundness'], ['grain', 'Grain'], ['grainSize', 'Grain size'], ['grainColor', 'Grain color'], ['halation', 'Halation']],
     TRACKS: {
@@ -52,15 +52,43 @@ const Adjust = {
         });
         bind('adj-before', () => this.toggleBefore());
         bind('adj-reset', () => this.reset());
+        // ⋯: what isn't Before (the plan: extras go in menus, not on bars)
+        this.el('adj-more').addEventListener('click', (e) => {
+            const b = e.currentTarget;
+            if (this.busy) return;
+            const r = b.getBoundingClientRect();
+            this.app.openContextMenu(this.moreItems(), r.left, r.bottom + 6);
+        });
         bind('adj-copy', () => this.copy());
         bind('adj-paste', () => this.paste());
         bind('adj-auto', () => this.auto());
-        bind('adj-auto-color', () => this.auto({ color: true }));
+        bind('adj-backlight', () => this.backlight());
+        // Restore color is a quick fix in Edit and the first tool in Restore
+        bind('adj-restore', () => this.restore());
+        bind('adj-restore-fade', () => this.restore());
+        bind('adj-restore-fix', () => this.restore(this.foundKind()));
+        bind('adj-restore-keep', () => this.restore('keep'));
+        this.el('adj-restore-pick').addEventListener('click', (e) => {
+            e.currentTarget.blur();
+            if (!this.busy) this.pickWhite(this.picking !== 'restore', 'restore');
+        });
+        // Restore color's strength, under the histogram while it's on
+        const restoreRow = this.slider('restoreAmount', 'Restore color', {
+            range: { min: 0, max: 100, step: 1, def: 0 },
+            get: () => (this.a.restore ? this.a.restore.amount : 0),
+            set: (v) => { if (this.a.restore) this.a.restore.amount = v; }
+        });
+        restoreRow.classList.add('adj-restore-row');
+        const sync = restoreRow._sync;
+        restoreRow._sync = () => { sync(); restoreRow.classList.toggle('hidden', !this.a.restore); this.syncRestore(); };
+        const histBox = this.el('adj-hist').closest('section');
+        histBox.insertBefore(restoreRow, histBox.querySelector('.adj-levels-foot'));
+        (this.extraRows || (this.extraRows = [])).push(restoreRow);
         this.el('adj-wb-pick').addEventListener('click', (e) => {
             e.preventDefault(); // in the section's head: not to fold it
             e.stopPropagation();
             e.currentTarget.blur();
-            if (!this.busy) this.pickWhite();
+            if (!this.busy) this.pickWhite(this.picking !== 'wb');
         });
         // Picking white balance: a click on the photo is the grey, before
         // masks, spots or the 1:1 view see it
@@ -68,7 +96,8 @@ const Adjust = {
             if (!this.picking || e.button !== 0 || this.space) return;
             e.preventDefault();
             e.stopPropagation();
-            this.pickAt(e);
+            if (this.picking === 'level') this.levelFrom(e);
+            else this.pickAt(e);
         }, true);
         this.el('adj-presets').addEventListener('click', (e) => {
             e.preventDefault();
@@ -85,10 +114,20 @@ const Adjust = {
         for (const [k, label] of this.COLOR) (k === 'temp' || k === 'tint' ? wb : color).appendChild(this.slider(k, label));
         const detail = this.el('adj-detail');
         for (const [k, label] of this.DETAIL) detail.appendChild(this.slider(k, label));
+        // Descreen, in Restore: its sliders once it's on
+        const ds = this.el('adj-descreen-tools');
+        for (const [k, label] of [['descreen', 'Descreen'], ['screen', 'Dot spacing']]) {
+            const row = this.slider(k, label), sync = row._sync;
+            row._sync = () => { sync(); ds.classList.toggle('hidden', !this.a.descreen); };
+            ds.appendChild(row);
+        }
+        bind('adj-descreen', () => this.descreen());
         this.initLoupe();
         const effects = this.el('adj-effects');
         for (const [k, label] of this.EFFECTS) effects.appendChild(this.slider(k, label));
+        this.initGeo();
         this.el('adj-look-amount').appendChild(this.slider('lookAmount', 'Amount'));
+        this.initLookDial();
         const grade = this.el('adj-grade-more');
         grade.appendChild(this.slider('gradeBlend', 'Blending'));
         grade.appendChild(this.slider('gradeBalance', 'Balance'));
@@ -126,13 +165,16 @@ const Adjust = {
         for (const b of this.root.querySelectorAll('.adj-mix-tabs .adj-tab')) {
             b.addEventListener('click', () => { b.blur(); this.mixer = b.dataset.mix; this.sync(); });
         }
-        // A section's Reset puts just that section back
-        for (const b of this.root.querySelectorAll('[data-reset]')) {
-            b.addEventListener('click', (e) => {
+        // A section's Reset is in the right-click menu on its heading (on
+        // the histogram, for the levels): one Reset per section, not a
+        // button on each
+        for (const sec of this.root.querySelectorAll('[data-reset]')) {
+            const head = sec.querySelector(':scope > summary') || sec;
+            head.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                b.blur();
-                this.resetSection(b.dataset.reset);
+                if (this.busy) return;
+                this.app.openContextMenu([[`Reset ${sec.dataset.resetName}`, () => this.resetSection(sec.dataset.reset)]], e.clientX, e.clientY);
             });
         }
 
@@ -195,6 +237,159 @@ const Adjust = {
         return row;
     },
 
+    // ---- Geometry: straighten (the crop's angle, as Photos' Crop sets it) ----
+
+    initGeo() {
+        const angle = this.slider('angle', 'Angle', {
+            range: { min: -45, max: 45, step: 0.1 },
+            get: () => (this.geo && this.geo.angle) || 0,
+            set: (v) => this.applyGeo(this.geoAt(v))
+        });
+        this.el('adj-geo').appendChild(angle);
+        (this.extraRows || (this.extraRows = [])).push(angle);
+        this.el('adj-level').addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.currentTarget.blur();
+            if (!this.busy) this.pickWhite(this.picking !== 'level', 'level');
+        });
+    },
+
+    // The crop's part of an edit (null: the whole photo, as it is)
+    geoOf(e, W, H) {
+        if (!e || Edits.wholePhoto(e)) return null;
+        const g = { q: e.q || 0, angle: e.angle || 0, aspectKey: e.aspectKey || 'free', landscape: !!e.landscape, n: { ...e.n } };
+        if (e.m) g.m = true;
+        if (typeof e.wide === 'boolean') g.wide = e.wide;
+        return g;
+    },
+
+    geoChanged() {
+        return JSON.stringify(this.geo) !== JSON.stringify(this.geo0);
+    },
+
+    // The geometry straightened to `deg`: from the crop it opened with (so
+    // dragging the angle there and back gives the same frame back), its
+    // frame kept inside the turned photo as Crop keeps it
+    geoAt(deg) {
+        deg = Math.max(-45, Math.min(45, Math.round(deg * 100) / 100));
+        const h = this.turned(this.baseGeo(), Object.is(deg, -0) ? 0 : deg);
+        return this.geoOf(h.snapshot(), this.base.width, this.base.height);
+    },
+
+    // The crop it opened with, to straighten from; the whole photo (its
+    // quarter turn and flip kept) when that crop was only the frame a
+    // straighten left, so going back to level gives the whole photo back
+    baseGeo() {
+        const W = this.base.width, H = this.base.height, g = this.geo0;
+        const q = g ? g.q || 0 : 0;
+        const whole = { q, ...(g && g.m ? { m: true } : {}), angle: 0, aspectKey: 'free', landscape: q % 2 ? H >= W : W >= H, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } };
+        if (!g) return whole;
+        const auto = this.turned(whole, g.angle || 0).snapshot().n;
+        const same = ['x0', 'y0', 'x1', 'y1'].every(k => Math.abs(auto[k] - g.n[k]) < 1e-3);
+        return same ? whole : g;
+    },
+
+    // A headless crop of `g`, turned to `deg`, its frame kept inside
+    turned(g, deg) {
+        const h = CropEditor.fromSnapshot(this.base.width, this.base.height, g);
+        h.angle = deg;
+        h.refit();
+        return h;
+    },
+
+    // An edit with this geometry on it (for Save): unchanged when it is
+    withGeo(e) {
+        if (!this.geoChanged()) return e;
+        const out = { ...(e || { q: 0, angle: 0, n: {} }) };
+        for (const k of ['q', 'm', 'angle', 'aspectKey', 'landscape', 'wide', 'n']) delete out[k];
+        Object.assign(out, this.geo || { q: 0, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } });
+        return out;
+    },
+
+    // The picture shown as `g` crops it: the frame, the size, the paint
+    applyGeo(g) {
+        if (!this.base) return;
+        this.geo = g;
+        const W = this.base.width, H = this.base.height;
+        this.cropped = g ? CropEditor.fromSnapshot(W, H, g) : null;
+        this.map = Develop.cropMap(this.cropped, W, H);
+        const o = this.cropped ? this.cropped.outputRect() : { w: W, h: H };
+        this.el('adj-dims').textContent = `${Math.round(o.w * this.fullScale)} × ${Math.round(o.h * this.fullScale)}`;
+        this.PW = o.w * this.fullScale;
+        this.PH = o.h * this.fullScale;
+        this.fullCanvas = this.fullCtx = null;
+        this._fullFor = null;
+        this.hideSharp();
+        this.fitted = true;
+        this.view = null;
+        this._pictureKey = undefined;
+        this.usePicture();
+        this.drawPaint(this._painted);
+        this.layout();
+        AdjustMasks.sync();
+        AdjustSpots.sync();
+    },
+
+    // Straighten by drawing a line: dragged along something that should be
+    // level or upright, the photo turns so it is (Crop's level tool, here)
+    levelFrom(e) {
+        if (!this.ready) return;
+        const a = { x: e.clientX, y: e.clientY };
+        this.levelLine(a, a);
+        const move = (ev) => this.levelLine(a, { x: ev.clientX, y: ev.clientY });
+        const up = (ev) => {
+            removeEventListener('pointermove', move, true);
+            removeEventListener('pointerup', up, true);
+            removeEventListener('pointercancel', up, true);
+            this.levelLine(null);
+            this.pickWhite(false);
+            const t = this.levelAngle(a, { x: ev.clientX, y: ev.clientY });
+            if (t === null) return;
+            this.pushHistory();
+            this.applyGeo(this.geoAt(t));
+            this.changed();
+        };
+        addEventListener('pointermove', move, true);
+        addEventListener('pointerup', up, true);
+        addEventListener('pointercancel', up, true);
+    },
+
+    // The angle that makes the line from a to b (on screen, over the photo
+    // as shown) level, or upright if it's nearer that; null when it's too
+    // short to tell. As crop.js's levelAngle.
+    levelAngle(a, b) {
+        const dx = b.x - a.x, dy = b.y - a.y;
+        if (Math.hypot(dx, dy) < 12) return null;
+        let alpha = Math.atan2(dy, dx) * 180 / Math.PI;
+        if (alpha > 90) alpha -= 180;
+        if (alpha <= -90) alpha += 180;
+        const delta = Math.abs(alpha) <= 45 ? -alpha : (alpha > 0 ? 90 - alpha : -90 - alpha);
+        const now = (this.geo && this.geo.angle) || 0;
+        return Math.max(-45, Math.min(45, Math.round((now + delta) * 100) / 100));
+    },
+
+    // The line being drawn, over the photo (null: none)
+    levelLine(a, b) {
+        let svg = this.el('adj-level-line');
+        if (!a) { if (svg) svg.classList.add('hidden'); return; }
+        const stage = this.el('adj-stage');
+        if (!svg) {
+            svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.id = 'adj-level-line';
+            svg.classList.add('adj-level-line');
+            svg.setAttribute('aria-hidden', 'true');
+            svg.innerHTML = '<line class="adj-level-under"/><line class="adj-level-over"/>';
+            stage.appendChild(svg);
+        }
+        svg.classList.remove('hidden');
+        const r = stage.getBoundingClientRect();
+        for (const l of svg.querySelectorAll('line')) {
+            l.setAttribute('x1', a.x - r.left); l.setAttribute('y1', a.y - r.top);
+            l.setAttribute('x2', b.x - r.left); l.setAttribute('y2', b.y - r.top);
+        }
+    },
+
     // ---- Opening and closing ----
 
     async open(app, file) {
@@ -207,8 +402,6 @@ const Adjust = {
         this.future = [];
         const kept = Edits.get(file);
         this.a = Develop.full(kept && kept.adj);
-        const look = Develop.look(this.a.look);
-        if (look && this._inited && look.process !== this.lookTab) this.showLookTab(look.process);
         this.start = JSON.stringify(Develop.clean(this.a));
         this.root.classList.remove('hidden');
         this.el('adj-file').textContent = file.name;
@@ -237,6 +430,11 @@ const Adjust = {
         // Its crop: adjusted as it will be seen. Masks and spots are placed
         // on the photo before it: the map from one to the other
         this.cropped = kept && !Edits.wholePhoto(kept) ? CropEditor.fromSnapshot(bmp.width, bmp.height, kept) : null;
+        // Its geometry (the crop's turn, straighten and frame), changed here
+        // by Geometry: as it opened, and as it is now
+        this.fullScale = scale;
+        this.geo0 = this.geoOf(kept, bmp.width, bmp.height);
+        this.geo = this.geo0;
         this.map = Develop.cropMap(this.cropped, bmp.width, bmp.height);
         // The whole working copy, kept: spots are done on it, before the crop
         const base = document.createElement('canvas');
@@ -248,6 +446,7 @@ const Adjust = {
         this.base = base;
         // Paint goes over everything (paint.js): shown on top, as it will be
         const painted = Paint.has(kept) ? await Paint.prepare(kept).catch(() => null) : null;
+        this._painted = painted;
         if (!current()) { this.dropPicture(); return; }
         const o = this.cropped ? this.cropped.outputRect() : { w: base.width, h: base.height };
         this.el('adj-dims').textContent = `${Math.round(o.w * scale)} × ${Math.round(o.h * scale)}`;
@@ -360,7 +559,6 @@ const Adjust = {
         this.w = bmp.width;
         this.h = bmp.height;
         this._detailKey = null;
-        this._looksKey = null;
 
         // What the histogram and Auto look at
         const s = Math.min(1, this.SAMPLE / Math.max(bmp.width, bmp.height));
@@ -372,22 +570,13 @@ const Adjust = {
         this.sample = sctx.getImageData(0, 0, sc.width, sc.height).data;
         this.sampleW = sc.width;
         this.sampleH = sc.height;
-        // And the looks' pictures
-        const ts = Math.min(1, 84 / Math.max(bmp.width, bmp.height));
-        sc.width = Math.max(1, Math.round(bmp.width * ts));
-        sc.height = Math.max(1, Math.round(bmp.height * ts));
-        sctx.drawImage(bmp, 0, 0, sc.width, sc.height);
-        this.thumb = sctx.getImageData(0, 0, sc.width, sc.height);
         this.sampleOut = new Uint8ClampedArray(this.sample.length);
 
         if (this.gl) {
             this.gl.setImage(bmp);
-            // Big enough for detail to show (a small photo): kept, to do it on
-            if (this.pxScale >= 0.5) {
-                this.srcData = bmp.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, bmp.width, bmp.height);
-            } else {
-                this.srcData = null;
-            }
+            // Kept, to do detail on: sharpening and noise show on a small
+            // photo (shown at half size or more), descreen on most
+            this.srcData = bmp.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, bmp.width, bmp.height);
         } else {
             // No GPU: a smaller working copy, adjusted on the CPU
             const s2 = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
@@ -442,7 +631,7 @@ const Adjust = {
     },
 
     changedSinceOpen() {
-        return JSON.stringify(this.result()) !== this.start;
+        return JSON.stringify(this.result()) !== this.start || this.geoChanged();
     },
 
     // ---- Changing ----
@@ -453,8 +642,19 @@ const Adjust = {
         AdjustSync.changed();
     },
 
+    // A step: the settings and the geometry (Geometry's straighten)
+    state() {
+        return JSON.stringify({ a: this.result(), g: this.geo });
+    },
+
+    putState(s) {
+        const { a, g } = JSON.parse(s);
+        if (JSON.stringify(g) !== JSON.stringify(this.geo)) this.applyGeo(g);
+        this.setAll(a, { history: false });
+    },
+
     pushHistory() {
-        const s = JSON.stringify(this.result());
+        const s = this.state();
         if (this.history[this.history.length - 1] === s) return;
         this.history.push(s);
         if (this.history.length > 200) this.history.shift();
@@ -472,15 +672,15 @@ const Adjust = {
 
     undo() {
         if (!this.history.length) return false;
-        this.future.push(JSON.stringify(this.result()));
-        this.setAll(JSON.parse(this.history.pop()), { history: false });
+        this.future.push(this.state());
+        this.putState(this.history.pop());
         return true;
     },
 
     redo() {
         if (!this.future.length) return false;
-        this.history.push(JSON.stringify(this.result()));
-        this.setAll(JSON.parse(this.future.pop()), { history: false });
+        this.history.push(this.state());
+        this.putState(this.future.pop());
         return true;
     },
 
@@ -499,11 +699,48 @@ const Adjust = {
         if (which === 'grading') { delete a.grade; delete a.gradeBlend; delete a.gradeBalance; }
         if (which === 'effects') for (const [k] of this.EFFECTS) delete a[k];
         if (which === 'detail') for (const [k] of this.DETAIL) delete a[k];
+        if (which === 'geometry') {
+            this.pushHistory();
+            this.applyGeo(this.geoAt(0));
+            this.changed();
+            return;
+        }
         if (which === 'masks') delete a.masks;
         if (which === 'spots') delete a.spots;
-        if (which === 'look' || which === 'basic') { delete a.look; delete a.lookAmount; }
+        if (which === 'look' || which === 'basic') { delete a.look; delete a.lookAmount; delete a.lookAdj; delete a.lookName; }
         if (which === 'basic') for (const [k] of [...this.LIGHT, ...this.COLOR]) delete a[k];
         this.setAll(a);
+    },
+
+    // Backlight: Shadows up and Highlights down, from the photo
+    backlight() {
+        if (!this.ready) return;
+        this.setAll(Develop.backlight(this.sample, this.result()));
+        this.app.showToast('Backlight: the dark part lifted and the bright part held back', 1800, null, null, { kind: 'adjust' });
+    },
+
+    // Adjust's ⋯ menu, by its keys as they're set now
+    moreItems() {
+        const sel = this.app.selection && [...this.app.selection].filter(f => f !== this.file);
+        return [
+            ['Auto color', () => this.auto({ color: true }), false, undefined, 'adjust.autoColor'],
+            ['—'],
+            ['Reset all', () => this.reset(), false, undefined, 'adjust.reset'],
+            ['Copy settings', () => this.copy(), false, undefined, 'adjust.copy'],
+            ...(Adjust.clipboard() ? [['Paste settings', () => this.paste(), false, undefined, 'adjust.paste']] : []),
+            ...(sel && sel.length ? [['Sync to selected…', () => AdjustSync.fromAdjust(), false, undefined, 'adjust.sync']] : []),
+            ['—'],
+            ['Show clipping', () => this.toggleClip(), false, !!this.clip, 'adjust.clip'],
+            ['Before and after', () => this.toggleBefore(), false, !!this.before, 'adjust.before'],
+            ...(Edits.canKeep() ? [['—'], ['Write edits to file', () => this.app.saveOverOriginal([this.file]), false, undefined, 'adjust.saveOver']] : [])
+        ];
+    },
+
+    // Show clipping (J): what's lost at white red, at black blue, on the photo
+    toggleClip(on = !this.clip) {
+        this.clip = on;
+        this.app.showToast(on ? 'Clipping shown: lost highlights red, lost shadows blue (J)' : 'Clipping hidden (J)', 1600, 'adj-clip', null, { kind: 'adjust' });
+        this.schedule();
     },
 
     toggleBefore(on = !this.before) {
@@ -519,16 +756,82 @@ const Adjust = {
         this.app.showToast(color ? 'Auto color: levels set for each channel' : 'Auto: levels set from the photo', 1600, null, null, { kind: 'adjust' });
     },
 
+    // Restore color, from the photo (develop.js: restoreAuto): Auto finds
+    // how it faded, or type says (keep: the colours kept). The strength
+    // stays where it was set, at full to start with
+    restore(type = 'auto') {
+        if (!this.ready) return;
+        const now = this.a.restore;
+        const adj = Develop.restoreAuto(this.sample, this.result(), now ? now.amount : 100, type);
+        this.setAll(adj);
+        const r = adj.restore;
+        const kind = r && Develop.RESTORE_TYPES[r.type];
+        const msg = !r ? 'Restore color: nothing to restore'
+            : r.type === 'keep' ? (type === 'keep' ? 'Restore color: the colours kept, the light and any stain fixed' : 'Restore color: no colour fade found, so the colours are kept; the light and any stain are fixed')
+            : `Restore color: ${kind.name.toLowerCase()} found, its colours brought back`;
+        this.app.showToast(msg + '. Restore color\'s slider sets how much', 2600, null, null, { kind: 'adjust' });
+    },
+
+    // The kind of fade Auto finds in this photo (not keep)
+    foundKind() {
+        const m = Develop.restoreMeasure(this.sample);
+        const t = m ? Develop.restoreType(m) : 'keep';
+        return t === 'keep' ? 'print' : t;
+    },
+
+    // Descreen: the dot screen found in the full-size photo (a preview has
+    // lost the dots), from up to 1024 px square in its middle, and taken off
+    async descreen() {
+        if (this._descreening) return;
+        this._descreening = true;
+        try {
+            const full = await this.loadFull();
+            if (!full || !this.isOpen) return;
+            const w = Math.min(1024, full.width), h = Math.min(1024, full.height);
+            const x = Math.round((full.width - w) / 2), y = Math.round((full.height - h) / 2);
+            const found = Develop.findScreen(this.fullCtx.getImageData(x, y, w, h).data, w, h);
+            if (!found) {
+                const on = () => this.setAll({ ...this.result(), descreen: 100 });
+                this.app.showToast('Descreen: no printed dot pattern found', 4000, null, this.a.descreen ? null : { label: 'Turn on anyway', run: on }, { kind: 'adjust' });
+                return;
+            }
+            this.setAll({ ...this.result(), descreen: this.a.descreen || 100, screen: found.screen });
+            this.app.showToast(`Descreen: dots ${found.screen} px apart found and taken off. Zoom to 100% to see it`, 3000, null, null, { kind: 'adjust' });
+        } finally {
+            this._descreening = false;
+        }
+    },
+
+    // The Restore tool's colour options, while Restore color is on
+    syncRestore() {
+        const r = this.a && this.a.restore;
+        const box = this.el('adj-restore-opts');
+        if (!box) return;
+        box.classList.toggle('hidden', !(r && r.d));
+        if (!(r && r.d)) return;
+        const keep = r.type === 'keep';
+        this.el('adj-restore-fix').setAttribute('aria-pressed', String(!keep));
+        this.el('adj-restore-keep').setAttribute('aria-pressed', String(keep));
+        const kind = Develop.RESTORE_TYPES[r.type];
+        const roll = r.roll ? `, with the roll of ${r.roll} photos` : '';
+        this.el('adj-restore-found').textContent = r.grey ? 'Set from the grey you picked'
+            : keep ? (r.auto ? 'No colour fade found' + roll : '') : `Found: ${kind.name.toLowerCase()}${roll}`;
+    },
+
     // White balance from the photo (W): click something that should be
     // white or grey, and Temperature and Tint make it so
-    pickWhite(on = !this.picking) {
+    // kind 'restore': the grey sets Restore color instead (the Restore tool)
+    pickWhite(on = !this.picking, kind = 'wb') {
         if (on && !this.ready) return;
-        this.picking = on;
+        this.picking = on ? kind : false;
         // W shows the button it presses: Edit, with Basic open
-        if (on) { this.showPane('edit'); this.el('adj-basic-sec').open = true; }
-        this.root.classList.toggle('adj-picking', on);
-        this.el('adj-wb-pick').setAttribute('aria-pressed', String(on));
-        if (on) this.app.showToast('Click something that should be white or grey (Esc to stop)', 2400, null, null, { kind: 'adjust' });
+        if (on && kind === 'wb') { this.showPane('edit'); this.el('adj-basic-sec').open = true; }
+        this.root.classList.toggle('adj-picking', !!on);
+        this.el('adj-wb-pick').setAttribute('aria-pressed', String(this.picking === 'wb'));
+        this.el('adj-restore-pick').setAttribute('aria-pressed', String(this.picking === 'restore'));
+        this.el('adj-level').setAttribute('aria-pressed', String(this.picking === 'level'));
+        if (!on) this.levelLine(null);
+        if (on) this.app.showToast(kind === 'level' ? 'Drag along something that should be level or upright (Esc to stop)' : kind === 'restore' ? 'Click something that should be grey (Esc to stop)' : 'Click something that should be white or grey (Esc to stop)', 2400, null, null, { kind: 'adjust' });
     },
 
     pickAt(e) {
@@ -545,6 +848,7 @@ const Adjust = {
         const x1 = Math.min(W, x + k + 1), y1 = Math.min(H, y + k + 1);
         if (x1 <= x0 || y1 <= y0) return;
         const px = pic.getContext('2d', { willReadFrequently: true }).getImageData(x0, y0, x1 - x0, y1 - y0).data;
+        if (this.picking === 'restore') return this.pickRestore(px);
         const wb = Develop.neutralWB(px);
         if (!wb) {
             this.app.showToast('That\'s too bright or too dark to tell: click a light grey', 2400, null, null, { kind: 'adjust' });
@@ -556,6 +860,20 @@ const Adjust = {
         this.a.tint = wb.tint;
         this.changed();
         this.app.showToast(`White balance: Temperature ${wb.temp}, Tint ${wb.tint}`, 1600, null, null, { kind: 'adjust' });
+    },
+
+    // Restore color from a grey the user clicked (px: the pixels round it):
+    // Restore color is worked out first if it's off
+    pickRestore(px) {
+        const base = this.a.restore && this.a.restore.d ? this.result() : Develop.restoreAuto(this.sample, this.result());
+        const r = Develop.restoreNeutral(base.restore, px);
+        if (!r) {
+            this.app.showToast('That\'s too light or too dark to tell: click a mid grey', 2400, null, null, { kind: 'adjust' });
+            return;
+        }
+        this.pickWhite(false);
+        this.setAll({ ...base, restore: r });
+        this.app.showToast('Restore color: set from that grey', 1600, null, null, { kind: 'adjust' });
     },
 
     // Settings to put on another photo: its spots are its own
@@ -626,6 +944,7 @@ const Adjust = {
     // 1:1 box) follows the canvas, as it did when it only fitted. Past the
     // working copy's own pixels (a photo bigger than EDGE), what's on
     // screen is drawn again from the full-size photo, so 100% is sharp.
+    // Past 100% the photo's pixels are sharp squares, not smoothed (layout).
 
     MAX_ZOOM: 16,       // 1600%, as Lightroom
     PAD: 16,            // round the photo when it's fitted
@@ -659,6 +978,15 @@ const Adjust = {
         const v = this.view;
         Object.assign(this.canvas.style, { width: `${Math.max(1, this.PW * v.z)}px`, height: `${Math.max(1, this.PH * v.z)}px`, left: `${v.x}px`, top: `${v.y}px` });
         this.root.classList.toggle('adj-zoomed', !this.fitted);
+        // Past 100% (a pixel of the photo bigger than one of the screen's):
+        // its pixels as sharp squares, as in Photos' viewer; smooth at or
+        // below it. On the sharp part, which is the photo's own pixels,
+        // and on the picture itself only when it is (a photo no bigger
+        // than the working copy): blown up, the working copy of a bigger
+        // one would show blocks that aren't the photo's
+        const dpr = window.devicePixelRatio || 1;
+        this.root.classList.toggle('adj-pixels', v.z * dpr > 1 + 1e-6);
+        this.root.classList.toggle('adj-whole', this.PW <= this.w * 1.01);
         this.placePaint();
         this.placeSharp();
         this.showZoom();
@@ -871,7 +1199,7 @@ const Adjust = {
         if (this._sharpGl === undefined) this._sharpGl = Develop.renderer(cv);
         const R = this._sharpGl && !this._sharpGl.lost ? this._sharpGl : null;
         if (R && (r.w > R.max || r.h > R.max)) { this.hideSharp(); return; }
-        const d = this.before ? null : Develop.detail(this.a);
+        const d = this.before ? null : Develop.detail(this.a, 1, FW, FH);
         const key = JSON.stringify([r, this._fullKey, d, this.before]);
         if (!this._sharp || this._sharp.key !== key) {
             const img = d ? Develop.detailBlock((a, b, c, e) => this.fullCtx.getImageData(a, b, c, e), r.x, r.y, r.w, r.h, FW, FH, d, 1)
@@ -898,7 +1226,7 @@ const Adjust = {
                 const brush = Develop.brushFor(T.masks, this.map.asp);
                 if (brush) R.setBrush(brush);
                 R.setTables(T);
-                R.draw(r.w, r.h, { before: this.before, frame });
+                R.draw(r.w, r.h, { before: this.before, frame, clip: this.clip && !this.before });
             } catch (e) {
                 console.warn('Adjust: GPU failed (100%):', e);
                 this.hideSharp();
@@ -953,7 +1281,7 @@ const Adjust = {
                 if (glow) this.gl.setGlow(glow);
                 if (brush) this.gl.setBrush(brush);
                 this.gl.setTables(T);
-                this.gl.draw(this.w, this.h, { before: this.before, frame: { x: 0, y: 0, W: this.w, H: this.h, map: this.map } });
+                this.gl.draw(this.w, this.h, { before: this.before, clip: this.clip && !this.before, frame: { x: 0, y: 0, W: this.w, H: this.h, map: this.map } });
             } catch (e) {
                 console.warn('Adjust: GPU failed:', e);
             }
@@ -973,7 +1301,6 @@ const Adjust = {
         this.drawPanels();
         AdjustMasks.draw();
         AdjustSpots.draw();
-        this.looksSoon();
     },
 
     // ---- Detail: sharpening and noise reduction ----
@@ -1014,7 +1341,7 @@ const Adjust = {
     // The working copy with detail done (debounced: it's on the CPU)
     detailSoon() {
         if (!this.gl || !this.srcData) return;
-        const d = Develop.detail(this.a);
+        const d = Develop.detail(this.a, this.pxScale, this.srcData.width, this.srcData.height);
         const key = JSON.stringify(d);
         if (key === this._detailKey) return;
         clearTimeout(this._detailTimer);
@@ -1095,7 +1422,7 @@ const Adjust = {
         if (this.before) {
             img = this.fullCtx.getImageData(x, y, lw, lh);
         } else {
-            const d = Develop.detail(this.a);
+            const d = Develop.detail(this.a, 1, FW, FH);
             img = d ? Develop.detailBlock((a, b, c, e) => this.fullCtx.getImageData(a, b, c, e), x, y, lw, lh, FW, FH, d, 1)
                 : this.fullCtx.getImageData(x, y, lw, lh);
             Develop.applyCPU(img.data, Develop.tables(this.a), img.data, { x, y, w: lw, W: FW, H: FH, glow: this.glow, map: this.map });
@@ -1123,65 +1450,267 @@ const Adjust = {
     // Film looks (develop.js LOOKS), each shown on this photo as it now is
 
     initLooks() {
-        const tabs = this.el('adj-look-tabs');
-        try { this.lookTab = localStorage.getItem('jeditor.lookTab'); } catch (e) { /* private mode */ }
-        if (!Develop.PROCESSES.some(p => p[0] === this.lookTab)) this.lookTab = 'C-41';
-        for (const [id, label, title] of Develop.PROCESSES) {
-            const b = document.createElement('button');
-            b.className = 'adj-tab';
-            b.dataset.tab = id;
-            b.textContent = label;
-            b.title = title;
-            b.setAttribute('role', 'tab');
-            b.addEventListener('click', () => { b.blur(); this.showLookTab(id); });
-            tabs.appendChild(b);
-        }
-        const box = this.el('adj-looks');
-        // One row in Basic: a mouse wheel moves along it, not down the panel
-        box.addEventListener('wheel', (e) => {
-            if (e.deltaX || e.ctrlKey || box.scrollWidth <= box.clientWidth) return;
-            e.preventDefault();
-            box.scrollLeft += e.deltaY;
-        }, { passive: false });
-        const tile = (look) => {
-            const b = document.createElement('button');
-            b.className = 'adj-look';
-            b.dataset.look = look ? look.id : '';
-            b.dataset.tab = look ? look.process : '';
-            b.title = look ? `${look.maker} ${look.name} · ${look.code || look.process}\n${look.note}` : 'No look';
-            b.innerHTML = '<canvas></canvas><span></span>';
-            b.querySelector('span').textContent = look ? look.name : 'None';
-            b.addEventListener('click', () => {
-                b.blur();
-                if (!this.ready) return;
-                this.pushHistory();
-                this.a.look = look ? look.id : null;
-                if (!look) this.a.lookAmount = 100;
-                this.changed();
-            });
-            box.appendChild(b);
-        };
-        tile(null);
-        for (const l of Develop.LOOKS) tile(l);
-        this.showLookTab(this.lookTab);
+        // One line in Basic: the look's name, opening a menu of the films
+        // by process (the plan: a picker, not a wall of thumbnails)
+        this.el('adj-look-pick').addEventListener('click', (e) => {
+            const b = e.currentTarget;
+            e.stopPropagation(); // not to the window, which closes menus
+            b.blur();
+            if (this.busy || !this.ready) return;
+            const r = b.getBoundingClientRect();
+            this.app.openContextMenu(this.lookItems(), r.left, r.bottom + 4);
+        });
     },
 
-    // Edit, Retouch and Masks. Retouch and Masks each hold one section
-    // (spots, masks) that's open while its tab is shown, so the tools there
-    // work only then; opening one of those sections shows its tab
+    lookName(l) {
+        return l ? [l.maker, l.name].filter(Boolean).join(' ') : 'None';
+    },
+
+    // The look's name as shown: its own, and if it's been dialled in, so
+    shownLookName() {
+        const l = Develop.lookOf(this.a);
+        return !l ? 'None' : l.modified ? `${l.name} (modified)` : l.name;
+    },
+
+    setLook(id) {
+        if (!this.ready || (id || null) === (this.a.look || null)) return;
+        this.pushHistory();
+        this.a.look = id || null;
+        this.a.lookAdj = null;
+        this.a.lookName = null;
+        if (!id) this.a.lookAmount = 100;
+        this.openDial();
+        this.changed();
+    },
+
+    // One of your own looks (its settings come with it)
+    setOwnLook(o) {
+        if (!this.ready) return;
+        this.pushHistory();
+        this.a.look = 'own:' + o.id;
+        this.a.lookName = o.name;
+        this.a.lookAdj = JSON.parse(JSON.stringify(o.adj));
+        this.openDial();
+        this.changed();
+    },
+
+    // The film look as it was made again, its sliders as they came
+    resetLook() {
+        if (!this.ready || !this.a.lookAdj || String(this.a.look).startsWith('own:')) return;
+        this.pushHistory();
+        this.a.lookAdj = null;
+        this.changed();
+    },
+
+    // None, then each process with its films beside it, your own looks,
+    // and saving the settings as one of yours
+    lookItems() {
+        const on = this.a.look || null;
+        const l = Develop.lookOf(this.a);
+        const own = this.ownLooks();
+        return [
+            ['None', () => this.setLook(null), false, !on],
+            ['—'],
+            ...Develop.PROCESSES.map(([id, label]) => [label, Develop.LOOKS.filter(lk => lk.process === id)
+                .map(lk => [this.lookName(lk), () => this.setLook(lk.id), false, on === lk.id])]),
+            ...(own.length ? [['—'], ['Your looks', null],
+                // Right-click one of yours: rename, duplicate or delete it
+                ...own.map(o => [o.name, () => this.setOwnLook(o), false, on === 'own:' + o.id, undefined, this.ownLookItems(o)]),
+                ['Change your looks', own.map(o => [o.name, this.ownLookItems(o)])]] : []),
+            ['—'],
+            ['Save as a look…', () => this.saveLook()],
+            ...(l && l.modified ? [[`Reset ${l.name} to as made`, () => this.resetLook()]] : [])
+        ];
+    },
+
+    // ---- A look's own sliders ----
+    //
+    // Picking a look opens them under its Amount, so a look is never fixed
+    // (the plan): each changes the look's own settings (lookAdj, kept with
+    // the photo's), and the look shows as modified, with Reset in its menu
+
+    initLookDial() {
+        this.lookMixer = 'hue';
+        const rows = [];
+        const add = (box, key, label, range, get, set) => {
+            const row = this.slider('look-' + key, label, { range, get: () => get(this.lookFull()), set: (v) => this.editLook(la => set(la, v)) });
+            this.el(box).appendChild(row);
+            rows.push(row);
+            return row;
+        };
+        const pct = { min: -100, max: 100, step: 1 }, up = { min: 0, max: 100, step: 1 };
+        add('adj-look-tone', 'contrast', 'Contrast', pct, f => f.contrast, (la, v) => { la.contrast = v; });
+        // Lifted blacks: where the tone curve starts
+        add('adj-look-tone', 'fade', 'Fade', { min: 0, max: 30, step: 1 }, f => Math.round(f.curve.rgb[0][1] * 100), (la, v) => {
+            const c = la.curve = la.curve || {};
+            const rgb = (c.rgb || [[0, 0], [1, 1]]).map(p => p.slice());
+            if (rgb[0][0] === 0) rgb[0][1] = v / 100; else rgb.unshift([0, v / 100]);
+            c.rgb = rgb;
+        });
+        add('adj-look-tone', 'warmth', 'Warmth', pct, f => f.temp, (la, v) => { la.temp = v; });
+        const zone = (z, name) => {
+            const g = (f) => f.grade[z];
+            const put = (la, k, v) => { la.grade = la.grade || {}; const t = (la.grade[z] || [0, 0, 0]).slice(); t[k] = v; la.grade[z] = t; };
+            add('adj-look-tint', z + 'hue', `${name} hue`, { min: 0, max: 360, step: 1 }, f => g(f)[0], (la, v) => put(la, 0, v));
+            add('adj-look-tint', z + 'tint', `${name} tint`, up, f => g(f)[1], (la, v) => put(la, 1, v));
+        };
+        zone('s', 'Shadow');
+        zone('h', 'Highlight');
+        add('adj-look-colour', 'saturation', 'Saturation', pct, f => f.saturation, (la, v) => { la.saturation = v; });
+        add('adj-look-colour', 'vibrance', 'Vibrance', pct, f => f.vibrance, (la, v) => { la.vibrance = v; });
+        // Colour response: a small mixer of the look's own
+        Develop.HUES.forEach((h, i) => {
+            const row = add('adj-look-mixer', 'mix-' + h.id, h.name, pct, f => f.hsl[this.lookMixer][i], (la, v) => {
+                la.hsl = la.hsl || {};
+                const t = (la.hsl[this.lookMixer] || new Array(8).fill(0)).slice();
+                t[i] = v;
+                la.hsl[this.lookMixer] = t;
+            });
+            row.style.setProperty('--swatch', h.color);
+            row.classList.add('adj-mix-row');
+        });
+        for (const b of this.root.querySelectorAll('.adj-look-mix-tabs .adj-tab')) {
+            b.addEventListener('click', () => { b.blur(); this.lookMixer = b.dataset.mix; this.sync(); });
+        }
+        add('adj-look-film', 'grain', 'Grain', up, f => f.grain, (la, v) => { la.grain = v; });
+        add('adj-look-film', 'grainSize', 'Grain size', up, f => f.grainSize, (la, v) => { la.grainSize = v; });
+        add('adj-look-film', 'grainColor', 'Grain colour', up, f => f.grainColor, (la, v) => { la.grainColor = v; });
+        add('adj-look-film', 'halation', 'Halation', up, f => f.halation, (la, v) => { la.halation = v; });
+        add('adj-look-film', 'vignette', 'Vignette', pct, f => f.vignette, (la, v) => { la.vignette = v; });
+        this.lookRows = rows;
+        (this.extraRows || (this.extraRows = [])).push(...rows);
+    },
+
+    // The look's settings as dialled in, every one filled in
+    lookFull() {
+        const l = this.a && Develop.lookOf(this.a);
+        return Develop.full(l ? l.adj : {});
+    },
+
+    // A change to the look's own settings: from then on the photo keeps
+    // them (lookAdj), made from the look as it came
+    editLook(fn) {
+        const l = Develop.lookOf(this.a);
+        if (!l) return;
+        const la = JSON.parse(JSON.stringify(l.adj || {}));
+        fn(la);
+        this.a.lookAdj = Develop.cleanLookAdj(la);
+    },
+
+    // Picking a look opens its sliders (they stay as left after that)
+    openDial() {
+        const d = this.el('adj-look-dial');
+        if (d && this.a.look) d.open = true;
+    },
+
+    syncLookDial() {
+        const d = this.el('adj-look-dial');
+        if (!d) return;
+        d.classList.toggle('hidden', !Develop.lookOf(this.a));
+        for (const b of this.root.querySelectorAll('.adj-look-mix-tabs .adj-tab')) b.setAttribute('aria-selected', String(b.dataset.mix === this.lookMixer));
+    },
+
+    // ---- Your own looks ----
+    //
+    // Kept on this computer (as presets are), each { id, name, adj }; a
+    // photo using one keeps a copy of its settings, so it looks the same
+    // wherever its settings go, and changing or deleting the look later
+    // doesn't change photos already done with it
+
+    ownLooks() {
+        try {
+            const list = JSON.parse(localStorage.getItem('jeditor.looks') || '[]');
+            return Array.isArray(list) ? list.filter(o => o && typeof o.id === 'string' && typeof o.name === 'string' && o.adj && typeof o.adj === 'object') : [];
+        } catch (e) { return []; }
+    },
+
+    saveOwnLooks(list) {
+        try { localStorage.setItem('jeditor.looks', JSON.stringify(list)); } catch (e) { /* private mode */ }
+    },
+
+    // Rename, duplicate or delete one (its right-click menu)
+    ownLookItems(o) {
+        return [
+            ['Rename…', () => this.renameLook(o)],
+            ['Duplicate', () => {
+                const list = this.ownLooks();
+                list.push({ id: this.newLookId(), name: this.freeLookName(o.name + ' copy'), adj: JSON.parse(JSON.stringify(o.adj)) });
+                this.saveOwnLooks(list);
+                this.app.showToast(`Duplicated “${o.name}”`, 1600, null, null, { kind: 'adjust' });
+            }],
+            ['Delete', () => {
+                this.saveOwnLooks(this.ownLooks().filter(q => q.id !== o.id));
+                this.app.showToast(`Deleted the look “${o.name}”; photos done with it keep it`, 2400, null, null, { kind: 'adjust' });
+            }, true]
+        ];
+    },
+
+    newLookId() {
+        return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    },
+
+    // A name not already used by one of yours
+    freeLookName(name) {
+        const used = new Set(this.ownLooks().map(o => o.name.toLowerCase()));
+        let n = name, i = 2;
+        while (used.has(n.toLowerCase())) n = `${name} ${i++}`;
+        return n;
+    },
+
+    async renameLook(o) {
+        const name = await UI.prompt({ title: 'Rename the look', message: 'Photos already done with it keep their name for it.', ok: 'Rename', input: { label: 'Name', value: o.name } });
+        if (!name || !name.trim() || name.trim() === o.name) return;
+        const list = this.ownLooks();
+        const it = list.find(q => q.id === o.id);
+        if (!it) return;
+        it.name = this.freeLookName(name.trim().slice(0, 60));
+        this.saveOwnLooks(list);
+    },
+
+    // Save as a look: the look as dialled in, if one's on; otherwise the
+    // photo's own settings (not its masks, spots or Restore colour, which
+    // are this photo's)
+    async saveLook() {
+        if (!this.ready) return;
+        const l = Develop.lookOf(this.a);
+        const adj = l ? Develop.cleanLookAdj(l.adj) : Develop.cleanLookAdj(this.result() || {});
+        if (!Object.keys(adj).length) {
+            this.app.showToast('Adjust the photo or dial in a look first: a look keeps the settings', 2400, null, null, { kind: 'adjust' });
+            return;
+        }
+        const name = await UI.prompt({
+            title: 'Save as a look',
+            message: l ? `${l.name} as you've dialled it in, to put on other photos from the Look menu.` : 'These settings, to put on other photos from the Look menu.',
+            ok: 'Save', input: { label: 'Name', value: l ? this.freeLookName(l.own ? l.name : `My ${l.name}`) : '' }
+        });
+        if (!name || !name.trim()) return;
+        const list = this.ownLooks();
+        const o = { id: this.newLookId(), name: this.freeLookName(name.trim().slice(0, 60)), adj };
+        list.push(o);
+        this.saveOwnLooks(list);
+        this.app.showToast(`Saved the look “${o.name}”: it's under Your looks in the Look menu`, 2400, null, null, { kind: 'adjust' });
+    },
+
+    // The four tools: Edit, Restore, Heal and Masks. Restore, Heal and
+    // Masks each hold one section that's open while it's shown, so the
+    // tools there work on the photo only then. Restore and Heal share the
+    // spot tool (Restore uses it for red-eye and shows the dust it finds),
+    // so its section is open for both
     initPanes() {
-        const tool = { retouch: this.el('adj-spots-sec'), masks: this.el('adj-masks-sec') };
-        for (const b of this.root.querySelectorAll('.adj-pane-tabs .adj-tab')) {
+        const spots = this.el('adj-spots-sec'), masks = this.el('adj-masks-sec'), restore = this.el('adj-restore-sec');
+        for (const b of this.root.querySelectorAll('.adj-pane-tabs .adj-tool')) {
             b.addEventListener('click', () => { b.blur(); this.showPane(b.dataset.pane); });
         }
-        for (const [pane, sec] of Object.entries(tool)) {
-            sec.querySelector('summary').addEventListener('click', (e) => e.preventDefault());
-            sec.addEventListener('toggle', () => {
-                if (sec.open) this.showPane(pane);
-                else if (this.pane === pane) this.showPane('edit');
-            });
-        }
-        // Edit's sections: opening one shows the tab and folds the one open before
+        for (const sec of [spots, masks, restore]) sec.querySelector('summary').addEventListener('click', (e) => e.preventDefault());
+        spots.addEventListener('toggle', () => {
+            if (spots.open) { if (this.pane !== 'restore') this.showPane('heal'); }
+            else if (this.pane === 'heal' || this.pane === 'restore') this.showPane('edit');
+        });
+        masks.addEventListener('toggle', () => {
+            if (masks.open) this.showPane('masks');
+            else if (this.pane === 'masks') this.showPane('edit');
+        });
+        // Edit's sections: opening one shows Edit and folds the one open before
         const edit = [...this.root.querySelectorAll('.adj-pane[data-pane="edit"] > details.adj-sec')];
         for (const sec of edit) {
             sec.addEventListener('toggle', () => {
@@ -1196,51 +1725,15 @@ const Adjust = {
     showPane(id) {
         if (this.pane === id) return;
         this.pane = id;
-        for (const b of this.root.querySelectorAll('.adj-pane-tabs .adj-tab')) b.setAttribute('aria-selected', String(b.dataset.pane === id));
+        for (const b of this.root.querySelectorAll('.adj-pane-tabs .adj-tool')) b.setAttribute('aria-selected', String(b.dataset.pane === id));
         for (const p of this.root.querySelectorAll('.adj-pane')) p.classList.toggle('hidden', p.dataset.pane !== id);
-        this.el('adj-spots-sec').open = id === 'retouch';
+        AdjustSpots.usePane(id);
+        this.el('adj-spots-sec').open = id === 'heal' || id === 'restore';
         this.el('adj-masks-sec').open = id === 'masks';
         this.drawPanels();
         this.drawWheels();
         this.placeLoupeBox();
         if (this.detailOpen()) this.renderLoupe();
-    },
-
-    // One process's films (None is always there)
-    showLookTab(id) {
-        this.lookTab = id;
-        try { localStorage.setItem('jeditor.lookTab', id); } catch (e) { /* private mode */ }
-        for (const b of this.root.querySelectorAll('.adj-look-tabs .adj-tab')) b.setAttribute('aria-selected', String(b.dataset.tab === id));
-        for (const b of this.root.querySelectorAll('.adj-look')) b.classList.toggle('hidden', !!b.dataset.tab && b.dataset.tab !== id);
-        this._looksKey = null;
-        if (this.ready) this.renderLooks();
-    },
-
-    // The pictures, once the sliders have rested
-    looksSoon() {
-        clearTimeout(this._looksTimer);
-        this._looksTimer = setTimeout(() => this.renderLooks(), this._looksKey ? 350 : 0);
-    },
-
-    renderLooks() {
-        if (!this.ready || !this.thumb) return;
-        // Each look over the settings without one
-        const base = { ...(this.result() || {}) };
-        delete base.look;
-        delete base.lookAmount;
-        const key = JSON.stringify(base) + this.lookTab;
-        if (key === this._looksKey) return;
-        this._looksKey = key;
-        const { width: w, height: h } = this.thumb;
-        const out = new ImageData(w, h);
-        for (const b of this.root.querySelectorAll('.adj-look:not(.hidden)')) {
-            const cv = b.querySelector('canvas');
-            cv.width = w;
-            cv.height = h;
-            const T = Develop.tables(b.dataset.look ? { ...base, look: b.dataset.look } : base);
-            Develop.applyCPU(this.thumb.data, T, out.data, { x: 0, y: 0, w, W: w, H: h });
-            cv.getContext('2d').putImageData(out, 0, 0);
-        }
     },
 
     // ---- Presets: settings saved under a name, for any photo ----
@@ -1382,8 +1875,9 @@ const Adjust = {
         for (const row of this.mixerSliders.concat(this.extraRows || [])) row._sync();
         for (const b of this.root.querySelectorAll('.adj-chan .adj-tab')) b.setAttribute('aria-selected', String(b.dataset.chan === this.channel));
         for (const b of this.root.querySelectorAll('.adj-mix-tabs .adj-tab')) b.setAttribute('aria-selected', String(b.dataset.mix === this.mixer));
-        for (const b of this.root.querySelectorAll('.adj-look')) b.setAttribute('aria-pressed', String((b.dataset.look || null) === this.a.look));
-        this.el('adj-look-amount').classList.toggle('hidden', !this.a.look);
+        this.el('adj-look-name').textContent = this.shownLookName();
+        this.el('adj-look-amount').classList.toggle('hidden', !Develop.lookOf(this.a));
+        this.syncLookDial();
         this.drawWheels();
         const l = this.a.levels[this.channel];
         this.el('adj-levels-read').textContent = `${Math.round(l[0] * 255)} · ${l[1].toFixed(2)} · ${Math.round(l[2] * 255)}` +
