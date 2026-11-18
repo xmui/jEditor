@@ -9081,7 +9081,8 @@ const app = {
     // and Paint): the photos' kept edits written into them (saveEdits).
     // From Adjust or Paint, what's there is kept first and the mode left,
     // as leaving it would
-    async saveOverOriginal(files) {
+    // how: 'originals' or 'copies' to write without asking (the smoke test)
+    async saveOverOriginal(files, { how = null } = {}) {
         files = (files || []).filter(Boolean);
         const tool = this.cropState.active ? this.cropState.tool : null;
         // No project: Adjust and Paint write into the photo when left
@@ -9094,7 +9095,7 @@ const app = {
             this.showToast(files.length > 1 ? 'None of these has an edit to save' : 'No edits to save: the photo is as it is on disk', 2500);
             return false;
         }
-        const how = await this.askWriteEdits(list);
+        how = how || await this.askWriteEdits(list);
         if (!how) return false;
         if (how === 'copies') return this.saveEditCopies(list);
         return Edits.saveAll({ list });
