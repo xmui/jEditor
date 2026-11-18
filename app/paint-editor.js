@@ -1930,10 +1930,12 @@ const PaintEditor = {
         if (this.poly) { this.endPoly(false); return true; }
         const e = this.history.pop();
         if (!e) return false;
+        const was = this.frame();
         this.historyBytes -= e.bytes || 0;
         this.apply(e, true);
         this.future.push(e);
         this.drawLayers();
+        this.puff(was);
         this.renderSoon();
         return true;
     },
@@ -1941,12 +1943,64 @@ const PaintEditor = {
     redo() {
         const e = this.future.pop();
         if (!e) return false;
+        const was = this.frame();
         this.apply(e, false);
         this.history.push(e);
         this.historyBytes += e.bytes || 0;
         this.drawLayers();
+        this.puff(was);
         this.renderSoon();
         return true;
+    },
+
+    // ---- The puff ----
+    // Undo and Redo, one at a time: what changed puffs away (it fades,
+    // softens and lifts a little), over the picture as it is now. Not
+    // with Settings → Animations off, reduced motion or a theme
+    // (Motion.on), nor going along the history
+
+    // The picture as shown, before the step (null when there's no puff)
+    frame() {
+        if (this._batch || !this.ready || typeof Motion === 'undefined' || !Motion.on()) return null;
+        const c = this.canvas;
+        if (!c.width || !c.height || c.width * c.height > 9e6) return null;
+        const f = document.createElement('canvas');
+        f.width = c.width; f.height = c.height;
+        f.getContext('2d').drawImage(c, 0, 0);
+        return f;
+    },
+
+    puff(was) {
+        if (!was) return;
+        this.render();
+        const c = this.canvas, w = c.width, h = c.height;
+        if (was.width !== w || was.height !== h) return;
+        const g = was.getContext('2d', { willReadFrequently: true });
+        const a = g.getImageData(0, 0, w, h), b = c.getContext('2d').getImageData(0, 0, w, h).data, d = a.data;
+        // Only what changed is kept on it
+        let x0 = w, y0 = h, x1 = -1, y1 = -1;
+        for (let y = 0, i = 0; y < h; y++) {
+            for (let x = 0; x < w; x++, i += 4) {
+                if (Math.abs(d[i] - b[i]) + Math.abs(d[i + 1] - b[i + 1]) + Math.abs(d[i + 2] - b[i + 2]) + Math.abs(d[i + 3] - b[i + 3]) < 24) { d[i + 3] = 0; continue; }
+                if (x < x0) x0 = x; if (x > x1) x1 = x;
+                if (y < y0) y0 = y; if (y > y1) y1 = y;
+            }
+        }
+        if (x1 < 0) return;
+        g.putImageData(a, 0, 0);
+        if (this._puff) this._puff.remove();
+        const dpr = this.dpr || 1;
+        was.className = 'paint-puff';
+        was.setAttribute('aria-hidden', 'true');
+        was.style.transformOrigin = `${(x0 + x1) / 2 / dpr}px ${(y0 + y1) / 2 / dpr}px`;
+        c.after(was);
+        this._puff = was;
+        const done = () => { was.remove(); if (this._puff === was) this._puff = null; };
+        if (!was.animate) { done(); return; }
+        was.animate([
+            { opacity: 1, filter: 'blur(0)', transform: 'none' },
+            { opacity: 0, filter: 'blur(6px)', transform: 'translateY(-6px) scale(1.06)' }
+        ], { duration: 280, easing: 'cubic-bezier(.2, .7, .3, 1)' }).onfinish = done;
     },
 
     // A tool's name, as the history lists it

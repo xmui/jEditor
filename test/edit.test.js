@@ -3209,6 +3209,63 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('paintpuff')) {
+        console.log('paint: Undo and Redo puff what changed, not with Animations off (paint-editor.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 400; c.height = 300;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 400, 300);
+                await openProject('pf', { 'p.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor, root = document.documentElement;
+                delete root.dataset.motion;
+                const fill = () => { P.pushState('Red'); const l = P.makeLayer('Red'); const g = l.canvas.getContext('2d'); g.setTransform(P.extM()); g.fillStyle = '#ff0000'; g.fillRect(0, 0, 100, 100); P.layers.push(l); P.cur = P.layers.length - 1; P.afterState(); P.render(); };
+                step = 'undo';
+                fill();
+                P.undo();
+                const pf = document.querySelector('#paint-stage .paint-puff');
+                out.puff = !!pf && pf.getAttribute('aria-hidden') === 'true';
+                // Only what changed is on it: the red square, not the rest
+                if (pf) {
+                    const g = pf.getContext('2d'), dpr = P.dpr || 1;
+                    const s = P.V().transformPoint({ x: 50, y: 50 }), o = P.V().transformPoint({ x: 300, y: 250 });
+                    out.only = [g.getImageData(Math.round(s.x * dpr), Math.round(s.y * dpr), 1, 1).data[3] > 0, g.getImageData(Math.round(o.x * dpr), Math.round(o.y * dpr), 1, 1).data[3]];
+                }
+                await new Promise(res => setTimeout(res, 450));
+                out.gone = !document.querySelector('#paint-stage .paint-puff');
+                step = 'redo';
+                P.redo();
+                out.redo = !!document.querySelector('#paint-stage .paint-puff');
+                await new Promise(res => setTimeout(res, 450));
+                step = 'off';
+                root.dataset.motion = 'off';
+                P.undo();
+                out.off = !document.querySelector('#paint-stage .paint-puff');
+                delete root.dataset.motion;
+                P.redo();
+                await new Promise(res => setTimeout(res, 450));
+                // Going along the history doesn't puff
+                P.goTo(0);
+                out.batch = !document.querySelector('#paint-stage .paint-puff');
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint puff: Undo puffs what it took away', r.puff, JSON.stringify(r));
+        check('paint puff: only the part that changed is on it', JSON.stringify(r.only) === '[true,0]', JSON.stringify(r));
+        check('paint puff: it goes once it has puffed', r.gone, JSON.stringify(r));
+        check('paint puff: Redo puffs too', r.redo, JSON.stringify(r));
+        check('paint puff: none with Settings → Animations off', r.off, JSON.stringify(r));
+        check('paint puff: none going along the history', r.batch, JSON.stringify(r));
+        check('paint puff: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Restore colour (develop.js: restoreAuto; script.js: restoreColour) ----
     if (wanted('restore')) {
         console.log('restore colour (develop.js, script.js, adjust.js)');
