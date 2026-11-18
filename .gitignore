@@ -9,3 +9,4 @@ _site/
 mac/native/build/
 engine/target/
 !engine/src/bin/
+desktop/core/target/

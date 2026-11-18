@@ -7,8 +7,11 @@
 //   2. jEditor itself in WebKit on a folder on disk, through them: open,
 //      rotate, rename, delete and undo, Recents another day.
 // test/mac.test.js runs the real app with them (JEDITOR_HOST_HANDLES=1).
+// With JEDITOR_CORE (the Rust core's binary, desktop/core: step 2), part 1
+// runs on it too, in place of Node's fs-host.js.
 //
 //   node test/handles.test.js         (WebKit: npx playwright-core install webkit)
+//   JEDITOR_CORE=desktop/core/target/debug/jeditor-core node test/handles.test.js
 
 const fs = require('fs');
 const http = require('http');
@@ -46,12 +49,49 @@ const INSTALL = `<script src="/__host/handles.js"></script>
     });
     </script>`;
 
+// Who answers the file requests: Node's fs-host.js, or the Rust core
+let host = fsHost;
+
+// The Rust core's binary, spoken to a JSON line at a time (src/main.rs there)
+function rustCore(bin) {
+    const { spawn } = require('child_process');
+    const child = spawn(bin, [], { stdio: ['pipe', 'pipe', 'inherit'] });
+    const waiting = new Map();
+    let next = 1, buf = '';
+    child.stdout.on('data', (d) => {
+        buf += d;
+        let i;
+        while ((i = buf.indexOf('\n')) >= 0) {
+            const line = buf.slice(0, i); buf = buf.slice(i + 1);
+            const { id, answer } = JSON.parse(line);
+            waiting.get(id)(answer);
+            waiting.delete(id);
+        }
+    });
+    const call = (op, data) => new Promise((resolve) => {
+        const id = next++;
+        waiting.set(id, resolve);
+        child.stdin.write(JSON.stringify({ id, op, data }) + '\n');
+    });
+    return {
+        request: (op, data) => {
+            if (data && Buffer.isBuffer(data.data)) data = { ...data, data: data.data.toString('base64'), b64: true };
+            return call(op, data);
+        },
+        respond: async (file, range) => {
+            const r = await call('read', { path: file, range: range || null });
+            return new Response(r.status === 200 || r.status === 206 ? Buffer.from(r.body, 'base64') : null, { status: r.status, headers: r.headers });
+        },
+        close: () => child.stdin.end(),
+    };
+}
+
 function serve() {
     return http.createServer(async (req, res) => {
         const url = new URL(req.url, 'http://x');
         try {
             if (url.pathname === '/__fs') {
-                const r = await fsHost.respond(url.searchParams.get('p') || '', req.headers.range);
+                const r = await host.respond(url.searchParams.get('p') || '', req.headers.range);
                 const headers = {};
                 r.headers.forEach((v, k) => { headers[k] = v; });
                 res.writeHead(r.status, headers);
@@ -83,7 +123,7 @@ async function pageFor(engine, baseUrl, profile, url = '/index.html') {
         : await pw.chromium.launchPersistentContext(profile, { ...launchOptions(), ...opts });
     await ctx.exposeBinding('__fsHost', (src, op, data) => {
         if (data && data.b64) data = { ...data, data: Buffer.from(data.data, 'base64') };
-        return fsHost.request(op, data);
+        return host.request(op, data);
     });
     await ctx.exposeBinding('__pick', () => ctx.__picked || null);
     const page = ctx.pages()[0] || await ctx.newPage();
@@ -103,8 +143,11 @@ async function pageFor(engine, baseUrl, profile, url = '/index.html') {
     try { webkitThere = fs.existsSync(pw.webkit.executablePath()); } catch (e) { webkitThere = false; }
 
     // ---- 1. The same as Chromium's own handles ----
-    for (const engine of ['chromium', 'webkit']) {
-        console.log(`the host's handles: as Chromium's own (${engine})`);
+    const core = process.env.JEDITOR_CORE ? rustCore(path.resolve(process.env.JEDITOR_CORE)) : null;
+    if (process.env.JEDITOR_CORE && !fs.existsSync(path.resolve(process.env.JEDITOR_CORE))) check('the Rust core is built (cargo build in desktop/core)', false, process.env.JEDITOR_CORE);
+    for (const [engine, on] of [['chromium', fsHost], ['webkit', fsHost], ...(core ? [['chromium', core], ['webkit', core]] : [])]) {
+        host = on;
+        console.log(`the host's handles: as Chromium's own (${engine}${on === core ? ', on the Rust core' : ''})`);
         if (engine === 'webkit' && !webkitThere) {
             if (process.env.CI) check('WebKit is installed (npx playwright-core install webkit)', false);
             else console.log('  (skipped: no WebKit here; npx playwright-core install webkit)');
@@ -129,9 +172,11 @@ async function pageFor(engine, baseUrl, profile, url = '/index.html') {
         check('a handle kept in IndexedDB comes back as one (get and getAll)', kept.ours && kept.same && kept.all && kept.at === 1, JSON.stringify(kept));
         await ctx.close();
     }
-
     // ---- 2. jEditor in WebKit, on a folder on disk ----
-    console.log('jEditor in WebKit, through the host\'s handles');
+    // (On the Rust core when it's given, as the Tauri app will be; Node's
+    // fs-host.js is checked in part 1, and in the Mac app's own test)
+    host = core || fsHost;
+    console.log(`jEditor in WebKit, through the host's handles${core ? ' (on the Rust core)' : ''}`);
     if (!webkitThere) {
         if (process.env.CI) check('WebKit is installed', false);
         else console.log('  (skipped: no WebKit here)');
@@ -214,6 +259,7 @@ async function pageFor(engine, baseUrl, profile, url = '/index.html') {
         await ctx.close();
     }
 
+    if (core) core.close();
     server.close();
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log(`\n${passed} passed, ${failed} failed`);
