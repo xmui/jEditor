@@ -482,9 +482,8 @@ const Edits = {
         if (e) el.title = this.describe(e);
     },
 
-    // The pencil's tooltip
-    describe(e) {
-        const what = e.paint ? 'Painted' : e.adj ? 'Adjusted' : 'Edited';
-        return Host.say(`Edited in jEditor (${what.toLowerCase()}). The photo file is unchanged: Write edits to file (Ctrl+S) puts the edit in it, or Export makes a copy`);
+    // The dot's tooltip (and the pencil's by the name), in two lines
+    describe() {
+        return Host.say('Edited — the original file is untouched\nCtrl+S writes your edits into the file');
     }
 };
