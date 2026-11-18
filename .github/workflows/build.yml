@@ -31,7 +31,7 @@ jobs:
     if: github.event.action != 'labeled'
     runs-on: ubuntu-latest
     # A hung test stops here, not at GitHub's 6 hours (a normal run is
-    # 7 to 9 minutes)
+    # 7 to 10 minutes, the Rust core's tests included)
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
