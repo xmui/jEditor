@@ -1,0 +1,25 @@
+[package]
+name = "jeditor-core"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "The Mac and Linux host's core, without a window: file requests, drives, moves and updates"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "jeditor-core"
+path = "src/main.rs"
+
+[dependencies]
+base64 = "0.22"
+libc = "0.2"
+serde_json = "1"
+sha2 = "0.10"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

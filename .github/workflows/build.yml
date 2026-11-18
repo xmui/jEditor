@@ -41,9 +41,15 @@ jobs:
       - run: npm ci
       # WebKit, for the app's own folder handles in it (test/handles.test.js)
       - run: npx playwright-core install --with-deps webkit
+      # The Mac and Linux host's core in Rust (desktop/core): its own tests,
+      # and the page's handles run on it too (test/handles.test.js)
+      - name: Rust core
+        working-directory: desktop/core
+        run: cargo test --locked && cargo build --locked
       - run: npm test
         env:
           CHROME_PATH: /usr/bin/google-chrome
+          JEDITOR_CORE: desktop/core/target/debug/jeditor-core
 
   windows:
     if: github.event.action != 'labeled'
