@@ -5992,11 +5992,16 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     touch-action: none;
 }
 
-#paint-canvas {
+#paint-canvas, .paint-puff {
     position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
+}
+
+/* Undo's puff: what changed, fading away over the picture */
+.paint-puff {
+    pointer-events: none;
 }
 
 .paint-adj-card {
