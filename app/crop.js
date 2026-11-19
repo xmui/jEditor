@@ -352,6 +352,20 @@ const CropEditor = {
         this._resizeObs.observe(cv.parentElement);
     },
 
+    // How Crop works, said the first three times it opens, then left to
+    // the guide (audit M1): it fades after a few seconds each time
+    TIP_SEEN: 'jeditor.cropTipSeen',
+    showTipOnce() {
+        const tip = this.el('crop-tip');
+        let seen = 0;
+        try { seen = +localStorage.getItem(this.TIP_SEEN) || 0; } catch (e) { /* no storage */ }
+        clearTimeout(this._tipFade);
+        tip.classList.toggle('crop-tip-done', seen >= 3);
+        if (seen >= 3) return;
+        try { localStorage.setItem(this.TIP_SEEN, String(seen + 1)); } catch (e) { /* no storage */ }
+        this._tipFade = setTimeout(() => tip.classList.add('crop-tip-done'), 8000);
+    },
+
     // Show the editor for `file`. The pixels come from disk, so they always
     // match what is saved (the caller drains any rotation queue first).
     async open(app, file) {
@@ -359,6 +373,7 @@ const CropEditor = {
         this.file = file;
         this.ready = false;
         this.isOpen = true;
+        this.showTipOnce();
         this.level = false;
         this.drag = null;
         this.vw = null;
