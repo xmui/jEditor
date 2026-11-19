@@ -5243,7 +5243,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             key('Escape');
             out.closed = !History.isOpen();
 
-            // Four steps: a star, a rename, a red label, a rotation
+            // Four steps: a pick, a rename, a red label, a rotation
             Flags.apply('star', [f('a.jpg')]);
             await app.renameFile(f('b.jpg'), 'Smith_02.jpg');
             Flags.apply('red', [f('c.jpg')]);
@@ -5270,7 +5270,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             return out;
         });
         check('history: a toolbar button and H open it; empty says so; Esc closes', r.button && r.empty && r.closed, JSON.stringify(r));
-        check('history: every step, newest first, with what and which photo', JSON.stringify(r.rows) === JSON.stringify(['Rotation:c.jpg', 'Red label:c.jpg', 'Rename:b.jpg → Smith_02.jpg', 'Star:a.jpg']), JSON.stringify(r.rows));
+        check('history: every step, newest first, with what and which photo', JSON.stringify(r.rows) === JSON.stringify(['Rotation:c.jpg', 'Red label:c.jpg', 'Rename:b.jpg → Smith_02.jpg', 'Pick:a.jpg']), JSON.stringify(r.rows));
         check('history: clicking a step asks first, naming what is undone', r.askedFirst);
         check('history: then goes back to before it, saying so once', r.wentBack && /Went back 3 steps/.test(r.toast) && r.left === 'Pick', r.toast + ' ' + r.left);
         check('history: Info closes it', r.infoCloses);
