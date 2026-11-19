@@ -10,6 +10,10 @@
 //     Retro, in the brush slot's menu: the pixel pencil (square pixels on a
 //     grid the brush's size), the spray can (hard dots as it's held) and
 //     the stamp (our own little pictures, one a click)
+//     Painters, there too: charcoal and the texture brush (through a grain
+//     fixed to the picture), watercolour (pooled at its edges), the mixer
+//     (blends with what it goes over). A pen's tilt lays the round on its
+//     side. ⋯ → Brushes saves a brush and its settings as a preset
 //     The wheel sizes them, [ and ] too (Ctrl+wheel zooms), showing the
 //     brush as it'll paint and its size; Shift-click paints straight on
 //     from where the last stroke ended; a pen's pressure sizes them.
@@ -59,12 +63,12 @@ const PaintEditor = {
         gradient: 'linear', gradTo: 'bg',
         density: 40, range: 30, stamp: 'star', tip: '', quickShape: true, history: false, aligned: true,
         strength: 50, toneRange: 'mid', sponge: 'less',
-        smoothing: 0, pressure: 'size',
+        smoothing: 0, pressure: 'size', texture: 'canvas', wet: 50,
         font: 'system-ui, sans-serif', fontSize: 72, bold: false, italic: false, align: 'left', outline: 0,
         snap: true,
         sizeFor: 1500   // the long side of the layers the sizes were for
     },
-    BRUSHES: ['brush', 'soft-round', 'hard-round', 'pencil', 'ink', 'marker', 'airbrush', 'spray', 'eraser', 'eraser-block', 'eraser-soft', 'pixel', 'can', 'stamp', 'custom', 'spot-heal', 'heal', 'clone', 'dodge', 'burn', 'sponge', 'blur', 'sharpen', 'smudge'],
+    BRUSHES: ['brush', 'soft-round', 'hard-round', 'pencil', 'ink', 'marker', 'airbrush', 'spray', 'charcoal', 'watercolour', 'texture', 'mixer', 'eraser', 'eraser-block', 'eraser-soft', 'pixel', 'can', 'stamp', 'custom', 'spot-heal', 'heal', 'clone', 'dodge', 'burn', 'sponge', 'blur', 'sharpen', 'smudge'],
     // The healing tools (paint-heal.js does their pixels): they copy the
     // picture from somewhere else on it, not a colour
     RETOUCH: ['spot-heal', 'heal', 'clone'],
@@ -78,11 +82,19 @@ const PaintEditor = {
         brush: { flow: true }, eraser: {}, custom: { flow: true },
         'soft-round': { hard: 0, flow: true }, 'hard-round': { hard: 1, flow: true },
         ink: { hard: 0.92 }, marker: { hard: 0.8 },
-        airbrush: { hard: 0, flow: true, build: 0.12 }, 'eraser-soft': { hard: 0, flow: true, build: 0.12 }
+        airbrush: { hard: 0, flow: true, build: 0.12 }, 'eraser-soft': { hard: 0, flow: true, build: 0.12 },
+        charcoal: { hard: 0.55, grain: 'charcoal' }, watercolour: { hard: 0, flow: true, wet: true },
+        texture: { flow: true, grain: true }, mixer: { flow: true }
     },
+    // The painters' brushes (phase 5): charcoal and the texture brush paint
+    // through a grain fixed to the picture (as paper's tooth is), watercolour
+    // pools at its edges and glazes over what's under it, the mixer picks up
+    // the colours it goes over and blends them with its own
+    ART: ['charcoal', 'watercolour', 'texture', 'mixer'],
+    TEXTURES: [['canvas', 'Canvas'], ['paper', 'Paper'], ['sand', 'Sand']],
     ERASERS: ['eraser', 'eraser-block', 'eraser-soft'],
     // Headings in a slot's menu, before the tool they're on
-    HEADINGS: { pixel: 'Retro', custom: 'Yours', dodge: 'Tone', blur: 'Focus' },
+    HEADINGS: { charcoal: 'Painters', pixel: 'Retro', custom: 'Yours', dodge: 'Tone', blur: 'Focus' },
     // The Retro set (inspired by MS Paint and Mario Paint; every picture
     // drawn for jEditor), listed under its own heading in the brush slot
     RETRO: ['pixel', 'can', 'stamp'],
@@ -213,6 +225,10 @@ const PaintEditor = {
         ['marker', 'Marker: see-through, darker where strokes cross', '<path d="M15 3l6 6-9 9H6v-6z"/><path d="M6 18l-3 3M12 6l6 6"/>'],
         ['airbrush', 'Airbrush: soft, builds up as it\'s held', '<path d="M3 17l8-8 4 4-8 8H3z"/><path d="M15 5h.01M18 4h.01M19 7h.01M17 9h.01M21 9h.01"/>'],
         ['spray', 'Spray', '<path d="M9 3h3v4H9zM8 7h5v14H8z"/><path d="M16 6h.01M19 4h.01M19 8h.01M17 10h.01M21 6h.01"/>'],
+        ['charcoal', 'Charcoal: grainy, as on rough paper', '<path d="M14.5 3.5l6 6-9 9-6-6z"/><path d="M5.5 12.5 3 21l8.5-2.5"/><path d="M4 18h.01M6 20h.01M7 17h.01"/>'],
+        ['watercolour', 'Watercolour: see-through, darker at its edges', '<path d="M12 3c3 4 6 7.5 6 11a6 6 0 0 1-12 0c0-3.5 3-7 6-11z" stroke-dasharray="3 1.5"/><path d="M9 15a3 3 0 0 0 3 3"/>'],
+        ['texture', 'Texture brush: paints through canvas, paper or sand', '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8h.01M12 8h.01M16 8h.01M10 12h.01M14 12h.01M8 16h.01M12 16h.01M16 16h.01"/>'],
+        ['mixer', 'Mixer: blends its colour with the colours it goes over', '<circle cx="9" cy="10" r="5"/><circle cx="15" cy="14" r="5"/>'],
         ['pixel', 'Pixel pencil: square pixels on a grid', '<path d="M3 3h6v6H3zM9 9h6v6H9zM15 15h6v6h-6z"/>'],
         ['can', 'Spray can: dots as it\'s held', '<path d="M6 9h6v12H6zM7 6h4v3H7zM12 7h2"/><path d="M17 5h.01M20 4h.01M19 8h.01M22 7h.01M18 11h.01M21 10h.01"/>'],
         ['stamp', 'Stamp: a little picture with each click', '<path d="M12 3l1.8 3.7 4 .6-2.9 2.8.7 4L12 12.2 8.4 14.1l.7-4-2.9-2.8 4-.6z"/><path d="M5 18h14v3H5z"/>'],
@@ -251,7 +267,7 @@ const PaintEditor = {
     GROUPS: [
         ['move'],
         ['rect-select', 'ellipse-select', 'lasso', 'wand'],
-        ['brush', 'soft-round', 'hard-round', 'pencil', 'ink', 'marker', 'airbrush', 'spray', 'pixel', 'can', 'stamp', 'custom'],
+        ['brush', 'soft-round', 'hard-round', 'pencil', 'ink', 'marker', 'airbrush', 'spray', 'charcoal', 'watercolour', 'texture', 'mixer', 'pixel', 'can', 'stamp', 'custom'],
         ['eraser', 'eraser-block', 'eraser-soft'],
         ['spot-heal', 'heal', 'clone', 'dodge', 'burn', 'sponge', 'blur', 'sharpen', 'smudge'],
         ['fill', 'gradient', 'recolor'],
@@ -272,6 +288,10 @@ const PaintEditor = {
         'eraser-block': ['size', 'opacity'],
         'eraser-soft': ['size', 'opacity', 'flow'],
         spray: ['size', 'density', 'opacity'],
+        charcoal: ['size', 'opacity'],
+        watercolour: ['size', 'opacity', 'flow'],
+        texture: ['texture', 'size', 'hardness', 'opacity', 'flow'],
+        mixer: ['size', 'hardness', 'wet', 'opacity'],
         pixel: ['size', 'opacity'],
         can: ['size', 'density', 'opacity'],
         stamp: ['stamp', 'size', 'opacity'],
@@ -1202,6 +1222,8 @@ const PaintEditor = {
                 if ((this.RETOUCH.includes(this.tool) || this.TONE.includes(this.tool)) && c) c.title = 'Copy from the picture as it looks (this layer and those under it), not just this layer';
             }
             if (k === 'strength') num('Strength', 'strength', 1, 100);
+            if (k === 'wet') num('Wet', 'wet', 0, 100).title = 'How much of the colours it goes over it picks up and blends with its own';
+            if (k === 'texture') choose('Texture', 'texture', this.TEXTURES);
             if (k === 'toneRange') choose('Range', 'toneRange', [['shadows', 'Shadows'], ['mid', 'Midtones'], ['highlights', 'Highlights']]);
             if (k === 'sponge') choose('Colour', 'sponge', [['less', 'Less'], ['more', 'More']]);
             if (k === 'aligned') {
@@ -1256,6 +1278,10 @@ const PaintEditor = {
             pixel: 'Square pixels on a grid the brush\'s size, crisp at any zoom',
             can: 'Hold to spray: the longer it\'s held, the more dots',
             stamp: 'Click for a stamp; drag for a row of them',
+            charcoal: 'Grainy, as on rough paper; with a pen, tilt it for a broad side',
+            watercolour: 'See-through: it pools at its edges, and darkens where strokes cross',
+            texture: 'Paints through the texture; go over it again to fill it in',
+            mixer: 'Starts with the brush colour and blends in the colours it goes over',
             custom: this.ownBrushes().length ? 'One of your own brushes; ⋯ → Brushes makes more' : 'Make one first: select part of the picture, then ⋯ → Brushes',
             'spot-heal': 'Paint over a mark or a speck: it\'s filled from what\'s round it',
             heal: this.healSrc ? 'Paint over what to hide: copied from the + mark, in the colours round it. Alt-click to copy from elsewhere' : 'Alt-click where to copy from, then paint over what to hide',
@@ -1442,7 +1468,19 @@ const PaintEditor = {
         const l = this.Ci.transformPoint(o);
         // A pen's pressure (a mouse or a finger paints at full size)
         const pr = e.pointerType === 'pen' && e.pressure > 0 ? e.pressure : 1;
-        return { sx, sy, ox: o.x, oy: o.y, x: l.x, y: l.y, pr, shift: e.shiftKey };
+        return { sx, sy, ox: o.x, oy: o.y, x: l.x, y: l.y, pr, tilt: this.tiltOf(e), shift: e.shiftKey };
+    },
+
+    // A pen's tilt: the round brushes lie over on their side, longer the
+    // further it leans, along the way it leans (on the layer, the view's
+    // and the layer's turn taken off). Upright, a mouse or a finger: none
+    tiltOf(e) {
+        if (e.pointerType !== 'pen') return null;
+        const tx = e.tiltX || 0, ty = e.tiltY || 0, m = Math.hypot(tx, ty);
+        if (m < 8) return null;
+        const v = this.Ci.transformPoint({ x: 1, y: 0 }), o = this.Ci.transformPoint({ x: 0, y: 0 });
+        const a = Math.atan2(ty, tx) - (this.view.r || 0) + Math.atan2(v.y - o.y, v.x - o.x);
+        return { a, k: 1 + Math.min(m, 70) / 70 * 1.6 };
     },
 
     // The next frame, quickly (a stroke, the brush following the pointer);
@@ -1782,7 +1820,7 @@ const PaintEditor = {
     },
 
     // The tools Alt turns into the colour picker
-    PICKS: ['brush', 'pencil', 'spray', 'pixel', 'can', 'stamp', 'fill', 'recolor', 'line', 'arrow', 'rect', 'roundrect', 'ellipse', 'polygon', 'gradient', 'text'],
+    PICKS: ['brush', 'pencil', 'spray', 'charcoal', 'watercolour', 'texture', 'mixer', 'pixel', 'can', 'stamp', 'fill', 'recolor', 'line', 'arrow', 'rect', 'roundrect', 'ellipse', 'polygon', 'gradient', 'text'],
     SHAPES: ['line', 'arrow', 'rect', 'roundrect', 'ellipse', 'polygon'],
 
     picking() {
@@ -2175,7 +2213,8 @@ const PaintEditor = {
         g.globalCompositeOperation = 'source-over';
         g.clearRect(0, 0, this.W, this.H);
         this.drag = { kind: 'paint', stroke: true, last: from || p, dirty: null, tool: this.tool, carry: 0, off, tone: this.TONE.includes(this.tool), target: l };
-        if (off || this.drag.tone) this.drag.base = this.healBase();
+        if (off || this.drag.tone || this.tool === 'mixer') this.drag.base = this.healBase();
+        if (this.tool === 'mixer') this.drag.mix = this.rgb(this.fg).slice(0, 3);
         if (this.drag.tone) this.drag.rad = PaintHeal.blurOf(this.tool, this.radius());
         if (from) this.strokeTo(p);
         else this.dab(p);
@@ -2266,25 +2305,122 @@ const PaintEditor = {
             return;
         }
         const feel = this.FEEL[t] || {};
-        const hard = feel.hard !== undefined ? feel.hard : t === 'eraser' || t === 'brush' ? this.opts.hardness / 100 : 1;
+        const hard = feel.hard !== undefined ? feel.hard : ['eraser', 'brush', 'texture', 'mixer'].includes(t) ? this.opts.hardness / 100 : 1;
         let flow = (feel.flow ? this.opts.flow / 100 : 1) * (feel.build || 1);
         // Pressure for opacity: each dab lighter, so where they overlap
         // along the stroke (about 2r / step of them) it comes to the pressure
         if (pr < 1 && t !== 'ink' && this.opts.pressure !== 'size') flow *= 1 - Math.pow(1 - pr, 0.09);
         if (t === 'custom') { this.tipDab(g, p, prSize, colour, flow); return; }
-        const rgb = this.rgb(colour);
-        if (hard >= 0.99) {
-            g.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${flow})`;
+        let rgb = this.rgb(colour), rr = r;
+        if (t === 'mixer') rgb = this.mixDab(p, r);
+        // (watercolour: each dab a little bigger or smaller, so its edge wanders)
+        if (feel.wet) rr = r * (0.88 + Math.random() * 0.24);
+        const c = (a) => `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${a})`;
+        g.save();
+        g.translate(p.x, p.y);
+        // A pen's tilt: the round lies over, long the way the pen leans
+        const tl = p.tilt, k = tl ? tl.k : 1;
+        if (tl) { g.rotate(tl.a); g.scale(k, 1); }
+        if (feel.wet) {
+            // Watercolour: thin in the middle, pooled at its edge
+            const grad = g.createRadialGradient(0, 0, 0, 0, 0, rr);
+            grad.addColorStop(0, c(flow * 0.1));
+            grad.addColorStop(0.7, c(flow * 0.16));
+            grad.addColorStop(0.9, c(flow * 0.3));
+            grad.addColorStop(1, c(0));
+            g.fillStyle = grad;
+        } else if (hard >= 0.99) {
+            g.fillStyle = c(flow);
         } else {
-            const grad = g.createRadialGradient(p.x, p.y, r * hard, p.x, p.y, r);
-            grad.addColorStop(0, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${flow})`);
-            grad.addColorStop(1, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0)`);
+            const grad = g.createRadialGradient(0, 0, rr * hard, 0, 0, rr);
+            grad.addColorStop(0, c(flow));
+            grad.addColorStop(1, c(0));
             g.fillStyle = grad;
         }
         g.beginPath();
-        g.arc(p.x, p.y, r, 0, Math.PI * 2);
+        g.arc(0, 0, rr, 0, Math.PI * 2);
         g.fill();
-        this.grow({ x: p.x - r - 1, y: p.y - r - 1, w: 2 * r + 2, h: 2 * r + 2 });
+        g.restore();
+        const R = rr * k;
+        this.grow({ x: p.x - R - 1, y: p.y - R - 1, w: 2 * R + 2, h: 2 * R + 2 });
+    },
+
+    // The mixer: the colour it lays down is its own (the brush colour to
+    // start) blended with what's under it, as wet as it's set; and what it
+    // lays down slowly becomes its own, so a stroke carries colour along
+    mixDab(p, r) {
+        const d = this.drag, wet = this.opts.wet / 100;
+        const n = Math.max(1, Math.min(12, Math.round(r))), x = Math.round(p.x - n / 2), y = Math.round(p.y - n / 2);
+        const x0 = Math.max(0, x), y0 = Math.max(0, y), x1 = Math.min(this.W, x + n), y1 = Math.min(this.H, y + n);
+        let sr = 0, sg = 0, sb = 0, sa = 0;
+        if (x1 > x0 && y1 > y0) {
+            const px = d.base.getContext('2d', { willReadFrequently: true }).getImageData(x0, y0, x1 - x0, y1 - y0).data;
+            for (let i = 0; i < px.length; i += 4) {
+                const a = px[i + 3];
+                sr += px[i] * a; sg += px[i + 1] * a; sb += px[i + 2] * a; sa += a;
+            }
+        }
+        const m = d.mix;
+        if (sa > 0) {
+            const w = wet * Math.min(1, sa / (255 * (x1 - x0) * (y1 - y0)));
+            const s = [sr / sa, sg / sa, sb / sa], out = m.map((v, i) => v + (s[i] - v) * w);
+            for (let i = 0; i < 3; i++) m[i] += (out[i] - m[i]) * 0.1;
+            return out.map(Math.round);
+        }
+        return m.map(Math.round);
+    },
+
+    // The grains charcoal and the texture brush paint through: 128 px
+    // squares, repeated, fixed to the picture; made once each
+    grain(name) {
+        if (!this._grains) this._grains = {};
+        if (this._grains[name]) return this._grains[name];
+        const N = 128, c = this.newCanvas(N, N), g = c.getContext('2d'), img = g.createImageData(N, N), a = img.data;
+        // (the same grain every time: a seeded random)
+        let seed = 7;
+        const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+        // A smooth noise, cells c across, for paper's lumps
+        const lumps = (cells) => {
+            const v = Array.from({ length: cells * cells }, rnd), f = (t) => t * t * (3 - 2 * t);
+            return (x, y) => {
+                const gx = x / N * cells, gy = y / N * cells, i = Math.floor(gx), j = Math.floor(gy), u = f(gx - i), w = f(gy - j);
+                const at = (ii, jj) => v[((jj % cells) * cells) + (ii % cells)];
+                return (at(i, j) * (1 - u) + at(i + 1, j) * u) * (1 - w) + (at(i, j + 1) * (1 - u) + at(i + 1, j + 1) * u) * w;
+            };
+        };
+        const big = lumps(8), small = lumps(32);
+        for (let y = 0; y < N; y++) {
+            for (let x = 0; x < N; x++) {
+                let v;
+                if (name === 'charcoal') v = small(x, y) * 0.6 + rnd() * 0.5 > 0.5 ? 0.75 + rnd() * 0.25 : rnd() * 0.25;
+                else if (name === 'canvas') {
+                    // woven: threads one way, then the other, in a checker
+                    const over = ((x >> 2) + (y >> 2)) & 1, t = over ? x % 4 : y % 4;
+                    v = 0.45 + 0.5 * Math.sin((t + 0.5) / 4 * Math.PI) - rnd() * 0.15;
+                } else if (name === 'paper') v = 0.25 + big(x, y) * 0.45 + small(x, y) * 0.3 + (rnd() - 0.5) * 0.15;
+                else v = rnd() < 0.5 ? 0.9 : rnd() * 0.3;
+                a[(y * N + x) * 4 + 3] = Math.round(255 * Math.min(1, Math.max(0, v)));
+            }
+        }
+        g.putImageData(img, 0, 0);
+        return (this._grains[name] = c);
+    },
+
+    // The stroke through its grain (charcoal, the texture brush), on a
+    // canvas of its own so the stroke itself keeps building up under it
+    grained(name, r) {
+        let c = this._grained;
+        if (!c || c.width !== this.W || c.height !== this.H) c = this._grained = this.newCanvas();
+        const g = c.getContext('2d');
+        g.save();
+        if (r) { g.beginPath(); g.rect(r.x, r.y, r.w, r.h); g.clip(); }
+        g.globalCompositeOperation = 'copy';
+        g.drawImage(this.stroke, 0, 0);
+        g.globalCompositeOperation = 'destination-in';
+        g.fillStyle = g.createPattern(this.grain(name), 'repeat');
+        g.fillRect(0, 0, this.W, this.H);
+        g.restore();
+        return c;
     },
 
     // ---- Your brushes (like Photoshop's Define Brush) ----
@@ -2483,10 +2619,72 @@ const PaintEditor = {
         this.setOwnBrushes(own.filter(x => x.id !== id));
     },
 
+    // ---- Brush presets ----
+    // A brush with its settings, named and kept (localStorage): the tool
+    // and its options (size, hardness and the rest) and how a pen works it,
+    // not the colour. ⋯ → Brushes saves the brush as it's set and lists them
+    PRESET_MAX: 32,
+    PRESET_KEYS: ['size', 'hardness', 'opacity', 'flow', 'density', 'stamp', 'tip', 'texture', 'wet', 'strength', 'toneRange', 'sponge', 'sampleAll', 'aligned'],
+
+    presets() {
+        try {
+            const v = JSON.parse(localStorage.getItem('jeditor.paintPresets') || '[]');
+            if (!Array.isArray(v)) return [];
+            return v.filter(b => b && typeof b.id === 'string' && typeof b.name === 'string' && this.BRUSHES.includes(b.tool) && b.opts && typeof b.opts === 'object').slice(0, this.PRESET_MAX);
+        } catch (e) { return []; }
+    },
+
+    setPresets(list) {
+        try {
+            localStorage.setItem('jeditor.paintPresets', JSON.stringify(list));
+            return true;
+        } catch (e) {
+            this.app.showToast('Couldn\'t keep the preset: there\'s no room left for it', 2500);
+            return false;
+        }
+    },
+
+    // name: as tests give it; otherwise asked for
+    async savePreset(name = null) {
+        if (!this.BRUSHES.includes(this.tool)) return null;
+        const list = this.presets();
+        if (list.length >= this.PRESET_MAX) { this.app.showToast(`Up to ${this.PRESET_MAX} presets: delete one in ⋯ → Brushes to save another`, 2500); return null; }
+        const def = `${this.toolName()} ${Math.round(this.opts.size)}`;
+        if (name === null) name = await UI.prompt({ title: 'Save the brush as a preset', input: { label: 'Name', value: def }, ok: 'Save' });
+        if (name === null) return null;
+        const keys = [...this.OPTIONS[this.tool].filter(k => this.PRESET_KEYS.includes(k)), 'smoothing', 'pressure'];
+        const b = { id: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: (String(name).trim() || def).slice(0, 40), tool: this.tool, opts: {} };
+        for (const k of keys) b.opts[k] = this.opts[k];
+        if (!this.setPresets([...list, b])) return null;
+        this.app.showToast(`Saved ${b.name}: ⋯ → Brushes`, 1800);
+        return b;
+    },
+
+    usePreset(id) {
+        const b = this.presets().find(x => x.id === id);
+        if (!b) return;
+        for (const [k, v] of Object.entries(b.opts)) if (k in this.opts && typeof v === typeof this.opts[k]) this.opts[k] = v;
+        this.opts.size = Math.min(this.sizeMax(), Math.max(1, this.opts.size));
+        this.setTool(b.tool);
+        this.remember();
+        this.buildOptions();
+        this.flashSize();
+    },
+
+    async deletePreset(id) {
+        const list = this.presets(), b = list.find(x => x.id === id);
+        if (!b) return;
+        const ok = await UI.confirm({ title: `Delete ${b.name}?`, message: 'The preset goes. What it painted stays.', ok: 'Delete', danger: true });
+        if (ok) this.setPresets(list.filter(x => x.id !== id));
+    },
+
     // ⋯ → Brushes
     brushItems() {
-        const own = this.ownBrushes();
+        const own = this.ownBrushes(), pre = this.presets();
         return [
+            ...(this.BRUSHES.includes(this.tool) ? [['Save the brush as a preset…', () => this.savePreset()]] : []),
+            ...(pre.length ? [['—'], ...pre.map(b => [b.name, () => this.usePreset(b.id)]), ['Delete a preset', pre.map(b => [b.name, () => this.deletePreset(b.id), true])]] : []),
+            ...(this.BRUSHES.includes(this.tool) || pre.length ? [['—']] : []),
             ...(this.sel ? [['Make a brush from what\'s selected…', () => this.defineBrush()]] : []),
             ['Make a brush from a picture…', () => this.defineBrush(true)],
             ...(own.length ? [['—'],
@@ -2537,7 +2735,7 @@ const PaintEditor = {
         let t = step - d.carry;
         while (t <= len) {
             const k = t / len;
-            this.dab({ x: a.x + (p.x - a.x) * k, y: a.y + (p.y - a.y) * k, pr: pa + (pb - pa) * k });
+            this.dab({ x: a.x + (p.x - a.x) * k, y: a.y + (p.y - a.y) * k, pr: pa + (pb - pa) * k, tilt: p.tilt });
             t += step;
         }
         d.carry = len - (t - step);
@@ -2752,8 +2950,9 @@ const PaintEditor = {
             // On a mask: dark hides (takes it off), light shows
             : t && t.isMask ? (this.lum(this.fg) < 0.5 ? 'destination-out' : 'source-over')
             : t && t.lock ? 'source-atop'
-            : d && d.tool === 'marker' ? 'multiply' : 'source-over';
-        g.drawImage(this.stroke, 0, 0);
+            : d && (d.tool === 'marker' || d.tool === 'watercolour') ? 'multiply' : 'source-over';
+        const gr = d && (this.FEEL[d.tool] || {}).grain;
+        g.drawImage(gr ? this.grained(gr === true ? this.opts.texture : gr, r) : this.stroke, 0, 0);
         g.restore();
     },
 
