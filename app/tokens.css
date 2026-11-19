@@ -442,8 +442,8 @@
     --r-ctl: var(--r-pill);
     /* Menus: frosted glass, thick enough to read a list over any photo,
        whichever glass Settings has */
-    --menu-bg: color-mix(in srgb, var(--bg-surface) 78%, transparent);
-    --menu-filter: blur(30px) saturate(180%);
+    --menu-bg: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+    --menu-filter: blur(40px) saturate(180%);
 }
 
 /* Opaque glass (Settings), Reduce transparency or Increase contrast: the

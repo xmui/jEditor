@@ -1618,6 +1618,17 @@ const app = {
         }
     },
 
+    // With no photos at all, what needs a photo is greyed out rather than
+    // live and doing nothing (audit A13)
+    NEEDS_PHOTO: ['btn-info', 'btn-crop', 'btn-adjust', 'btn-paint', 'btn-toggle-view', 'btn-fullscreen', 'btn-dupes', 'btn-convert'],
+    syncNoPhotos() {
+        const none = !this.files.length;
+        for (const id of this.NEEDS_PHOTO) {
+            const b = document.getElementById(id);
+            if (b) b.disabled = none;
+        }
+    },
+
     // An empty grid says why, with a button for the way out
     emptyState(files, folderTiles) {
         if (files.length || folderTiles.length) return null;
@@ -1643,6 +1654,10 @@ const app = {
         } else return null;
         const box = document.createElement('div');
         box.className = 'grid-empty-box';
+        if (grid.contains('grid-empty-project')) {
+            // A picture in the app's own line style: photos waiting
+            box.insertAdjacentHTML('beforeend', '<svg class="grid-empty-art" viewBox="0 0 64 64" aria-hidden="true"><rect x="14" y="10" width="40" height="32" rx="5"/><rect x="8" y="18" width="40" height="32" rx="5"/><circle cx="20" cy="29" r="3.5"/><path d="m8 44 12-11 9 8 6-5 13 11"/></svg>');
+        }
         const p = document.createElement('p');
         p.textContent = text;
         box.append(p);
@@ -3361,6 +3376,7 @@ const app = {
         this.elements.gridView.classList.toggle('grid-empty', !files.length && !folderTiles.length && Folders.scope !== null && this.files.length > 0);
         // A project with no photos at all yet
         this.elements.gridView.classList.toggle('grid-empty-project', !this.files.length && !folderTiles.length);
+        this.syncNoPhotos();
         this.elements.gridView.classList.toggle('grid-no-match', !files.length && Flags.active());
         const empty = this.emptyState(files, folderTiles);
         if (empty) this.elements.gridView.append(empty);
@@ -7757,17 +7773,16 @@ const app = {
 
     initContextMenu() {
         document.addEventListener('contextmenu', (e) => {
-            if (this.cropState.active && CropEditor.ready && e.target.closest && e.target.closest('.crop-stage')) {
-                e.preventDefault();
-                const ed = CropEditor;
-                this.openContextMenu([
-                    ['Rotate left', () => ed.rotateQuarter(-1)],
-                    ['Rotate right', () => ed.rotateQuarter(1)],
-                    ['Rotate 180°', () => ed.rotateHalf()],
-                    ['Flip left to right', () => ed.flip('h')],
-                    ['Flip upside down', () => ed.flip('v')]
-                ], e.clientX, e.clientY);
-                return;
+            // Crop, Adjust and Paint: a menu where the photo is, as the pro
+            // tools have it (audit A3). Each row runs what its key runs, and
+            // shows the key
+            if (this.cropState.active && !e.defaultPrevented) {
+                const items = this.editStageItems(e.target);
+                if (items) {
+                    e.preventDefault();
+                    this.openContextMenu(items, e.clientX, e.clientY);
+                    return;
+                }
             }
             if (this.cropState.active || Dupes.isOpen) { e.preventDefault(); return; }
             if (this.elements.mainInterface.classList.contains('hidden')) return;
@@ -7787,6 +7802,67 @@ const app = {
         window.addEventListener('click', () => this.closeContextMenu());
         window.addEventListener('scroll', () => this.closeContextMenu(), true);
         window.addEventListener('resize', () => this.closeContextMenu());
+    },
+
+    // The right-click menu on Crop's, Adjust's or Paint's photo, or null
+    editStageItems(target) {
+        const at = (sel) => target && target.closest && target.closest(sel);
+        const h = this.keyHandlers();
+        const run = (id) => () => { if (this.actionOn(id) && h[id]) h[id](); };
+        const row = (label, id, danger = false) => (this.actionOn(id) ? [[label, run(id), danger, undefined, id]] : []);
+        const tool = this.cropState.tool;
+        if (tool !== 'adjust' && tool !== 'paint' && at('.crop-stage') && typeof CropEditor !== 'undefined' && CropEditor.ready) {
+            return [
+                ['Turn and flip', [...row('Rotate left', 'crop.rotateLeft'), ...row('Rotate right', 'crop.rotateRight'), ...row('Rotate 180°', 'crop.rotate180'),
+                    ['—'], ...row('Flip left to right', 'crop.flipH'), ...row('Flip upside down', 'crop.flipV')]],
+                ...row('Next aspect ratio', 'crop.aspect'),
+                ...row('Swap portrait and landscape', 'crop.swap'),
+                ...row('Straighten back to 0°', 'crop.angleZero'),
+                ...row('Auto', 'crop.auto'),
+                ['—'],
+                ...row('Reset', 'crop.reset'),
+                ['—'],
+                ...row('Done', 'crop.save'),
+                ...row('Done, then the next photo', 'crop.saveNext'),
+                ...row('Cancel', 'crop.cancel')
+            ];
+        }
+        if (tool === 'adjust' && at('#adj-stage') && typeof Adjust !== 'undefined' && Adjust.ready) {
+            return [
+                ...row('Before and after', 'adjust.before'),
+                ['—'],
+                ...row('Auto', 'adjust.auto'),
+                ...row('Auto color', 'adjust.autoColor'),
+                ...row('White balance: click something grey', 'adjust.whiteBalance'),
+                ['—'],
+                ...row('Copy adjustments', 'adjust.copy'),
+                ...row('Paste adjustments', 'adjust.paste'),
+                ['—'],
+                ...row('Fit', 'adjust.zoomFit'),
+                ...row('100%', 'adjust.zoom100'),
+                ['—'],
+                ...row('Reset all', 'adjust.reset', true)
+            ];
+        }
+        if (tool === 'paint' && at('#paint-stage') && typeof PaintEditor !== 'undefined' && PaintEditor.ready) {
+            const ed = PaintEditor;
+            return [
+                ...row('Copy', 'paint.copy'),
+                ...row('Copy merged', 'paint.copyMerged'),
+                ...row('Paste', 'paint.paste'),
+                ...row('Paste in place', 'paint.pasteInPlace'),
+                ['—'],
+                ...row('Select all', 'paint.selectAll'),
+                ...row('Select nothing', 'paint.deselect'),
+                ...row('Invert the selection', 'paint.invert'),
+                ...row('Delete what\'s selected', 'paint.clear'),
+                ['—'],
+                ...row('Free transform', 'paint.transform'),
+                ...(typeof ed.layerItems === 'function' && ed.layers && ed.layers[ed.cur] ? [['The layer', ed.layerItems(ed.cur)]] : []),
+                ...row('New layer', 'paint.newLayer')
+            ];
+        }
+        return null;
     },
 
     buildContextItems(tile, inSingle) {
@@ -8169,6 +8245,8 @@ const app = {
                     };
                 }
             }
+            // jEditor's own look: its picture at the left (menu-icons.js)
+            if (!document.documentElement.dataset.skin && typeof MenuIcons !== 'undefined' && !btn.hasAttribute('aria-checked')) btn.prepend(MenuIcons.el(label, key));
             menu.appendChild(btn);
         });
         if (menu.lastChild && menu.lastChild.className === 'ctx-divider') menu.lastChild.remove();
@@ -8219,9 +8297,11 @@ const app = {
             document.body.appendChild(fly);
             row.setAttribute('aria-expanded', 'true');
             const r = row.getBoundingClientRect(), f = fly.getBoundingClientRect();
-            const right = r.right + f.width + 8 <= window.innerWidth;
-            fly.style.left = (right ? r.right + 2 : Math.max(8, r.left - f.width - 2)) + 'px';
-            fly.style.top = Math.max(UI.topSafe() + 8, Math.min(r.top - 5, window.innerHeight - f.height - 8)) + 'px';
+            // Beside the menu's edge, not the row's (the rows sit inside its padding)
+            const m = (row.closest('#context-menu, .ctx-fly') || row).getBoundingClientRect();
+            const right = m.right + f.width + 8 <= window.innerWidth;
+            fly.style.left = (right ? m.right + 2 : Math.max(8, m.left - f.width - 2)) + 'px';
+            fly.style.top = Math.max(UI.topSafe() + 8, Math.min(r.top - (document.documentElement.dataset.skin ? 5 : 9), window.innerHeight - f.height - 8)) + 'px';
         }
         if (focus) {
             const first = fly.querySelector('button');
