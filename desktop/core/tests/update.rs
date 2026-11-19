@@ -36,6 +36,10 @@ fn each_app_knows_its_download() {
     assert!(App::Mac.is_asset("JEDITOR-1.52.0-MAC.DMG"));
     assert!(!App::Mac.is_asset("jEditor-1.52.0-linux.AppImage"));
     assert!(!App::Mac.is_asset("jEditor-mac.dmg"));
+    // The Tauri app's .dmg and the Electron one's are told apart
+    assert!(App::MacTauri.is_asset("jEditor-1.52.0-mac-tauri.dmg"));
+    assert!(!App::MacTauri.is_asset("jEditor-1.52.0-mac.dmg"));
+    assert!(!App::Mac.is_asset("jEditor-1.52.0-mac-tauri.dmg"));
     assert!(App::AppImage.is_asset("jEditor-1.52.0-linux.AppImage"));
     assert!(App::Deb.is_asset("jEditor-1.52.0-linux.deb"));
     assert!(!App::Deb.is_asset("jEditor-1.52.0-linux.deb.sig"));

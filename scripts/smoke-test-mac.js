@@ -7,6 +7,7 @@
 //   node scripts/smoke-test-mac.js                    dist/mac-universal/jEditor.app
 //   node scripts/smoke-test-mac.js <path>/jEditor.app
 //   node scripts/smoke-test-mac.js                    on Linux: dist/linux-unpacked/jeditor
+//   node scripts/smoke-test-mac.js "<path>/jEditor Tauri.app"   the Tauri app (desktop/app), the same test
 
 const fs = require('fs');
 const os = require('os');
@@ -17,7 +18,9 @@ const ROOT = path.join(__dirname, '..');
 // On Linux: the built Linux app (dist/linux-unpacked/jeditor, or an AppImage)
 const linux = process.platform === 'linux';
 const bundle = path.resolve(process.argv[2] || path.join(ROOT, 'dist', linux ? 'linux-unpacked' : 'mac-universal', linux ? 'jeditor' : 'jEditor.app'));
-const exe = linux ? bundle : path.join(bundle, 'Contents', 'MacOS', 'jEditor');
+// (a .app's program is the one in Contents/MacOS: jEditor, or jEditor Tauri)
+const macos = path.join(bundle, 'Contents', 'MacOS');
+const exe = linux || !fs.existsSync(macos) ? bundle : path.join(macos, fs.readdirSync(macos).find(n => !n.startsWith('.')) || 'jEditor');
 if (!fs.existsSync(exe)) { console.error('No ' + exe + '; run node mac/build.js first'); process.exit(1); }
 
 // Three small JPEGs, like a scanner's: no orientation tag

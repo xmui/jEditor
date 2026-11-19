@@ -1,6 +1,6 @@
 # Lighter desktop apps: Mac and Linux off Electron
 
-*Planned 2026-11-11. Tauri v2 picked (the owner's go came through the Wrangler). **Done:** step 0, the spike (results below), step 1, the app's own handles behind a switch, off by default (#251, with the Mac and Linux app tests fixed in #253); and step 2, the host's core in Rust, `desktop/core`, with tests of its own. **Next:** step 3, the Mac on Tauri, built on betas next to Electron. Releases stay on Electron.*
+*Planned 2026-11-11. Tauri v2 picked (the owner's go came through the Wrangler). **Done:** step 0, the spike (results below), step 1, the app's own handles behind a switch, off by default (#251, with the Mac and Linux app tests fixed in #253); step 2, the host's core in Rust, `desktop/core`, with tests of its own; and step 3's first part, the Mac app on Tauri (`desktop/app`), built on betas next to Electron as jEditor Tauri. **Next:** the rest of step 3 (the Photos library and macOS 26's toolbar), then step 4, Linux. Releases stay on Electron.*
 
 **Goal:** jEditor's desktop apps as native and fast as possible, still on Windows, Mac and Linux. Windows already runs the page in the system's own web view (WebView2, `src/`). Step 1 moves the Mac and Linux host (`mac/`, Electron 44) onto the system's web view as well: WKWebView on the Mac, WebKitGTK on Linux.
 
@@ -158,6 +158,30 @@ The shell does what needs the system or the network: fetching, `hdiutil` and `co
 - `cargo test` in `desktop/core`: 34 tests on real folders, including a move across disks where the runner has one (`/dev/shm`).
 - The `jeditor-core` binary serves the file requests a JSON line at a time. With `JEDITOR_CORE` set, `test/handles.test.js` runs all 49 conformance checks on it in Chromium and WebKit, then jEditor itself in WebKit (open, thumbnails, rotate, rename, delete, undo, Recents). All pass, the same as Node's `fs-host.js`.
 - CI's `tests` job builds the core, runs its tests, and sets `JEDITOR_CORE` for `npm test`.
+
+## Step 3: the Mac on Tauri (first part)
+
+`desktop/app` is the Tauri shell, `jeditor-app`. It wires the core to the window and serves the page; the page, `mac/bridge.js` and `mac/handles.js` are the same files as in the Electron app.
+
+- **The page** is served at `app://jeditor/` from `Resources/app`, with `desktop/app/host.js`, `handles.js` and `bridge.js` before jEditor's own scripts. `host.js` gives the bridge the `window.jeditorMac` that Electron's `preload.js` does. Requests are POSTs on the app's scheme (`/__host/request`), a handle's bytes go as they are (`/__host/write`), and the app's messages come in through `eval`. Tauri's own IPC isn't used.
+- **The handles are always the app's own** (WebKit has none for folders on disk), and jEditor's data is a real folder (`<app data>/data`, through the same handles), not OPFS.
+- **Every request of `mac/main.js` is answered,** from `src/host.rs` on the core:
+  - files, the sidebar, copies and moves, between windows;
+  - the dialogs, windows, menus, closing with Keep your changes?, Split;
+  - permissions, updates, and the smoke test.
+- **Drops from Finder:** Tauri's own drop handler would take every drag, the page's own too (thumbnails onto the sidebar, Paint's layers), so it's off. WebKit doesn't say where a dropped file is, so the app reads the paths off the Mac's drag pasteboard as the drag comes in (`dragPaths`).
+- **It installs beside the Electron app,** as *jEditor Tauri* (`com.xmui.jeditor.tauri`), with its own settings and data. It updates itself to the newest beta with a `jEditor-<version>-mac-tauri.dmg`: the core tells that download from the Electron app's (`App::MacTauri`).
+- **Not yet:**
+  - the Photos library (`photos.mm`): the feature isn't listed, so the page doesn't offer it;
+  - macOS 26's toolbar (`toolbar.mm`): the page keeps its own pills;
+  - moving the traffic lights after the window opens: Tauri can't yet, so they stay where they open;
+  - a theme hiding them;
+  - menu keys for a theme's menus.
+- **Built and tested:**
+  - `node desktop/app/build.js` makes the universal `.dmg`.
+  - CI's `mac-tauri` job (with `build:mac`) builds it, runs `scripts/smoke-test-mac.js` on it (the same test as the Electron app's), and takes screenshots (`scripts/shots-tauri.js`).
+  - A beta with the Mac app has it too (`release.yml`, `mac-tauri`). A beta goes out without it if it fails.
+- **On Linux,** the same shell runs on WebKitGTK and passes the smoke test (`cargo build` in `desktop/app`, then `xvfb-run -a node scripts/smoke-test-mac.js desktop/app/target/debug/jeditor`). Its packages and drops are step 4.
 
 ## Migration order
 

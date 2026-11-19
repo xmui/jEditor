@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Finder's Open With, and the Dock: folders, and photos (their folder opens) -->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key><string>Folder</string>
+			<key>CFBundleTypeRole</key><string>Viewer</string>
+			<key>LSHandlerRank</key><string>Alternate</string>
+			<key>LSItemContentTypes</key><array><string>public.folder</string></array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key><string>Photo</string>
+			<key>CFBundleTypeRole</key><string>Viewer</string>
+			<key>LSHandlerRank</key><string>Alternate</string>
+			<key>LSItemContentTypes</key><array><string>public.jpeg</string><string>public.png</string><string>org.webmproject.webp</string><string>public.tiff</string><string>com.compuserve.gif</string></array>
+		</dict>
+	</array>
+</dict>
+</plist>

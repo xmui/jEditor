@@ -10,3 +10,5 @@ mac/native/build/
 engine/target/
 !engine/src/bin/
 desktop/core/target/
+desktop/app/target/
+desktop/app/gen/

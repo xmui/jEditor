@@ -7,8 +7,10 @@ name: Build
 # request labelled build:mac or build:linux (adding the label builds just
 # that one), or a run by hand with Mac or Linux ticked. On a Mac, the Mac
 # app's tests, its build and the same smoke test on the built app; on Linux,
-# the same tests, the build and install tests. The setup, the portable zip,
-# the .dmg and the Linux packages are kept as artifacts on the run's page.
+# the same tests, the build and install tests. With build:mac, the Mac app
+# on Tauri is built and smoke-tested too (desktop/app, beside the Electron
+# one). The setup, the portable zip, the .dmg and the Linux packages are
+# kept as artifacts on the run's page.
 on:
   push:
     branches: [main]
@@ -157,6 +159,43 @@ jobs:
         with:
           name: jEditor-mac
           path: dist/jEditor-*-mac.dmg
+          if-no-files-found: error
+
+  # The Mac app on Tauri (desktop/app; docs/plans/lighter-desktop.md, step
+  # 3), beside the Electron one above: built, the same smoke test on it, and
+  # screenshots. Releases stay on Electron.
+  mac-tauri:
+    if: >-
+      inputs.mac ||
+      (github.event.action == 'labeled' && github.event.label.name == 'build:mac') ||
+      (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'build:mac'))
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/app
+      - name: Build
+        run: node desktop/app/build.js
+      - name: Smoke test
+        run: node scripts/smoke-test-mac.js "dist/mac-tauri/jEditor Tauri.app"
+      - name: Screenshots
+        continue-on-error: true
+        run: node scripts/shots-tauri.js "dist/mac-tauri/jEditor Tauri.app" "${{ runner.temp }}/tauri-shots"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mac-tauri-screenshots
+          path: ${{ runner.temp }}/tauri-shots
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jEditor-mac-tauri
+          path: dist/jEditor-*-mac-tauri.dmg
           if-no-files-found: error
 
   linux:
