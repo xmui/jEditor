@@ -123,7 +123,7 @@ const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - 
 const loaded = (page, n) => page.waitForFunction((n) => !app.isLoading && app.files.length === n, n, { timeout: 20000 });
 
 // A prompt nobody answers would wait for ever: fail instead
-setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a folder that never opened?)'); process.exit(1); }, 600000).unref(); // (the mode chip's cases, every size, look and theme, take a while)
+setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a folder that never opened?)'); process.exit(1); }, 900000).unref(); // (the mode chip's cases, every size, look and theme, take a while: each waits for the sidebar's slide)
 
 (async () => {
     await new Promise(r => releaseServer.listen(0, '127.0.0.1', r));
@@ -789,7 +789,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                 if (Folders.railOpen() !== rail) app.keyHandlers()['folders.rail']();
                                 // Until the sidebar's slide (and what moves with it) has ended:
                                 // measured mid-slide, the chip was still off the window's edge
-                                const still = async () => { await wait(80); for (let i = 0; i < 40 && document.getAnimations().some(a => a.playState === 'running' && a.effect && a.effect.getComputedTiming().iterations !== Infinity); i++) await wait(50); };
+                                const still = async (first = 80) => { await wait(first); for (let i = 0; i < 40 && document.getAnimations().some(a => a.playState === 'running' && a.effect && a.effect.getComputedTiming().iterations !== Infinity); i++) await wait(50); };
                                 await still();
                                 // Photos' own chip (the folder pill's, the sidebar closed), to match
                                 const photos = document.getElementById('mode-chip-bar');
@@ -801,7 +801,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                 const name = document.querySelector('.mode-screen:not(.hidden) .mode-title');
                                 if (name) name.textContent = 'IMG_20261101_143207.jpg';
                                 await wait(150);
-                                await still();
+                                await still(0);
                                 const back = async () => { await Modes.go('photos'); app.uiPrefs.scale = 1; app.applyUiPrefs(); };
                                 // macOS 26: the toolbar's own mode button, as in Photos (bridge.js);
                                 // the page's chip would be in its title bar, which takes the press
