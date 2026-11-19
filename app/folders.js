@@ -231,8 +231,14 @@ const Folders = {
         return !document.documentElement.dataset.skin && !(window.matchMedia && matchMedia('(max-width: 767px)').matches);
     },
 
+    // Adjust and Paint start with it folded away, so the photo gets the
+    // room (2.0, audit C1); Ctrl+B there opens it, and each mode remembers
+    // its own (uiPrefs.railIn). Photos keeps folderRail
     railOpen() {
-        const pref = this.app.uiPrefs && this.app.uiPrefs.folderRail;
+        const p = this.app.uiPrefs || {};
+        const mode = typeof Modes !== 'undefined' && Modes.current ? Modes.current() : 'photos';
+        if (mode !== 'photos') return !!(p.railIn && p.railIn[mode]);
+        const pref = p.folderRail;
         return typeof pref === 'boolean' ? pref : this.hasSubfolders();
     },
 
@@ -244,7 +250,9 @@ const Folders = {
     // dragged in until it snaps hidden (script.js: SIDE_HIDES)
     setRail(on) {
         if (on === this.railOpen()) return;
-        this.app.uiPrefs.folderRail = on;
+        const mode = typeof Modes !== 'undefined' && Modes.current ? Modes.current() : 'photos';
+        if (mode !== 'photos') this.app.uiPrefs.railIn = { ...(this.app.uiPrefs.railIn || {}), [mode]: on };
+        else this.app.uiPrefs.folderRail = on;
         this.app.saveUiPrefs();
         const was = !this.el('folder-rail').classList.contains('hidden');
         this.render();

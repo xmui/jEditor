@@ -12146,3 +12146,43 @@ body.touring .controls.idle button { pointer-events: auto; }
 :root:not([data-skin]) .crop-zoom {
     box-shadow: 0 0 0 1px var(--border);
 }
+
+/* ---- Adjust (2.0, the owner's picks 2 and 3): the panel is a floating
+   glass card, as Info's and the pills, and a slider is one row: its name,
+   the track, its number (Lightroom's density: twice the sliders in the
+   same height). Double-click the name or the track to reset, as before ---- */
+:root:not([data-skin]) .adj-panel {
+    margin: var(--gutter) var(--gutter) var(--gutter) 0;
+    border: 1px solid var(--glass-border);
+    border-radius: 22px;
+    background: var(--glass-bg);
+    box-shadow: var(--shadow-3), var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    padding: var(--sp-3) var(--sp-4) var(--sp-4);
+}
+:root:not([data-skin]) .adj-head {
+    right: calc(min(var(--side-adjust, 300px), 45vw) + var(--gutter));
+}
+:root:not([data-skin]) .adj-row {
+    grid-template-columns: minmax(64px, 32%) minmax(0, 1fr) 54px;
+    column-gap: 10px;
+    min-height: 28px;
+}
+:root:not([data-skin]) .adj-row > .adj-label {
+    grid-column: 1;
+    grid-row: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+:root:not([data-skin]) .adj-row > .adj-range {
+    grid-column: 2;
+    grid-row: 1;
+}
+:root:not([data-skin]) .adj-row > .adj-num {
+    grid-column: 3;
+    grid-row: 1;
+    width: 54px;
+    justify-self: end;
+}
