@@ -43,7 +43,7 @@ const FirstOpen = {
             `<div class="dialog-body fo-body">` +
             (places ? `<section class="fo-part"><h3 class="fo-sub">Where your projects are</h3><p class="fo-help">${FolderMove.ADVICE}</p>` +
                 `<div class="fo-row"><span id="fo-dir" class="fo-dir"></span><button id="fo-choose" class="btn secondary">Choose…</button></div></section>` : '') +
-            `<p class="fo-note">Edits are kept in jEditor, and your photos aren't changed until you write the edits to the file (${Host.say('Ctrl+S')}). You can change this${places ? ', and the folder,' : ''} later in Settings → Projects.</p>` +
+            `<p class="fo-note">Edits are kept in jEditor, and your photos stay as they are until you choose Write edits to file (${Host.say('Ctrl+S')}). Export makes edited copies. You can change this${places ? ', and the folder,' : ''} later in Settings → Projects.</p>` +
             `</div>` +
             `<div class="dialog-foot"><span></span><span class="dialog-actions"><button id="fo-ok" class="btn primary">Continue</button></span></div>` +
             `</div>`;
