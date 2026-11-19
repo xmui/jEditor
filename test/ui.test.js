@@ -1854,6 +1854,10 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             // Panel: record a new key with the + button
             press('?');
             out.panelOpen = app.isShortcutsOpen();
+            // Short names (the rest in a tooltip), keys as the menus write them
+            const labels = [...document.querySelectorAll('.sc-label')];
+            out.short = labels.every(l => !/: /.test(l.textContent)) && labels.some(l => l.title && l.title.startsWith(l.textContent + ':'));
+            out.keyStyle = [...document.querySelectorAll('.sc-key')].every(k => !/ \+ /.test(k.textContent)) && [...document.querySelectorAll('.sc-key')].some(k => /^(Ctrl|⌘)\+/.test(k.textContent));
             const row = [...document.querySelectorAll('.sc-row')].find(x => x.textContent.startsWith('Full screen'));
             row.querySelector('.sc-add').click();
             press('k');
@@ -1875,6 +1879,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('rebound key works and persists', r.rebound && r.persisted);
         check('assigning a used key moves it', r.conflictMoved && r.newBindingWorks);
         check('? opens the shortcuts panel', r.panelOpen);
+        check('shortcuts: short names with the rest in a tooltip; keys written Ctrl+C, as in the menus', r.short && r.keyStyle, JSON.stringify([r.short, r.keyStyle]));
         check('+ records a new key', r.recorded);
         check('typing in the filter is not a shortcut', r.typingSafe);
         check('Esc closes the panel', r.panelClosed);
