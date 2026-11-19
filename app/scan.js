@@ -126,6 +126,7 @@ const Scan = {
         this.el('scan-folder').addEventListener('change', () => this.fillNames());
         this.el('scan-prefix').addEventListener('input', () => this.preview());
         this.el('scan-next').addEventListener('input', () => this.preview());
+        for (const t of ['input', 'change']) this.el('scan-form').addEventListener(t, () => this.summarise());
         this.el('scan-form').addEventListener('submit', (e) => {
             e.preventDefault();
             this.start();
@@ -687,6 +688,7 @@ const Scan = {
         const box = this.el(where === 'pv' ? 'scan-opts-pv' : 'scan-opts-home');
         const opts = this.el('scan-opts');
         if (opts.parentElement !== box) box.appendChild(opts);
+        this.summarise();
     },
 
     opts() {
@@ -764,7 +766,19 @@ const Scan = {
 
     // Numbers beside the sliders, the quality only for JPEG, and the
     // preview showing brightness and contrast as the scan will have them
+    // The folded settings in one line: "600 dpi · Color · JPEG 95 · Turn upright"
+    summarise() {
+        const sum = this.el('scan-sum');
+        if (!sum) return;
+        const o = this.opts();
+        const file = { jpeg: `JPEG ${o.quality}`, png: 'PNG', tiff: 'TIFF' }[o.format] || o.format;
+        const on = [['scan-autocrop', 'Auto crop'], ['scan-upright', 'Turn upright']]
+            .filter(([id]) => { const b = this.el(id); return b && b.checked && !b.closest('.exp-off'); }).map(([, t]) => t);
+        sum.textContent = [`${o.dpi} dpi`, o.color === 'gray' ? 'Grayscale' : 'Color', file, ...on].join(' · ');
+    },
+
     syncOpts() {
+        this.summarise();
         const o = this.opts();
         this.el('scan-quality-out').textContent = o.quality;
         this.el('scan-bright-out').textContent = o.brightness;

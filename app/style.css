@@ -12355,3 +12355,42 @@ body.touring .controls.idle button { pointer-events: auto; }
 :root:not([data-skin]) .cam-shoot {
     box-shadow: 0 0 0 1px rgb(0 0 0 / 0.25), var(--shadow-2);
 }
+
+/* ---- 2.0 scan dock (audit A5): the scanner, how and where first; the
+   rest folded under one line ---- */
+
+.scan-more {
+    border-top: 1px solid var(--border-subtle);
+}
+
+.scan-more-sum {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-4);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    cursor: pointer;
+    list-style: none;
+}
+
+.scan-more-sum::-webkit-details-marker {
+    display: none;
+}
+
+.scan-sum {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.scan-more-go {
+    flex: none;
+    color: var(--accent-text);
+}
+
+.scan-more[open] .scan-more-go {
+    visibility: hidden;
+}
