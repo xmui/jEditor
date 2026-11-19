@@ -852,9 +852,11 @@ body[data-view="grid"] .interface[data-fit~="name-off"] .file-info {
 .header-controls.expanded:not(.vertical) {
     flex-wrap: wrap;
     justify-content: flex-end;
-    /* at least four across: with most of them under More, the pill was only
-       as wide as More itself and they ran down off the window in a column */
-    width: max(var(--hc-w, 0px), min(calc(4 * var(--ctl-lg) + 8px), calc(100vw - 2 * var(--gutter))));
+    /* at least three across: with most of them under More, the pill was
+       only as wide as More itself and they ran down off the window in a
+       column. Three, as 2.0's pill (Crop, Info, More) is three wide on the
+       web, so opening it never reaches over the file pill */
+    width: max(var(--hc-w, 0px), min(calc(3 * var(--ctl-lg) + 8px), calc(100vw - 2 * var(--gutter))));
     height: auto;
     min-height: var(--ctl-lg);
     padding: 3px var(--sp-1);

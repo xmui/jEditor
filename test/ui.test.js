@@ -954,7 +954,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('extras live in More (view, rescan, adjust, paint, history, fit, strip, fullscreen, dupes, convert, keys, whatsnew, customize)', r.defaultExtras === 'view,refresh,adjust,paint,history,fit,strip,fullscreen,dupes,convert,keys,whatsnew,customize', r.defaultExtras);
         check('More expander shows/hides extras', r.extrasHiddenCollapsed && r.extrasShownExpanded);
         // (Adjust, newer than that saved order, goes after Crop, and Paint after it)
-        check('reorder + hide + promote via prefs', r.reordered === 'crop,adjust,paint' && r.refreshHidden && r.fullscreenMain,
+        check('reorder + hide + promote via prefs', r.reordered === 'crop,info,view' && r.refreshHidden && r.fullscreenMain,
             JSON.stringify({ o: r.reordered, h: r.refreshHidden, f: r.fullscreenMain }));
         check('vertical pill + scale + persistence', r.vertical && r.persisted && parseFloat(r.scaleApplied) === 1.2,
             JSON.stringify({ v: r.vertical, p: r.persisted, z: r.scaleApplied }));
