@@ -8243,6 +8243,8 @@ const app = {
                     };
                 }
             }
+            // jEditor's own look: its picture at the left (menu-icons.js)
+            if (!document.documentElement.dataset.skin && typeof MenuIcons !== 'undefined' && !btn.hasAttribute('aria-checked')) btn.prepend(MenuIcons.el(label, key));
             menu.appendChild(btn);
         });
         if (menu.lastChild && menu.lastChild.className === 'ctx-divider') menu.lastChild.remove();
@@ -8293,9 +8295,11 @@ const app = {
             document.body.appendChild(fly);
             row.setAttribute('aria-expanded', 'true');
             const r = row.getBoundingClientRect(), f = fly.getBoundingClientRect();
-            const right = r.right + f.width + 8 <= window.innerWidth;
-            fly.style.left = (right ? r.right + 2 : Math.max(8, r.left - f.width - 2)) + 'px';
-            fly.style.top = Math.max(UI.topSafe() + 8, Math.min(r.top - 5, window.innerHeight - f.height - 8)) + 'px';
+            // Beside the menu's edge, not the row's (the rows sit inside its padding)
+            const m = (row.closest('#context-menu, .ctx-fly') || row).getBoundingClientRect();
+            const right = m.right + f.width + 8 <= window.innerWidth;
+            fly.style.left = (right ? m.right + 2 : Math.max(8, m.left - f.width - 2)) + 'px';
+            fly.style.top = Math.max(UI.topSafe() + 8, Math.min(r.top - (document.documentElement.dataset.skin ? 5 : 9), window.innerHeight - f.height - 8)) + 'px';
         }
         if (focus) {
             const first = fly.querySelector('button');

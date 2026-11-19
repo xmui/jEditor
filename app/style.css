@@ -11491,37 +11491,80 @@ body.touring .controls.idle button { pointer-events: auto; }
     border-top: 1px solid var(--border-subtle);
 }
 
-/* ---- Menus: frosted glass (thick, so a list reads over any photo;
-   tokens.css: --menu-bg), in rows that are pills ---- */
+/* ---- Menus (the owner's pick, 19 November: like the iPhone's): a
+   frosted glass card with big round corners, floating on a soft shadow;
+   tall rows with large words and a line picture at the left of each
+   (menu-icons.js); groups split by thin inset lines; a menu of its own
+   with › at the right; Delete red, picture and words. Keys stay, quiet,
+   at the right. tokens.css: --menu-bg, --menu-filter ---- */
 :root:not([data-skin]) :is(#context-menu, .ctx-fly) {
-    min-width: 232px;
-    padding: var(--sp-1);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-xl);
+    --menu-row: 44px;
+    min-width: 248px;
+    padding: 8px;
+    border: 1px solid var(--glass-border, var(--border-subtle));
+    border-radius: 26px;
     background: var(--menu-bg);
-    box-shadow: var(--shadow-3), var(--highlight);
+    box-shadow: 0 18px 50px rgb(0 0 0 / 0.22), 0 2px 8px rgb(0 0 0 / 0.08), var(--highlight);
     backdrop-filter: var(--menu-filter);
     -webkit-backdrop-filter: var(--menu-filter);
 }
-
-:root:not([data-skin]) :is(#context-menu, .ctx-fly) button {
-    min-height: var(--row);
-    padding: 0 var(--sp-3);
-    border-radius: var(--r-ctl);
+:root[data-density="compact"]:not([data-skin]) :is(#context-menu, .ctx-fly) {
+    --menu-row: 38px;
 }
 
-:root:not([data-skin]) #context-menu button[aria-checked] {
-    padding-left: 32px;
+:root:not([data-skin]) :is(#context-menu, .ctx-fly) button {
+    min-height: var(--menu-row);
+    gap: 12px;
+    padding: 0 14px;
+    border-radius: 18px;
+    font-size: 15px;
+    letter-spacing: -0.01em;
+}
+:root[data-density="compact"]:not([data-skin]) :is(#context-menu, .ctx-fly) button {
+    font-size: 14px;
+}
+
+/* The picture, and the space for one on a row without */
+:root:not([data-skin]) :is(#context-menu, .ctx-fly) .ctx-ico {
+    width: 20px;
+    height: 20px;
+    margin-left: -2px;
+    opacity: 0.9;
+}
+:root:not([data-skin]) :is(#context-menu, .ctx-fly) button:disabled .ctx-ico {
+    opacity: 0.45;
+}
+
+/* A setting with a tick: the tick where the picture goes */
+:root:not([data-skin]) :is(#context-menu, .ctx-fly) button[aria-checked] {
+    padding-left: 46px;
+}
+:root:not([data-skin]) :is(#context-menu, .ctx-fly) button[aria-checked="true"]::before {
+    left: 19px;
+}
+
+/* Keys: there, but quiet */
+:root:not([data-skin]) :is(#context-menu, .ctx-fly) .ctx-key {
+    padding-left: 20px;
+    font-size: 12px;
+    color: var(--text-3);
+    opacity: 0.8;
 }
 
 :root:not([data-skin]) :is(#context-menu, .ctx-fly) .ctx-divider {
-    margin: var(--sp-1) var(--sp-3);
+    height: 1px;
+    margin: 6px 14px;
     background: var(--border-subtle);
+}
+
+:root:not([data-skin]) :is(#context-menu, .ctx-fly) .ctx-heading {
+    padding: 8px 14px 4px;
 }
 
 /* A row with a menu of its own (Turn and flip): an arrow at its right,
    and that menu beside it */
-#context-menu button.ctx-more::after {
+#context-menu button.ctx-more::after,
+.ctx-fly button.ctx-more::after {
     content: "";
     width: 6px;
     height: 6px;
