@@ -63,7 +63,7 @@ const PaintEditor = {
         gradient: 'linear', gradTo: 'bg',
         density: 40, range: 30, stamp: 'star', tip: '', quickShape: true, history: false, aligned: true,
         strength: 50, toneRange: 'mid', sponge: 'less',
-        smoothing: 0, pressure: 'size', texture: 'canvas', wet: 50,
+        smoothing: 0, pressure: 'size', texture: 'canvas', wet: 50, symmetry: 'off',
         font: 'system-ui, sans-serif', fontSize: 72, bold: false, italic: false, align: 'left', outline: 0,
         snap: true,
         sizeFor: 1500   // the long side of the layers the sizes were for
@@ -2216,6 +2216,9 @@ const PaintEditor = {
         if (off || this.drag.tone || this.tool === 'mixer') this.drag.base = this.healBase();
         if (this.tool === 'mixer') this.drag.mix = this.rgb(this.fg).slice(0, 3);
         if (this.drag.tone) this.drag.rad = PaintHeal.blurOf(this.tool, this.radius());
+        // Symmetry (⋯): each dab again, mirrored or turned round the
+        // picture's middle (not heal and clone, which copy from elsewhere)
+        this.drag.sym = off ? [] : this.symMats();
         if (from) this.strokeTo(p);
         else this.dab(p);
         if (this.tool === 'spray' || this.tool === 'can' || (this.FEEL[this.tool] || {}).build) this.sprayLoop();
@@ -2249,6 +2252,40 @@ const PaintEditor = {
     },
 
     dab(p) {
+        this.dabAt(p);
+        for (const M of this.drag.sym || []) {
+            const q = M.transformPoint(p), tl = p.tilt;
+            let tilt = null;
+            if (tl) {
+                const o = M.transformPoint({ x: 0, y: 0 }), v = M.transformPoint({ x: Math.cos(tl.a), y: Math.sin(tl.a) });
+                tilt = { a: Math.atan2(v.y - o.y, v.x - o.x), k: tl.k };
+            }
+            this.dabAt({ ...p, x: q.x, y: q.y, tilt });
+        }
+    },
+
+    // Symmetry: the picture's middle, mirrored left and right, top and
+    // bottom, both, or turned round it 3 to 8 times
+    SYMMETRY: [['off', 'Off'], ['x', 'Left and right'], ['y', 'Top and bottom'], ['xy', 'Both ways'], ['r3', 'Round, 3 times'], ['r4', 'Round, 4 times'], ['r6', 'Round, 6 times'], ['r8', 'Round, 8 times']],
+
+    // Each copy, as layer px to layer px
+    symMats() {
+        const s = this.opts.symmetry || 'off', ms = [];
+        if (s === 'x' || s === 'xy') ms.push(new DOMMatrix().scale(-1, 1));
+        if (s === 'y' || s === 'xy') ms.push(new DOMMatrix().scale(1, -1));
+        if (s === 'xy') ms.push(new DOMMatrix().scale(-1, -1));
+        if (s[0] === 'r') for (let i = 1, n = +s.slice(1); i < n; i++) ms.push(new DOMMatrix().rotate(360 * i / n));
+        const cx = this.OW / 2, cy = this.OH / 2;
+        return ms.map(m => this.Ci.multiply(new DOMMatrix().translate(cx, cy).multiply(m).translate(-cx, -cy)).multiply(this.C));
+    },
+
+    setSymmetry(v) {
+        this.opts.symmetry = v;
+        this.remember();
+        this.renderSoon();
+    },
+
+    dabAt(p) {
         const g = this.stroke.getContext('2d');
         const t = this.drag.tool, pr = p.pr || 1;
         // A pen's pressure: the brush's size, its opacity, or both (⋯);
@@ -3537,6 +3574,7 @@ const PaintEditor = {
             ['History', () => this.toggleHistory(), false, this.opts.history],
             ['QuickShape: hold at a stroke\'s end', () => { this.opts.quickShape = !this.opts.quickShape; this.remember(); }, false, this.opts.quickShape],
             ['Smoothing', this.SMOOTHING.map(([v, name]) => [name, () => { this.opts.smoothing = v; this.remember(); }, false, (this.opts.smoothing || 0) === v])],
+            ['Symmetry', this.SYMMETRY.map(([v, name]) => [name, () => this.setSymmetry(v), false, (this.opts.symmetry || 'off') === v])],
             ['Pen pressure', [['size', 'Size'], ['opacity', 'Opacity'], ['both', 'Size and opacity']].map(([v, name]) => [name, () => { this.opts.pressure = v; this.remember(); }, false, this.opts.pressure === v])],
             ...(Edits.canKeep() ? [['—'], ['Write edits to file', () => this.app.saveOverOriginal([this.file]), false, undefined, 'paint.saveOver']] : [])
         ];
@@ -4828,6 +4866,22 @@ const PaintEditor = {
         const at = this.hover || (sizing ? this.V().inverse().transformPoint({ x: this.cssW / 2, y: this.cssH / 2 }) : null);
         const ox = at && (at.ox !== undefined ? at.ox : at.x), oy = at && (at.oy !== undefined ? at.oy : at.y);
         const r = this.radius();
+        // Symmetry: its lines through the picture's middle, faintly
+        const sym = this.opts.symmetry || 'off';
+        if (brush && sym !== 'off') {
+            const cx = this.OW / 2, cy = this.OH / 2, m = new Path2D();
+            if (sym === 'x' || sym === 'xy') { m.moveTo(cx, 0); m.lineTo(cx, this.OH); }
+            if (sym === 'y' || sym === 'xy') { m.moveTo(0, cy); m.lineTo(this.OW, cy); }
+            if (sym[0] === 'r') {
+                const n = +sym.slice(1), R = Math.hypot(cx, cy);
+                for (let i = 0; i < n; i++) { const a = -Math.PI / 2 + Math.PI * 2 * i / n; m.moveTo(cx, cy); m.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); }
+            }
+            ctx.save();
+            ctx.globalAlpha = 0.5;
+            ctx.beginPath(); ctx.rect(0, 0, this.OW, this.OH); ctx.clip();
+            outline(m, [6 / z, 5 / z]);
+            ctx.restore();
+        }
         if (brush && at) {
             // Shift held: the straight line a click paints from the last stroke
             if (!d && this.hover && this.hover.shift && this.lastDab && this.tool !== 'spray') {

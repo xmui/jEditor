@@ -3361,6 +3361,74 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('paintsym')) {
+        console.log('paint: symmetry (paint-editor.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const W = 400, H = 300;
+                const c = document.createElement('canvas'); c.width = W; c.height = H;
+                c.getContext('2d').fillStyle = '#ffffff'; c.getContext('2d').fillRect(0, 0, W, H);
+                await openProject('symmetry', { 'p.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                P.opts.quickShape = false; P.opts.smoothing = 0; P.opts.pressure = 'size';
+                const l = P.layers[0], lg = l.canvas.getContext('2d', { willReadFrequently: true });
+                const st = document.getElementById('paint-stage');
+                const at = (x, y) => { const sp = P.V().transformPoint(P.C.transformPoint({ x, y })); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                const pe = (type, x, y, more = {}) => st.dispatchEvent(new PointerEvent(type, { ...at(x, y), pointerId: 1, bubbles: true, button: 0, buttons: type === 'pointerup' ? 0 : 1, ...more }));
+                const dot = (x, y) => { pe('pointerdown', x, y); pe('pointerup', x, y); };
+                const a = (x, y) => lg.getImageData(x, y, 1, 1).data[3];
+                const clear = () => lg.clearRect(0, 0, P.W, P.H);
+                P.setTool('hard-round'); P.fg = '#000000'; P.opts.size = 10; P.opts.opacity = 100;
+                // In ⋯, with its choices
+                step = 'menu';
+                const m = P.moreItems().find(i => i[0] === 'Symmetry');
+                out.menu = m ? m[1].map(i => i[0]).join('|') : null;
+                // Off: one dab
+                step = 'off';
+                clear(); P.setSymmetry('off'); dot(50, 150);
+                out.off = [a(50, 150), a(350, 150)];
+                // Left and right
+                step = 'x';
+                clear(); m[1][1][1](); dot(50, 100);
+                out.x = [P.opts.symmetry, a(50, 100), a(350, 100), a(50, 200)];
+                // Both ways: all four corners
+                step = 'xy';
+                clear(); P.setSymmetry('xy'); dot(50, 50);
+                out.xy = [a(50, 50), a(350, 50), a(50, 250), a(350, 250)];
+                // Round, 4 times: a quarter turn round the middle each
+                step = 'r4';
+                clear(); P.setSymmetry('r4'); dot(100, 150);
+                out.r4 = [a(100, 150), a(200, 50), a(300, 150), a(200, 250), a(350, 150)];
+                // A stroke's mirrored too, and one Undo takes both
+                step = 'stroke';
+                clear(); P.setSymmetry('x');
+                pe('pointerdown', 40, 120); for (let x = 40; x <= 120; x += 4) pe('pointermove', x, 120); pe('pointerup', 120, 120);
+                out.stroke = [a(80, 120), a(320, 120)];
+                P.undo();
+                out.undo = [a(80, 120), a(320, 120)];
+                // Kept for next time
+                out.kept = JSON.parse(localStorage.getItem('jeditor.paint')).symmetry;
+                P.setSymmetry('off');
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message }; }
+        });
+        check('paint: symmetry is in ⋯', r.menu === 'Off|Left and right|Top and bottom|Both ways|Round, 3 times|Round, 4 times|Round, 6 times|Round, 8 times', r.menu || r.error);
+        check('paint: symmetry off paints one dab', r.off && r.off[0] > 200 && r.off[1] === 0, JSON.stringify(r.off));
+        check('paint: left and right mirrors a dab', r.x && r.x[0] === 'x' && r.x[1] > 200 && r.x[2] > 200 && r.x[3] === 0, JSON.stringify(r.x));
+        check('paint: both ways paints all four corners', r.xy && r.xy.every(v => v > 200), JSON.stringify(r.xy));
+        check('paint: round 4 times turns a dab round the middle', r.r4 && r.r4.slice(0, 4).every(v => v > 200) && r.r4[4] === 0, JSON.stringify(r.r4));
+        check('paint: a stroke is mirrored, and one Undo takes both', r.stroke && r.stroke.every(v => v > 200) && r.undo.every(v => v === 0), JSON.stringify([r.stroke, r.undo]));
+        check('paint: symmetry is kept', r.kept === 'x', r.kept);
+        check('paint: symmetry, no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Restore colour (develop.js: restoreAuto; script.js: restoreColour) ----
     if (wanted('restore')) {
         console.log('restore colour (develop.js, script.js, adjust.js)');
