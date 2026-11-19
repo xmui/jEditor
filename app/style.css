@@ -12277,5 +12277,22 @@ body.touring .controls.idle button { pointer-events: auto; }
     grid-column: 3;
     grid-row: 1;
     width: 54px;
+    min-width: 0;
+    padding: 0 6px;
     justify-self: end;
+}
+
+/* Adjust opens fitted, and Fit needs no control: the zoom pill pops up
+   once the photo is zoomed in (Ctrl+wheel, pinch, double-click, Ctrl+1),
+   and goes again back at Fit (the owner's ask) */
+:root .adjust-editor .adj-zoom {
+    transition: opacity var(--dur-base) var(--ease-out), translate var(--dur-base) var(--ease-out), visibility 0s;
+}
+
+:root .adjust-editor:not(.adj-zoomed) .adj-zoom {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    translate: 0 8px;
+    transition: opacity var(--dur-base) var(--ease-out), translate var(--dur-base) var(--ease-out), visibility 0s linear var(--dur-base);
 }

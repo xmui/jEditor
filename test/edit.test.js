@@ -468,11 +468,24 @@ const PROJECT = `
         await page.mouse.dblclick(...dpt);
         const d2 = await view();
         check('zoom: double-click goes to 100% on the spot clicked, and back to fit', !d1.fitted && Math.abs(d1.z - 1) < 1e-6 && Math.abs(dBefore[0] - dAfter[0]) < 0.002 && d2.fitted, JSON.stringify([d1, d2, dBefore, dAfter]));
-        // The chip: 100% and Fit
-        await page.click('#adj-zoom-100');
-        const c1 = await view();
+        // The chip: not there at Fit; zoomed in, it pops up, and its Fit
+        // goes back (and it goes); its 100% does as it says
+        const shown = () => page.evaluate(() => getComputedStyle(document.getElementById('adj-zoom')).visibility === 'visible');
+        await page.waitForTimeout(300);
+        const atFit = await shown();
+        await page.keyboard.press('Control+1');
+        await page.waitForTimeout(300);
+        const zoomedIn = await shown();
         await page.click('#adj-zoom-fit');
         const c2 = await view();
+        await page.waitForTimeout(300);
+        const goneAgain = !(await shown());
+        await page.keyboard.press('Control+1');
+        await page.waitForTimeout(300);
+        await page.click('#adj-zoom-100');
+        const c1 = await view();
+        await page.keyboard.press('Control+0');
+        check('zoom: the chip is hidden at Fit, pops up zoomed in, and goes again back at Fit', !atFit && zoomedIn && goneAgain, JSON.stringify([atFit, zoomedIn, goneAgain]));
         check('zoom: the chip\'s 100% and Fit do as they say', !c1.fitted && Math.abs(c1.z - 1) < 1e-6 && c2.fitted, JSON.stringify([c1, c2]));
         check('zoom: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
