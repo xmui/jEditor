@@ -7552,17 +7552,16 @@ const app = {
 
     initContextMenu() {
         document.addEventListener('contextmenu', (e) => {
-            if (this.cropState.active && CropEditor.ready && e.target.closest && e.target.closest('.crop-stage')) {
-                e.preventDefault();
-                const ed = CropEditor;
-                this.openContextMenu([
-                    ['Rotate left', () => ed.rotateQuarter(-1)],
-                    ['Rotate right', () => ed.rotateQuarter(1)],
-                    ['Rotate 180°', () => ed.rotateHalf()],
-                    ['Flip left to right', () => ed.flip('h')],
-                    ['Flip upside down', () => ed.flip('v')]
-                ], e.clientX, e.clientY);
-                return;
+            // Crop, Adjust and Paint: a menu where the photo is, as the pro
+            // tools have it (audit A3). Each row runs what its key runs, and
+            // shows the key
+            if (this.cropState.active && !e.defaultPrevented) {
+                const items = this.editStageItems(e.target);
+                if (items) {
+                    e.preventDefault();
+                    this.openContextMenu(items, e.clientX, e.clientY);
+                    return;
+                }
             }
             if (this.cropState.active || Dupes.isOpen) { e.preventDefault(); return; }
             if (this.elements.mainInterface.classList.contains('hidden')) return;
@@ -7582,6 +7581,67 @@ const app = {
         window.addEventListener('click', () => this.closeContextMenu());
         window.addEventListener('scroll', () => this.closeContextMenu(), true);
         window.addEventListener('resize', () => this.closeContextMenu());
+    },
+
+    // The right-click menu on Crop's, Adjust's or Paint's photo, or null
+    editStageItems(target) {
+        const at = (sel) => target && target.closest && target.closest(sel);
+        const h = this.keyHandlers();
+        const run = (id) => () => { if (this.actionOn(id) && h[id]) h[id](); };
+        const row = (label, id, danger = false) => (this.actionOn(id) ? [[label, run(id), danger, undefined, id]] : []);
+        const tool = this.cropState.tool;
+        if (tool !== 'adjust' && tool !== 'paint' && at('.crop-stage') && typeof CropEditor !== 'undefined' && CropEditor.ready) {
+            return [
+                ['Turn and flip', [...row('Rotate left', 'crop.rotateLeft'), ...row('Rotate right', 'crop.rotateRight'), ...row('Rotate 180°', 'crop.rotate180'),
+                    ['—'], ...row('Flip left to right', 'crop.flipH'), ...row('Flip upside down', 'crop.flipV')]],
+                ...row('Next aspect ratio', 'crop.aspect'),
+                ...row('Swap portrait and landscape', 'crop.swap'),
+                ...row('Straighten back to 0°', 'crop.angleZero'),
+                ...row('Auto', 'crop.auto'),
+                ['—'],
+                ...row('Reset', 'crop.reset'),
+                ['—'],
+                ...row('Done', 'crop.save'),
+                ...row('Done, then the next photo', 'crop.saveNext'),
+                ...row('Cancel', 'crop.cancel')
+            ];
+        }
+        if (tool === 'adjust' && at('#adj-stage') && typeof Adjust !== 'undefined' && Adjust.ready) {
+            return [
+                ...row('Before and after', 'adjust.before'),
+                ['—'],
+                ...row('Auto', 'adjust.auto'),
+                ...row('Auto color', 'adjust.autoColor'),
+                ...row('White balance: click something grey', 'adjust.whiteBalance'),
+                ['—'],
+                ...row('Copy adjustments', 'adjust.copy'),
+                ...row('Paste adjustments', 'adjust.paste'),
+                ['—'],
+                ...row('Fit', 'adjust.zoomFit'),
+                ...row('100%', 'adjust.zoom100'),
+                ['—'],
+                ...row('Reset all', 'adjust.reset', true)
+            ];
+        }
+        if (tool === 'paint' && at('#paint-stage') && typeof PaintEditor !== 'undefined' && PaintEditor.ready) {
+            const ed = PaintEditor;
+            return [
+                ...row('Copy', 'paint.copy'),
+                ...row('Copy merged', 'paint.copyMerged'),
+                ...row('Paste', 'paint.paste'),
+                ...row('Paste in place', 'paint.pasteInPlace'),
+                ['—'],
+                ...row('Select all', 'paint.selectAll'),
+                ...row('Select nothing', 'paint.deselect'),
+                ...row('Invert the selection', 'paint.invert'),
+                ...row('Delete what\'s selected', 'paint.clear'),
+                ['—'],
+                ...row('Free transform', 'paint.transform'),
+                ...(typeof ed.layerItems === 'function' && ed.layers && ed.layers[ed.cur] ? [['The layer', ed.layerItems(ed.cur)]] : []),
+                ...row('New layer', 'paint.newLayer')
+            ];
+        }
+        return null;
     },
 
     buildContextItems(tile, inSingle) {
