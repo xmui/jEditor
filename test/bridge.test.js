@@ -685,7 +685,7 @@ const waitForPost = (page, type) => page.waitForFunction(
         check('before Windows 11 22H2: the choice is disabled and says why',
             /Windows 11/.test(r.old[0]) && r.old[1] && r.old[2], JSON.stringify(r.old));
         check('Solid again asks the app and clears the backdrop',
-            r.solidAgain === 'none' && /Start menu/.test(r.solidHelp), JSON.stringify(r));
+            r.solidAgain === 'none' && /desktop shows softly/.test(r.solidHelp), JSON.stringify(r));
         check('window background: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
