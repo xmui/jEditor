@@ -211,7 +211,7 @@
         // (app/host.js says what each feature covers)
         platform: 'windows',
         // (engine: when jeditor_engine.dll loaded; the app says so, Engine.cs)
-        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn', 'themes', 'folderMove', 'cacheFolder'].concat(window.__jeditorEngine ? ['engine'] : [], window.__jeditorEngine && window.__jeditorEngine.heic ? ['engineHeic'] : []),
+        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn', 'themes', 'folderMove', 'cacheFolder', 'menuBar'].concat(window.__jeditorEngine ? ['engine'] : [], window.__jeditorEngine && window.__jeditorEngine.heic ? ['engineHeic'] : []),
         // jEditor's storage on this PC: a folder handle, one subfolder per
         // order (see app/folder-cache.js)
         async dataDir() {

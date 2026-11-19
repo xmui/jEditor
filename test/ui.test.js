@@ -5811,6 +5811,101 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // The menu bar (menubar.js): every command with its key. Windows: the
+    // page draws it, shown when Alt is tapped; the Mac: sent to the menu bar
+    console.log('menu bar');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.addInitScript(() => {
+            const answers = { platform: 'windows', features: ['menuBar'], titleBar() {}, windowAction() {}, setState() {}, watchLog() {}, setMenus: undefined };
+            window.JEditorNative = new Proxy(answers, { get: (t, k) => k in t ? t[k] : (typeof k === 'string' && !k.startsWith('on') ? async () => [] : undefined) });
+        });
+        await page.reload({ waitUntil: 'networkidle' });
+        await page.evaluate(PAGE_HELPERS);
+        const wait = (ms) => new Promise(r => setTimeout(r, ms));
+        const out = {};
+        // No project yet: there, with what needs one greyed out
+        out.hidden = await page.evaluate(() => document.getElementById('menu-bar').classList.contains('hidden'));
+        await page.keyboard.press('Alt');
+        await wait(100);
+        Object.assign(out, await page.evaluate(() => {
+            const bar = document.getElementById('menu-bar');
+            const names = [...bar.querySelectorAll('.menu-bar-item')].map(b => b.textContent).join();
+            MenuBar.openMenu('Photo');
+            const rows = [...document.querySelectorAll('#context-menu button')];
+            return { shown: !bar.classList.contains('hidden'), names, focused: document.activeElement.closest('#context-menu, #menu-bar') !== null,
+                greyed: rows.length > 10 && rows.every(b => b.disabled) };
+        }));
+        await page.keyboard.press('Escape');
+        await page.keyboard.press('Escape');
+        out.closed = await page.evaluate(() => document.getElementById('menu-bar').classList.contains('hidden') && !document.getElementById('context-menu'));
+        // A project open: the commands run, with their keys
+        await page.evaluate(async () => {
+            const dir = makeDir('Menus');
+            for (let i = 1; i <= 3; i++) dir._files.set(`m${i}.jpg`, makeHandle(`m${i}.jpg`, await makeRealJpeg(300, 200, { color: `hsl(${i * 90},60%,50%)` }), 'image/jpeg'));
+            dir.values = async function* () { yield* dir._files.values(); };
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+        });
+        await page.keyboard.press('F10');
+        await wait(100);
+        Object.assign(out, await page.evaluate(async () => {
+            MenuBar.openMenu('View');
+            const rows = [...document.querySelectorAll('#context-menu button')];
+            const single = rows.find(b => b.textContent.startsWith('Single photo'));
+            const r = { keyShown: !!single && !single.disabled && single.querySelector('.ctx-key').textContent === 'S' };
+            // Right goes to the next menu
+            document.getElementById('context-menu').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+            r.next = MenuBar.openName === 'Photo';
+            const label = [...document.querySelectorAll('#context-menu button')].find(b => b.textContent.startsWith('Colour label'));
+            r.submenu = !!label && label.classList.contains('ctx-more');
+            MenuBar.openMenu('View');
+            [...document.querySelectorAll('#context-menu button')].find(b => b.textContent.startsWith('Single photo')).click();
+            await new Promise(res => setTimeout(res, 300));
+            r.ran = document.body.dataset.view === 'single' && document.getElementById('menu-bar').classList.contains('hidden');
+            // Settings is in Edit here (the Mac has it in its app menu)
+            r.settings = MenuBar.items('Edit', { inPage: true }).some(it => it.label === 'Settings…') && !MenuBar.items('Edit').some(it => it.label === 'Settings…');
+            // Sort: jEditor's menu, not the system's list; a field, ticked, then which way
+            const sel = document.getElementById('sort-mode');
+            sel.value = 'name_asc';
+            sel.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+            const sortRows = [...document.querySelectorAll('#context-menu button')];
+            r.sortMenu = sortRows.map(b => (b.getAttribute('aria-checked') === 'true' ? '✓' : '') + b.textContent).join('|');
+            sortRows.find(b => b.textContent === 'Date taken').click();
+            r.sortTaken = sel.value === 'taken_desc' && app.sortMode === 'taken_desc';
+            r.sortSub = MenuBar.items('View').find(it => it.label === 'Sort by').items.filter(it => it.checked).map(it => it.label).join();
+            sel.value = 'name_asc';
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+            return r;
+        }));
+        await page.keyboard.press('Alt+ArrowUp');
+        await wait(100);
+        out.altCombo = await page.evaluate(() => document.getElementById('menu-bar').classList.contains('hidden'));
+        // The Mac: the same menus, sent to the menu bar, and one chosen there runs
+        Object.assign(out, await page.evaluate(async () => {
+            let sent = null, own = null;
+            window.JEditorNative.setMenus = (m, o) => { sent = m; own = o && o.own; };
+            Themes._menuKey = '';
+            const ok = MenuBar.system();
+            const photo = sent && sent.find(m => m.label === 'Photo');
+            const grid = sent && sent.find(m => m.label === 'View').items.find(it => it.label === 'Grid');
+            const label = photo && photo.items.find(it => it.label === 'Colour label');
+            if (grid) Themes.runMenu(grid.id);
+            await new Promise(res => setTimeout(res, 300));
+            delete window.JEditorNative.setMenus;
+            return { mac: ok && own === true && sent.map(m => m.label).join() === 'File,Edit,View,Photo,Help' && grid.key === 'G' && grid.enabled,
+                macSub: !!label && label.items.length === 5, macRan: document.body.dataset.view === 'grid' };
+        }));
+        check('menu bar: hidden until Alt is tapped; File, Edit, View, Photo and Help', out.hidden && out.shown && out.names === 'File,Edit,View,Photo,Help' && out.focused, JSON.stringify(out));
+        check('menu bar: with no project, what needs one is there but greyed out; Esc closes the menu, then the bar', out.greyed && out.closed, JSON.stringify(out));
+        check('menu bar: F10 too; each command shows its key and runs, then the bar goes; right goes to the next menu', out.keyShown && out.next && out.ran && out.submenu, JSON.stringify(out));
+        check('Sort: jEditor\'s menu (the field ticked, then which way in words); picking Date taken sorts newest first; View ▸ Sort by agrees', out.sortMenu === '✓Name|Date taken|Date modified|Size|✓A to Z|Z to A' && out.sortTaken && out.sortSub === 'Date taken,Newest first', JSON.stringify([out.sortMenu, out.sortTaken, out.sortSub]));
+        check('menu bar: Settings in Edit on Windows; Alt with another key leaves it alone', out.settings && out.altCombo, JSON.stringify(out));
+        check('menu bar: the Mac gets the same menus with their keys, colour labels as a menu of their own, and runs the one chosen', out.mac && out.macSub && out.macRan, JSON.stringify(out));
+        check('menu bar: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     console.log('photos picked, not a folder (Safari on iPhone and iPad)');
     {
         const page = await browser.newPage({ acceptDownloads: true });

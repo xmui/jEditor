@@ -676,6 +676,7 @@ async function handle(rec, type, data) {
         case 'menus':
             // A theme's menus for the menu bar (null: the app's own)
             rec.menus = Array.isArray(data.menus) ? data.menus : null;
+            rec.menusOwn = !!data.own; // jEditor's own (menubar.js), not a theme's
             if (rec === lastFocused()) menu();
             return { ok: true };
         case 'windowAction':
@@ -992,17 +993,30 @@ function menu() {
         else if (action === 'open') createWindow();
     };
     const front = lastFocused();
-    const themed = !LINUX && front && front.menus;
+    // (Linux: only jEditor's own; a theme draws its menus in the window)
+    const themed = front && front.menus && (!LINUX || front.menusOwn) ? front.menus : null;
     const build = (keys) => Menu.buildFromTemplate([
         appMenu(),
         ...(themed ? themed.map(m => ({
             label: m.label,
             submenu: [
                 ...(m.label === 'File' ? [{ label: 'New Window', accelerator: 'CmdOrCtrl+Shift+N', click: () => show(createWindow()) }, { type: 'separator' }] : []),
-                ...m.items.map(it => it === '—' ? { type: 'separator' } : {
-                    label: it.label, enabled: it.enabled !== false, click: send('theme:' + it.id),
-                    ...(keys && accelerator(it.key) ? { accelerator: accelerator(it.key), registerAccelerator: false } : {})
+                ...m.items.map(function item(it) {
+                    if (it === '—') return { type: 'separator' };
+                    // A menu of its own (menubar.js: Colour label, Flip)
+                    if (Array.isArray(it.items)) return { label: it.label, enabled: it.enabled !== false, submenu: it.items.map(item) };
+                    // One the app runs itself (Open folder, ⌘O): its key is the app's
+                    if (it.native) return { label: it.label, enabled: it.enabled !== false, click: send(it.native), ...(accelerator(it.key) ? { accelerator: accelerator(it.key) } : {}) };
+                    return {
+                        label: it.label, enabled: it.enabled !== false, click: send('theme:' + it.id),
+                        ...(typeof it.checked === 'boolean' ? { type: 'checkbox', checked: it.checked } : {}),
+                        ...(keys && accelerator(it.key) ? { accelerator: accelerator(it.key), registerAccelerator: false } : {})
+                    };
                 }),
+                // jEditor's own (menubar.js): Close Window, and Reload (it asks
+                // first if something isn't kept: the page's Modes.reload)
+                ...(front.menusOwn && m.label === 'File' ? [{ type: 'separator' }, { role: 'close' }] : []),
+                ...(front.menusOwn && m.label === 'View' ? [{ type: 'separator' }, { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: send('reload') }, ...(DEV ? [{ role: 'toggleDevTools' }] : [])] : []),
                 // Cut, copy and paste in text fields go by these on a Mac
                 ...(m.label === 'Edit' ? [{ type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }] : [])
             ]

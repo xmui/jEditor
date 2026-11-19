@@ -294,6 +294,7 @@ const app = {
         Themes.init(this);
         Fit.init();
         History.init(this);
+        MenuBar.init(this);
         Tour.init();
         Watch.init(this);
         this.initContextMenu();
@@ -7894,7 +7895,7 @@ const app = {
 
     // A menu's rows (the right-click menu's, and a menu opened beside one)
     fillMenu(menu, items) {
-        items.forEach(([label, action, danger, checked, key, more]) => {
+        items.forEach(([label, action, danger, checked, key, more, off]) => {
             // A heading over the items after it
             if (action === null) {
                 const h = document.createElement('div');
@@ -7919,6 +7920,8 @@ const app = {
             btn.textContent = label;
             btn.setAttribute('role', 'menuitem');
             if (danger) btn.classList.add('danger');
+            // One that can't run now (the menu bar's): there, greyed out
+            if (off) btn.disabled = true;
             // A setting that's on (true) or off (false): ticked when on
             if (typeof checked === 'boolean') {
                 btn.setAttribute('role', 'menuitemcheckbox');
