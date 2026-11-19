@@ -111,7 +111,7 @@ const Tour = {
         {
             id: 'adjust', view: 'adjust', target: ['#adj-panel'], side: 'left', square: true,
             title: 'Adjust: light and colour',
-            text: () => 'Exposure, white balance, curves and film looks, as in Lightroom. Nothing is lost: the photo stays as it was until you save or export.'
+            text: () => 'Exposure, white balance, curves and film looks. Nothing is lost: the photo stays as it was until you save or export.'
         },
         {
             id: 'paint', view: 'paint', target: ['#paint-tools'], side: 'right', square: true,
