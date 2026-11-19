@@ -255,6 +255,14 @@ const Adjust = {
         }));
         this.el('adj-persp').append(...persp);
         this.extraRows.push(...persp);
+        // Lens fixes (retouch.js, in the same warp)
+        const lens = [['dist', 'Distortion'], ['fringe', 'Fringes'], ['vig', 'Dark corners']].map(([k, label]) => this.slider('lens-' + k, label, {
+            range: { min: -Retouch.LENS_MAX, max: Retouch.LENS_MAX, step: 1 },
+            get: () => (this.a.lens && this.a.lens[k]) || 0,
+            set: (v) => { this.a.lens = Retouch.cleanLens({ ...(this.a.lens || {}), [k]: v }); }
+        }));
+        this.el('adj-lens').append(...lens);
+        this.extraRows.push(...lens);
         this.el('adj-persp-auto').addEventListener('click', (e) => {
             e.currentTarget.blur();
             this.autoPersp();
@@ -541,13 +549,13 @@ const Adjust = {
         if (!this.base) return false;
         // The working copy warped (perspective), first: the spots are done
         // on it, so they're all done again when it changes
-        const persp = Retouch.cleanPersp(this.a.persp);
-        const baseKey = JSON.stringify(persp);
+        const persp = Retouch.cleanPersp(this.a.persp), lens = Retouch.cleanLens(this.a.lens);
+        const baseKey = JSON.stringify([persp, lens]);
         if (baseKey !== this._baseKey) {
             if (this.base !== this.raw) this.base.width = this.base.height = 0;
             for (const k of ['_pre', '_all']) if (this[k]) this[k].canvas.width = this[k].canvas.height = 0;
             this._pre = this._all = null;
-            this.base = persp ? Retouch.warp(this.raw, persp) : this.raw;
+            this.base = persp || lens ? Retouch.warp(this.raw, persp, lens) : this.raw;
             this._baseKey = baseKey;
             this._pictureKey = undefined;
             AdjustSpots._Y = null;
@@ -732,6 +740,7 @@ const Adjust = {
             this.pushHistory();
             this.applyGeo(this.geoAt(0));
             delete a.persp;
+            delete a.lens;
             this.setAll(a, { history: false });
             return;
         }
@@ -787,10 +796,13 @@ const Adjust = {
     },
 
     // Auto perspective (retouch.js: autoPersp), from the photo as it is
-    // before it's warped, so it gives the same each time
+    // before it's warped (its lens fixed, though), so it gives the same each time
     autoPersp() {
         if (!this.ready || !this.raw) return;
-        const p = Retouch.autoPersp(this.raw);
+        const lens = Retouch.cleanLens(this.a.lens);
+        const src = lens ? Retouch.warp(this.raw, null, lens) : this.raw;
+        const p = Retouch.autoPersp(src);
+        if (src !== this.raw) src.width = src.height = 0;
         if (!p) {
             this.app.showToast('Auto perspective: no straight lines found to go by', 1800, null, null, { kind: 'adjust' });
             return;
@@ -1399,24 +1411,24 @@ const Adjust = {
         }, 250);
     },
 
-    // What the full-size picture is made from: its spots, perspective and
-    // geometry (it's made again when they change)
+    // What the full-size picture is made from: its spots, perspective, lens
+    // and geometry (it's made again when they change)
     fullKey() {
-        return JSON.stringify([this.a.spots || [], Retouch.cleanPersp(this.a.persp), this.geo]);
+        return JSON.stringify([this.a.spots || [], Retouch.cleanPersp(this.a.persp), Retouch.cleanLens(this.a.lens), this.geo]);
     },
 
     // The photo at full size, cropped as it's being adjusted (for 1:1)
     loadFull() {
         const file = this.file;
         // Made again when what it's made from changes (fullKey)
-        const spots = this.a.spots, persp = this.a.persp, geo = this.geo;
+        const spots = this.a.spots, persp = this.a.persp, lens = this.a.lens, geo = this.geo;
         const key = this.fullKey();
         if (this._fullFor === file && this._fullKey === key) return this._fullPromise;
         this._fullFor = file;
         this._fullKey = key;
         this._fullPromise = (async () => {
             const bmp = await createImageBitmap(await this.app.readImage(file));
-            const base = await Retouch.retouched(bmp, { adj: { spots, persp } });
+            const base = await Retouch.retouched(bmp, { adj: { spots, persp, lens } });
             let c;
             if (geo) {
                 c = CropEditor.fromSnapshot(bmp.width, bmp.height, geo).drawOutput(base);

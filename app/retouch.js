@@ -46,6 +46,20 @@
 //   The photo keeps its size: the part of it the warp keeps is spread out
 //   to fill it, so no empty corners ever show, as straightening's crop
 //   keeps none.
+//
+// Lens fixes (Geometry's Lens) are done in the same pass, before the
+// perspective, as a lens's faults are the photo's own:
+//
+//   lens: { dist, fringe, vig }  -100–100 each
+//     dist:   distortion. Above 0 straightens lines that bow out (barrel,
+//             wide lenses); below 0, lines that bow in (pincushion).
+//     fringe: colour fringes on edges toward the corners (lateral
+//             chromatic aberration): red and blue are made a touch bigger
+//             or smaller than green, to sit on it again. Above 0 makes red
+//             bigger and blue smaller; below 0 the other way.
+//     vig:    dark corners. Above 0 brightens the corners (up to 2 stops),
+//             in linear light, as the lens darkened them; below 0 darkens.
+//   As with perspective, nothing empty ever shows at the edges.
 
 const Retouch = {
     MAX_SPOTS: 500,
@@ -97,16 +111,16 @@ const Retouch = {
     // Anything to do to the photo before it's cropped (its perspective
     // and its spots)
     needed(edit) {
-        return !!(this.spotsOf(edit) || this.perspOf(edit));
+        return !!(this.spotsOf(edit) || this.perspOf(edit) || this.lensOf(edit));
     },
 
     // The whole photo (an ImageBitmap or canvas, as on disk) warped and
     // with its spots: a canvas, or `src` itself when there's nothing to do
     async retouched(src, edit) {
         if (!this.needed(edit)) return src;
-        const persp = this.perspOf(edit);
-        const c = persp ? this.warp(src, persp) : document.createElement('canvas');
-        if (!persp) {
+        const persp = this.perspOf(edit), lens = this.lensOf(edit);
+        const c = persp || lens ? this.warp(src, persp, lens) : document.createElement('canvas');
+        if (!persp && !lens) {
             c.width = src.width;
             c.height = src.height;
             c.getContext('2d', { willReadFrequently: true }).drawImage(src, 0, 0);
@@ -139,6 +153,33 @@ const Retouch = {
     perspOf(e) {
         const adj = e && (e.adj !== undefined ? e.adj : e);
         return adj ? this.cleanPersp(adj.persp) : null;
+    },
+
+    // ---- Lens ----
+
+    LENS_MAX: 100,
+    // At ±100: distortion's k (r' = r (1 + k r²), r 1 at the corners),
+    // fringes' part of the radius red and blue are moved by, and the
+    // corners' stops of light
+    LENS_K: 0.25,
+    LENS_F: 0.004,
+    LENS_STOPS: 2,
+
+    cleanLens(l) {
+        if (!l || typeof l !== 'object') return null;
+        const out = {};
+        for (const k of ['dist', 'fringe', 'vig']) {
+            const x = l[k];
+            if (typeof x !== 'number' || !isFinite(x)) continue;
+            const r = Math.round(Math.min(this.LENS_MAX, Math.max(-this.LENS_MAX, x)));
+            if (r) out[k] = r;
+        }
+        return Object.keys(out).length ? out : null;
+    },
+
+    lensOf(e) {
+        const adj = e && (e.adj !== undefined ? e.adj : e);
+        return adj ? this.cleanLens(adj.lens) : null;
     },
 
     // Where the warped photo's corners come from on the photo (0–1):
@@ -177,9 +218,10 @@ const Retouch = {
         return [(M[0] * u + M[1] * v + M[2]) / w, (M[3] * u + M[4] * v + M[5]) / w];
     },
 
-    // The whole photo (W × H) warped: a canvas the same size, each pixel
-    // read (bilinear) from where perspMap puts it
-    warp(src, persp) {
+    // The whole photo (W × H) warped, its lens fixed first (lens may be
+    // null): a canvas the same size, each pixel read (bilinear) from where
+    // perspMap, then the lens, put it
+    warp(src, persp, lens) {
         const W = src.width, H = src.height;
         const s = document.createElement('canvas');
         s.width = W;
@@ -189,8 +231,39 @@ const Retouch = {
         const from = sg.getImageData(0, 0, W, H).data;
         const out = sg.createImageData(W, H);
         const to = out.data;
-        const M = this.perspMap(persp);
+        const M = this.perspMap(persp || null);
         const [a, b, c, d, e, f, g, h] = M;
+        lens = this.cleanLens(lens);
+        const k = lens ? -(lens.dist || 0) / this.LENS_MAX * this.LENS_K : 0;
+        const fr = lens ? (lens.fringe || 0) / this.LENS_MAX * this.LENS_F : 0;
+        // Lines that bow in, and fringes: the corners would come from
+        // outside the photo, so it's all shrunk to keep them on it
+        const norm = (k > 0 ? 1 / (1 + k) : 1) / (1 + Math.abs(fr));
+        const stops = lens ? (lens.vig || 0) / this.LENS_MAX * this.LENS_STOPS : 0;
+        const D2 = (W * W + H * H) / 4;
+        // Dark corners: in linear light
+        let lin = null, back = null;
+        if (stops) {
+            lin = new Float32Array(256);
+            for (let i = 0; i < 256; i++) { const v = i / 255; lin[i] = v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+            back = new Uint8ClampedArray(4097);
+            for (let i = 0; i <= 4096; i++) { const v = i / 4096; back[i] = 255 * (v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055) + 0.5; }
+        }
+        // One channel (ch, or all four when ch < 0) read at (fx, fy), pixels
+        const read = (fx, fy, ch, o) => {
+            if (fx < 0) fx = 0; else if (fx > W - 1) fx = W - 1;
+            if (fy < 0) fy = 0; else if (fy > H - 1) fy = H - 1;
+            const ix = fx | 0, iy = fy | 0;
+            const tx = fx - ix, ty = fy - iy;
+            const ix1 = ix + 1 < W ? ix + 1 : ix, iy1 = iy + 1 < H ? iy + 1 : iy;
+            const p00 = (iy * W + ix) * 4, p10 = (iy * W + ix1) * 4, p01 = (iy1 * W + ix) * 4, p11 = (iy1 * W + ix1) * 4;
+            const w00 = (1 - tx) * (1 - ty), w10 = tx * (1 - ty), w01 = (1 - tx) * ty, w11 = tx * ty;
+            if (ch >= 0) {
+                to[o + ch] = from[p00 + ch] * w00 + from[p10 + ch] * w10 + from[p01 + ch] * w01 + from[p11 + ch] * w11;
+                return;
+            }
+            for (let q = 0; q < 4; q++) to[o + q] = from[p00 + q] * w00 + from[p10 + q] * w10 + from[p01 + q] * w01 + from[p11 + q] * w11;
+        };
         let o = 0;
         for (let y = 0; y < H; y++) {
             const v = (y + 0.5) / H;
@@ -198,18 +271,27 @@ const Retouch = {
             for (let x = 0; x < W; x++, o += 4) {
                 const u = (x + 0.5) / W;
                 const w = g * u + bw;
-                let fx = (a * u + bx) / w * W - 0.5, fy = (d * u + by) / w * H - 0.5;
-                if (fx < 0) fx = 0; else if (fx > W - 1) fx = W - 1;
-                if (fy < 0) fy = 0; else if (fy > H - 1) fy = H - 1;
-                const ix = fx | 0, iy = fy | 0;
-                const tx = fx - ix, ty = fy - iy;
-                const ix1 = ix + 1 < W ? ix + 1 : ix, iy1 = iy + 1 < H ? iy + 1 : iy;
-                const p00 = (iy * W + ix) * 4, p10 = (iy * W + ix1) * 4, p01 = (iy1 * W + ix) * 4, p11 = (iy1 * W + ix1) * 4;
-                const w00 = (1 - tx) * (1 - ty), w10 = tx * (1 - ty), w01 = (1 - tx) * ty, w11 = tx * ty;
-                to[o] = from[p00] * w00 + from[p10] * w10 + from[p01] * w01 + from[p11] * w11;
-                to[o + 1] = from[p00 + 1] * w00 + from[p10 + 1] * w10 + from[p01 + 1] * w01 + from[p11 + 1] * w11;
-                to[o + 2] = from[p00 + 2] * w00 + from[p10 + 2] * w10 + from[p01 + 2] * w01 + from[p11 + 2] * w11;
-                to[o + 3] = from[p00 + 3] * w00 + from[p10 + 3] * w10 + from[p01 + 3] * w01 + from[p11 + 3] * w11;
+                let px = (a * u + bx) / w, py = (d * u + by) / w;
+                if (!lens) {
+                    read(px * W - 0.5, py * H - 0.5, -1, o);
+                    continue;
+                }
+                const dx = (px - 0.5) * W, dy = (py - 0.5) * H;
+                const r2 = (dx * dx + dy * dy) / D2;
+                const sc = (1 + k * r2) * norm;
+                const cx = W / 2 - 0.5, cy = H / 2 - 0.5;
+                read(cx + dx * sc, cy + dy * sc, -1, o);
+                if (fr) {
+                    read(cx + dx * sc * (1 - fr), cy + dy * sc * (1 - fr), 0, o);
+                    read(cx + dx * sc * (1 + fr), cy + dy * sc * (1 + fr), 2, o);
+                }
+                if (stops) {
+                    const gain = Math.pow(2, stops * r2 * sc * sc);
+                    for (let q = 0; q < 3; q++) {
+                        const l = lin[to[o + q]] * gain;
+                        to[o + q] = back[l >= 1 ? 4096 : (l * 4096 + 0.5) | 0];
+                    }
+                }
             }
         }
         sg.putImageData(out, 0, 0);

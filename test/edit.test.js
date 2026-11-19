@@ -3675,6 +3675,141 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('lens')) {
+        console.log('lens fixes in Adjust (retouch.js, adjust.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const canvas = (W, H, fill) => {
+                    const c = document.createElement('canvas');
+                    c.width = W; c.height = H;
+                    const g = c.getContext('2d');
+                    g.fillStyle = fill;
+                    g.fillRect(0, 0, W, H);
+                    return c;
+                };
+                const rgb = (cv, x, y) => cv.getContext('2d').getImageData(x, y, 1, 1).data;
+                // Where a dark column is along row y (its middle, from green)
+                const colAt = (cv, y, ch = 1) => {
+                    const d = cv.getContext('2d').getImageData(0, y, cv.width, 1).data;
+                    let sw = 0, sx = 0;
+                    for (let x = 0; x < cv.width; x++) { const w = 255 - d[x * 4 + ch]; if (w > 40) { sw += w; sx += w * x; } }
+                    return sw ? sx / sw : -1;
+                };
+                step = 'clean';
+                out.clean = JSON.stringify(Retouch.cleanLens({ dist: 300, fringe: 0.3, vig: -12.6 })) === '{"dist":100,"vig":-13}' && Retouch.cleanLens({ dist: 0 }) === null && Retouch.cleanLens('x') === null;
+                // A lens that bows straight lines out (barrel): a column drawn
+                // where the lens put it is made straight by Distortion
+                step = 'distortion';
+                const W = 600, H = 400, D = 60;
+                const k = -D / 100 * Retouch.LENS_K;
+                const bowed = canvas(W, H, '#fff');
+                const bg = bowed.getContext('2d');
+                bg.strokeStyle = '#000';
+                bg.lineWidth = 6;
+                bg.beginPath();
+                for (let i = 0; i <= 100; i++) {
+                    const x = 0.15, y = i / 100;
+                    const dx = (x - 0.5) * W, dy = (y - 0.5) * H;
+                    const s = 1 + k * (dx * dx + dy * dy) / ((W * W + H * H) / 4);
+                    const px = W / 2 + dx * s, py = H / 2 + dy * s;
+                    if (i) bg.lineTo(px, py); else bg.moveTo(px, py);
+                }
+                bg.stroke();
+                const bend = (cv) => { const xs = [40, 200, 360].map(y => colAt(cv, y)); return Math.max(...xs) - Math.min(...xs); };
+                out.bentBefore = bend(bowed);
+                const fixed = Retouch.warp(bowed, null, { dist: D });
+                out.bentAfter = bend(fixed);
+                out.straight = out.bentBefore > 6 && out.bentAfter < 1.5 && fixed.width === W && fixed.height === H;
+                // Lines that bow in (below 0): the corners never come out empty
+                const white = canvas(W, H, '#fff');
+                const pin = Retouch.warp(white, null, { dist: -100, fringe: 100 });
+                out.noEmpty = [[0, 0], [W - 1, 0], [0, H - 1], [W - 1, H - 1]].every(([x, y]) => { const d = rgb(pin, x, y); return d[0] > 250 && d[1] > 250 && d[2] > 250 && d[3] === 255; });
+                // Fringes: red made bigger and blue smaller (above 0), so on a
+                // column near the right edge red moves out and blue in
+                step = 'fringes';
+                const col = canvas(W, H, '#fff');
+                col.getContext('2d').fillStyle = '#000';
+                col.getContext('2d').fillRect(540, 0, 8, H);
+                const fr = Retouch.warp(col, null, { fringe: 100 });
+                const [rx, gx, bx] = [0, 1, 2].map(ch => colAt(fr, 200, ch));
+                out.fringe = [rx, gx, bx];
+                out.fringes = rx > gx + 0.5 && bx < gx - 0.5;
+                // Dark corners: the middle stays, the corners lighten (or darken below 0)
+                step = 'dark corners';
+                const grey = canvas(W, H, '#808080');
+                const lit = Retouch.warp(grey, null, { vig: 100 }), dim = Retouch.warp(grey, null, { vig: -100 });
+                out.vig = [rgb(lit, W / 2, H / 2)[1], rgb(lit, 1, 1)[1], rgb(dim, 1, 1)[1]];
+                out.corners = Math.abs(out.vig[0] - 128) <= 2 && out.vig[1] > 220 && out.vig[2] < 80;
+                // With perspective, in one pass: the lens first
+                out.both = Retouch.needed({ adj: { lens: { vig: 10 } } }) && !Retouch.needed({ adj: { lens: { vig: 0 } } });
+                // In Adjust: the Distortion slider
+                step = 'open';
+                await openProject('lens', { 'a.png': await canvasBlob(bowed), 'b.png': await canvasBlob(white) });
+                const a = app.files.find(f => f.name === 'a.png');
+                const b = app.files.find(f => f.name === 'b.png');
+                app.openSingle(a);
+                await app.enterAdjust(a);
+                await until(() => Adjust.ready && Adjust.file === a);
+                step = 'slider';
+                const inp = document.getElementById('adj-lens-dist');
+                out.rows = !!inp && !!inp.closest('#adj-lens') && !!document.getElementById('adj-lens-fringe') && !!document.getElementById('adj-lens-vig');
+                inp.value = String(D);
+                inp.dispatchEvent(new Event('input', { bubbles: true }));
+                inp.dispatchEvent(new Event('change', { bubbles: true }));
+                Adjust.draw();
+                out.set = !!Adjust.a.lens && Adjust.a.lens.dist === D && Adjust.base !== Adjust.raw && Adjust.changedSinceOpen();
+                out.baseBend = bend(Adjust.base);
+                out.base = Adjust.base.width === Adjust.raw.width && out.baseBend < 2 && bend(Adjust.raw) > 6;
+                step = 'undo';
+                Adjust.undo();
+                Adjust.draw();
+                out.undone = !Adjust.a.lens && Adjust.base === Adjust.raw;
+                Adjust.redo();
+                Adjust.draw();
+                out.redone = !!Adjust.a.lens && Adjust.a.lens.dist === D;
+                step = 'save';
+                await Modes.go('photos');
+                await until(() => !Adjust.isOpen);
+                out.saved = !!a._edit && !!a._edit.adj && !!a._edit.adj.lens && a._edit.adj.lens.dist === D && !Develop.tonal(a._edit.adj);
+                const shown = (await app.drawEdited(await canvasBlob(bowed), a._edit, W, H)).canvas;
+                out.shownBend = bend(shown);
+                out.shown = out.shownBend < 2;
+                // Synced to other photos (the same lens), in a group of its own
+                step = 'sync';
+                out.synced = (Develop.synced({}, a._edit.adj, ['lens']) || {}).lens?.dist === D && Develop.syncGroups(a._edit.adj).includes('lens') && !(Develop.synced({}, a._edit.adj, ['light']) || {}).lens;
+                out.bUntouched = !b._edit;
+                // Reset Geometry takes it off
+                step = 'reset';
+                await app.enterAdjust(a);
+                await until(() => Adjust.ready && Adjust.file === a);
+                Adjust.draw();
+                out.again = !!Adjust.a.lens && document.getElementById('adj-lens-dist').value === String(D);
+                Adjust.resetSection('geometry');
+                Adjust.draw();
+                out.reset = !Adjust.a.lens && Adjust.base === Adjust.raw;
+                await Modes.go('photos');
+                await until(() => !Adjust.isOpen);
+                out.resetSaved = !a._edit;
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('lens: settings are kept in range, none when all are 0', r.clean, JSON.stringify(r));
+        check('lens: Distortion makes lines a lens bowed out straight again, and the photo keeps its size', r.straight, JSON.stringify(r));
+        check('lens: bowed in and with fringes, the corners never come out empty', r.noEmpty, JSON.stringify(r));
+        check('lens: Fringes moves red and blue apart from green, toward the edges', r.fringes, JSON.stringify(r));
+        check('lens: Dark corners lightens the corners (darkens below 0) and leaves the middle', r.corners && r.both, JSON.stringify(r));
+        check('lens: Adjust\'s Distortion slider fixes the picture being adjusted', r.rows && r.set && r.base, JSON.stringify(r));
+        check('lens: Ctrl+Z takes it off, Ctrl+Y puts it back', r.undone && r.redone, JSON.stringify(r));
+        check('lens: kept with the photo\'s adjustments, and shown fixed in Photos', r.saved && r.shown, JSON.stringify(r));
+        check('lens: Sync copies it, as Lens fixes, and nothing else does', r.synced && r.bUntouched, JSON.stringify(r));
+        check('lens: opened again it\'s there; Reset Geometry takes it off', r.again && r.reset && r.resetSaved, JSON.stringify(r));
+        check('lens: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     if (wanted('modes')) {
         console.log('modes: Photos, Adjust and Paint (modes.js), Start in, Paint\'s start (blank.js)');
         const { page, issues } = await open();
