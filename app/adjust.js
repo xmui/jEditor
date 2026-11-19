@@ -255,6 +255,10 @@ const Adjust = {
         }));
         this.el('adj-persp').append(...persp);
         this.extraRows.push(...persp);
+        this.el('adj-persp-auto').addEventListener('click', (e) => {
+            e.currentTarget.blur();
+            this.autoPersp();
+        });
         this.el('adj-level').addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -780,6 +784,20 @@ const Adjust = {
         if (!this.ready) return;
         this.setAll(Develop.auto(this.sample, this.result(), { colour: color }));
         this.app.showToast(color ? 'Auto color: levels set for each channel' : 'Auto: levels set from the photo', 1600, null, null, { kind: 'adjust' });
+    },
+
+    // Auto perspective (retouch.js: autoPersp), from the photo as it is
+    // before it's warped, so it gives the same each time
+    autoPersp() {
+        if (!this.ready || !this.raw) return;
+        const p = Retouch.autoPersp(this.raw);
+        if (!p) {
+            this.app.showToast('Auto perspective: no straight lines found to go by', 1800, null, null, { kind: 'adjust' });
+            return;
+        }
+        this.setAll({ ...(this.result() || {}), persp: p });
+        this.app.showToast(Retouch.cleanPersp(p) ? 'Auto perspective: the lines made parallel. Straighten levels them if they still lean'
+            : 'Auto perspective: the lines are parallel already', 2200, null, null, { kind: 'adjust' });
     },
 
     // Restore color, from the photo (develop.js: restoreAuto): Auto finds

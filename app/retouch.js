@@ -216,6 +216,193 @@ const Retouch = {
         return s;
     },
 
+    // The inverse of perspMap: a point on the photo (0–1) to where it is
+    // on the warped photo
+    perspInverse(M) {
+        const [a, b, c, d, e, f, g, h] = M;
+        const A = e - f * h, B = c * h - b, C = b * f - c * e;
+        const D = f * g - d, E = a - c * g, F = c * d - a * f;
+        const G = d * h - e * g, Hh = b * g - a * h, I = a * e - b * d;
+        return [A / I, B / I, C / I, D / I, E / I, F / I, G / I, Hh / I];
+    },
+
+    // ---- Auto perspective ----
+
+    // The photo's long straight lines, from a small copy: the near upright
+    // ones (within 30° of it) and the near level ones, each as its two
+    // ends (0–1) and its length (its weight). An edge pixel votes for the
+    // lines along its edge (a Hough transform, steered by the edge's
+    // direction), and the strongest lines are taken, each to where its
+    // pixels end
+    findLines(src, size = 480) {
+        const sc = Math.min(1, size / Math.max(src.width, src.height));
+        const W = Math.max(8, Math.round(src.width * sc)), H = Math.max(8, Math.round(src.height * sc));
+        const c = document.createElement('canvas');
+        c.width = W;
+        c.height = H;
+        const g = c.getContext('2d', { willReadFrequently: true });
+        g.drawImage(src, 0, 0, W, H);
+        const d = g.getImageData(0, 0, W, H).data;
+        c.width = c.height = 0;
+        const Y = new Float32Array(W * H);
+        for (let i = 0, o = 0; i < Y.length; i++, o += 4) Y[i] = 0.299 * d[o] + 0.587 * d[o + 1] + 0.114 * d[o + 2];
+        // Edges (Sobel): the strongest tenth, and strong enough to be one
+        const mag = new Float32Array(W * H), dir = new Float32Array(W * H);
+        for (let y = 1; y < H - 1; y++) {
+            for (let x = 1; x < W - 1; x++) {
+                const i = y * W + x;
+                const gx = Y[i - W + 1] + 2 * Y[i + 1] + Y[i + W + 1] - Y[i - W - 1] - 2 * Y[i - 1] - Y[i + W - 1];
+                const gy = Y[i + W - 1] + 2 * Y[i + W] + Y[i + W + 1] - Y[i - W - 1] - 2 * Y[i - W] - Y[i - W + 1];
+                mag[i] = Math.hypot(gx, gy);
+                dir[i] = Math.atan2(gy, gx);
+            }
+        }
+        const sorted = Float32Array.from(mag).sort();
+        const cut = Math.max(40, sorted[Math.floor(sorted.length * 0.9)]);
+        const px = [], py = [], pa = [];
+        for (let i = 0; i < mag.length; i++) {
+            if (mag[i] < cut) continue;
+            // The edge's normal, folded to -90°–90°
+            let t = dir[i];
+            if (t >= Math.PI / 2) t -= Math.PI; else if (t < -Math.PI / 2) t += Math.PI;
+            px.push(i % W - W / 2);
+            py.push(((i / W) | 0) - H / 2);
+            pa.push(t);
+        }
+        const deg = Math.PI / 180, step = 0.5 * deg, spread = 3 * deg, span = 30 * deg;
+        const R = Math.ceil(Math.hypot(W, H) / 2) + 1, nr = 2 * R + 1, nt = Math.round(2 * span / step) + 1;
+        const family = (upright) => {
+            // A line's normal at θ from the family's own: across for the
+            // upright ones, down for the level ones
+            const base = upright ? 0 : Math.PI / 2;
+            const acc = new Float32Array(nt * nr);
+            const mine = [];
+            for (let k = 0; k < pa.length; k++) {
+                let t = pa[k] - base;
+                if (t >= Math.PI / 2) t -= Math.PI; else if (t < -Math.PI / 2) t += Math.PI;
+                if (Math.abs(t) > span) continue;
+                mine.push(k);
+                const j0 = Math.max(0, Math.round((t - spread + span) / step));
+                const j1 = Math.min(nt - 1, Math.round((t + spread + span) / step));
+                for (let j = j0; j <= j1; j++) {
+                    const th = base + j * step - span;
+                    const r = Math.round(px[k] * Math.cos(th) + py[k] * Math.sin(th)) + R;
+                    acc[j * nr + r]++;
+                }
+            }
+            const lines = [];
+            const least = 0.15 * (upright ? H : W);
+            // A line's pixels, once found, aren't another's
+            const used = new Uint8Array(pa.length);
+            for (let n = 0; n < 40 && lines.length < 16; n++) {
+                let best = 0, at = -1;
+                for (let i = 0; i < acc.length; i++) if (acc[i] > best) { best = acc[i]; at = i; }
+                if (best < least) break;
+                const j = (at / nr) | 0, r = at % nr - R;
+                // Not again, nor its near neighbours
+                for (let jj = Math.max(0, j - 6); jj <= Math.min(nt - 1, j + 6); jj++) {
+                    for (let rr = Math.max(0, r + R - 6); rr <= Math.min(nr - 1, r + R + 6); rr++) acc[jj * nr + rr] = 0;
+                }
+                // Its own pixels (on it, and edges along it), and the line
+                // through them that fits best, twice: finer than the votes
+                let th = base + j * step - span, rho = r, mx = 0, my = 0, lo = 0, hi = 0, count = 0;
+                for (let pass = 0; pass < 2; pass++) {
+                    const cs = Math.cos(th), sn = Math.sin(th);
+                    const on = [];
+                    for (const k of mine) {
+                        if (used[k] || Math.abs(px[k] * cs + py[k] * sn - rho) > 1.5) continue;
+                        let dt = pa[k] - th;
+                        while (dt > Math.PI / 2) dt -= Math.PI;
+                        while (dt < -Math.PI / 2) dt += Math.PI;
+                        if (Math.abs(dt) <= 2 * spread) on.push(k);
+                    }
+                    count = on.length;
+                    if (count < least) break;
+                    mx = 0; my = 0;
+                    for (const k of on) { mx += px[k]; my += py[k]; }
+                    mx /= count; my /= count;
+                    let sxx = 0, syy = 0, sxy = 0;
+                    for (const k of on) {
+                        const dx = px[k] - mx, dy = py[k] - my;
+                        sxx += dx * dx; syy += dy * dy; sxy += dx * dy;
+                    }
+                    // The normal: the direction the pixels spread least
+                    let t = 0.5 * Math.atan2(2 * sxy, sxx - syy) + Math.PI / 2;
+                    if (Math.cos(t - th) < 0) t -= Math.PI;
+                    th = t;
+                    rho = mx * Math.cos(th) + my * Math.sin(th);
+                    lo = Infinity; hi = -Infinity;
+                    for (const k of on) {
+                        const s = -px[k] * Math.sin(th) + py[k] * Math.cos(th);
+                        if (s < lo) lo = s;
+                        if (s > hi) hi = s;
+                    }
+                }
+                if (count < least || hi - lo < least) continue;
+                const cs = Math.cos(th), sn = Math.sin(th);
+                // Its pixels, and the stroke's other edge beside them
+                for (const k of mine) if (Math.abs(px[k] * cs + py[k] * sn - rho) <= 3) used[k] = 1;
+                const end = (s) => [(rho * cs - s * sn + W / 2) / W, (rho * sn + s * cs + H / 2) / H];
+                const [x0, y0] = end(lo), [x1, y1] = end(hi);
+                lines.push({ x0, y0, x1, y1, w: count });
+            }
+            return lines;
+        };
+        return { W, H, upright: family(true), level: family(false) };
+    },
+
+    // The Vertical and Horizontal that make the photo's upright lines
+    // parallel, and its level ones: {v, h}, or null when there aren't
+    // lines enough to go by (two at least, of a set, well apart). A set
+    // left parallel can still lean, all together: Straighten's for that
+    autoPersp(src) {
+        const { W, H, upright, level } = this.findLines(src);
+        // Lines well apart across (the upright ones) or down (the level)
+        const apart = (ls, up) => {
+            if (ls.length < 2) return false;
+            const at = ls.map(l => up ? (l.x0 + l.x1) / 2 : (l.y0 + l.y1) / 2);
+            return Math.max(...at) - Math.min(...at) > 0.2;
+        };
+        const useV = apart(upright, true), useH = apart(level, false);
+        if (!useV && !useH) return null;
+        // How far a set's lines are from parallel, once warped: the spread
+        // of their angles (each line weighted by its length)
+        const spread = (ls, up, Mi) => {
+            let sw = 0, s1 = 0, s2 = 0;
+            for (const l of ls) {
+                const [u0, v0] = this.perspPoint(Mi, l.x0, l.y0), [u1, v1] = this.perspPoint(Mi, l.x1, l.y1);
+                let dx = (u1 - u0) * W, dy = (v1 - v0) * H;
+                if (!up) [dx, dy] = [dy, -dx];
+                if (dy < 0) { dx = -dx; dy = -dy; }
+                const a = Math.atan2(dx, dy);
+                sw += l.w; s1 += l.w * a; s2 += l.w * a * a;
+            }
+            const m = s1 / sw;
+            return s2 / sw - m * m;
+        };
+        const cost = (v, h) => {
+            const Mi = this.perspInverse(this.perspMap({ v, h }));
+            return (useV ? spread(upright, true, Mi) : 0) + (useH ? spread(level, false, Mi) : 0);
+        };
+        // Every tenth, then each step round the best
+        let best = { v: 0, h: 0, c: cost(0, 0) };
+        const search = (v0, h0, reach, by) => {
+            const c0 = best;
+            for (let v = v0 - reach; v <= v0 + reach; v += by) {
+                if (Math.abs(v) > this.PERSP_MAX || (!useV && v)) continue;
+                for (let h = h0 - reach; h <= h0 + reach; h += by) {
+                    if (Math.abs(h) > this.PERSP_MAX || (!useH && h)) continue;
+                    const c = cost(v, h);
+                    if (c < best.c - 1e-12) best = { v, h, c };
+                }
+            }
+            return best !== c0;
+        };
+        search(0, 0, this.PERSP_MAX, 10);
+        search(best.v, best.h, 9, 1);
+        return { v: best.v, h: best.h };
+    },
+
     // ---- Doing them ----
 
     // Every spot, one after another (a later one sees the earlier ones'
