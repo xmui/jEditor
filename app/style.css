@@ -10259,7 +10259,7 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
 }
 
 :root:not([data-skin]) .folder-rail .fr-count {
-    color: var(--text-3);
+    color: var(--text-2); /* --text-3 at caption size fell short of 4.5:1 (2.0 audit) */
     font-size: var(--fs-caption);
 }
 
@@ -12081,4 +12081,21 @@ body.touring .controls.idle button { pointer-events: auto; }
     :root:not([data-skin]) .recent-pile .recent-print {
         transition: none;
     }
+}
+
+/* 2.0 audit: one section heading, small and grey in sentence case
+   (theming.md, "One of each control"). These were the last ones still in
+   spaced capitals: File info, Undo history, the sidebar's Flags, the
+   shortcuts' groups, New blank image's groups and the scan window. Themes
+   keep their own. */
+:root:not([data-skin]) :is(.section-label, .fl-head, .set-group, .shortcuts-list h4, .blank-group, .scan-sec-head, .sb-sec-title) {
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+/* 2.0 audit: Crop's zoom pill is drawn for over a photo (--on-photo-bg),
+   but it sits on the surround, where in dark it was black on black. A
+   hairline keeps its edge. */
+:root:not([data-skin]) .crop-zoom {
+    box-shadow: 0 0 0 1px var(--border);
 }
