@@ -148,6 +148,7 @@ const app = {
         document.getElementById('btn-trash').addEventListener('click', () => this.moveToTrash([...this.selection]));
         document.getElementById('btn-clear-selection').addEventListener('click', () => this.clearSelection());
         document.getElementById('btn-refresh').addEventListener('click', () => this.refreshFolder());
+        this.elements.headerControls.addEventListener('contextmenu', (e) => this.pillMenu(e));
 
         // Crop Controls
         if (this.elements.btnCrop) this.elements.btnCrop.addEventListener('click', () => this.enterCrop());
@@ -494,9 +495,12 @@ const app = {
 
     defaultUiPrefs() {
         return {
-            order: ['scan', 'camera', 'info', 'view', 'refresh', 'crop', 'adjust', 'paint', 'history', 'fit', 'strip', 'fullscreen', 'dupes', 'convert', 'keys', 'whatsnew', 'customize'],
+            // The pill at the top right (the owner's, 19 November): Scan,
+            // Camera, Crop and Info, then More; the rest are in More, and
+            // a right-click on the pill (or Settings) puts any of them on it
+            order: ['scan', 'camera', 'crop', 'info', 'view', 'refresh', 'adjust', 'paint', 'history', 'fit', 'strip', 'fullscreen', 'dupes', 'convert', 'keys', 'whatsnew', 'customize'],
             placement: { // 'main' | 'more' | 'hidden'
-                scan: 'main', camera: 'main', info: 'main', view: 'main', refresh: 'main', crop: 'main', adjust: 'more', paint: 'more', history: 'main',
+                scan: 'main', camera: 'main', info: 'main', view: 'more', refresh: 'more', crop: 'main', adjust: 'more', paint: 'more', history: 'more',
                 fit: 'more', strip: 'more', fullscreen: 'more', dupes: 'more', convert: 'more', keys: 'more', whatsnew: 'more', customize: 'more'
             },
             vertical: false,
@@ -515,6 +519,7 @@ const app = {
             startIn: 'photos', // the landing page's Start in (modes.js): photos, adjust or paint
             writeEdits: 'ask', // Write edits to file: ask, 'originals' or 'copies' (askWriteEdits; Settings → Projects → Saving)
             modes: 1, // 1.43: Adjust and Paint are modes (modes.js), off the toolbar's main row
+            pill: 2, // 2.0: the pill is Scan, Camera, Crop and Info (view, rescan and history in More)
             theme: 'dark',
             skin: '', // a theme (themes.js): 'xp/royale'; '' is jEditor's own look
             skinSettings: {}, // each theme's own settings, by theme
@@ -604,6 +609,14 @@ const app = {
                 if (saved.modes !== 1) {
                     for (const k of ['adjust', 'paint']) if (this.uiPrefs.placement[k] === 'main') this.uiPrefs.placement[k] = 'more';
                 }
+                // 2.0's pill, once: the view switch, Rescan and History go to
+                // More (the grid has its switch, the folder is watched, H opens
+                // History), and Crop comes before Info. Anything else chosen stays
+                if (saved.pill !== 2) {
+                    for (const k of ['view', 'refresh', 'history']) if (this.uiPrefs.placement[k] === 'main') this.uiPrefs.placement[k] = 'more';
+                    const o = this.uiPrefs.order, c = o.indexOf('crop'), i = o.indexOf('info');
+                    if (c > i && i >= 0) { o.splice(c, 1); o.splice(i, 0, 'crop'); }
+                }
                 if (saved.transparency >= 10 && saved.transparency <= 100) this.uiPrefs.transparency = saved.transparency;
                 // The theme (themes.js checks it's one it knows) and each theme's own settings
                 if (typeof saved.skin === 'string' && /^[a-z0-9]+\/[a-z0-9]+$/.test(saved.skin)) this.uiPrefs.skin = saved.skin;
@@ -641,6 +654,29 @@ const app = {
 
     saveUiPrefs() {
         try { localStorage.setItem('jeditor.ui', JSON.stringify(this.uiPrefs)); } catch (e) { /* private mode */ }
+    },
+
+    // Right-click on the pill: which buttons it shows, ticked; the rest stay
+    // in More. Customize… goes to Settings, where they can be dragged into order
+    pillMenu(e) {
+        if (document.documentElement.dataset.skin) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const p = this.uiPrefs;
+        const rows = [['Show in the pill', null]];
+        for (const key of p.order) {
+            const btn = this.headerButton(key);
+            if (!btn || key === 'customize' || btn.classList.contains('host-missing') || btn.classList.contains('exp-off')) continue;
+            const on = p.placement[key] === 'main';
+            rows.push([this.HC_LABELS[key] || key, () => {
+                p.placement[key] = on ? 'more' : 'main';
+                this.saveUiPrefs();
+                this.applyUiPrefs();
+                if (this.renderCustomizePanel) this.renderCustomizePanel();
+            }, false, on]);
+        }
+        rows.push(['—'], ['Customize…', () => { this.toggleCustomizePanel(true); if (this.showSettingsPage) this.showSettingsPage('toolbar'); }]);
+        this.openContextMenu(rows, e.clientX, e.clientY);
     },
 
     headerButton(key) {
