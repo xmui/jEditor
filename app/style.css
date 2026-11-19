@@ -2704,12 +2704,33 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     font-weight: var(--fw-semibold);
 }
 
-/* Sync (adjust-sync.js): which groups of settings go */
+/* Sync (adjust-sync.js): which groups of settings go. All, then each
+   section with a box of its own and its groups in two columns */
 .sync-groups {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--sp-2) var(--sp-4);
+    gap: var(--sp-3);
     margin-top: var(--sp-4);
+}
+
+.sync-sec {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-1) var(--sp-4);
+}
+
+.sync-sec .sync-head {
+    grid-column: 1 / -1;
+    font-weight: var(--fw-semibold);
+}
+
+.sync-sec .sync-check {
+    padding-left: var(--sp-5);
+}
+
+.sync-every-row {
+    padding-bottom: var(--sp-2);
+    border-bottom: 1px solid var(--border-subtle);
+    font-weight: var(--fw-semibold);
 }
 
 .sync-check {
@@ -8035,6 +8056,21 @@ html:not(.native) .native-only {
     display: none !important;
 }
 
+/* An experiment that's coming soon: listed, greyed out, its switch off */
+.exp-soon {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 8px;
+    border-radius: var(--r-pill, 999px);
+    background: var(--bg-hover);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    font-weight: var(--fw-medium);
+    vertical-align: 1px;
+}
+.set-row.is-soon .set-label { color: var(--text-3); }
+.set-row.is-soon .switch { opacity: 0.5; cursor: default; }
+
 /* Stored orders (Settings → Stored orders, in the Windows app) */
 .dialog.stored-card {
     width: min(760px, 100%);
@@ -11455,6 +11491,46 @@ body.touring .controls.idle button { pointer-events: auto; }
     padding-inline: 18px;
 }
 
+/* ---- Settings in grouped rows: each run of rows is a card (script.js:
+   initSettings), as in macOS System Settings; a hairline between rows,
+   none above the first (it sits a pixel up, under the card's edge) ---- */
+:root:not([data-skin]) .set-card {
+    margin-top: var(--sp-2);
+    padding: 0 var(--sp-4);
+    overflow: hidden;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-xl);
+    background: var(--bg-raised);
+}
+
+:root:not([data-skin]) .set-card > * {
+    margin-top: -1px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+:root:not([data-skin]) .set-card > .set-row {
+    min-height: var(--ctl-lg);
+    padding: var(--sp-2) 0;
+}
+
+:root:not([data-skin]) .set-card .exp-empty {
+    padding: var(--sp-3) 0;
+}
+
+/* A card with nothing in it to show (a group the app can't do) */
+:root:not([data-skin]) .set-card:not(:has(> :not(.hidden, .host-missing, [hidden]))),
+:root:not([data-skin]):not(.native) .set-card:not(:has(> :not(.hidden, .host-missing, [hidden], .native-only))) {
+    display: none;
+}
+
+:root:not([data-skin]) .settings-page-title + .set-card {
+    margin-top: var(--sp-3);
+}
+
+:root:not([data-skin]) .settings-nav button {
+    border-radius: var(--r-ctl);
+}
+
 /* A button of two lines (Convert's kinds) is too tall for a pill: a
    rounder corner instead */
 :root:not([data-skin]) .cv-seg {
@@ -11463,6 +11539,23 @@ body.touring .controls.idle button { pointer-events: auto; }
 
 :root:not([data-skin]) .cv-seg button {
     border-radius: calc(var(--r-xl) - 3px);
+}
+
+/* ---- Dialogs: where a dialog puts the focus as it opens shows no ring
+   until the keyboard moves it (ui.js: .focus-quiet); no monospace in
+   the interface: names, paths and keys in the system font ---- */
+:root:not([data-skin]) .focus-quiet :focus-visible {
+    outline: none;
+}
+
+:root:not([data-skin]) :is(.field.mono, .rename-token, .rename-preview, .sc-key, .oc-foot-path, .fo-dir, .set-label small.set-path) {
+    font-family: var(--font-ui);
+    font-variant-numeric: tabular-nums;
+}
+
+:root:not([data-skin]) .fc-keep-note {
+    margin: 0;
+    padding: 0 var(--sp-5) var(--sp-3);
 }
 
 /* ==========================================================================
