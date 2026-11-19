@@ -1871,11 +1871,14 @@ const PROJECT = `
         await page.evaluate(async () => {
             const c = document.createElement('canvas'); c.width = 480; c.height = 1200;
             const g = c.getContext('2d'); g.fillStyle = '#4a7'; g.fillRect(0, 0, 480, 1200);
+            // (Paint closed first, so ready below is this photo's, not the last one's)
+            if (PaintEditor.isOpen) app.cancelPaint();
+            await until(() => !PaintEditor.isOpen);
             await openProject('tall', { 'tall.png': await canvasBlob(c, 'image/png') });
             app.openSingle(app.files[0]);
             await sleep(100);
             pressKey('b');
-            await until(() => PaintEditor.ready);
+            await until(() => PaintEditor.isOpen && PaintEditor.ready && PaintEditor.file === app.files[0]);
         });
         await page.waitForTimeout(400);
         const fit = { open: await fitted() };
