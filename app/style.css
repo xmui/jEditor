@@ -976,6 +976,61 @@ header:has(.header-controls.expanded) {
     transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out);
 }
 
+/* ---- Slideshow: the photo on black and nothing else (audit A9) ---- */
+
+body.slideshow #image-container {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-mode);
+    background: #000;
+    cursor: none;
+}
+
+body.slideshow #image-container > .controls,
+body.slideshow #zoom-level {
+    display: none;
+}
+
+/* Between photos: a short fade through black */
+body.slideshow #current-image {
+    transition: opacity 200ms var(--ease-out);
+}
+
+body.slideshow #current-image.slide-out {
+    opacity: 0;
+}
+
+/* Its control: a small glass pill, there while the mouse moves */
+.slide-ctl {
+    position: absolute;
+    bottom: var(--gutter);
+    left: 50%;
+    z-index: var(--z-floating);
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-50%) translateY(8px);
+    transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out);
+}
+
+.slide-ctl.show {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(-50%);
+}
+
+body.slideshow #image-container:has(.slide-ctl.show) {
+    cursor: default;
+}
+
+.slide-ctl [data-slide="speed"] {
+    min-width: 44px;
+    font-variant-numeric: tabular-nums;
+    font-size: var(--fs-small);
+}
+
 /* Faded out a few seconds after showing; back when the pointer comes near
    (see initControlsAutoHide) */
 .controls.idle {

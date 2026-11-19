@@ -1980,6 +1980,68 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
     }
 
     // ---- 7d. Opening a folder, instant navigation, grid & read-only fixes ----
+    console.log('slideshow: the photo on black, a control that fades');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('slides', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('slides', { create: true });
+            const bytes = await makeRealJpeg(120, 80);
+            for (let i = 1; i <= 3; i++) {
+                const w = await (await dir.getFileHandle(`S_${i}.jpg`, { create: true })).createWritable();
+                await w.write(new Blob([bytes], { type: 'image/jpeg' }));
+                await w.close();
+            }
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            await sleep(100);
+            document.getElementById('fo-ok')?.click();
+            app.setView('grid');
+            const $ = (id) => document.getElementById(id);
+            const key = (k) => document.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+            app.startSlideshow();
+            await sleep(50);
+            const cs = getComputedStyle($('image-container'));
+            out.box = [cs.position, cs.top, cs.left, cs.right, cs.bottom, cs.backgroundColor, cs.display];
+            out.black = document.body.classList.contains('slideshow') && cs.backgroundColor === 'rgb(0, 0, 0)'
+                && cs.position === 'fixed' && [cs.top, cs.left, cs.right, cs.bottom].every(v => v === '0px');
+            out.noChrome = getComputedStyle(document.querySelector('#image-container > .controls')).display === 'none';
+            const ctl = $('slide-ctl');
+            out.hidden = !!ctl && !ctl.classList.contains('show');
+            document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+            out.shows = ctl.classList.contains('show');
+            out.buttons = [...ctl.querySelectorAll('button')].map(b => b.getAttribute('aria-label')).join();
+            // Space pauses (and the control stays), the speed steps 3, 5, 10
+            const first = app.currentFile;
+            key(' ');
+            out.paused = app._slide.paused && !app._slideshowTimer && ctl.querySelector('[data-slide="pause"]').getAttribute('aria-label') === 'Play';
+            ctl.querySelector('[data-slide="speed"]').click();
+            out.speed = ctl.querySelector('[data-slide="speed"]').textContent === '5 s' && app._slide.ms === 5000;
+            // The right arrow steps, through a fade
+            key('ArrowRight');
+            out.fading = $('current-image').classList.contains('slide-out');
+            await sleep(300);
+            out.stepped = app.currentFile !== first && document.body.classList.contains('slideshow');
+            // Any other key ends it, and everything's back
+            key('x');
+            out.ended = !document.body.classList.contains('slideshow') && !$('slide-ctl') && !app._slide && !app._slideshowTimer;
+            // A click on the photo ends it too
+            app.startSlideshow();
+            $('current-image').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+            out.clicked = !app._slide;
+            return out;
+        });
+        check('slideshow: the photo alone, full window, on black; the floating pill hidden', r.black && r.noChrome, JSON.stringify(r));
+        check('slideshow: its control shows when the mouse moves: previous, pause, next, speed, end', r.hidden && r.shows && r.buttons === 'Previous,Pause,Next,Seconds on each photo,End the slideshow', r.buttons);
+        check('slideshow: Space pauses, the speed steps to 5 s, the arrow steps through a fade', r.paused && r.speed && r.fading && r.stepped, JSON.stringify(r));
+        check('slideshow: any other key ends it, and so does a click on the photo', r.ended && r.clicked, JSON.stringify(r));
+        check('slideshow: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     console.log('find anything: Ctrl+K (palette.js)');
     {
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
