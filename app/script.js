@@ -8216,6 +8216,9 @@ const app = {
     },
 
     cancelPaint() {
+        // (while it's being saved, the save closes it when it's written:
+        // closing now would empty the layers it's still writing)
+        if (PaintEditor.busy) return;
         PaintEditor.close();
         this.cropState.active = false;
         this.cropState.tool = null;
