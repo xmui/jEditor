@@ -434,6 +434,30 @@
     --slider-knob-edge: 0 0 0 1px rgb(0 0 0 / 0.28), 0 1px 3px rgb(0 0 0 / 0.4);
     /* The light along the top of a filled button */
     --btn-sheen: inset 0 1px 0 rgb(255 255 255 / 0.14);
+
+    /* Shape, jEditor's own (the owner's rule at the 2.0 sign-off): round
+       and pill. A control is a pill and an icon button a circle, as the
+       pills' own; only what holds them (a menu, a card, a dialog) keeps a
+       corner */
+    --r-ctl: var(--r-pill);
+    /* Menus: frosted glass, thick enough to read a list over any photo,
+       whichever glass Settings has */
+    --menu-bg: color-mix(in srgb, var(--bg-surface) 78%, transparent);
+    --menu-filter: blur(30px) saturate(180%);
+}
+
+/* Opaque glass (Settings), Reduce transparency or Increase contrast: the
+   menus are solid too */
+:root:not([data-skin])[data-glass="opaque"] {
+    --menu-bg: var(--bg-surface);
+    --menu-filter: none;
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+    :root:not([data-skin]) {
+        --menu-bg: var(--bg-surface);
+        --menu-filter: none;
+    }
 }
 
 :root:not([data-skin])[data-theme="light"] {
