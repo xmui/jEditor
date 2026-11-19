@@ -46,10 +46,19 @@ far; use it as context, not as rules you have to keep.
 - **Be candid.** Rank every finding Critical / High / Medium / Low, with
   the reason, the evidence (a screenshot from the running app, taken with
   Playwright at deviceScaleFactor 2, in light and dark) and a concrete fix.
-- **Walk the real tasks end to end:** open a folder and cull it, crop and
-  straighten, edit in Adjust, paint and layer, export and save, Settings.
-  Find where people get lost, hesitate, take too many steps, miss a
-  feature or get surprised.
+- **Cover everything, and prove it.** Before an audit, list every
+  surface from the code, not from memory: each mode, window, dialog,
+  sheet, popover, panel, the menu bar item by item, every right-click
+  menu, the home page, Settings pages, Scan, Camera, Import, Find
+  anything, shortcuts, onboarding, and every empty, error and loading
+  state. The audit opens with this list as a coverage table:
+  reviewed, or not reviewed and why. Nothing is skipped silently, and
+  "not reviewed" is a gap to close before the audit counts as done.
+- **Walk the real tasks end to end** as well: open a folder and cull it,
+  crop and straighten, edit in Adjust, paint and layer, export and save,
+  Settings, scan, shoot tethered. Find where people get lost, hesitate,
+  take too many steps, miss a feature or get surprised. The tasks are a
+  way through the app, not the edge of the audit.
 - **Judge the running app,** not just the code.
 - **Keep jEditor's first rule:** never too much on screen. Extra controls
   go in menus and right-click menus.
