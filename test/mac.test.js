@@ -933,16 +933,16 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await settle();
             d = await describe();
             const view = await page.evaluate(() => app.viewMode);
-            check('a click is the page\'s own: the grid, with the folders and search there now', view === 'grid' && ['rail', 'scope', 'search'].every(i => d.items.some(x => x.id === i)), JSON.stringify([view, d.items.map(i => i.id)]));
+            check('a click is the page\'s own: the grid, with the folders and Find anything there now', view === 'grid' && ['rail', 'scope', 'find'].every(i => d.items.some(x => x.id === i)), JSON.stringify([view, d.items.map(i => i.id)]));
             await click('sort', 'name_desc');
             await settle();
             d = await describe();
             check('sorting from the toolbar sorts, and its menu says so', await page.evaluate(() => app.sortMode) === 'name_desc' && d.items.find(i => i.id === 'sort').menu.includes('✓Name (Z–A)'), JSON.stringify(d.items.find(i => i.id === 'sort')));
-            await click('search', 'black');
-            await page.waitForTimeout(600);
-            check('searching from the toolbar finds photos', await page.evaluate(() => app.viewFiles().map(f => f.name).join()) === '2-black.jpg');
-            await click('search', '');
-            await page.waitForTimeout(600);
+            await click('find');
+            await page.waitForTimeout(300);
+            check('the toolbar\'s Find anything opens it, to find a photo or folder', await page.evaluate(() => Palette.isOpen()), await page.evaluate(() => document.activeElement && document.activeElement.outerHTML.slice(0, 120)));
+            await page.keyboard.press('Escape');
+            await page.waitForTimeout(300);
 
             // Photos · Adjust · Paint: in the toolbar (as in the folder pill),
             // never the page's own chip under it; over Adjust and Paint the

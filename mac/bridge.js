@@ -728,7 +728,9 @@
             else items.push({ ...entry, kind: 'button', tooltip: said(b.title) });
         }
         items.push({ id: 'more', kind: 'menu', symbol: 'ellipsis.circle', label: 'More', menu: more });
-        if (browsing) items.push({ id: 'search', kind: 'search', value: $('fb-search').value, placeholder: 'Search' });
+        // Finding a photo or folder by name is Find anything's, as on the
+        // page (⌘F and / open it there too): the folder pill has no search box
+        if (browsing && typeof Palette !== 'undefined') items.push({ id: 'find', kind: 'button', symbol: 'magnifyingglass', label: 'Find anything', tooltip: 'Find a photo or folder (⌘F)' });
         const crumbs = $('fb-crumbs');
         const where = browsing && crumbs ? crumbs.textContent.replace(/\s+/g, ' ').trim() : '';
         return {
@@ -766,11 +768,8 @@
             const s = $('sort-mode');
             s.value = value;
             s.dispatchEvent(new Event('change', { bubbles: true }));
-        } else if (id === 'search') {
-            const input = $('fb-search');
-            input.value = String(value);
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-        } else if (id === 'more' && value === 'rename') click($('file-name'));
+        } else if (id === 'find') Palette.open();
+        else if (id === 'more' && value === 'rename') click($('file-name'));
         else {
             const key = String(id === 'more' ? value : id).replace(/^hc:/, '');
             click($('header-controls').querySelector(`button[data-hc="${key}"]`));
@@ -790,11 +789,6 @@
             // comes back then, not when something else on the page changes
             for (const el of [$('adjust-editor'), $('paint-editor')].filter(Boolean)) watch.observe(el, { attributes: true, attributeFilter: ['class'] });
             $('sort-mode').addEventListener('change', sendToolbar);
-            // ⌘F and /: the toolbar's search field, not the hidden one
-            $('fb-search').addEventListener('focus', (e) => {
-                e.target.blur();
-                mac.request('toolbarSearch');
-            });
             sendToolbar();
         });
     }
