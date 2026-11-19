@@ -1701,7 +1701,7 @@ const Folders = {
             this.el('fc-old-cap').textContent = `Already there · ${fmt(existing)}`;
         }
         this.el('fc-keep').title = `The ${copy ? 'copy' : 'moved photo'} is named “${keepName}”`;
-        this.el('fc-keep-note').textContent = `as “${keepName}”`;
+        this.el('fc-keep-note').textContent = `Keep both saves this one as “${keepName}”.`;
         const replace = this.el('fc-replace');
         replace.classList.toggle('hidden', !canReplace);
         replace.title = Host.say('The photo that\'s there now goes to the trash (Ctrl+Z brings it back)');

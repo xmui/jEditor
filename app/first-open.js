@@ -36,15 +36,14 @@ const FirstOpen = {
         const places = this.places();
         const box = document.createElement('div');
         box.id = 'first-open';
-        box.className = 'dialog-overlay';
+        box.className = 'dialog-overlay focus-quiet'; // (ui.js: no ring until the keyboard moves)
         box.innerHTML =
             `<div class="dialog first-open" role="dialog" aria-modal="true" aria-labelledby="fo-title">` +
             `<div class="dialog-head"><h2 id="fo-title" class="dialog-title">${folder ? `Opening ${this.esc(folder)}` : 'Before you open a folder'}</h2></div>` +
             `<div class="dialog-body fo-body">` +
             (places ? `<section class="fo-part"><h3 class="fo-sub">Where your projects are</h3><p class="fo-help">${FolderMove.ADVICE}</p>` +
                 `<div class="fo-row"><span id="fo-dir" class="fo-dir"></span><button id="fo-choose" class="btn secondary">Choose…</button></div></section>` : '') +
-            `<p class="fo-note">Your edits are kept in jEditor and the photos stay as they are. Write edits to file (${Host.say('Ctrl+S')}) writes an edit into its photo file; Export makes edited copies. Settings → Projects → Saving can turn keeping off.</p>` +
-            (places ? `<p class="fo-note">You can change the folder later in Settings → Projects, and from the foot of Open a folder.</p>` : '') +
+            `<p class="fo-note">Edits are kept in jEditor, and your photos aren't changed until you write the edits to the file (${Host.say('Ctrl+S')}). You can change this${places ? ', and the folder,' : ''} later in Settings → Projects.</p>` +
             `</div>` +
             `<div class="dialog-foot"><span></span><span class="dialog-actions"><button id="fo-ok" class="btn primary">Continue</button></span></div>` +
             `</div>`;
