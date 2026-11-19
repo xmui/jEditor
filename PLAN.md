@@ -56,6 +56,20 @@ Bugs the owner has seen and wants fixed, newest first. A fix takes its line out.
 
 **Rules for everything below.** Windows first: each feature is made the best it can be in the Windows app, then brought to the Mac, Linux and the web as well as each allows. The basic workflow (open a folder, look, rotate, crop, flag, move on) stays fast and responsive: a new feature never slows it, and the tests time it.
 
+### 2.0.0 scope
+
+Set by the owner on 2026-11-18 (through the Wrangler): "i want all that's in progress added", with another UI and polish check before release.
+
+**Done:** the docked sidebar (#171, item 15) and the 2.0 visual refinement (item 16).
+
+**Still to do:**
+
+1. **Paint, phase 5:** retro brushes part 2, symmetry, the Warp mesh, rulers and guides, TIFF and PSD export, and Liquify ([docs/plan-adjust-paint.md](docs/plan-adjust-paint.md)).
+2. **Adjust, phase 3:** perspective, auto perspective, and lens fixes (straighten by drawing a line is in, #249).
+3. **Crop polish.**
+4. **Lighter desktop apps, steps 2 to 4** (item 20): in betas only. Releases stay on Electron.
+5. **A final UI and polish check** by the Fable design chat, before release.
+
 ### Next update (1.41.0)
 
 1. **Mac: the native toolbar moves the window.** Electron's hidden title bar puts the page under the toolbar, so a press on its empty space went to the page, which wasn't marking it draggable. Now a view behind the toolbar's items (`mac/native`) takes it: dragging moves the window, a double-click does what Desktop & Dock says (zoom, minimise or nothing). The page's own drag strip is back as well. CI drags a real window on macOS 26.
@@ -125,7 +139,7 @@ Bugs the owner has seen and wants fixed, newest first. A fix takes its line out.
 17. **Paint, easier on phones and tablets** (asked for 2026-11-09; nothing started). Paint mode is hard to use on a phone: touch-sized tools and controls, pinch to zoom and two fingers to pan without painting, a palm-safe brush, a compact tool bar that fits a narrow screen, and layers and colours in a sheet. Mockups first.
 18. **Later:** density and fonts beyond the themes, the photo booth (webcam with filters), JPEGify and glitch experiments, a slideshow, video and audio viewing and trimming, and legacy editions: a much smaller build that runs on old Windows (XP/7; today's app needs Windows 10 for WebView2 and .NET 8), after the retro looks.
 19. **A fast engine** (asked for 2026-11-11; the plan: [docs/plans/fast-engine.md](docs/plans/fast-engine.md); the owner's go came through the Wrangler). The heavy image work moves into a native engine in Rust, inside the Windows, Mac and Linux apps (a DLL for the Windows app), with the GPU through wgpu later: the page sends settings, the engine owns the pixels. **Built, on Windows (feature `engine`):** JPEG grid thumbnails (#168), HEIC thumbnails (#170, `engineHeic`), where a cold grid's CPU goes, in the Speed workflow (#190), RAW thumbnails from the JPEG inside them (#194). **Next:** the viewer (opening a photo from the engine), then Adjust's Export and Save edits at full size, RAW development and Paint at full size. The web keeps today's code.
-20. **Lighter desktop apps** (asked for 2026-11-11; the plan: [docs/plans/lighter-desktop.md](docs/plans/lighter-desktop.md), Tauri v2 picked; the owner's go came through the Wrangler). The Mac and Linux apps move off Electron onto the system's own web view, as Windows uses WebView2: WKWebView on the Mac, WebKitGTK on Linux. **Done:** step 0, the spike (nothing in it rules Tauri out; results in the plan); step 1, the app's own folder handles, behind a switch and off by default (#251), and the Mac and Linux app tests green again (#253). **Next:** step 2, the host's core in Rust with tests of its own; then the Mac on Tauri, built on betas next to Electron, and Linux if WebKitGTK is fast enough. Releases stay on Electron until the owner says otherwise.
+20. **Lighter desktop apps** (asked for 2026-11-11; the plan: [docs/plans/lighter-desktop.md](docs/plans/lighter-desktop.md), Tauri v2 picked; the owner's go came through the Wrangler). The Mac and Linux apps move off Electron onto the system's own web view, as Windows uses WebView2: WKWebView on the Mac, WebKitGTK on Linux. **Done:** step 0, the spike (nothing in it rules Tauri out; results in the plan); step 1, the app's own folder handles, behind a switch and off by default (#251), and the Mac and Linux app tests green again (#253); step 2, the host's core in Rust (`desktop/core`), with tests of its own, and the page's handles checked on it in Chromium and WebKit. **Next:** step 3, the Mac on Tauri, built on betas next to Electron, and Linux if WebKitGTK is fast enough. Releases stay on Electron until the owner says otherwise.
 
 **Open questions, for when each starts:** whether edits are also written to XMP sidecars, for other apps; which disc formats matter beyond data discs (photo CDs, video DVDs); what an old-Windows build must do (view and flag only, or edit too).
 

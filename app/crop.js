@@ -1234,7 +1234,15 @@ const CropEditor = {
                 : {});
             // Not the photo the editor has (changed on disk, or turned): not used
             if (Math.abs(bmp.width / bmp.height - this.W / this.H) > 0.01) { bmp.close(); return; }
-            const adj = Edits.get(file) && Edits.get(file).adj;
+            const edit = Edits.get(file);
+            if (edit && Retouch.needed(edit) && current()) {
+                // Its perspective and spots (retouch.js), as the working copy's
+                const c = await Retouch.retouched(bmp, edit);
+                const done = await createImageBitmap(c).finally(() => { bmp.close(); });
+                c.width = c.height = 0;
+                bmp = done;
+            }
+            const adj = edit && edit.adj;
             if (adj && current()) {
                 // Shown with its adjustments, as the working copy is, or not at all
                 const shown = await Develop.applyBitmap(bmp, adj, { scale: bmp.width / this.W }).catch((err) => { bmp.close(); throw err; });
