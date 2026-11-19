@@ -387,6 +387,8 @@
         // jEditor's storage on this Mac: one folder per project (see
         // app/folder-cache.js), in the app's own private storage
         async dataDir() {
+            // The Tauri app: a real folder (WebKit's OPFS differs between versions)
+            if (host && mac.dataPath) return host.folder(mac.dataPath);
             const root = await navigator.storage.getDirectory();
             return root.getDirectoryHandle('jeditor-data', { create: true });
         },

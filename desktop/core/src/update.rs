@@ -86,6 +86,9 @@ fn quoted_after(text: &str, key: &str) -> Option<String> {
 pub enum App {
     /// The .dmg
     Mac,
+    /// The Mac app on Tauri, on betas beside the Electron one
+    /// (desktop/app): its own .dmg, so each updates to its own kind
+    MacTauri,
     /// The AppImage, replaced in place
     AppImage,
     /// Installed from the .deb, updated with the system's installer
@@ -99,6 +102,7 @@ impl App {
     fn suffix(self) -> &'static str {
         match self {
             App::Mac => "-mac.dmg",
+            App::MacTauri => "-mac-tauri.dmg",
             App::AppImage => "-linux.appimage",
             App::Deb => "-linux.deb",
             App::Pacman => "-linux.pacman",
@@ -111,7 +115,7 @@ impl App {
     }
 
     pub fn platform(self) -> &'static str {
-        if self == App::Mac { "Mac" } else { "Linux" }
+        if matches!(self, App::Mac | App::MacTauri) { "Mac" } else { "Linux" }
     }
 }
 
