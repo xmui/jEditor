@@ -9952,17 +9952,42 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     background: var(--tb-pressed);
 }
 
-:root:not([data-skin]) #selection-bar :is(#btn-rotate-left-bulk, #btn-rotate-right-bulk, #btn-auto-crop, .tb-sep) {
+/* The selection pill (the owner's pick, 19 November: take A, icons only):
+   the count with its ×, then Rotate, Move to, Export and Delete as round
+   icons, then More (⋯), which has the rest. Each names itself, with its
+   key, on hover. Delete is red, as in the menus */
+:root:not([data-skin]) #selection-bar :is(#btn-rotate-right-bulk, #btn-auto-crop, #btn-batch-rename, #btn-sync, .sel-word) {
     display: none;
 }
-
 :root:not([data-skin]) #selection-bar {
-    gap: var(--sp-1);
+    gap: 2px;
+    padding: 4px;
 }
-
+:root:not([data-skin]) #selection-bar .tb-btn.labelled span {
+    display: none;
+}
+:root:not([data-skin]) #selection-bar .tb-btn {
+    width: var(--ctl-md);
+    min-width: var(--ctl-md);
+    padding: 0;
+    justify-content: center;
+    border-radius: 50%;
+}
+:root:not([data-skin]) #selection-bar > * { order: 5; }
+:root:not([data-skin]) #btn-clear-selection { order: 0; }
+:root:not([data-skin]) #selection-bar > .tb-sep:first-of-type { order: 1; }
+:root:not([data-skin]) #btn-rotate-left-bulk { order: 2; }
+:root:not([data-skin]) #btn-move-to { order: 3; }
+:root:not([data-skin]) #btn-sel-export { order: 4; }
+:root:not([data-skin]) #btn-trash { order: 5; }
+:root:not([data-skin]) #selection-bar > .tb-sep:last-of-type { order: 6; display: block; }
+:root:not([data-skin]) #btn-export { order: 7; }
+:root:not([data-skin]) #selection-bar > .tb-sep:not(:first-of-type):not(:last-of-type) { display: none; }
 :root:not([data-skin]) #btn-trash {
     color: var(--danger-text);
 }
+/* Only in jEditor's own look: a theme's bar has Export in its More */
+:root[data-skin] #btn-sel-export { display: none; }
 
 /* Lens, Clear, Crystal and Liquid glass are too light to keep words
    readable on their own over a bright photo: a halo behind them does

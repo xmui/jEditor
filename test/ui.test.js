@@ -2128,6 +2128,13 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.selection = new Set([app.files[0]]);
             app.updateSelectionUI();
             out.selectionText = document.getElementById('selection-count').textContent;
+            // The pill (jEditor's own look): the count, then Rotate, Move to,
+            // Export and Delete as icons, then More, which has Rename
+            const shown = [...document.querySelectorAll('#selection-bar > button')].filter(b => b.getClientRects().length)
+                .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left).map(b => b.id);
+            out.pill = shown.join();
+            out.pillWords = getComputedStyle(document.querySelector('#selection-count .sel-word')).display === 'none';
+            out.moreRename = app.selectionMoreItems().some(it => /^Rename 1…$/.test(it[0])) && !app.selectionMoreItems().some(it => /^Export/.test(it[0]));
             // Leaving the grid clears the tiles' highlight too, so photos
             // selected earlier don't light up when the grid comes back
             app.setView('grid');
@@ -2145,6 +2152,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('grid Up/Down uses the real column count', r.cols);
         check('read-only photos refuse edits with a message', r.readOnly);
         check('selection count reads "1 selected"', r.selectionText === '1 selected', r.selectionText);
+        check('selection pill: the count, Rotate, Move to, Export, Delete, then More (with Rename); icons only', r.pill === 'btn-clear-selection,btn-rotate-left-bulk,btn-move-to,btn-sel-export,btn-trash,btn-export' && r.pillWords && r.moreRename, JSON.stringify([r.pill, r.pillWords, r.moreRename]));
         check('back in the grid, only the current photo is selected (no stale rings)', r.noStaleRings && r.onlyCurrentRinged,
             JSON.stringify({ stale: !r.noStaleRings, only: r.onlyCurrentRinged }));
         check('debug console is off until turned on in Settings', r.debugOff);
