@@ -8035,6 +8035,21 @@ html:not(.native) .native-only {
     display: none !important;
 }
 
+/* An experiment that's coming soon: listed, greyed out, its switch off */
+.exp-soon {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 8px;
+    border-radius: var(--r-pill, 999px);
+    background: var(--bg-hover);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    font-weight: var(--fw-medium);
+    vertical-align: 1px;
+}
+.set-row.is-soon .set-label { color: var(--text-3); }
+.set-row.is-soon .switch { opacity: 0.5; cursor: default; }
+
 /* Stored orders (Settings → Stored orders, in the Windows app) */
 .dialog.stored-card {
     width: min(760px, 100%);
