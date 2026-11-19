@@ -1403,12 +1403,14 @@ header:has(.header-controls.expanded) {
 
 .fl-star .fl-icon,
 #context-menu .ctx-flag.fl-star,
+.info-panel .ctx-flag.fl-star,
 #file-flags .tf-star {
     color: var(--flag-star);
 }
 
 .fl-rescan .fl-icon,
 #context-menu .ctx-flag.fl-rescan,
+.info-panel .ctx-flag.fl-rescan,
 #file-flags .tf-rescan {
     color: var(--flag-rescan);
 }
@@ -2294,7 +2296,7 @@ header:has(.header-controls.expanded) {
     padding: 2px;
 }
 
-#context-menu .ctx-flag {
+:is(#context-menu, .info-panel) .ctx-flag {
     display: grid;
     place-items: center;
     width: var(--ctl-md);
@@ -2304,11 +2306,11 @@ header:has(.header-controls.expanded) {
     transition: background-color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
 }
 
-#context-menu .ctx-flag:hover {
+:is(#context-menu, .info-panel) .ctx-flag:hover {
     transform: scale(1.1);
 }
 
-#context-menu .ctx-flag.on {
+:is(#context-menu, .info-panel) .ctx-flag.on {
     background: var(--tb-pressed);
 }
 
@@ -2317,7 +2319,7 @@ header:has(.header-controls.expanded) {
     height: 11px;
 }
 
-#context-menu .ctx-flag.fl-clear {
+:is(#context-menu, .info-panel) .ctx-flag.fl-clear {
     margin-left: auto;
     color: var(--text-2);
 }
@@ -2704,12 +2706,33 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     font-weight: var(--fw-semibold);
 }
 
-/* Sync (adjust-sync.js): which groups of settings go */
+/* Sync (adjust-sync.js): which groups of settings go. All, then each
+   section with a box of its own and its groups in two columns */
 .sync-groups {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--sp-2) var(--sp-4);
+    gap: var(--sp-3);
     margin-top: var(--sp-4);
+}
+
+.sync-sec {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-1) var(--sp-4);
+}
+
+.sync-sec .sync-head {
+    grid-column: 1 / -1;
+    font-weight: var(--fw-semibold);
+}
+
+.sync-sec .sync-check {
+    padding-left: var(--sp-5);
+}
+
+.sync-every-row {
+    padding-bottom: var(--sp-2);
+    border-bottom: 1px solid var(--border-subtle);
+    font-weight: var(--fw-semibold);
 }
 
 .sync-check {
@@ -8035,6 +8058,21 @@ html:not(.native) .native-only {
     display: none !important;
 }
 
+/* An experiment that's coming soon: listed, greyed out, its switch off */
+.exp-soon {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 8px;
+    border-radius: var(--r-pill, 999px);
+    background: var(--bg-hover);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    font-weight: var(--fw-medium);
+    vertical-align: 1px;
+}
+.set-row.is-soon .set-label { color: var(--text-3); }
+.set-row.is-soon .switch { opacity: 0.5; cursor: default; }
+
 /* Stored orders (Settings → Stored orders, in the Windows app) */
 .dialog.stored-card {
     width: min(760px, 100%);
@@ -11498,6 +11536,46 @@ body.touring .controls.idle button { pointer-events: auto; }
     padding-inline: 18px;
 }
 
+/* ---- Settings in grouped rows: each run of rows is a card (script.js:
+   initSettings), as in macOS System Settings; a hairline between rows,
+   none above the first (it sits a pixel up, under the card's edge) ---- */
+:root:not([data-skin]) .set-card {
+    margin-top: var(--sp-2);
+    padding: 0 var(--sp-4);
+    overflow: hidden;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-xl);
+    background: var(--bg-raised);
+}
+
+:root:not([data-skin]) .set-card > * {
+    margin-top: -1px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+:root:not([data-skin]) .set-card > .set-row {
+    min-height: var(--ctl-lg);
+    padding: var(--sp-2) 0;
+}
+
+:root:not([data-skin]) .set-card .exp-empty {
+    padding: var(--sp-3) 0;
+}
+
+/* A card with nothing in it to show (a group the app can't do) */
+:root:not([data-skin]) .set-card:not(:has(> :not(.hidden, .host-missing, [hidden]))),
+:root:not([data-skin]):not(.native) .set-card:not(:has(> :not(.hidden, .host-missing, [hidden], .native-only))) {
+    display: none;
+}
+
+:root:not([data-skin]) .settings-page-title + .set-card {
+    margin-top: var(--sp-3);
+}
+
+:root:not([data-skin]) .settings-nav button {
+    border-radius: var(--r-ctl);
+}
+
 /* A button of two lines (Convert's kinds) is too tall for a pill: a
    rounder corner instead */
 :root:not([data-skin]) .cv-seg {
@@ -11506,6 +11584,23 @@ body.touring .controls.idle button { pointer-events: auto; }
 
 :root:not([data-skin]) .cv-seg button {
     border-radius: calc(var(--r-xl) - 3px);
+}
+
+/* ---- Dialogs: where a dialog puts the focus as it opens shows no ring
+   until the keyboard moves it (ui.js: .focus-quiet); no monospace in
+   the interface: names, paths and keys in the system font ---- */
+:root:not([data-skin]) .focus-quiet :focus-visible {
+    outline: none;
+}
+
+:root:not([data-skin]) :is(.field.mono, .rename-token, .rename-preview, .sc-key, .oc-foot-path, .fo-dir, .set-label small.set-path) {
+    font-family: var(--font-ui);
+    font-variant-numeric: tabular-nums;
+}
+
+:root:not([data-skin]) .fc-keep-note {
+    margin: 0;
+    padding: 0 var(--sp-5) var(--sp-3);
 }
 
 /* ==========================================================================
@@ -12188,4 +12283,76 @@ body.touring .controls.idle button { pointer-events: auto; }
    hairline keeps its edge. */
 :root:not([data-skin]) .crop-zoom {
     box-shadow: 0 0 0 1px var(--border);
+}
+
+/* ---- Info: a floating glass card, as Adjust's and Paint's (the owner's
+   addition, 19 November). Full height on the right; the photo, or the
+   grid, moves over to fit beside it rather than going under it. The
+   histogram, the flag and colour label, how it was taken as chips, the
+   list, then Show in Explorer (script.js: fillInfoExtra) ---- */
+:root:not([data-skin]) .info-panel {
+    --info-w: 300px;
+    bottom: var(--gutter);
+    width: var(--info-w);
+    max-height: none;
+    padding: 16px;
+    border-radius: 22px;
+}
+:root:not([data-skin]) .info-panel h3 {
+    margin: 0 0 12px;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-semibold);
+    color: var(--text-1);
+}
+:root:not([data-skin]) .interface.info-open :is(#image-container, #grid-view, #thumbnail-strip) {
+    margin-right: calc(300px + var(--gutter));
+    transition: margin-right var(--dur-base) var(--ease-out);
+}
+/* What floats at the bottom stays clear of it too */
+:root:not([data-skin]) .interface.info-open .selection-bar {
+    right: calc(2 * var(--gutter) + 300px + var(--grid-scrollbar, 0px));
+}
+:root:not([data-skin]) .interface.info-open .grid-controls {
+    right: calc(2 * var(--gutter) + 300px);
+}
+.info-extra {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+.info-extra[hidden], .info-foot[hidden] { display: none; }
+.info-hist {
+    width: 100%;
+    height: 72px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--text-1) 6%, transparent);
+}
+.info-flags {
+    justify-content: space-between;
+    padding: 0;
+}
+.info-panel .ctx-flag {
+    border: 0;
+    background: none;
+    color: var(--text-2);
+}
+.info-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.info-chips span {
+    padding: 2px 10px;
+    border-radius: var(--r-pill);
+    background: color-mix(in srgb, var(--text-1) 8%, transparent);
+    font-size: var(--fs-small);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-1);
+}
+.info-foot {
+    margin-top: 16px;
+}
+.info-foot .btn {
+    width: 100%;
 }

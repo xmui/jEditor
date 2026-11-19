@@ -812,9 +812,9 @@
                             <span class="set-label" id="set-theme-label"><span id="set-theme-name">Theme</span>
                                 <small id="set-theme-decided" class="hidden">The theme chosen above decides this</small></span>
                             <div class="seg" role="radiogroup" aria-labelledby="set-theme-label">
-                                <label><input type="radio" name="set-theme" value="dark"><span>Dark</span></label>
-                                <label><input type="radio" name="set-theme" value="light"><span>Light</span></label>
                                 <label><input type="radio" name="set-theme" value="system"><span>Match system</span></label>
+                                <label><input type="radio" name="set-theme" value="light"><span>Light</span></label>
+                                <label><input type="radio" name="set-theme" value="dark"><span>Dark</span></label>
                             </div>
                         </div>
                         <div class="set-row set-own-look">
@@ -845,7 +845,7 @@
                         <h4 class="set-group set-own-look" data-needs="backdrop">Window</h4>
                         <div id="set-backdrop-row" class="set-row set-own-look" data-needs="backdrop">
                             <span class="set-label" id="set-backdrop-label">Window background
-                                <small id="set-backdrop-help">Your desktop shows softly through jEditor, like the Start menu. Photos stay solid.</small></span>
+                                <small id="set-backdrop-help">Your desktop shows softly through the window. Photos stay solid.</small></span>
                             <div class="seg" role="radiogroup" aria-labelledby="set-backdrop-label">
                                 <label><input type="radio" name="set-backdrop" value="none"><span>Solid</span></label>
                                 <label><input type="radio" name="set-backdrop" value="mica"><span>Mica</span></label>
@@ -854,7 +854,7 @@
                         </div>
                         <div id="set-transparency-row" class="set-row set-own-look" data-needs="backdrop">
                             <label class="set-label" for="cust-transparency">Transparency
-                                <small>How much of the window background shows through</small></label>
+                                <small>How much of the desktop shows through</small></label>
                             <span class="set-range">
                                 <input type="range" id="cust-transparency" min="10" max="100" step="5" value="50">
                                 <output id="cust-transparency-out" for="cust-transparency">50%</output>
@@ -863,7 +863,7 @@
                         <h4 class="set-group set-own-look">Look</h4>
                         <div class="set-row set-own-look">
                             <span class="set-label" id="set-glass-label">Glass
-                                <small>Liquid bends what's under its edges, like Apple's. Opaque is faster on older computers</small></span>
+                                <small>Liquid bends what's behind it. Opaque is fastest on older computers</small></span>
                             <div class="seg" role="radiogroup" aria-labelledby="set-glass-label">
                                 <label><input type="radio" name="set-glass" value="crystal"><span>Crystal</span></label>
                                 <label><input type="radio" name="set-glass" value="liquid"><span>Liquid</span></label>
@@ -874,7 +874,7 @@
                         </div>
                         <div class="set-row set-own-look">
                             <span class="set-label" id="set-tint-label">Glass tint
-                                <small>A wash of colour over the glass. None keeps it neutral, best for judging colour</small></span>
+                                <small>A wash of colour over the glass. None is best for judging colour</small></span>
                             <div class="seg" role="radiogroup" aria-labelledby="set-tint-label">
                                 <label><input type="radio" name="set-tint" value="none"><span>None</span></label>
                                 <label><input type="radio" name="set-tint" value="accent"><span>Accent</span></label>
@@ -885,7 +885,7 @@
                         </div>
                         <div class="set-row set-own-look">
                             <span class="set-label" id="set-motion-label">Animations
-                                <small>Photos sliding, popping and easing into place. Off: things just change</small></span>
+                                <small>Things slide and ease into place. Off: they change at once</small></span>
                             <div class="seg" role="radiogroup" aria-labelledby="set-motion-label">
                                 <label><input type="radio" name="set-motion" value="on"><span>On</span></label>
                                 <label><input type="radio" name="set-motion" value="off"><span>Off</span></label>
@@ -912,12 +912,12 @@
                         <h4 class="set-group">Keyboard</h4>
                         <div class="set-row">
                             <span class="set-label">Keyboard shortcuts
-                                <small>Change any key, or switch to a profile like Lightroom's</small></span>
+                                <small>Change any key, or start from another app's keys</small></span>
                             <button id="cust-shortcuts" class="btn secondary">Edit shortcuts…</button>
                         </div>
                         <div class="set-row">
                             <label class="set-label" for="cust-debug">Debug console
-                                <small>Ctrl+Shift+D shows what jEditor is holding and doing, for troubleshooting slowdowns. Off: the shortcut does nothing.</small></label>
+                                <small>Ctrl+Shift+D shows what jEditor is doing, to find slowdowns.</small></label>
                             <input type="checkbox" id="cust-debug" class="switch">
                         </div>
                         <h4 class="set-group">Layout</h4>
@@ -927,7 +927,7 @@
                         </div>
                         <div class="set-row">
                             <label class="set-label" for="cust-single-controls">Buttons above the film strip
-                                <small>Previous, rotate and next in single view. They fade when not in use; the keyboard shortcuts work either way.</small></label>
+                                <small>Previous, Rotate and Next in single view. They fade when not in use.</small></label>
                             <input type="checkbox" id="cust-single-controls" class="switch">
                         </div>
                         <h4 class="set-group">Toolbar buttons</h4>
@@ -948,7 +948,7 @@
                         <h3 id="set-h-autocrop" class="settings-page-title">Auto crop</h3>
                         <div class="set-row">
                             <label class="set-label" for="crop-log-on">Keep scans to improve Auto crop
-                                <small>When you save a crop on a photo Auto was used on, the scan and where you cropped it are kept on {computer} (up to 1 GB), so a better Auto can be tested on real scans</small></label>
+                                <small>Keeps scans you crop after Auto (up to 1 GB on {computer}), to test a better Auto on</small></label>
                             <input type="checkbox" id="crop-log-on" class="switch">
                         </div>
                         <div class="set-row">
@@ -961,7 +961,7 @@
                         </div>
                         <div class="set-row">
                             <span class="set-label">Fixed after batch Auto crop
-                                <small>Crops fixed in the editor after a batch Auto crop weren't kept at first. Recover adds the open project's from the originals jEditor kept, with where Auto puts the crop on each.</small></span>
+                                <small>Brings back the crops you fixed after a batch Auto crop, which weren't kept at first.</small></span>
                             <span class="set-buttons">
                                 <button id="crop-log-recover" class="btn secondary">Recover</button>
                             </span>
@@ -974,12 +974,12 @@
                         <h4 class="set-group">Saving</h4>
                         <div class="set-row">
                             <label class="set-label" for="cust-keep-edits">Keep edits in jEditor
-                                <small>Crops, turns, adjustments and painting are kept in jEditor and the photos on disk stay as they are. Write edits to file (Ctrl+S) writes an edit into its photo file. Off: edits are saved straight into the photo.</small></label>
+                                <small>Your photos stay as they are until you choose Write edits to file (Ctrl+S). Off: edits go straight into the photo.</small></label>
                             <input type="checkbox" id="cust-keep-edits" class="switch">
                         </div>
                         <div class="set-row">
                             <label class="set-label" for="cust-write-edits">Write edits to file
-                                <small>What Write edits to file (Ctrl+S) does: ask each time, apply the edits to the original photos, or save edited copies next to them.</small></label>
+                                <small>Ask each time, change the original photos, or save edited copies beside them.</small></label>
                             <select id="cust-write-edits" class="field">
                                 <option value="ask">Ask each time</option>
                                 <option value="originals">Apply to the originals</option>
@@ -996,25 +996,25 @@
                             <h4 class="set-group">Folders</h4>
                             <div class="set-row" data-needs="places">
                                 <span class="set-label">Projects folder
-                                    <small>Choose the folder that holds your photo folders. Each folder inside it shows here as a project.</small>
+                                    <small>The folder that holds your photo folders. Each one inside is a project.</small>
                                     <small id="set-projects-where" class="set-path"></small></span>
                                 <button id="set-projects-change" class="btn secondary">Change…</button>
                             </div>
                             <div class="set-row" data-needs="cacheFolder">
                                 <span class="set-label">Cache folder
-                                    <small>Thumbnails, flags and edits for each project, so projects open fast</small>
+                                    <small>Thumbnails, flags and edits, so projects open fast</small>
                                     <small id="set-cache-where" class="set-path"></small></span>
                                 <button id="set-cache-change" class="btn secondary">Change…</button>
                             </div>
                             <div class="set-row">
                                 <span class="set-label"><span id="set-cache-size">Cache</span>
-                                    <small>Clearing it frees the space. Projects stay, shown as ghost prints with their names until their thumbnails are made again.</small></span>
+                                    <small>Clearing it frees the space. Thumbnails are made again when you open a project.</small></span>
                                 <button id="set-cache-clear" class="btn secondary">Clear cache…</button>
                             </div>
                         </div>
                         <div class="set-row" data-needs="permissions">
                             <span class="set-label">Permissions
-                                <small>What macOS lets jEditor open: your folders, USB drives and memory cards</small></span>
+                                <small>The folders, drives and cards macOS lets jEditor open</small></span>
                             <button id="cust-permissions" class="btn secondary">Review…</button>
                         </div>
                         <div class="set-row">
@@ -1024,17 +1024,17 @@
                         </div>
                         <div class="set-row">
                             <label class="set-label" for="cust-auto-check">Watch the folder for changes
-                                <small>Photos a scanner saves, or that are removed or edited elsewhere, show up on their own</small></label>
+                                <small>New, removed or changed photos show up on their own</small></label>
                             <input type="checkbox" id="cust-auto-check" class="switch">
                         </div>
                         <div class="set-row">
                             <label class="set-label" for="cust-open-libraries">Open photo libraries as folders
-                                <small>Photos, iPhoto, Aperture and Lightroom keep their own previews inside their libraries. Off, jEditor leaves those libraries out.</small></label>
+                                <small>Photo libraries hold their own copies of your photos. Off: jEditor leaves them out.</small></label>
                             <input type="checkbox" id="cust-open-libraries" class="switch">
                         </div>
                         <div class="set-row">
                             <label class="set-label" for="cust-huge-folder">Ask before opening a huge folder
-                                <small>Of more photos than this. Empty: never ask</small></label>
+                                <small>Above this many photos. Empty: never ask</small></label>
                             <input type="number" id="cust-huge-folder" class="field set-num" min="0" step="500" placeholder="Never" inputmode="numeric">
                         </div>
                         <div class="set-row">
@@ -1045,7 +1045,7 @@
                         <h4 class="set-group">Storage</h4>
                         <div class="set-row native-only">
                             <span class="set-label">Stored projects
-                                <small>What jEditor keeps on {computer} for each project you've opened, and how much room it takes</small></span>
+                                <small>What jEditor keeps for each project, and how much room it takes</small></span>
                             <button id="cust-stored" class="btn secondary">Manage…</button>
                         </div>
                         <div class="set-row">
@@ -1075,13 +1075,13 @@
                         </div>
                         <div class="set-row">
                             <label class="set-label" for="upd-beta">Beta builds
-                                <small>Get new features first, in betas, which may have rough edges. Turned off, the next release takes you back.</small></label>
+                                <small>New features first, with some rough edges. Off: the next release takes you back.</small></label>
                             <input type="checkbox" id="upd-beta" class="switch">
                         </div>
                         <h4 class="set-group">Troubleshooting</h4>
                         <div class="set-row">
                             <span class="set-label">Log
-                                <small>What jEditor did, step by step (scans, updates): for when something goes wrong</small></span>
+                                <small>What jEditor did, step by step, for when something goes wrong</small></span>
                             <button id="upd-log" class="btn secondary" data-needs="log">Show log</button>
                         </div>
                     </section>
@@ -1243,12 +1243,13 @@
                 </figure>
             </div>
             <label id="fc-all-row" class="fc-all"><input type="checkbox" id="fc-all"> Do the same for <span id="fc-rest"></span></label>
+            <p id="fc-keep-note" class="dialog-note fc-keep-note"></p>
             <div class="dialog-foot">
                 <button id="fc-cancel" class="btn ghost" title="Stop: nothing is moved (Esc)">Cancel</button>
                 <span class="dialog-actions rename-actions">
                     <button id="fc-skip" class="btn secondary">Skip</button>
                     <button id="fc-replace" class="btn danger">Replace</button>
-                    <button id="fc-keep" class="btn primary">Keep both <small id="fc-keep-note"></small></button>
+                    <button id="fc-keep" class="btn primary">Keep both</button>
                 </span>
             </div>
         </div>
@@ -1285,10 +1286,6 @@
                 <p id="sync-note" class="sync-note"></p>
             </div>
             <div class="dialog-foot">
-                <span class="dialog-actions">
-                    <button id="sync-all" class="btn ghost sm">Check all</button>
-                    <button id="sync-none" class="btn ghost sm">Check none</button>
-                </span>
                 <span class="dialog-actions rename-actions">
                     <button id="sync-cancel" class="btn secondary">Cancel</button>
                     <button id="sync-ok" class="btn primary">Sync</button>
@@ -1523,7 +1520,7 @@
                         <div class="scan-switches">
                             <label class="scan-switch" for="scan-autosize" id="scan-autosize-row">
                                 <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><rect x="7" y="8" width="10" height="8" rx="1"/></svg>
-                                <span>Crops each photo itself<small>Its own crop, as in FastFoto.</small></span>
+                                <span>Crops each photo itself<small>Uses the scanner's own crop.</small></span>
                                 <input id="scan-autosize" type="checkbox" class="switch">
                             </label>
                             <label class="scan-switch" for="scan-even" id="scan-even-row">
@@ -1543,22 +1540,22 @@
                     <summary>Advanced</summary>
                     <label class="scan-check" for="scan-driver">
                         <input id="scan-driver" type="checkbox">
-                        <span>Use the scanner's own window instead<small>Its own settings (dust removal, color restoration and so on), if jEditor's aren't enough. Remembered for this scanner.</small></span>
+                        <span>Use the scanner's own window instead<small>Its own settings, like dust removal, if jEditor's aren't enough. Remembered for this scanner.</small></span>
                     </label>
                     <label class="scan-check" for="scan-swap" id="scan-swap-row">
                         <input id="scan-swap" type="checkbox">
-                        <span>This scanner's front and back are swapped<small>On if one-sided scans come out showing the back (the FastFoto does this). Remembered for this scanner.</small></span>
+                        <span>This scanner's front and back are swapped<small>Turn on if one-sided scans show the back. Remembered for this scanner.</small></span>
                     </label>
                     <div class="scan-own hidden" id="scan-own-row">
                         <span class="scan-row">
                             <button id="scan-own" type="button" class="btn secondary sm">Scanner's own settings…</button>
                             <button id="scan-own-forget" type="button" class="btn ghost sm hidden" title="Go back to the driver's defaults">Forget</button>
                         </span>
-                        <small id="scan-own-note">Opens the scanner's own window to choose what jEditor can't, like Epson's color restoration or image enhancements. Save there; feeder scans use them from then on.</small>
+                        <small id="scan-own-note">Opens the scanner's own window for settings jEditor doesn't have. Save there, and feeder scans use them from then on.</small>
                     </div>
                     <label class="scan-check" for="scan-compat" id="scan-compat-row">
                         <input id="scan-compat" type="checkbox">
-                        <span>Older TWAIN mode<small>If the scanner doesn't respond, try this: an older way of talking to its driver (some Plustek ones need it).</small></span>
+                        <span>Older TWAIN mode<small>Try this if the scanner doesn't respond. Some older drivers need it.</small></span>
                     </label>
                 </details>
             </div>
@@ -1720,7 +1717,7 @@
                 </label>
                 <label class="scan-check" for="cam-show">
                     <input id="cam-show" type="checkbox">
-                    <span>Show each photo as it comes in<small>Opens the new photo large, as Lightroom does.</small></span>
+                    <span>Show each photo as it comes in<small>Opens each new photo large.</small></span>
                 </label>
                 <p class="set-help">On the camera: Menu → Network (or Setup) → USB Connection → <b>PC Remote</b>, then plug it into this PC with a USB cable. Photos taken here (F12) or with the camera's own button come straight into the project, RAW files too.</p>
             </div>
@@ -1823,7 +1820,7 @@
                 <div id="perm-list" class="perm-list"></div>
             </div>
             <div class="dialog-foot">
-                <span class="dialog-note">jEditor isn't signed by Apple yet, so after an update macOS may ask again. Settings → Projects → Permissions brings this back.</span>
+                <span class="dialog-note">jEditor isn't signed yet, so after an update macOS may ask again. Settings → Projects → Permissions brings this back.</span>
                 <span class="dialog-actions"><button id="perm-done" class="btn primary">Done</button></span>
             </div>
         </div>
