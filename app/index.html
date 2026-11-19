@@ -811,9 +811,9 @@
                             <span class="set-label" id="set-theme-label"><span id="set-theme-name">Theme</span>
                                 <small id="set-theme-decided" class="hidden">The theme chosen above decides this</small></span>
                             <div class="seg" role="radiogroup" aria-labelledby="set-theme-label">
-                                <label><input type="radio" name="set-theme" value="dark"><span>Dark</span></label>
-                                <label><input type="radio" name="set-theme" value="light"><span>Light</span></label>
                                 <label><input type="radio" name="set-theme" value="system"><span>Match system</span></label>
+                                <label><input type="radio" name="set-theme" value="light"><span>Light</span></label>
+                                <label><input type="radio" name="set-theme" value="dark"><span>Dark</span></label>
                             </div>
                         </div>
                         <div class="set-row set-own-look">
@@ -1242,12 +1242,13 @@
                 </figure>
             </div>
             <label id="fc-all-row" class="fc-all"><input type="checkbox" id="fc-all"> Do the same for <span id="fc-rest"></span></label>
+            <p id="fc-keep-note" class="dialog-note fc-keep-note"></p>
             <div class="dialog-foot">
                 <button id="fc-cancel" class="btn ghost" title="Stop: nothing is moved (Esc)">Cancel</button>
                 <span class="dialog-actions rename-actions">
                     <button id="fc-skip" class="btn secondary">Skip</button>
                     <button id="fc-replace" class="btn danger">Replace</button>
-                    <button id="fc-keep" class="btn primary">Keep both <small id="fc-keep-note"></small></button>
+                    <button id="fc-keep" class="btn primary">Keep both</button>
                 </span>
             </div>
         </div>
@@ -1284,10 +1285,6 @@
                 <p id="sync-note" class="sync-note"></p>
             </div>
             <div class="dialog-foot">
-                <span class="dialog-actions">
-                    <button id="sync-all" class="btn ghost sm">Check all</button>
-                    <button id="sync-none" class="btn ghost sm">Check none</button>
-                </span>
                 <span class="dialog-actions rename-actions">
                     <button id="sync-cancel" class="btn secondary">Cancel</button>
                     <button id="sync-ok" class="btn primary">Sync</button>
