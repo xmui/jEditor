@@ -4,9 +4,12 @@
 // 'jeditor-experiments' event on window says so). Betas (Settings →
 // Updates → Beta builds) get new ones first.
 //
-// An experiment: { id, title, text, beta, needs }. beta: on to start with
-// in a beta build (still off in a release until turned on). needs: a
-// feature the app must have (host.js), or it isn't offered. When one is done
+// An experiment: { id, title, text, beta, needs, soon }. beta: on to start
+// with in a beta build (still off in a release until turned on). needs: a
+// feature the app must have (host.js), or it isn't offered. soon: listed,
+// greyed out with Coming soon, and off in betas and releases alike; a
+// choice saved before is set aside. Only code (the tests) can turn it on,
+// for the page it's on, with set(). When one is done
 // it leaves this list and is simply part of jEditor.
 //
 // What only shows with one on is marked data-experiment="id" in the page:
@@ -15,11 +18,10 @@
 const Experiments = {
     LIST: [
         {
-            // Paused: not kept up with what's new, so off to start
-            // with, in betas too (themes.js: can)
-            id: 'themes', needs: 'themes',
+            // Paused until they match the 2.0 look (themes.js: can)
+            id: 'themes', needs: 'themes', soon: true,
             title: 'Themes',
-            text: 'jEditor as an app of another time, in Settings → Appearance: Windows XP (Royale, Royale Noir and Royale Red), Snow Leopard (Finder and Aperture) and the 1984 Macintosh, each with its own title bar and menus. Paused for now: newer parts of jEditor may not look right in them'
+            text: 'Dress jEditor as a computer from another time.'
         },
         {
             id: 'auto-crop',
@@ -43,6 +45,7 @@ const Experiments = {
         const prefs = (this.app && this.app.uiPrefs && this.app.uiPrefs.experiments) || {};
         const x = this.shown().find(e => e.id === id);
         if (!x) return false;
+        if (x.soon) return this.trying[id] === true;
         if (typeof prefs[id] === 'boolean') return prefs[id];
         return !!(x.beta && this.betaBuild());
     },
@@ -57,10 +60,16 @@ const Experiments = {
         return typeof APP_BUILD !== 'undefined' && /-beta\./.test(APP_BUILD);
     },
 
+    trying: {},
+
     set(id, value) {
         const app = this.app;
-        app.uiPrefs.experiments = { ...(app.uiPrefs.experiments || {}), [id]: !!value };
-        app.saveUiPrefs();
+        const x = this.LIST.find(e => e.id === id);
+        if (x && x.soon) this.trying[id] = !!value;
+        else {
+            app.uiPrefs.experiments = { ...(app.uiPrefs.experiments || {}), [id]: !!value };
+            app.saveUiPrefs();
+        }
         this.apply();
         dispatchEvent(new CustomEvent('jeditor-experiments', { detail: { id, on: !!value } }));
     },
@@ -83,6 +92,13 @@ const Experiments = {
             label.className = 'set-label';
             label.htmlFor = 'exp-' + x.id;
             label.textContent = x.title;
+            if (x.soon) {
+                const soon = document.createElement('span');
+                soon.className = 'exp-soon';
+                soon.textContent = 'Coming soon';
+                label.appendChild(soon);
+                row.classList.add('is-soon');
+            }
             const small = document.createElement('small');
             small.textContent = x.text;
             label.appendChild(small);
@@ -91,6 +107,7 @@ const Experiments = {
             input.className = 'switch';
             input.id = 'exp-' + x.id;
             input.checked = this.on(x.id);
+            input.disabled = !!x.soon;
             input.addEventListener('change', () => this.set(x.id, input.checked));
             row.append(label, input);
             list.appendChild(row);

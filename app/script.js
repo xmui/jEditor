@@ -947,6 +947,22 @@ const app = {
             this.toggleCustomizePanel(false);
             this.toggleShortcutsPanel(true);
         });
+
+        // Grouped rows (the 2.0 refinement): each run of rows on a page in
+        // a card of its own, as in macOS System Settings
+        for (const sec of document.querySelectorAll('.settings-section, #set-folders')) {
+            let card = null;
+            for (const el of [...sec.children]) {
+                if (!el.matches('.set-row:not(.set-row-end)')) { card = null; continue; }
+                if (!card) {
+                    card = document.createElement('div');
+                    card.className = 'set-card';
+                    el.before(card);
+                }
+                card.appendChild(el);
+            }
+        }
+        for (const id of ['cust-toasts', 'exp-list']) if ($(id)) $(id).classList.add('set-card');
     },
 
     isSettingsOpen() {
