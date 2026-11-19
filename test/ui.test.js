@@ -5801,13 +5801,34 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             window.APP_BUILD = 'v9.9.0-beta.1';
             const betaOn = Experiments.betaBuild() && Experiments.on('trial');
             delete window.APP_BUILD;
+            // Coming soon (Themes, paused): listed and greyed out, off in a
+            // beta too, a choice saved before set aside; only code turns it on
+            Experiments.LIST = [{ id: 'later', title: 'Later', text: 'Paused', beta: true, soon: true }];
+            app.uiPrefs.experiments = { ...app.uiPrefs.experiments, later: true };
+            app.saveUiPrefs();
+            window.APP_BUILD = 'v9.9.0-beta.1';
+            Experiments.render();
+            const sw = document.getElementById('exp-later');
+            const soon = { listed: !!sw, greyed: !!sw && sw.disabled && !sw.checked && /Coming soon/.test(sw.closest('.set-row').textContent),
+                off: !Experiments.on('later') };
+            Experiments.set('later', true);
+            soon.tried = Experiments.on('later');
+            Experiments.set('later', false);
+            soon.offAgain = !Experiments.on('later');
+            app.loadUiPrefs();
+            soon.notSaved = app.uiPrefs.experiments.later === true; // the old choice, untouched
+            delete app.uiPrefs.experiments.later;
+            app.saveUiPrefs();
+            delete window.APP_BUILD;
+            soon.themes = !!saved.find(x => x.id === 'themes' && x.soon);
             Experiments.LIST = saved;
             Experiments.render();
             app.toggleCustomizePanel(false);
-            return { labels, listed, off, heard, kept, unknown, betaOn };
+            return { labels, listed, off, heard, kept, unknown, betaOn, soon };
         });
         check('a beta says which ("1.42.0 beta 3"); a re-release, its version', r.labels === '1.42.0 beta 3|1.41.0|1.41.0|nonsense', r.labels);
         check('Settings → Experimental: Adjust and Paint no longer listed; one being made is on to start with in a beta', r.listed && r.betaOn, JSON.stringify(r));
+        check('Settings → Experimental: Themes is coming soon, greyed out and off (betas too); only the tests turn it on', Object.values(r.soon).every(Boolean), JSON.stringify(r.soon));
         check('an experiment is off until turned on; on, it says so and stays on', !r.off && r.heard && r.heard.id === 'trial' && r.heard.on && r.kept && !r.unknown, JSON.stringify(r));
         check('no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
