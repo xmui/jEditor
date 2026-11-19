@@ -2704,12 +2704,33 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     font-weight: var(--fw-semibold);
 }
 
-/* Sync (adjust-sync.js): which groups of settings go */
+/* Sync (adjust-sync.js): which groups of settings go. All, then each
+   section with a box of its own and its groups in two columns */
 .sync-groups {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--sp-2) var(--sp-4);
+    gap: var(--sp-3);
     margin-top: var(--sp-4);
+}
+
+.sync-sec {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-1) var(--sp-4);
+}
+
+.sync-sec .sync-head {
+    grid-column: 1 / -1;
+    font-weight: var(--fw-semibold);
+}
+
+.sync-sec .sync-check {
+    padding-left: var(--sp-5);
+}
+
+.sync-every-row {
+    padding-bottom: var(--sp-2);
+    border-bottom: 1px solid var(--border-subtle);
+    font-weight: var(--fw-semibold);
 }
 
 .sync-check {
@@ -11463,6 +11484,23 @@ body.touring .controls.idle button { pointer-events: auto; }
 
 :root:not([data-skin]) .cv-seg button {
     border-radius: calc(var(--r-xl) - 3px);
+}
+
+/* ---- Dialogs: where a dialog puts the focus as it opens shows no ring
+   until the keyboard moves it (ui.js: .focus-quiet); no monospace in
+   the interface: names, paths and keys in the system font ---- */
+:root:not([data-skin]) .focus-quiet :focus-visible {
+    outline: none;
+}
+
+:root:not([data-skin]) :is(.field.mono, .rename-token, .rename-preview, .sc-key, .oc-foot-path, .fo-dir, .set-label small.set-path) {
+    font-family: var(--font-ui);
+    font-variant-numeric: tabular-nums;
+}
+
+:root:not([data-skin]) .fc-keep-note {
+    margin: 0;
+    padding: 0 var(--sp-5) var(--sp-3);
 }
 
 /* ==========================================================================

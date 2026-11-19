@@ -269,7 +269,7 @@ const Export = {
         const again = `<button type="button" class="btn ghost sm" data-act="burners">Look again</button>`;
         if (b === 'loading' || b === null) return { html: html + '<div class="ex-empty">Looking for a disc burner…</div>', ready: false, go: 'Burn' };
         if (b.error) return { html: html + `<div class="ex-empty">Couldn't look for a disc burner: ${this.esc(b.error)} ${again}</div>`, ready: false, go: 'Burn' };
-        if (!b.length) return { html: html + `<div class="ex-empty">${this.esc(Host.say('{computer} has no drive that can burn CDs or DVDs.'))} Copy it to a USB drive instead.</div>`, ready: false, go: 'Burn' };
+        if (!b.length) return { html: html + `<div class="ex-empty">${this.esc(Host.say('{computer} has no drive that can burn CDs or DVDs.').replace(/^./, c => c.toUpperCase()))} Copy it to a USB drive instead.</div>`, ready: false, go: 'Burn' };
         // The burner asked for (a disc's drive, right-clicked), or one with a blank disc
         const asked = this.drive && b.find(x => x.drive && Places.key(x.drive) === Places.key(this.drive));
         if (asked) { this.burner = asked.id; this.drive = null; }
