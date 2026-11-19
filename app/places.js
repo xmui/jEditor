@@ -594,7 +594,7 @@ const Places = {
         if (Host.has('scan')) items.push(['Scan…', () => this.cardAction('scan')]);
         if (path) items.push(['Export…', () => this.cardAction('export')]);
         items.push(['—']);
-        if (Host.has('windows')) items.push(['Split with another window', () => this.cardAction('split')]);
+        if (Host.has('windows')) items.push(['Side by side with another window', () => this.cardAction('split')]);
         if (path) items.push([this.isPinned(path) ? 'Unpin' : 'Pin to the sidebar', () => this.cardAction('pin')]);
         if (items[items.length - 1][0] === '—') items.pop();
         return items;
