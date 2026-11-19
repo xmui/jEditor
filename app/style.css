@@ -11758,9 +11758,24 @@ body.touring .controls.idle button { pointer-events: auto; }
     background: var(--bg-hover);
 }
 
+/* Chosen: the ring and the tick, and no plate behind the photo (2.0,
+   audit M2: the photo is never dressed) */
 :root:not([data-skin]) .grid-item.selected {
-    background: var(--accent-soft);
+    background: transparent;
     box-shadow: inset 0 0 0 2px var(--accent);
+}
+:root:not([data-skin]) .grid-item.selected:hover {
+    background: var(--bg-hover);
+}
+
+/* In All photos, the folder's name shows under the pointer (or the
+   keyboard), not on every photo at once */
+:root:not([data-skin]) .grid-item .tile-folder {
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-out);
+}
+:root:not([data-skin]) .grid-item:is(:hover, :focus-visible, .active) .tile-folder {
+    opacity: 1;
 }
 
 :root:not([data-skin]) .grid-item.active {
