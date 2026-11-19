@@ -706,7 +706,11 @@
         if (browsing) items.push({ id: 'rail', kind: 'button', symbol: 'sidebar.left', label: 'Folder list', tooltip: said($('fb-rail').title), navigational: true });
         // The mode chip, as in the folder pill (or on its own in the single
         // view): not while the sidebar shows its own switch
-        const modeChip = [$('mode-chip-bar'), $('mode-float')].find(shown);
+        // (In jEditor's own look it's the row of modes, floating while the
+        // sidebar's closed: under this toolbar it doesn't show, so it's here)
+        const row = $('mode-row');
+        const rowFloats = !!row && row.classList.contains('float') && !row.classList.contains('hidden');
+        const modeChip = [$('mode-chip-bar'), $('mode-float')].find(shown) || rowFloats;
         if (modeChip && typeof Modes !== 'undefined') items.push(modeItem());
         if (browsing) items.push({ id: 'scope', kind: 'segment', segments: ['All photos', 'Folders'], selected: $('fb-all').classList.contains('active') ? 0 : 1, navigational: true });
         items.push({ kind: 'flexible' });
@@ -781,7 +785,7 @@
         document.documentElement.classList.add('native-toolbar');
         whenReady().then(() => {
             const watch = new MutationObserver(sendToolbar);
-            for (const el of [document.querySelector('header'), $('folder-bar'), $('mode-float')].filter(Boolean)) {
+            for (const el of [document.querySelector('header'), $('folder-bar'), $('mode-float'), $('mode-row')].filter(Boolean)) {
                 watch.observe(el, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class', 'aria-pressed', 'disabled', 'title', 'aria-label'] });
             }
             watch.observe(jeditor().elements.mainInterface, { attributes: true, attributeFilter: ['class'] });
