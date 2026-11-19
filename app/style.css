@@ -852,9 +852,11 @@ body[data-view="grid"] .interface[data-fit~="name-off"] .file-info {
 .header-controls.expanded:not(.vertical) {
     flex-wrap: wrap;
     justify-content: flex-end;
-    /* at least four across: with most of them under More, the pill was only
-       as wide as More itself and they ran down off the window in a column */
-    width: max(var(--hc-w, 0px), min(calc(4 * var(--ctl-lg) + 8px), calc(100vw - 2 * var(--gutter))));
+    /* at least three across: with most of them under More, the pill was
+       only as wide as More itself and they ran down off the window in a
+       column. Three, as 2.0's pill (Crop, Info, More) is three wide on the
+       web, so opening it never reaches over the file pill */
+    width: max(var(--hc-w, 0px), min(calc(3 * var(--ctl-lg) + 8px), calc(100vw - 2 * var(--gutter))));
     height: auto;
     min-height: var(--ctl-lg);
     padding: 3px var(--sp-1);
@@ -1415,12 +1417,14 @@ header:has(.header-controls.expanded) {
 
 .fl-star .fl-icon,
 #context-menu .ctx-flag.fl-star,
+.info-panel .ctx-flag.fl-star,
 #file-flags .tf-star {
     color: var(--flag-star);
 }
 
 .fl-rescan .fl-icon,
 #context-menu .ctx-flag.fl-rescan,
+.info-panel .ctx-flag.fl-rescan,
 #file-flags .tf-rescan {
     color: var(--flag-rescan);
 }
@@ -2306,7 +2310,7 @@ header:has(.header-controls.expanded) {
     padding: 2px;
 }
 
-#context-menu .ctx-flag {
+:is(#context-menu, .info-panel) .ctx-flag {
     display: grid;
     place-items: center;
     width: var(--ctl-md);
@@ -2316,11 +2320,11 @@ header:has(.header-controls.expanded) {
     transition: background-color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
 }
 
-#context-menu .ctx-flag:hover {
+:is(#context-menu, .info-panel) .ctx-flag:hover {
     transform: scale(1.1);
 }
 
-#context-menu .ctx-flag.on {
+:is(#context-menu, .info-panel) .ctx-flag.on {
     background: var(--tb-pressed);
 }
 
@@ -2329,7 +2333,7 @@ header:has(.header-controls.expanded) {
     height: 11px;
 }
 
-#context-menu .ctx-flag.fl-clear {
+:is(#context-menu, .info-panel) .ctx-flag.fl-clear {
     margin-left: auto;
     color: var(--text-2);
 }
@@ -9962,17 +9966,42 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     background: var(--tb-pressed);
 }
 
-:root:not([data-skin]) #selection-bar :is(#btn-rotate-left-bulk, #btn-rotate-right-bulk, #btn-auto-crop, .tb-sep) {
+/* The selection pill (the owner's pick, 19 November: take A, icons only):
+   the count with its ×, then Rotate, Move to, Export and Delete as round
+   icons, then More (⋯), which has the rest. Each names itself, with its
+   key, on hover. Delete is red, as in the menus */
+:root:not([data-skin]) #selection-bar :is(#btn-rotate-right-bulk, #btn-auto-crop, #btn-batch-rename, #btn-sync, .sel-word) {
     display: none;
 }
-
 :root:not([data-skin]) #selection-bar {
-    gap: var(--sp-1);
+    gap: 2px;
+    padding: 4px;
 }
-
+:root:not([data-skin]) #selection-bar .tb-btn.labelled span {
+    display: none;
+}
+:root:not([data-skin]) #selection-bar .tb-btn {
+    width: var(--ctl-md);
+    min-width: var(--ctl-md);
+    padding: 0;
+    justify-content: center;
+    border-radius: 50%;
+}
+:root:not([data-skin]) #selection-bar > * { order: 5; }
+:root:not([data-skin]) #btn-clear-selection { order: 0; }
+:root:not([data-skin]) #selection-bar > .tb-sep:first-of-type { order: 1; }
+:root:not([data-skin]) #btn-rotate-left-bulk { order: 2; }
+:root:not([data-skin]) #btn-move-to { order: 3; }
+:root:not([data-skin]) #btn-sel-export { order: 4; }
+:root:not([data-skin]) #btn-trash { order: 5; }
+:root:not([data-skin]) #selection-bar > .tb-sep:last-of-type { order: 6; display: block; }
+:root:not([data-skin]) #btn-export { order: 7; }
+:root:not([data-skin]) #selection-bar > .tb-sep:not(:first-of-type):not(:last-of-type) { display: none; }
 :root:not([data-skin]) #btn-trash {
     color: var(--danger-text);
 }
+/* Only in jEditor's own look: a theme's bar has Export in its More */
+:root[data-skin] #btn-sel-export { display: none; }
 
 /* Lens, Clear, Crystal and Liquid glass are too light to keep words
    readable on their own over a bright photo: a halo behind them does
@@ -10204,6 +10233,37 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
 :root:not([data-skin]) .mode-row .mode-seg > button.on,
 :root:not([data-skin]) .mode-row .mode-seg > button.on:hover {
     color: var(--accent-text);
+}
+
+/* The switch as a pill (the owner's addition, 19 November): a round
+   track, and the mode you're in on a raised round chip, as the iPhone's
+   segmented controls. Open or floating, the same */
+:root:not([data-skin]) .mode-row .mode-seg {
+    --seg-cell: calc(var(--ctl-lg) - 12px);
+    width: calc(3 * var(--seg-cell) + 4px + 6px);
+    grid-template-columns: repeat(3, var(--seg-cell));
+    padding: 3px;
+    border-radius: var(--r-pill);
+    background: var(--seg-bg);
+}
+:root:not([data-skin]) .mode-row .mode-seg > button {
+    width: var(--seg-cell);
+    height: var(--seg-cell);
+}
+:root:not([data-skin]) .folder-rail .mode-row .mode-seg > button.on,
+:root:not([data-skin]) .folder-rail .mode-row .mode-seg .seg-glide,
+:root:not([data-skin]) .mode-row.float .mode-seg > button.on,
+:root:not([data-skin]) .mode-row.float .mode-seg .seg-glide {
+    background: var(--seg-active);
+    box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.08), 0 1px 3px rgb(0 0 0 / 0.18);
+}
+:root:not([data-skin]) .mode-row .mode-seg.glides > button.on {
+    background: transparent;
+    box-shadow: none;
+}
+:root:not([data-skin]) .mode-row .mode-seg > button.on,
+:root:not([data-skin]) .mode-row .mode-seg > button.on:hover {
+    color: var(--text-1);
 }
 
 /* Closed: the same row, floating in the same place */
@@ -12250,4 +12310,76 @@ body.touring .controls.idle button { pointer-events: auto; }
    hairline keeps its edge. */
 :root:not([data-skin]) .crop-zoom {
     box-shadow: 0 0 0 1px var(--border);
+}
+
+/* ---- Info: a floating glass card, as Adjust's and Paint's (the owner's
+   addition, 19 November). Full height on the right; the photo, or the
+   grid, moves over to fit beside it rather than going under it. The
+   histogram, the flag and colour label, how it was taken as chips, the
+   list, then Show in Explorer (script.js: fillInfoExtra) ---- */
+:root:not([data-skin]) .info-panel {
+    --info-w: 300px;
+    bottom: var(--gutter);
+    width: var(--info-w);
+    max-height: none;
+    padding: 16px;
+    border-radius: 22px;
+}
+:root:not([data-skin]) .info-panel h3 {
+    margin: 0 0 12px;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-semibold);
+    color: var(--text-1);
+}
+:root:not([data-skin]) .interface.info-open :is(#image-container, #grid-view, #thumbnail-strip) {
+    margin-right: calc(300px + var(--gutter));
+    transition: margin-right var(--dur-base) var(--ease-out);
+}
+/* What floats at the bottom stays clear of it too */
+:root:not([data-skin]) .interface.info-open .selection-bar {
+    right: calc(2 * var(--gutter) + 300px + var(--grid-scrollbar, 0px));
+}
+:root:not([data-skin]) .interface.info-open .grid-controls {
+    right: calc(2 * var(--gutter) + 300px);
+}
+.info-extra {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+.info-extra[hidden], .info-foot[hidden] { display: none; }
+.info-hist {
+    width: 100%;
+    height: 72px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--text-1) 6%, transparent);
+}
+.info-flags {
+    justify-content: space-between;
+    padding: 0;
+}
+.info-panel .ctx-flag {
+    border: 0;
+    background: none;
+    color: var(--text-2);
+}
+.info-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.info-chips span {
+    padding: 2px 10px;
+    border-radius: var(--r-pill);
+    background: color-mix(in srgb, var(--text-1) 8%, transparent);
+    font-size: var(--fs-small);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-1);
+}
+.info-foot {
+    margin-top: 16px;
+}
+.info-foot .btn {
+    width: 100%;
 }

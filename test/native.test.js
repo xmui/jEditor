@@ -2365,11 +2365,13 @@ async function newPage(context, baseUrl, host = null) {
             await wait(() => window.__ejected);
             out.copiesEjected = window.__ejected;
             out.keptWhere = JSON.parse(localStorage.getItem('jeditor.export')).where;
-            // ⋯ on the selection bar: Export… opens it on Copies
+            // The selection pill's Export opens it on Copies (in jEditor's
+            // own look it's a button on the pill, not in its ⋯ menu)
             app.selection = new Set([f('photo1.jpg'), f('photo2.jpg')]);
-            const item = app.selectionMoreItems().find(i => /^Export/.test(i[0]));
-            out.menu = item[0];
-            item[1]();
+            app.updateSelectionUI();
+            out.inMore = app.selectionMoreItems().some(i => /^Export/.test(i[0] || ''));
+            out.menu = $('btn-sel-export').getAttribute('aria-label') || $('btn-sel-export').title;
+            $('btn-sel-export').click();
             out.fromMenu = $('ex-title').textContent + ' / ' + $('ex-go').textContent;
             $('ex-cancel').click();
             out.closed = $('export-panel').classList.contains('hidden');
@@ -2419,7 +2421,7 @@ async function newPage(context, baseUrl, host = null) {
         check('... Eject when done for copies onto a drive (remembered), and it ejects', r.copiesEjectOff && r.copiesEjected === 'E:\\', JSON.stringify([r.copiesEjectOff, r.copiesEjected]));
         check('... Leave out is in Where; a bad folder name stops it', r.whereMenu && r.badName, JSON.stringify([r.whereMenu, r.badName]));
         check('... the settings are remembered, a drive isn\'t', !r.kept.preset && r.kept.custom.size === 100 && r.keptWhere === 'project', JSON.stringify(r.kept));
-        check('... ⋯ on the selection bar opens it, on the selection', r.menu === 'Export 2…' && r.fromMenu === 'Export 2 photos / Export 2 photos' && r.closed, JSON.stringify([r.menu, r.fromMenu]));
+        check('... Export on the selection pill opens it, on the selection (and isn\'t in its ⋯ too)', /Export/.test(r.menu || '') && !r.inMore && r.fromMenu === 'Export 2 photos / Export 2 photos' && r.closed, JSON.stringify([r.menu, r.inMore, r.fromMenu]));
         check('right-click a USB drive: Export or Copy the project to it, each opening Export there', r.usbMenu === 'Export Beta to USB drive (E:)… | Copy Beta to USB drive (E:)…' && r.fromDrive === 'Copies / drive:E:\\' && r.copyFromDrive === 'USB drive or card / Copy to USB drive (E:)', JSON.stringify([r.usbMenu, r.fromDrive, r.copyFromDrive]));
         check('right-click a disc drive: Burn the project, with that drive\'s burner', r.discMenu === 'Burn Beta to a disc…' && r.burnerPicked === 'b1', JSON.stringify([r.discMenu, r.burnerPicked]));
         check('export: no JS errors', errors.length === 0, errors.join('; '));
