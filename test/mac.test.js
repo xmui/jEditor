@@ -123,7 +123,7 @@ const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - 
 const loaded = (page, n) => page.waitForFunction((n) => !app.isLoading && app.files.length === n, n, { timeout: 20000 });
 
 // A prompt nobody answers would wait for ever: fail instead
-setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a folder that never opened?)'); process.exit(1); }, 600000).unref(); // (the mode chip's cases, every size, look and theme, take a while)
+setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a folder that never opened?)'); process.exit(1); }, 900000).unref(); // (the mode chip's cases, every size, look and theme, take a while: each waits for the sidebar's slide)
 
 (async () => {
     await new Promise(r => releaseServer.listen(0, '127.0.0.1', r));
@@ -404,9 +404,13 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             app.setView('grid');
             if (!Folders.railOpen()) Folders.toggleRail();
             await new Promise(r => setTimeout(r, 300));
+            // (the slide in, and the pill moving over, ended: on a slow Mac 300ms wasn't always enough)
+            for (let i = 0; i < 40 && document.getAnimations().some(a => a.playState === 'running' && a.effect && a.effect.getComputedTiming().iterations !== Infinity); i++) await new Promise(r => setTimeout(r, 50));
             const rail = document.getElementById('folder-rail').getBoundingClientRect();
             const bar = document.getElementById('folder-bar').getBoundingClientRect();
-            const docked = { left: rail.left, top: rail.top, full: Math.round(rail.bottom) === innerHeight, beside: bar.left >= rail.right };
+            // (with macOS 26's toolbar there's no folder pill: the toolbar has its controls)
+            const native = document.documentElement.classList.contains('native-toolbar');
+            const docked = { left: rail.left, top: rail.top, full: Math.round(rail.bottom) === innerHeight, beside: native ? !bar.width : bar.left >= rail.right, native };
             // Recents in the sidebar: Beta Jones, not the open one
             await Places.draw();
             const recents = [...document.querySelectorAll('#sb-places .sb-recent .fr-name')].map(n => n.textContent);
@@ -783,7 +787,10 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                 app.setView('grid');
                                 await wait(80);
                                 if (Folders.railOpen() !== rail) app.keyHandlers()['folders.rail']();
-                                await wait(80);
+                                // Until the sidebar's slide (and what moves with it) has ended:
+                                // measured mid-slide, the chip was still off the window's edge
+                                const still = async (first = 80) => { await wait(first); for (let i = 0; i < 40 && document.getAnimations().some(a => a.playState === 'running' && a.effect && a.effect.getComputedTiming().iterations !== Infinity); i++) await wait(50); };
+                                await still();
                                 // Photos' own chip (the folder pill's, the sidebar closed), to match
                                 const photos = document.getElementById('mode-chip-bar');
                                 const pb = photos && photos.getClientRects().length ? photos.getBoundingClientRect() : null;
@@ -794,6 +801,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                 const name = document.querySelector('.mode-screen:not(.hidden) .mode-title');
                                 if (name) name.textContent = 'IMG_20261101_143207.jpg';
                                 await wait(150);
+                                await still(0);
                                 const back = async () => { await Modes.go('photos'); app.uiPrefs.scale = 1; app.applyUiPrefs(); };
                                 // macOS 26: the toolbar's own mode button, as in Photos (bridge.js);
                                 // the page's chip would be in its title bar, which takes the press
@@ -933,16 +941,16 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await settle();
             d = await describe();
             const view = await page.evaluate(() => app.viewMode);
-            check('a click is the page\'s own: the grid, with the folders and search there now', view === 'grid' && ['rail', 'scope', 'search'].every(i => d.items.some(x => x.id === i)), JSON.stringify([view, d.items.map(i => i.id)]));
+            check('a click is the page\'s own: the grid, with the folders and Find anything there now', view === 'grid' && ['rail', 'scope', 'find'].every(i => d.items.some(x => x.id === i)), JSON.stringify([view, d.items.map(i => i.id)]));
             await click('sort', 'name_desc');
             await settle();
             d = await describe();
             check('sorting from the toolbar sorts, and its menu says so', await page.evaluate(() => app.sortMode) === 'name_desc' && d.items.find(i => i.id === 'sort').menu.includes('✓Name (Z–A)'), JSON.stringify(d.items.find(i => i.id === 'sort')));
-            await click('search', 'black');
-            await page.waitForTimeout(600);
-            check('searching from the toolbar finds photos', await page.evaluate(() => app.viewFiles().map(f => f.name).join()) === '2-black.jpg');
-            await click('search', '');
-            await page.waitForTimeout(600);
+            await click('find');
+            await page.waitForTimeout(300);
+            check('the toolbar\'s Find anything opens it, to find a photo or folder', await page.evaluate(() => Palette.isOpen()), await page.evaluate(() => document.activeElement && document.activeElement.outerHTML.slice(0, 120)));
+            await page.keyboard.press('Escape');
+            await page.waitForTimeout(300);
 
             // Photos · Adjust · Paint: in the toolbar (as in the folder pill),
             // never the page's own chip under it; over Adjust and Paint the
@@ -1013,7 +1021,9 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await page.waitForFunction(() => Modes.current() === 'photos', null, { timeout: 15000 });
             await settle();
             d = await describe();
-            check('... and back in Photos, the toolbar is back', d.visible && d.items.some(i => i.id === 'mode'), JSON.stringify(d).slice(0, 200));
+            // (its mode button, or, with the sidebar open, the sidebar's own row of modes under it)
+            const railRow = await page.evaluate(() => { const r = document.querySelector('.folder-rail:not(.hidden) #mode-row'); return !!r && !!r.getClientRects().length && r.getBoundingClientRect().top >= 52; });
+            check('... and back in Photos, the toolbar is back', d.visible && (d.items.some(i => i.id === 'mode') || railRow), JSON.stringify([railRow, d]).slice(0, 300));
 
             // The toolbar's empty space moves the window: pressed there, it's the
             // window's (the drag view), not the page's under it

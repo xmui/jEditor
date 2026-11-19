@@ -706,7 +706,11 @@
         if (browsing) items.push({ id: 'rail', kind: 'button', symbol: 'sidebar.left', label: 'Folder list', tooltip: said($('fb-rail').title), navigational: true });
         // The mode chip, as in the folder pill (or on its own in the single
         // view): not while the sidebar shows its own switch
-        const modeChip = [$('mode-chip-bar'), $('mode-float')].find(shown);
+        // (In jEditor's own look it's the row of modes, floating while the
+        // sidebar's closed: under this toolbar it doesn't show, so it's here)
+        const row = $('mode-row');
+        const rowFloats = !!row && row.classList.contains('float') && !row.classList.contains('hidden');
+        const modeChip = [$('mode-chip-bar'), $('mode-float')].find(shown) || rowFloats;
         if (modeChip && typeof Modes !== 'undefined') items.push(modeItem());
         if (browsing) items.push({ id: 'scope', kind: 'segment', segments: ['All photos', 'Folders'], selected: $('fb-all').classList.contains('active') ? 0 : 1, navigational: true });
         items.push({ kind: 'flexible' });
@@ -728,7 +732,9 @@
             else items.push({ ...entry, kind: 'button', tooltip: said(b.title) });
         }
         items.push({ id: 'more', kind: 'menu', symbol: 'ellipsis.circle', label: 'More', menu: more });
-        if (browsing) items.push({ id: 'search', kind: 'search', value: $('fb-search').value, placeholder: 'Search' });
+        // Finding a photo or folder by name is Find anything's, as on the
+        // page (⌘F and / open it there too): the folder pill has no search box
+        if (browsing && typeof Palette !== 'undefined') items.push({ id: 'find', kind: 'button', symbol: 'magnifyingglass', label: 'Find anything', tooltip: 'Find a photo or folder (⌘F)' });
         const crumbs = $('fb-crumbs');
         const where = browsing && crumbs ? crumbs.textContent.replace(/\s+/g, ' ').trim() : '';
         return {
@@ -766,11 +772,8 @@
             const s = $('sort-mode');
             s.value = value;
             s.dispatchEvent(new Event('change', { bubbles: true }));
-        } else if (id === 'search') {
-            const input = $('fb-search');
-            input.value = String(value);
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-        } else if (id === 'more' && value === 'rename') click($('file-name'));
+        } else if (id === 'find') Palette.open();
+        else if (id === 'more' && value === 'rename') click($('file-name'));
         else {
             const key = String(id === 'more' ? value : id).replace(/^hc:/, '');
             click($('header-controls').querySelector(`button[data-hc="${key}"]`));
@@ -782,7 +785,7 @@
         document.documentElement.classList.add('native-toolbar');
         whenReady().then(() => {
             const watch = new MutationObserver(sendToolbar);
-            for (const el of [document.querySelector('header'), $('folder-bar'), $('mode-float')].filter(Boolean)) {
+            for (const el of [document.querySelector('header'), $('folder-bar'), $('mode-float'), $('mode-row')].filter(Boolean)) {
                 watch.observe(el, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class', 'aria-pressed', 'disabled', 'title', 'aria-label'] });
             }
             watch.observe(jeditor().elements.mainInterface, { attributes: true, attributeFilter: ['class'] });
@@ -790,11 +793,6 @@
             // comes back then, not when something else on the page changes
             for (const el of [$('adjust-editor'), $('paint-editor')].filter(Boolean)) watch.observe(el, { attributes: true, attributeFilter: ['class'] });
             $('sort-mode').addEventListener('change', sendToolbar);
-            // ⌘F and /: the toolbar's search field, not the hidden one
-            $('fb-search').addEventListener('focus', (e) => {
-                e.target.blur();
-                mac.request('toolbarSearch');
-            });
             sendToolbar();
         });
     }

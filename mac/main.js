@@ -651,9 +651,6 @@ async function handle(rec, type, data) {
             // What the native toolbar shows: the page's top row (bridge.js)
             if (NATIVE_TOOLBAR) toolbar.update(rec.win.getNativeWindowHandle(), data);
             return { ok: NATIVE_TOOLBAR };
-        case 'toolbarSearch':
-            if (NATIVE_TOOLBAR) toolbar.focusSearch(rec.win.getNativeWindowHandle());
-            return { ok: NATIVE_TOOLBAR };
         case 'titleBar': {
             // A theme draws the title bar: its own buttons work the window,
             // so the traffic lights hide, and macOS 26's toolbar comes off
