@@ -2021,6 +2021,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             type('remove'); out.also = first();
             type('vows'); out.photo = first() + ' ' + heads().join(',');
             type('cerem'); out.folder = heads().includes('Folders') && [...document.querySelectorAll('#palette-list .palette-row[data-kind=folder] .palette-name')].some(n => n.textContent === 'Ceremony');
+            // No match: says what was looked for, with one way on
+            type('zzqx');
+            out.none = document.querySelector('#palette-list .palette-none-what')?.textContent;
+            document.querySelector('#palette-list [data-go="all"]').click();
+            out.all = heads().join() === 'Every command' && document.querySelectorAll('#palette-list .palette-row[data-kind=cmd]').length > 20 && input.value === '';
             type('rotate left'); out.says = document.querySelector('#palette-list .palette-row.on .palette-sub')?.textContent;
             out.key = document.querySelector('#palette-list .palette-row.on .palette-key')?.textContent;
             // Enter runs it on the selection, and closes
@@ -2059,6 +2064,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             Tour.end();
             return out;
         });
+        check('find anything: no match says "Nothing matches “zzqx”", and Show every command lists them all', r.none === 'Nothing matches \u201czzqx\u201d' && r.all, JSON.stringify([r.none, r.all]));
         check('Ctrl+K opens Find anything, its box ready to type in', r.opens, JSON.stringify(r));
         check('find anything: says what is selected, and suggests what fits it', r.selected === '2 selected' && r.suggests === 'For the 2 selected', JSON.stringify(r));
         check('find anything: letters in order, a typo and other words for it all match', r.letters === 'Rotate left' && r.typo === 'Move to trash' && r.also === 'Move to trash', JSON.stringify(r));

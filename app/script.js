@@ -1581,6 +1581,17 @@ const app = {
         }
     },
 
+    // With no photos at all, what needs a photo is greyed out rather than
+    // live and doing nothing (audit A13)
+    NEEDS_PHOTO: ['btn-info', 'btn-crop', 'btn-adjust', 'btn-paint', 'btn-toggle-view', 'btn-fullscreen', 'btn-dupes', 'btn-convert'],
+    syncNoPhotos() {
+        const none = !this.files.length;
+        for (const id of this.NEEDS_PHOTO) {
+            const b = document.getElementById(id);
+            if (b) b.disabled = none;
+        }
+    },
+
     // An empty grid says why, with a button for the way out
     emptyState(files, folderTiles) {
         if (files.length || folderTiles.length) return null;
@@ -1606,6 +1617,10 @@ const app = {
         } else return null;
         const box = document.createElement('div');
         box.className = 'grid-empty-box';
+        if (grid.contains('grid-empty-project')) {
+            // A picture in the app's own line style: photos waiting
+            box.insertAdjacentHTML('beforeend', '<svg class="grid-empty-art" viewBox="0 0 64 64" aria-hidden="true"><rect x="14" y="10" width="40" height="32" rx="5"/><rect x="8" y="18" width="40" height="32" rx="5"/><circle cx="20" cy="29" r="3.5"/><path d="m8 44 12-11 9 8 6-5 13 11"/></svg>');
+        }
         const p = document.createElement('p');
         p.textContent = text;
         box.append(p);
@@ -3180,6 +3195,7 @@ const app = {
         this.elements.gridView.classList.toggle('grid-empty', !files.length && !folderTiles.length && Folders.scope !== null && this.files.length > 0);
         // A project with no photos at all yet
         this.elements.gridView.classList.toggle('grid-empty-project', !this.files.length && !folderTiles.length);
+        this.syncNoPhotos();
         this.elements.gridView.classList.toggle('grid-no-match', !files.length && Flags.active());
         const empty = this.emptyState(files, folderTiles);
         if (empty) this.elements.gridView.append(empty);

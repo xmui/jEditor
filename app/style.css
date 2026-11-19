@@ -1231,6 +1231,20 @@ header:has(.header-controls.expanded) {
     margin: 0;
 }
 
+.grid-empty-art {
+    display: block;
+    width: 64px;
+    height: 64px;
+    margin: 0 auto var(--sp-3);
+    fill: none;
+    stroke: var(--text-3);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.grid-empty-art rect:first-child { stroke-opacity: .55; }
+
 .grid-empty-actions {
     display: flex;
     justify-content: center;
@@ -4915,6 +4929,25 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     padding: var(--sp-4) var(--sp-3);
     color: var(--text-2);
 }
+
+/* No match: the words, then one quiet way on */
+.palette-none:has(.palette-none-go) {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sp-2);
+}
+
+.palette-none-go {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent-text);
+    font: inherit;
+    cursor: pointer;
+}
+
+.palette-none-go:hover { text-decoration: underline; }
 
 /* ---- 12. Full-screen modes ---- */
 
