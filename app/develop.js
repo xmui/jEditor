@@ -53,6 +53,8 @@
 //           before it's cropped, so not part of the tables at all
 //   persp:  perspective (keystone, retouch.js): the photo warped before
 //           its spots and crop, so not part of the tables either
+//   lens:   lens fixes (distortion, fringes, dark corners, retouch.js):
+//           done in the same warp, before the perspective
 
 const Develop = {
     SLIDERS: {
@@ -219,6 +221,7 @@ const Develop = {
         out.spots = ((typeof Retouch !== 'undefined' && Retouch.cleanSpots(a.spots)) || []).map(s => ({ ...s }));
         out.restore = this.cleanRestore(a.restore);
         out.persp = (typeof Retouch !== 'undefined' && Retouch.cleanPersp(a.persp)) || null;
+        out.lens = (typeof Retouch !== 'undefined' && Retouch.cleanLens(a.lens)) || null;
         return out;
     },
 
@@ -477,6 +480,8 @@ const Develop = {
         if (spots) out.spots = spots;
         const persp = typeof Retouch !== 'undefined' ? Retouch.cleanPersp(v.persp) : null;
         if (persp) out.persp = persp;
+        const lens = typeof Retouch !== 'undefined' ? Retouch.cleanLens(v.lens) : null;
+        if (lens) out.lens = lens;
         const restore = this.cleanRestore(v.restore);
         if (restore) out.restore = restore;
         const lk = this.lookOf(v);
@@ -492,13 +497,14 @@ const Develop = {
         return !!this.clean(adj);
     },
 
-    // Anything for the tables to do (spots and perspective aside: they're
+    // Anything for the tables to do (spots, perspective and lens aside: they're
     // done before the crop, by retouch.js), as settings without the spots, or null
     tonal(adj) {
         const c = this.clean(adj);
         if (!c) return null;
         delete c.spots;
         delete c.persp;
+        delete c.lens;
         return Object.keys(c).length ? c : null;
     },
 
@@ -518,6 +524,7 @@ const Develop = {
         { id: 'grading', name: 'Color grading', keys: ['grade', 'gradeBlend', 'gradeBalance'] },
         { id: 'detail', name: 'Detail', keys: ['sharpen', 'sharpRadius', 'sharpMask', 'noise', 'colorNoise'] },
         { id: 'descreen', name: 'Descreen', keys: ['descreen', 'screen'] },
+        { id: 'lens', name: 'Lens fixes', keys: ['lens'] },
         { id: 'effects', name: 'Effects', keys: ['vignette', 'vigMid', 'vigFeather', 'vigRound', 'grain', 'grainSize', 'grainColor', 'halation'] },
         { id: 'masks', name: 'Masks', keys: ['masks'], off: true, note: 'Sky and subject masks are found in each photo, so each keeps its own' },
         { id: 'spots', name: 'Spot removal', keys: ['spots'], off: true },
