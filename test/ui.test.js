@@ -855,7 +855,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const out = {};
             localStorage.removeItem('jeditor.ui');
 
-            // Default pill: info, view, refresh, crop, history visible; rest in "More"
+            // Default pill (2.0): Scan, Camera, Crop and Info (Scan and Camera
+            // only in the apps); the rest in "More"
             const hc = document.getElementById('header-controls');
             const visible = [...hc.querySelectorAll('[data-hc]')]
                 .filter(b => !b.classList.contains('hc-extra') && !b.classList.contains('hidden') && getComputedStyle(b).display !== 'none')
@@ -866,6 +867,32 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.extrasHiddenCollapsed = getComputedStyle(document.getElementById('btn-toggle-fit')).display === 'none';
             document.getElementById('btn-more').click();
             out.extrasShownExpanded = getComputedStyle(document.getElementById('btn-toggle-fit')).display !== 'none';
+            document.getElementById('btn-more').click();
+
+            // Right-click on the pill: which it shows, ticked
+            hc.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 600, clientY: 40 }));
+            const rows = [...document.querySelectorAll('#context-menu button')];
+            const ticked = rows.filter(b => b.getAttribute('aria-checked') === 'true').map(b => b.textContent.trim());
+            const heading = document.querySelector('#context-menu .ctx-heading');
+            rows.find(b => b.textContent.trim() === 'Rescan folder').click();
+            const onPill = app.uiPrefs.placement.refresh === 'main' && !document.getElementById('btn-refresh').classList.contains('hc-extra');
+            app.uiPrefs.placement.refresh = 'more';
+            app.applyUiPrefs();
+            out.pillMenu = !!heading && heading.textContent === 'Show in the pill' && ticked.includes('Crop and straighten') && ticked.includes('Info') && !ticked.includes('Rescan folder')
+                && rows.some(b => b.textContent.trim() === 'Customize…') && onPill;
+
+            // Saved before 2.0: View, Rescan and History were on it; a
+            // Full screen put there by hand stays
+            const before = { ...app.defaultUiPrefs(), pill: undefined, order: ['scan', 'camera', 'info', 'view', 'refresh', 'crop', 'history'] };
+            before.placement = { ...before.placement, view: 'main', refresh: 'main', history: 'main', fullscreen: 'main' };
+            localStorage.setItem('jeditor.ui', JSON.stringify(before));
+            app.loadUiPrefs();
+            const pl = app.uiPrefs.placement;
+            out.migrated = pl.view === 'more' && pl.refresh === 'more' && pl.history === 'more' && pl.fullscreen === 'main'
+                && app.uiPrefs.order.indexOf('crop') < app.uiPrefs.order.indexOf('info');
+            localStorage.removeItem('jeditor.ui');
+            app.uiPrefs = app.defaultUiPrefs();
+            app.applyUiPrefs();
 
             // Placement + order + vertical + scale via prefs
             app.uiPrefs.placement.fullscreen = 'main';
@@ -920,12 +947,14 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.pillHidden = pill.classList.contains('hidden');
             return out;
         });
-        check('default main controls: info, view, refresh, crop, history', r.defaultMain === 'info,view,refresh,crop,history', r.defaultMain);
+        check('default pill: Crop and Info (Scan and Camera too in the apps), then More', r.defaultMain === 'crop,info', r.defaultMain);
+        check('the pill\'s right-click: what it shows, ticked; one picked goes on it; Customize… goes to Settings', r.pillMenu, JSON.stringify(r.pillMenu));
+        check('2.0\'s pill, once: the view switch, Rescan and History move to More, Crop before Info; other choices stay', r.migrated, JSON.stringify(r.migrated));
         // (Adjust and Paint too: the mode switch has them)
-        check('extras live in More (adjust, paint, fit, strip, fullscreen, dupes, convert, keys, whatsnew, customize)', r.defaultExtras === 'adjust,paint,fit,strip,fullscreen,dupes,convert,keys,whatsnew,customize', r.defaultExtras);
+        check('extras live in More (view, rescan, adjust, paint, history, fit, strip, fullscreen, dupes, convert, keys, whatsnew, customize)', r.defaultExtras === 'view,refresh,adjust,paint,history,fit,strip,fullscreen,dupes,convert,keys,whatsnew,customize', r.defaultExtras);
         check('More expander shows/hides extras', r.extrasHiddenCollapsed && r.extrasShownExpanded);
         // (Adjust, newer than that saved order, goes after Crop, and Paint after it)
-        check('reorder + hide + promote via prefs', r.reordered === 'crop,adjust,paint' && r.refreshHidden && r.fullscreenMain,
+        check('reorder + hide + promote via prefs', r.reordered === 'crop,info,view' && r.refreshHidden && r.fullscreenMain,
             JSON.stringify({ o: r.reordered, h: r.refreshHidden, f: r.fullscreenMain }));
         check('vertical pill + scale + persistence', r.vertical && r.persisted && parseFloat(r.scaleApplied) === 1.2,
             JSON.stringify({ v: r.vertical, p: r.persisted, z: r.scaleApplied }));
@@ -2501,6 +2530,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await new Promise(r => setTimeout(r, 400));
         });
         const ring = () => page.evaluate(() => [...document.querySelectorAll(':focus-visible')].map(e => e.id || e.className).join());
+        // The view switch is in More in 2.0's pill: on the pill for this
+        await page.evaluate(() => { app.uiPrefs.placement.view = 'main'; app.applyUiPrefs(); });
         const stuck = [];
         for (const [id, key] of [['btn-info', 'Escape'], ['btn-toggle-view', 'ArrowRight'], ['btn-export', 'Escape'], ['fb-all', 'Escape']]) {
             const b = await page.$('#' + id);
@@ -5235,7 +5266,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const f = (n) => app.files.find(x => x.name === n);
             const key = (k, o = {}) => window.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, ...o }));
 
-            out.button = !!document.querySelector('#header-controls [data-hc="history"]:not(.hidden):not(.hc-extra)');
+            // In the pill's More (2.0), and on H
+            out.button = !!document.querySelector('#header-controls [data-hc="history"]:not(.hidden)');
             key('h');
             out.empty = History.isOpen() && !document.getElementById('history-empty').classList.contains('hidden');
             key('Escape');
@@ -5267,7 +5299,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.infoCloses = !History.isOpen();
             return out;
         });
-        check('history: a toolbar button and H open it; empty says so; Esc closes', r.button && r.empty && r.closed, JSON.stringify(r));
+        check('history: in the toolbar (its More) and H opens it; empty says so; Esc closes', r.button && r.empty && r.closed, JSON.stringify(r));
         check('history: every step, newest first, with what and which photo', JSON.stringify(r.rows) === JSON.stringify(['Rotation:c.jpg', 'Red label:c.jpg', 'Rename:b.jpg → Smith_02.jpg', 'Star:a.jpg']), JSON.stringify(r.rows));
         check('history: clicking a step asks first, naming what is undone', r.askedFirst);
         check('history: then goes back to before it, saying so once', r.wentBack && /Went back 3 steps/.test(r.toast) && r.left === 'Star', r.toast + ' ' + r.left);
