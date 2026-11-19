@@ -1185,6 +1185,56 @@ const PaintEditor = {
             sel.addEventListener('change', () => { o[key] = typeof o[key] === 'number' ? +sel.value : sel.value; save(); sel.blur(); });
             return add(l);
         };
+        // Bold and Italic: toggle buttons side by side, as text tools have
+        // them (audit M4), not checkboxes
+        let toggles = null;
+        const toggle = (label, key, glyph) => {
+            if (!toggles) {
+                toggles = add(document.createElement('div'));
+                toggles.className = 'paint-opt paint-toggles';
+                toggles.setAttribute('role', 'group');
+                toggles.setAttribute('aria-label', 'Style');
+            }
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'paint-toggle';
+            b.dataset.opt = key;
+            b.innerHTML = glyph;
+            b.title = label;
+            b.setAttribute('aria-label', label);
+            b.setAttribute('aria-pressed', String(!!o[key]));
+            b.addEventListener('click', () => { o[key] = !o[key]; b.setAttribute('aria-pressed', String(!!o[key])); save(); b.blur(); });
+            toggles.appendChild(b);
+            return b;
+        };
+        // A few choices shown at once: a segmented control (Align)
+        const segment = (label, key, items) => {
+            const d = document.createElement('div');
+            d.className = 'paint-opt';
+            d.innerHTML = '<span></span><div class="paint-seg" role="radiogroup"></div>';
+            d.querySelector('span').textContent = label;
+            const row = d.querySelector('.paint-seg');
+            row.setAttribute('aria-label', label);
+            for (const [v, t, icon] of items) {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.setAttribute('role', 'radio');
+                b.dataset.value = v;
+                b.title = t;
+                b.setAttribute('aria-label', t);
+                b.innerHTML = icon;
+                b.addEventListener('click', () => {
+                    o[key] = v;
+                    row.querySelectorAll('button').forEach(x => x.setAttribute('aria-checked', String(x === b)));
+                    save();
+                    b.blur();
+                });
+                b.setAttribute('aria-checked', String(String(o[key]) === v));
+                row.appendChild(b);
+            }
+            return add(d);
+        };
+        const lines = (a) => `<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true">${a}</svg>`;
         // (Sizes, and how the brush paints, shown on the photo as they change)
         const shown = ['size', 'hardness', 'flow', 'density', 'lineWidth', 'fontSize'];
         this.optRows = {};
@@ -1235,9 +1285,13 @@ const PaintEditor = {
                 const c = check('New layer', 'shapeLayer');
                 if (c) c.title = 'On: each shape is a layer of its own, its line and fill changed later. Off: drawn onto this layer';
             }
-            if (k === 'bold') check('Bold', 'bold');
-            if (k === 'italic') check('Italic', 'italic');
-            if (k === 'align') choose('Align', 'align', [['left', 'Left'], ['center', 'Centre'], ['right', 'Right']]);
+            if (k === 'bold') toggle('Bold', 'bold', '<b>B</b>');
+            if (k === 'italic') toggle('Italic', 'italic', '<i>I</i>');
+            if (k === 'align') segment('Align', 'align', [
+                ['left', 'Left', lines('<path d="M4 6h16M4 12h10M4 18h13"/>')],
+                ['center', 'Centre', lines('<path d="M4 6h16M7 12h10M5.5 18h13"/>')],
+                ['right', 'Right', lines('<path d="M4 6h16M10 12h10M7 18h13"/>')]
+            ]);
             if (k === 'outline') {
                 const c = num('Outline', 'outline', 0, 50);
                 if (c) c.title = 'An outline round the letters, in the background colour';
