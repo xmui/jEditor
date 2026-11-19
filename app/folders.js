@@ -1145,8 +1145,18 @@ const Folders = {
         items.push(['—'], ['New folder inside…', () => this.newFolder(path)]);
         if (Blank.can()) items.push(['New blank image…', () => Blank.open(path)]);
         if (app.files.some(f => this.within(this.dirOf(f), path))) items.push(['Convert…', () => Convert.open({ folder: path })]);
+        if (path) items.push(['Rename folder…', () => this.renameFolder(path)]);
+        // Where it is on disk, as a drive's or the project's menu has it
+        const root = typeof Places !== 'undefined' && Places.current();
+        if (typeof root === 'string' && root && path) {
+            const sep = root.includes('\\') ? '\\' : '/';
+            const abs = root.replace(/[\\/]$/, '') + sep + path.split('/').join(sep);
+            items.push(['—']);
+            if (Host.has('reveal')) items.push([Host.say('Show in {files}'), () => Host.get().reveal(abs)]);
+            const pinned = Places.isPinned(abs);
+            items.push([pinned ? 'Unpin' : 'Pin to the sidebar', () => pinned ? Places.unpin(abs) : Places.pin(abs, path.split('/').pop())]);
+        }
         if (path) {
-            items.push(['Rename folder…', () => this.renameFolder(path)]);
             const empty = !app.files.some(f => this.within(this.dirOf(f), path)) && !this.children(path).length;
             if (empty) items.push(['—'], ['Delete folder', () => this.deleteFolder(path), true]);
         }
