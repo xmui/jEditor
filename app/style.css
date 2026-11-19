@@ -3463,9 +3463,31 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 
 .sc-keys {
     display: flex;
-    flex-wrap: wrap;
+    flex: none;
+    flex-wrap: nowrap;
     justify-content: flex-end;
     gap: var(--sp-1);
+    white-space: nowrap;
+}
+
+/* A short name on one line, the rest in its tooltip (audit M7) */
+.sc-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The key as the menus write it, in the system font */
+.sc-row .sc-key {
+    font-family: inherit;
+    font-size: var(--fs-small);
+    font-variant-numeric: tabular-nums;
+}
+
+/* + only on the row under the pointer (or the keyboard) */
+.sc-row:not(:hover):not(:focus-within) .sc-add:not(.recording) {
+    opacity: 0;
 }
 
 .sc-key {
