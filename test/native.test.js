@@ -1635,6 +1635,9 @@ async function newPage(context, baseUrl, host = null) {
             out.noAlert = !UI.isOpen();
             const box = $('grid-view').querySelector('.grid-empty-box');
             out.message = box ? box.textContent : '';
+            // With no photos, what needs one is greyed out (Scan stays)
+            out.greyed = ['btn-info', 'btn-crop', 'btn-adjust'].every(id => $(id).disabled) && !$('btn-scan').disabled;
+            out.art = !!box.querySelector('.grid-empty-art');
             // Its buttons: Scan opens the scan dock, Explorer shows the folder
             box.querySelector('.btn.primary').click();
             out.scanOpened = !$('scan-panel').classList.contains('hidden');
@@ -1649,18 +1652,21 @@ async function newPage(context, baseUrl, host = null) {
             out.names = scanned.names.join();
             out.files = app.files.length;
             out.noMessage = !$('grid-view').classList.contains('grid-empty-project');
+            out.live = ['btn-info', 'btn-crop', 'btn-adjust'].every(id => !$(id).disabled);
             // Every photo deleted: it stays open, empty
             window.__noBin = false;
             await app.moveToTrash([...app.files]);
             await wait(() => app.files.length === 0);
             out.stillOpen = !$('main-interface').classList.contains('hidden') && $('drop-zone').classList.contains('hidden');
             out.emptyAgain = $('grid-view').classList.contains('grid-empty-project');
+            out.greyedAgain = $('btn-crop').disabled;
             return out;
         });
         check('an empty folder opens as an empty project, no "No photos found"', r.open && r.noAlert && r.view === 'grid', JSON.stringify(r));
         check('... saying how to fill it, with Scan and Show in Explorer buttons', /Scan into this project/.test(r.message) && /ScanShow in Explorer$/.test(r.message) && r.scanOpened && /Empty Project$/.test(r.revealed || ''), JSON.stringify([r.message, r.scanOpened, r.revealed]));
         check('scanning into it shows the photos', r.names === 'Empty-001.jpg,Empty-002.jpg' && r.files === 2 && r.noMessage, JSON.stringify([r.names, r.files, r.noMessage]));
         check('deleting every photo keeps it open, empty', r.stillOpen && r.emptyAgain, JSON.stringify([r.stillOpen, r.emptyAgain]));
+        check('... Info, Crop and Adjust greyed out with no photos (with a picture), live once photos come, greyed again when they go', r.greyed && r.art && r.live && r.greyedAgain, JSON.stringify([r.greyed, r.art, r.live, r.greyedAgain]));
         check('empty project suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
