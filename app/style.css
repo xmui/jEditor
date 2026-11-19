@@ -10223,6 +10223,37 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
     color: var(--accent-text);
 }
 
+/* The switch as a pill (the owner's addition, 19 November): a round
+   track, and the mode you're in on a raised round chip, as the iPhone's
+   segmented controls. Open or floating, the same */
+:root:not([data-skin]) .mode-row .mode-seg {
+    --seg-cell: calc(var(--ctl-lg) - 12px);
+    width: calc(3 * var(--seg-cell) + 4px + 6px);
+    grid-template-columns: repeat(3, var(--seg-cell));
+    padding: 3px;
+    border-radius: var(--r-pill);
+    background: var(--seg-bg);
+}
+:root:not([data-skin]) .mode-row .mode-seg > button {
+    width: var(--seg-cell);
+    height: var(--seg-cell);
+}
+:root:not([data-skin]) .folder-rail .mode-row .mode-seg > button.on,
+:root:not([data-skin]) .folder-rail .mode-row .mode-seg .seg-glide,
+:root:not([data-skin]) .mode-row.float .mode-seg > button.on,
+:root:not([data-skin]) .mode-row.float .mode-seg .seg-glide {
+    background: var(--seg-active);
+    box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.08), 0 1px 3px rgb(0 0 0 / 0.18);
+}
+:root:not([data-skin]) .mode-row .mode-seg.glides > button.on {
+    background: transparent;
+    box-shadow: none;
+}
+:root:not([data-skin]) .mode-row .mode-seg > button.on,
+:root:not([data-skin]) .mode-row .mode-seg > button.on:hover {
+    color: var(--text-1);
+}
+
 /* Closed: the same row, floating in the same place */
 :root:not([data-skin]) .mode-row.float {
     position: fixed;
