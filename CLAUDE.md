@@ -62,8 +62,9 @@ another platform, give its row a ✓ there.
 The owner runs one chat per job. Each job is a file in `.claude/agents/`:
 `photos`, `adjust`, `paint` and `bugs`, plus `wrangler` (manages: who's
 doing what; builds nothing), `franky` (tells off an agent that screwed
-up, when the owner names it) and `t-max` (checks where usage is going,
-when asked). When the owner says "be the Photos agent" (or names any of
+up, when the owner names it), `t-max` (checks where usage is going,
+when asked) and `design` (the outside design firm for the 2.0 polish
+pass). When the owner says "be the Photos agent" (or names any of
 them), read that file and work as it says. With no role given, work as
 usual.
 
