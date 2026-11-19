@@ -939,8 +939,8 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             });
             check('the title always has a backing (the toolbar\'s edge), and the photo starts below it, untouched', edge.band >= 52 && edge.photoTop >= edge.band, JSON.stringify(edge));
             check('... its title is the photo, its subtitle the project and where it is in it', d.title === '1-white.jpg' && /Glass/.test(d.subtitle) && /1 \/ 2/.test(d.subtitle), JSON.stringify([d.title, d.subtitle]));
-            check('... with the page\'s controls: sort, crop, info, More (Rename… first, the view switch in it: the 2.0 pill)', ['sort', 'hc:crop', 'hc:info', 'more'].every(i => ids.includes(i)) && !ids.includes('hc:view') && d.items.find(i => i.id === 'more').menu[0] === 'Rename…' && d.items.find(i => i.id === 'more').menu.includes('Switch between grid and single view') && d.items.find(i => i.id === 'sort').menu.includes('✓Name (A–Z)'), JSON.stringify(d.items));
-            await click('more', 'view');
+            check('... with the page\'s controls: sort, info, view, crop, More (Rename… first)', ['sort', 'hc:info', 'hc:view', 'hc:crop', 'more'].every(i => ids.includes(i)) && d.items.find(i => i.id === 'more').menu[0] === 'Rename…' && d.items.find(i => i.id === 'sort').menu.includes('✓Name (A–Z)'), JSON.stringify(d.items));
+            await click('hc:view');
             await settle();
             d = await describe();
             const view = await page.evaluate(() => app.viewMode);
