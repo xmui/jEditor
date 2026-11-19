@@ -2192,9 +2192,31 @@ const app = {
                 dateTaken: null
             };
 
+            // A number (SHORT, LONG) or a fraction (RATIONAL, SRATIONAL)
+            const readNum = (entry) => {
+                const type = view.getUint16(entry + 2, le);
+                if (type === 3) return view.getUint16(entry + 8, le);
+                if (type === 4) return view.getUint32(entry + 8, le);
+                if (type !== 5 && type !== 10) return null;
+                const at = tiff + view.getUint32(entry + 8, le);
+                if (at + 8 > view.byteLength) return null;
+                const n = type === 5 ? view.getUint32(at, le) : view.getInt32(at, le);
+                const d = type === 5 ? view.getUint32(at + 4, le) : view.getInt32(at + 4, le);
+                return d ? n / d : null;
+            };
+
             if (ifd0[0x8769]) {
                 const exifIfd = {};
-                scanIfd(tiff + view.getUint32(ifd0[0x8769] + 8, le), [0x9003], exifIfd);
+                // Taken; and for Info, how: exposure time, f-number, ISO,
+                // exposure bias, focal length, lens
+                scanIfd(tiff + view.getUint32(ifd0[0x8769] + 8, le), [0x9003, 0x829A, 0x829D, 0x8827, 0x9204, 0x920A, 0xA434], exifIfd);
+                const num = (tag) => (exifIfd[tag] ? readNum(exifIfd[tag]) : null);
+                result.exposure = num(0x829A);
+                result.fNumber = num(0x829D);
+                result.iso = num(0x8827);
+                result.bias = num(0x9204);
+                result.focal = num(0x920A);
+                result.lens = exifIfd[0xA434] ? readAscii(exifIfd[0xA434]) : null;
                 if (exifIfd[0x9003]) {
                     const raw = readAscii(exifIfd[0x9003]); // "YYYY:MM:DD HH:MM:SS"
                     const m = raw && raw.match(/^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
@@ -2247,6 +2269,12 @@ const app = {
         if (!panel) return;
         const open = forceOpen !== null ? forceOpen : panel.classList.contains('hidden');
         panel.classList.toggle('hidden', !open);
+        // The photo moves over to fit beside it (style.css: info-open)
+        const ui = document.getElementById('main-interface');
+        if (ui && ui.classList.contains('info-open') !== open) {
+            ui.classList.toggle('info-open', open);
+            requestAnimationFrame(() => dispatchEvent(new Event('resize')));
+        }
         if (open && History.isOpen()) History.toggle(false);
         this._infoOpen = open;
         this._infoTarget = open ? target : null;
@@ -2283,6 +2311,7 @@ const app = {
 
     setInfoRows(title, rows) {
         const panel = this.elements.infoPanel;
+        this.fillInfoExtra(null);
         panel.querySelector('h3').textContent = title;
         const list = this.elements.infoList;
         list.innerHTML = '';
@@ -2461,8 +2490,123 @@ const app = {
             if (exif.dateTaken) rows.push(['Taken', exif.dateTaken.toLocaleString()]);
             const camera = [exif.make, exif.model].filter(Boolean).join(' ');
             if (camera) rows.push(['Camera', camera]);
+            if (exif.lens) rows.push(['Lens', exif.lens]);
         }
+        // What's kept in jEditor for it, not yet in the file
+        const edit = typeof Edits !== 'undefined' && Edits.get(file);
+        if (edit) {
+            const what = [Object.keys(edit).some(k => !['adj', 'paint'].includes(k)) && 'Crop or turn', edit.adj && 'Adjust', edit.paint && 'Paint'].filter(Boolean);
+            rows.push(['Edits', `${what.join(', ') || 'Kept'} · not yet in the file`]);
+        }
+        if (token !== this._infoToken) return;
         render();
+        this.fillInfoExtra(file, exif);
+    },
+
+    // jEditor's own look: Info is a glass card, as Adjust's and Paint's
+    // panels (the owner's addition, 19 November), with more in it than the
+    // list: the histogram, the photo's flag and colour label (click to
+    // change), how it was taken as chips, and Show in Explorer. A theme
+    // keeps its plain list.
+    fillInfoExtra(file, exif) {
+        const panel = this.elements.infoPanel;
+        let top = document.getElementById('info-extra'), foot = document.getElementById('info-foot');
+        if (!top) {
+            top = document.createElement('div');
+            top.id = 'info-extra';
+            top.className = 'info-extra';
+            this.elements.infoList.before(top);
+            foot = document.createElement('div');
+            foot.id = 'info-foot';
+            foot.className = 'info-foot';
+            this.elements.infoList.after(foot);
+        }
+        top.textContent = '';
+        foot.textContent = '';
+        const own = !document.documentElement.dataset.skin;
+        top.hidden = foot.hidden = !own || !file;
+        if (!own || !file) return;
+        // The histogram, from the picture on screen (or its thumbnail)
+        const canvas = document.createElement('canvas');
+        canvas.className = 'info-hist';
+        canvas.width = 256;
+        canvas.height = 72;
+        top.appendChild(canvas);
+        const img = this._displayFile === file && this.elements.currentImage.naturalWidth ? this.elements.currentImage : null;
+        const draw = (src) => { try { this.drawInfoHistogram(canvas, src); } catch (e) { canvas.remove(); } };
+        if (img) draw(img);
+        else if (file.thumbnailUrl) { const t = new Image(); t.onload = () => draw(t); t.src = file.thumbnailUrl; }
+        else canvas.remove();
+        // Flag and colour label: the right-click menu's row
+        if (this.dirHandle && !this.readOnlyMode && typeof Flags !== 'undefined') {
+            const row = Flags.menuRow([file]);
+            row.classList.add('info-flags');
+            row.addEventListener('click', () => setTimeout(() => this.refreshInfoPanel(), 0));
+            top.appendChild(row);
+        }
+        // How it was taken, as chips
+        if (exif) {
+            const chips = [];
+            if (exif.focal) chips.push(`${Math.round(exif.focal)} mm`);
+            if (exif.fNumber) chips.push(`ƒ/${+exif.fNumber.toFixed(1)}`);
+            if (exif.exposure) chips.push(exif.exposure >= 1 ? `${+exif.exposure.toFixed(1)} s` : `1/${Math.round(1 / exif.exposure)} s`);
+            if (exif.iso) chips.push(`ISO ${exif.iso}`);
+            if (exif.bias) chips.push(`${exif.bias > 0 ? '+' : '−'}${Math.abs(+exif.bias.toFixed(1))} EV`);
+            if (chips.length) {
+                const box = document.createElement('div');
+                box.className = 'info-chips';
+                for (const c of chips) {
+                    const s = document.createElement('span');
+                    s.textContent = c;
+                    box.appendChild(s);
+                }
+                top.appendChild(box);
+            }
+        }
+        // Show in Explorer / Finder: the photo on disk (folders.js does the
+        // same for a folder)
+        const root = typeof Places !== 'undefined' && Places.current();
+        let full = null;
+        if (typeof Host !== 'undefined' && Host.has('reveal') && typeof root === 'string' && root) {
+            const sep = root.includes('\\') ? '\\' : '/';
+            full = root.replace(/[\\/]$/, '') + sep + (file.relPath || file.name).split('/').join(sep);
+        }
+        if (full) {
+            const b = document.createElement('button');
+            b.className = 'btn secondary';
+            b.textContent = Host.say('Show in {files}');
+            b.addEventListener('click', () => Host.get().reveal(full));
+            foot.appendChild(b);
+        }
+    },
+
+    // Red, green and blue, and their light, over 256 steps
+    drawInfoHistogram(canvas, src) {
+        const w = 160, h = Math.max(1, Math.round(160 * (src.naturalHeight || src.height) / (src.naturalWidth || src.width)));
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        const x = c.getContext('2d', { willReadFrequently: true });
+        x.drawImage(src, 0, 0, w, h);
+        const px = x.getImageData(0, 0, w, h).data;
+        const bins = [new Uint32Array(256), new Uint32Array(256), new Uint32Array(256)];
+        for (let i = 0; i < px.length; i += 4) { bins[0][px[i]]++; bins[1][px[i + 1]]++; bins[2][px[i + 2]]++; }
+        let max = 1;
+        for (const b of bins) for (let i = 2; i < 254; i++) max = Math.max(max, b[i]);
+        const g = canvas.getContext('2d');
+        g.clearRect(0, 0, canvas.width, canvas.height);
+        const t = document.documentElement.dataset.theme;
+        const light = t === 'light' || (t !== 'dark' && matchMedia('(prefers-color-scheme: light)').matches);
+        g.globalCompositeOperation = light ? 'multiply' : 'screen';
+        ['rgb(255 80 80 / 0.7)', 'rgb(80 220 120 / 0.7)', 'rgb(90 140 255 / 0.7)'].forEach((col, ch) => {
+            g.fillStyle = col;
+            g.beginPath();
+            g.moveTo(0, canvas.height);
+            for (let i = 0; i < 256; i++) g.lineTo(i, canvas.height - Math.min(1, bins[ch][i] / max) * (canvas.height - 2));
+            g.lineTo(255, canvas.height);
+            g.closePath();
+            g.fill();
+        });
     },
 
     // Instantly rotate every on-screen preview of a file via CSS

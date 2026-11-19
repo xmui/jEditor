@@ -5483,6 +5483,18 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.setView('single');
             await sleep(80);
             out.single = title() === 'File info' && rows().Name === app.currentFile.name;
+            // The glass card: the flags to click, the photo moved over beside it
+            await sleep(100);
+            const extra = document.getElementById('info-extra');
+            out.card = !!extra && !extra.hidden && !!extra.querySelector('.info-flags .ctx-flag.fl-star')
+                && document.getElementById('main-interface').classList.contains('info-open')
+                && parseFloat(getComputedStyle(document.getElementById('image-container')).marginRight) >= 300;
+            extra.querySelector('.ctx-flag.fl-star').click();
+            await sleep(50);
+            out.cardFlag = Flags.has(app.currentFile, 'star') && !!document.querySelector('#info-extra .ctx-flag.fl-star.on');
+            Flags.apply('star', [app.currentFile]);
+            app.toggleInfoPanel(false);
+            out.cardShut = !document.getElementById('main-interface').classList.contains('info-open');
             out.gb = app.formatBytes(3 * 1024 * 1024 * 1024) === '3.00 GB';
             return out;
         });
@@ -5490,6 +5502,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('folder details: how much room .jeditor takes, trash counted', r.own, JSON.stringify(r));
         check('folder details: a selection, a folder with the whole project, Folder Info in the menu', r.selection && r.folder && r.menu, JSON.stringify(r));
         check('folder details: total under the folder list; single view still shows the photo', r.railTotal && r.single && r.gb, JSON.stringify(r));
+        check('Info is a glass card: the photo moves over beside it; its flags change the photo\'s', r.card && r.cardFlag && r.cardShut, JSON.stringify([r.card, r.cardFlag, r.cardShut]));
         check('folder details suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
