@@ -17,6 +17,12 @@
 // again), drag inside to move the photo, drag outside to rotate it. Turning
 // pivots on the crop's center and zooms in just enough to hide the corners.
 //
+// The frame reads on any photo (white over a soft shadow), its handles
+// reach a little past it and grow bolder under the pointer, and what's
+// drawn over the photo eases in and out: thirds while resizing, a fine grid
+// and an angle ruler while turning, the outside lighter while dragging. A
+// quarter turn is seen turning; a new aspect glides the frame into place.
+//
 // For a closer look at an edge: the loupe shows the corner or edge being
 // dragged, close up, in a top corner of the stage; and the wheel, + and −
 // zoom the view (see "zoom" below). Both draw from the full-size photo once
@@ -240,6 +246,13 @@ const CropEditor = {
     MAX_SCALE: 16,     // zoomed in, at most this many screen px per photo pixel (1600%)
     LOUPE: 220,        // the loupe's side, in screen px, at most
     DETAIL_PX: 48e6,   // the full-size copy for close-ups has at most this many pixels
+    // How near (screen px) a side or a corner takes the pointer: further
+    // out than in, so the frame's middle stays free for moving the photo,
+    // and more for a finger
+    GRAB: { side: 14, corner: 22, touch: 1.6 },
+    FADE_MS: 160,      // the dimming, guides and angle readout ease in and out this fast
+    SPIN_MS: 260,      // a quarter turn, shown turning
+    SNAP_DEG: 0.3,     // turning by hand, this close to level is level
 
     // Curved double arrow, shown outside the frame where dragging rotates
     ROTATE_CURSOR: 'url("data:image/svg+xml,' + encodeURIComponent(
@@ -457,6 +470,11 @@ const CropEditor = {
         if (this.preview) { this.preview.close(); this.preview = null; }
         this.dropDetail();
         clearTimeout(this._gridTimer);
+        if (this._fadeRaf) cancelAnimationFrame(this._fadeRaf);
+        this._fadeRaf = 0;
+        this._spin = null;
+        this._glide = null;
+        this.fx = null;
         if (this.root) this.root.classList.add('hidden');
         this.file = null;
     },
@@ -639,7 +657,7 @@ const CropEditor = {
         this.angle = Object.is(deg, -0) ? 0 : deg;
         this.refit();
         this.syncAngleUi();
-        if (flash) this.flashGrid();
+        if (flash) this.flashGrid({ angle: true });
         this.settle(false);
     },
 
@@ -658,21 +676,25 @@ const CropEditor = {
     rotateQuarter(dir) {
         if (!this.ready) return;
         this.pushHistory();
+        const from = this.spinFrom();
         this.q = (this.q + (dir > 0 ? 1 : 3)) % 4;
         // Same spot on the photo; the frame's sides swap
         this.base = { c: this.base.c, a: this.base.b, b: this.base.a };
         this.landscape = !this.landscape;
         this.refit();
         this.fitView(false);
+        this.spin(from, dir > 0 ? 90 : -90);
     },
 
     // Upside down: the same crop, turned half way round
     rotateHalf() {
         if (!this.ready) return;
         this.pushHistory();
+        const from = this.spinFrom();
         this.q = (this.q + 2) % 4;
         this.refit();
         this.fitView(false);
+        this.spin(from, 180);
     },
 
     // Flipped as it's seen: 'h' left to right, 'v' upside down. The crop
@@ -993,6 +1015,10 @@ const CropEditor = {
     settle(animate = true) {
         if (this._anim) cancelAnimationFrame(this._anim);
         this._anim = 0;
+        // The frame as last drawn glides to the new crop with the view (a
+        // new aspect, Swap, Auto), rather than jumping there
+        const shown = this._drawn;
+        this._glide = null;
         if (this.zoomed && this.vw) {
             this.vw = this.clampView(this.vw);
             this.render();
@@ -1007,6 +1033,7 @@ const CropEditor = {
             return;
         }
         const t0 = performance.now();
+        const rFrom = shown && shown.q === this.q && shown.angle === this.angle && shown.m === this.m ? shown.r : null;
         const tick = (now) => {
             if (!this.isOpen) return;
             const t = Math.min(1, (now - t0) / this.ANIM_MS);
@@ -1016,6 +1043,7 @@ const CropEditor = {
                 cx: from.cx + (to.cx - from.cx) * e,
                 cy: from.cy + (to.cy - from.cy) * e
             };
+            this._glide = rFrom && t < 1 ? CropGeom.lerp(rFrom, this.rect, e) : null;
             this.render();
             this._anim = t < 1 ? requestAnimationFrame(tick) : 0;
         };
@@ -1027,8 +1055,9 @@ const CropEditor = {
     toScreen(x, y, v = this.view()) { return { x: this.cssW / 2 + (x - v.cx) * v.s, y: this.cssH / 2 + (y - v.cy) * v.s }; },
     toOutput(sx, sy, v = this.view()) { return { x: v.cx + (sx - this.cssW / 2) / v.s, y: v.cy + (sy - this.cssH / 2) / v.s }; },
 
-    flashGrid() {
+    flashGrid({ angle = false } = {}) {
         this.fineGrid = true;
+        this._angleShown = angle;
         clearTimeout(this._gridTimer);
         this._gridTimer = setTimeout(() => { this.fineGrid = false; this.render(); }, 900);
     },
@@ -1096,6 +1125,77 @@ const CropEditor = {
         return colors;
     },
 
+    // ---- the overlay's fades ----
+    //
+    // The dimming, the guides and the angle readout ease toward what the
+    // moment calls for instead of popping: thirds while the frame is moved
+    // or resized, a fine grid while turning, the outside a little lighter
+    // while dragging so there's more to judge by (as in Lightroom and
+    // Photos). Each render steps them on and asks for another frame until
+    // they've arrived.
+
+    fxTargets() {
+        const d = this.drag, mode = d && d.mode;
+        const turning = mode === 'rotate' || mode === 'level';
+        const fine = this.fineGrid || !!this.level || turning;
+        return {
+            dim: mode === 'resize' || mode === 'pan' || turning ? 0.5 : 0.66,
+            thirds: mode === 'resize' || mode === 'pan' ? 1 : 0,
+            fine: fine ? 1 : 0,
+            angle: mode === 'rotate' || (this.fineGrid && !mode && this._angleShown) ? 1 : 0
+        };
+    },
+
+    stepFx() {
+        const to = this.fxTargets();
+        const now = performance.now();
+        const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!this.fx || still) {
+            this.fx = { ...to };
+        } else {
+            const k = 1 - Math.exp(-(now - (this._fxAt || now)) / (this.FADE_MS / 3));
+            for (const key in to) {
+                const v = this.fx[key] + (to[key] - this.fx[key]) * k;
+                this.fx[key] = Math.abs(to[key] - v) < 0.01 ? to[key] : v;
+            }
+        }
+        this._fxAt = now;
+        const moving = Object.keys(to).some(key => this.fx[key] !== to[key]);
+        if (moving && !this._fadeRaf) {
+            this._fadeRaf = requestAnimationFrame(() => { this._fadeRaf = 0; this.render(); });
+        }
+        if (!moving) this._fxAt = 0;
+        return this.fx;
+    },
+
+    // ---- a quarter turn, seen turning ----
+
+    // What the screen shows now, to turn from
+    spinFrom() {
+        return this.ready && !this.zoomed ? { s: this.view().s } : null;
+    },
+
+    // The photo and frame were just turned by `deg` (clockwise) about the
+    // middle of the stage: show them starting where they were and turning
+    // into place, scaling from the old view to the new
+    spin(from, deg) {
+        const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!from || still || !this.isOpen) { this._spin = null; return; }
+        const t0 = performance.now();
+        const k0 = from.s / this.view().s;
+        const tick = (now) => {
+            if (!this.isOpen || !this._spin) return;
+            const t = Math.min(1, (now - t0) / this.SPIN_MS);
+            const e = 1 - Math.pow(1 - t, 3);
+            this._spin = t < 1 ? { rot: -deg * (1 - e) * Math.PI / 180, k: Math.pow(k0, 1 - e), raf: 0 } : null;
+            this.render();
+            if (this._spin) this._spin.raf = requestAnimationFrame(tick);
+        };
+        this._spin = { rot: -deg * Math.PI / 180, k: k0, raf: 0 };
+        this.render();
+        this._spin.raf = requestAnimationFrame(tick);
+    },
+
     render() {
         if (!this.isOpen || !this.canvas) return;
         const colors = this.colors || { bg: '#0b0b0b', accent: '#7aa7ff', label: 'rgba(0,0,0,0.6)', labelText: '#fff', font: 'system-ui, sans-serif' };
@@ -1105,77 +1205,82 @@ const CropEditor = {
         ctx.fillStyle = colors.bg;
         ctx.fillRect(0, 0, this.cssW, this.cssH);
         if (!this.ready) return;
+        const fx = this.stepFx();
+
+        // CSS pixels, turned about the stage's middle while a quarter turn plays
+        const sp = this._spin;
+        const base = () => {
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            if (!sp) return;
+            ctx.translate(this.cssW / 2, this.cssH / 2);
+            ctx.rotate(sp.rot);
+            ctx.scale(sp.k, sp.k);
+            ctx.translate(-this.cssW / 2, -this.cssH / 2);
+        };
 
         const v = this.view();
         const [c, s] = this.cs();
-        const k = dpr * v.s;
-        ctx.setTransform(k * c, k * s, -k * s, k * c,
-            dpr * (this.cssW / 2 - v.cx * v.s), dpr * (this.cssH / 2 - v.cy * v.s));
+        base();
+        ctx.transform(v.s * c, v.s * s, -v.s * s, v.s * c, this.cssW / 2 - v.cx * v.s, this.cssH / 2 - v.cy * v.s);
         this.drawPhoto(ctx, v.s, this.zoomed);
 
         // Everything below is in CSS pixels
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        const a = this.toScreen(this.rect.x0, this.rect.y0, v);
-        const b = this.toScreen(this.rect.x1, this.rect.y1, v);
+        base();
+        const shown = this._glide || this.rect;
+        this._drawn = { r: { ...this.rect }, q: this.q, angle: this.angle, m: this.m };
+        const a = this.toScreen(shown.x0, shown.y0, v);
+        const b = this.toScreen(shown.x1, shown.y1, v);
         const R = { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y };
 
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.62)';
+        // Outside the crop, dimmed (far enough out to cover a turning stage)
+        const big = Math.hypot(this.cssW, this.cssH) * (sp ? 2 / Math.min(1, sp.k) : 1);
+        ctx.fillStyle = `rgba(0, 0, 0, ${fx.dim})`;
         ctx.beginPath();
-        ctx.rect(0, 0, this.cssW, this.cssH);
+        ctx.rect(this.cssW / 2 - big, this.cssH / 2 - big, 2 * big, 2 * big);
         ctx.rect(R.x, R.y, R.w, R.h);
         ctx.fill('evenodd');
 
-        // Guides: thirds while adjusting, a fine grid while straightening
-        const fine = this.fineGrid || this.level || (this.drag && (this.drag.mode === 'rotate' || this.drag.mode === 'level'));
-        const lines = fine ? 12 : (this.drag ? 3 : 0);
-        if (lines) {
-            ctx.strokeStyle = fine ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.45)';
+        // Guides: a fine grid while straightening, thirds while adjusting.
+        // Each line has a faint dark one beside it, so it reads on a pale sky
+        const guides = (n, alpha) => {
+            if (alpha <= 0) return;
+            const path = (off) => {
+                ctx.beginPath();
+                for (let i = 1; i < n; i++) {
+                    const x = Math.round(R.x + (R.w * i) / n) + 0.5 + off;
+                    const y = Math.round(R.y + (R.h * i) / n) + 0.5 + off;
+                    ctx.moveTo(x, R.y); ctx.lineTo(x, R.y + R.h);
+                    ctx.moveTo(R.x, y); ctx.lineTo(R.x + R.w, y);
+                }
+            };
             ctx.lineWidth = 1;
-            ctx.beginPath();
-            for (let i = 1; i < lines; i++) {
-                const x = Math.round(R.x + (R.w * i) / lines) + 0.5;
-                const y = Math.round(R.y + (R.h * i) / lines) + 0.5;
-                ctx.moveTo(x, R.y); ctx.lineTo(x, R.y + R.h);
-                ctx.moveTo(R.x, y); ctx.lineTo(R.x + R.w, y);
-            }
+            path(1);
+            ctx.strokeStyle = `rgba(0,0,0,${0.18 * alpha})`;
             ctx.stroke();
-        }
+            path(0);
+            ctx.strokeStyle = `rgba(255,255,255,${(n > 3 ? 0.3 : 0.6) * alpha})`;
+            ctx.stroke();
+        };
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(R.x, R.y, R.w, R.h);
+        ctx.clip();
+        guides(this.FINE_LINES, fx.fine);
+        guides(3, fx.thirds * (1 - 0.5 * fx.fine));
+        ctx.restore();
 
-        ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+        // The frame: a hairline, with a soft dark one outside it
+        const fr = { x: Math.round(R.x) + 0.5, y: Math.round(R.y) + 0.5, w: Math.round(R.w) - 1, h: Math.round(R.h) - 1 };
         ctx.lineWidth = 1;
-        ctx.strokeRect(Math.round(R.x) + 0.5, Math.round(R.y) + 0.5, Math.round(R.w) - 1, Math.round(R.h) - 1);
+        ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+        ctx.strokeRect(fr.x - 1, fr.y - 1, fr.w + 2, fr.h + 2);
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.strokeRect(fr.x, fr.y, fr.w, fr.h);
 
-        if (!this.level) {
-            // Corner brackets and edge bars
-            ctx.lineWidth = 3;
-            ctx.lineCap = 'square';
-            const L = Math.min(20, R.w / 3, R.h / 3);
-            ctx.beginPath();
-            [[R.x, R.y, 1, 1], [R.x + R.w, R.y, -1, 1], [R.x, R.y + R.h, 1, -1], [R.x + R.w, R.y + R.h, -1, -1]]
-                .forEach(([x, y, dx, dy]) => {
-                    ctx.moveTo(x + dx * L, y); ctx.lineTo(x, y); ctx.lineTo(x, y + dy * L);
-                });
-            const mx = R.x + R.w / 2, my = R.y + R.h / 2, E = Math.min(12, R.w / 6, R.h / 6);
-            ctx.moveTo(mx - E, R.y); ctx.lineTo(mx + E, R.y);
-            ctx.moveTo(mx - E, R.y + R.h); ctx.lineTo(mx + E, R.y + R.h);
-            ctx.moveTo(R.x, my - E); ctx.lineTo(R.x, my + E);
-            ctx.moveTo(R.x + R.w, my - E); ctx.lineTo(R.x + R.w, my + E);
-            ctx.stroke();
-        }
+        if (!this.level) this.drawHandles(ctx, R);
 
-        // Angle readout while turning by hand
-        if (this.drag && this.drag.mode === 'rotate') {
-            const t = `${this.angle > 0 ? '+' : ''}${this.angle.toFixed(1)}°`;
-            ctx.font = `600 13px ${colors.font}`;
-            const tw = ctx.measureText(t).width;
-            const bx = R.x + R.w / 2 - tw / 2 - 10, by = R.y + 12;
-            ctx.fillStyle = colors.label;
-            ctx.beginPath();
-            ctx.roundRect ? ctx.roundRect(bx, by, tw + 20, 24, 12) : ctx.rect(bx, by, tw + 20, 24);
-            ctx.fill();
-            ctx.fillStyle = colors.labelText;
-            ctx.fillText(t, bx + 10, by + 17);
-        }
+        // Angle readout while turning: the angle, over a short ruler
+        if (fx.angle > 0) this.drawAngle(ctx, R, colors, fx.angle);
 
         // Level line being drawn
         if (this.drag && this.drag.mode === 'level') {
@@ -1193,9 +1298,88 @@ const CropEditor = {
                 ctx.fillText(`${t > 0 ? '+' : ''}${t.toFixed(1)}°`, q.x + 10, q.y - 10);
             }
         }
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         this.drawLoupe(ctx, v, colors);
         this.updateDims();
         this.updateZoomUi();
+    },
+
+    FINE_LINES: 12,
+
+    // Corner brackets and side bars, white over a soft shadow so they read
+    // on any photo. The one under the pointer (or being dragged) is bolder
+    drawHandles(ctx, R) {
+        const d = this.drag;
+        const hot = d && d.mode === 'resize' ? d.handle : (d ? null : this._hot);
+        const L = Math.min(22, R.w / 3, R.h / 3), E = Math.min(14, R.w / 6, R.h / 6);
+        const shapes = {
+            nw: [[R.x + L, R.y], [R.x, R.y], [R.x, R.y + L]],
+            ne: [[R.x + R.w - L, R.y], [R.x + R.w, R.y], [R.x + R.w, R.y + L]],
+            sw: [[R.x + L, R.y + R.h], [R.x, R.y + R.h], [R.x, R.y + R.h - L]],
+            se: [[R.x + R.w - L, R.y + R.h], [R.x + R.w, R.y + R.h], [R.x + R.w, R.y + R.h - L]],
+            n: [[R.x + R.w / 2 - E, R.y], [R.x + R.w / 2 + E, R.y]],
+            s: [[R.x + R.w / 2 - E, R.y + R.h], [R.x + R.w / 2 + E, R.y + R.h]],
+            w: [[R.x, R.y + R.h / 2 - E], [R.x, R.y + R.h / 2 + E]],
+            e: [[R.x + R.w, R.y + R.h / 2 - E], [R.x + R.w, R.y + R.h / 2 + E]]
+        };
+        // Drawn just outside the frame's line, so they never cover the photo's edge
+        const out = { n: [0, -1], s: [0, 1], w: [-1, 0], e: [1, 0], nw: [-1, -1], ne: [1, -1], sw: [-1, 1], se: [1, 1] };
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        const stroke = (key, width, style) => {
+            const [ox, oy] = out[key].map(o => o * (width / 2 - 0.5));
+            ctx.beginPath();
+            shapes[key].forEach(([x, y], i) => (i ? ctx.lineTo(x + ox, y + oy) : ctx.moveTo(x + ox, y + oy)));
+            ctx.lineWidth = width;
+            ctx.strokeStyle = style;
+            ctx.stroke();
+        };
+        for (const key in shapes) {
+            const w = key === hot ? 5 : 3.5;
+            stroke(key, w + 2, 'rgba(0,0,0,0.22)');
+            stroke(key, w, '#fff');
+        }
+        ctx.lineCap = 'butt';
+        ctx.lineJoin = 'miter';
+    },
+
+    // The angle, large, over a ruler of degrees that slides under a fixed
+    // mark: whole degrees, longer every 5°, level marked; ends fading out
+    drawAngle(ctx, R, colors, alpha) {
+        const a = this.angle || 0;
+        const t = `${a > 0 ? '+' : ''}${a.toFixed(1)}°`;
+        const W = Math.min(220, R.w - 24);
+        if (W < 80) return;
+        const cx = R.x + R.w / 2, top = R.y + 12;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.font = `600 13px ${colors.font}`;
+        const tw = ctx.measureText(t).width;
+        const boxW = Math.max(W, tw + 24), boxH = 46;
+        ctx.fillStyle = colors.label;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(cx - boxW / 2, top, boxW, boxH, 10); else ctx.rect(cx - boxW / 2, top, boxW, boxH);
+        ctx.fill();
+        ctx.fillStyle = colors.labelText;
+        ctx.textAlign = 'center';
+        ctx.fillText(t, cx, top + 18);
+        // Ruler: 6 px a degree, ±(W/12)° seen
+        const per = 6, base = top + boxH - 8, span = (boxW - 16) / 2;
+        for (let deg = Math.ceil(a - span / per); deg <= Math.floor(a + span / per); deg++) {
+            const x = cx + (deg - a) * per;
+            const fade = 1 - Math.pow(Math.abs(x - cx) / span, 3);
+            const len = deg === 0 ? 12 : deg % 5 === 0 ? 8 : 4;
+            ctx.globalAlpha = alpha * Math.max(0, fade) * (deg === 0 ? 1 : 0.7);
+            ctx.fillStyle = deg === 0 ? colors.accent : colors.labelText;
+            ctx.fillRect(Math.round(x) - (deg === 0 ? 1 : 0.5), base - len, deg === 0 ? 2 : 1, len);
+        }
+        // The fixed mark: where the photo is now
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = colors.labelText;
+        ctx.beginPath();
+        ctx.moveTo(cx - 4, base + 4); ctx.lineTo(cx + 4, base + 4); ctx.lineTo(cx, base - 1);
+        ctx.fill();
+        ctx.restore();
     },
 
     // The photo, at `s` screen px per photo pixel, under the transform set.
@@ -1462,20 +1646,35 @@ const CropEditor = {
     hit(p, v = this.view()) {
         const a = this.toScreen(this.rect.x0, this.rect.y0, v);
         const b = this.toScreen(this.rect.x1, this.rect.y1, v);
-        const T = 16;
-        const nearL = Math.abs(p.x - a.x) <= T, nearR = Math.abs(p.x - b.x) <= T;
-        const nearT = Math.abs(p.y - a.y) <= T, nearB = Math.abs(p.y - b.y) <= T;
-        const inX = p.x > a.x - T && p.x < b.x + T, inY = p.y > a.y - T && p.y < b.y + T;
-        if (nearT && nearL) return 'nw';
-        if (nearT && nearR) return 'ne';
-        if (nearB && nearL) return 'sw';
-        if (nearB && nearR) return 'se';
-        if (nearT && inX) return 'n';
-        if (nearB && inX) return 's';
-        if (nearL && inY) return 'w';
-        if (nearR && inY) return 'e';
-        if (p.x > a.x && p.x < b.x && p.y > a.y && p.y < b.y) return 'inside';
+        const k = this._touch ? this.GRAB.touch : 1;
+        const w = b.x - a.x, h = b.y - a.y;
+        // Outward the full reach; inward less on a small frame, so there's
+        // always a middle to move the photo by
+        const side = this.GRAB.side * k, corner = this.GRAB.corner * k;
+        const inS = Math.min(side, w / 5, h / 5), inC = Math.min(corner, w / 4, h / 4);
+        // d: how far outside the frame on that side (negative: inside)
+        const at = (d, reach, inward) => (d >= 0 ? d <= reach : -d <= inward);
+        const dl = a.x - p.x, dr = p.x - b.x, dt = a.y - p.y, db = p.y - b.y;
+        const cl = at(dl, corner, inC), cr = at(dr, corner, inC), ct = at(dt, corner, inC), cb = at(db, corner, inC);
+        if (ct && cl) return 'nw';
+        if (ct && cr) return 'ne';
+        if (cb && cl) return 'sw';
+        if (cb && cr) return 'se';
+        const inX = dl < side && dr < side, inY = dt < side && db < side;
+        if (at(dt, side, inS) && inX) return 'n';
+        if (at(db, side, inS) && inX) return 's';
+        if (at(dl, side, inS) && inY) return 'w';
+        if (at(dr, side, inS) && inY) return 'e';
+        if (dl < 0 && dr < 0 && dt < 0 && db < 0) return 'inside';
         return 'outside';
+    },
+
+    // The handle under the pointer, drawn a little bolder
+    setHot(h) {
+        const hot = h && h !== 'inside' && h !== 'outside' ? h : null;
+        if (hot === this._hot) return;
+        this._hot = hot;
+        this.render();
     },
 
     CURSORS: {
@@ -1498,6 +1697,9 @@ const CropEditor = {
         if (!this.ready || this.busy || (e.button !== 0 && !moveView)) return;
         // Stop any glide where it is: the frame is where the user sees it
         if (this._anim) { cancelAnimationFrame(this._anim); this._anim = 0; }
+        this._glide = null;
+        this._spin = null;
+        this._touch = e.pointerType === 'touch' || e.pointerType === 'pen';
         const v = { ...this.view() };
         this.vw = v;
         const p = this.point(e);
@@ -1535,7 +1737,9 @@ const CropEditor = {
         const p = this.point(e);
         this._hover = p;
         if (!this.drag) {
+            this._touch = e.pointerType === 'touch' || e.pointerType === 'pen';
             this.updateCursor(e);
+            this.setHot(this.level ? null : this.hit(p));
             return;
         }
         this.drag.last = { p, shift: e.shiftKey, alt: e.altKey };
@@ -1560,7 +1764,11 @@ const CropEditor = {
         if (d.mode === 'rotate') {
             let delta = (Math.atan2(p.y - d.centre.y, p.x - d.centre.x) - d.a0) * 180 / Math.PI;
             delta = ((delta + 540) % 360) - 180;
-            this.setAngle(Math.round((d.startAngle + delta) * 10) / 10);
+            // Further from the middle, finer: whole tenths, with a little
+            // catch at level so it's easy to find again
+            let a = Math.round((d.startAngle + delta) * 10) / 10;
+            if (Math.abs(a) < this.SNAP_DEG && (d.startAngle === 0 || Math.abs(d.startAngle) >= this.SNAP_DEG)) a = 0;
+            this.setAngle(a);
             return;
         }
         if (d.mode === 'pan') {
@@ -1637,6 +1845,7 @@ const CropEditor = {
         if (!d) return;
         this.drag = null;
         this.stopPush();
+        if (e.pointerType !== 'mouse') this._hot = null; // a finger lifted isn't hovering
         try { this.canvas.releasePointerCapture(e.pointerId); } catch (err) { /* already released */ }
         if (d.mode === 'view') {
             this.updateCursor(e);
@@ -1651,7 +1860,7 @@ const CropEditor = {
             this.dropHistoryIfUnchanged();
             return;
         }
-        if (d.mode === 'rotate') this.flashGrid();
+        if (d.mode === 'rotate') this.flashGrid({ angle: true });
         this.dropHistoryIfUnchanged();
         this.updateCursor(e);
         this.settle();
