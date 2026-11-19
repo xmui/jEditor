@@ -483,7 +483,7 @@ const app = {
 
     // Allowed values for the appearance settings; the first is the default
     APPEARANCE: {
-        theme: ['dark', 'light', 'system'],
+        theme: ['system', 'dark', 'light'], // 2.0: follows the system to start with (audit H4)
         density: ['compact', 'comfortable'],
         glass: ['crystal', 'liquid', 'clear', 'opaque', 'lens'], // Settings → Glass (tokens.css; liquid.js bends Liquid's edges)
         tint: ['none', 'accent', 'warm', 'cool', 'rose'], // Settings → Glass tint, over any glass
@@ -515,7 +515,7 @@ const app = {
             startIn: 'photos', // the landing page's Start in (modes.js): photos, adjust or paint
             writeEdits: 'ask', // Write edits to file: ask, 'originals' or 'copies' (askWriteEdits; Settings → Projects → Saving)
             modes: 1, // 1.43: Adjust and Paint are modes (modes.js), off the toolbar's main row
-            theme: 'dark',
+            theme: 'system',
             skin: '', // a theme (themes.js): 'xp/royale'; '' is jEditor's own look
             skinSettings: {}, // each theme's own settings, by theme
             density: 'compact',

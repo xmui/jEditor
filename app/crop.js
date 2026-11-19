@@ -1107,6 +1107,12 @@ const CropEditor = {
     // The canvas can't use CSS variables: resolve the ones it draws with
     // (the color behind photos, the accent, the labels on the photo and
     // the theme's typeface) once per opening
+    // A colour as the browser gives it ("rgb(r, g, b)"), light or not
+    isLight(css) {
+        const m = String(css).match(/[\d.]+/g);
+        return !!m && (0.2126 * m[0] + 0.7152 * m[1] + 0.0722 * m[2]) / 255 > 0.55;
+    },
+
     themeColors() {
         const probe = document.createElement('span');
         probe.style.display = 'none';
@@ -1118,6 +1124,8 @@ const CropEditor = {
         };
         const colors = {
             bg: read('--surround', '#0b0b0b'), accent: read('--accent-text', '#7aa7ff'),
+            // Outside the crop: dimmed on a dark stage, a light veil on a light one
+            veil: this.isLight(read('--surround', '#0b0b0b')) ? '236, 236, 239' : '0, 0, 0',
             label: read('--on-photo-bg', 'rgba(0,0,0,0.6)'), labelText: read('--on-photo-text', '#fff'),
             font: getComputedStyle(probe).getPropertyValue('--font-ui').trim() || 'system-ui, sans-serif'
         };
@@ -1234,7 +1242,7 @@ const CropEditor = {
 
         // Outside the crop, dimmed (far enough out to cover a turning stage)
         const big = Math.hypot(this.cssW, this.cssH) * (sp ? 2 / Math.min(1, sp.k) : 1);
-        ctx.fillStyle = `rgba(0, 0, 0, ${fx.dim})`;
+        ctx.fillStyle = `rgba(${colors.veil || '0, 0, 0'}, ${fx.dim})`;
         ctx.beginPath();
         ctx.rect(this.cssW / 2 - big, this.cssH / 2 - big, 2 * big, 2 * big);
         ctx.rect(R.x, R.y, R.w, R.h);
@@ -1307,7 +1315,7 @@ const CropEditor = {
     FINE_LINES: 12,
 
     // Corner brackets and side bars, white over a soft shadow so they read
-    // on any photo. The one under the pointer (or being dragged) is bolder
+    // on any photo (dark on a light stage). The one under the pointer (or being dragged) is bolder
     drawHandles(ctx, R) {
         const d = this.drag;
         const hot = d && d.mode === 'resize' ? d.handle : (d ? null : this._hot);
@@ -1334,10 +1342,13 @@ const CropEditor = {
             ctx.strokeStyle = style;
             ctx.stroke();
         };
+        // On a light stage (light appearance), dark handles, as white ones
+        // would vanish into it
+        const light = !!(this.colors && this.colors.veil && this.colors.veil !== '0, 0, 0');
         for (const key in shapes) {
             const w = key === hot ? 5 : 3.5;
-            stroke(key, w + 2, 'rgba(0,0,0,0.22)');
-            stroke(key, w, '#fff');
+            stroke(key, w + 2, light ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.22)');
+            stroke(key, w, light ? '#1c1c1e' : '#fff');
         }
         ctx.lineCap = 'butt';
         ctx.lineJoin = 'miter';
@@ -1522,7 +1533,7 @@ const CropEditor = {
         const o = this.outputRect();
         const a = at(o.x0, o.y0), b = at(o.x1, o.y1);
         const R = { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y };
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.62)';
+        ctx.fillStyle = `rgba(${colors.veil || '0, 0, 0'}, 0.62)`;
         round(R);
         ctx.fill('evenodd');
         ctx.strokeStyle = 'rgba(255,255,255,0.95)';

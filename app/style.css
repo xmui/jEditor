@@ -5401,8 +5401,9 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     width: 100%;
     height: 96px;
     border-radius: var(--r-sm);
-    /* Dark in either theme: the channels add up to white on it */
-    background: #141414;
+    /* Dark, the channels add up to white on it; light, they darken to
+       grey where they meet (adjust.js: drawHistogram) */
+    background: var(--hist-bg, #141414);
 }
 
 .adj-levels {
@@ -12145,4 +12146,15 @@ body.touring .controls.idle button { pointer-events: auto; }
    hairline keeps its edge. */
 :root:not([data-skin]) .crop-zoom {
     box-shadow: 0 0 0 1px var(--border);
+}
+
+/* Light, finished (2.0, audit H4): Crop's zoom pill is a glass pill as
+   the rest, not a black one over a light stage */
+:root[data-theme="light"]:not([data-skin]) .crop-zoom {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-2), var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    color: var(--text-1);
 }
