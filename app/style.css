@@ -9807,12 +9807,9 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 
 /* One set of corners: the sidebar's, and inside it (8px in) each part's
    is the sidebar's less that. The mode switch is a pill, as the top bar */
-/* The same inside the right-click menu (4px in) and a message (8px in,
-   its Undo a pill): each corner is its part's less the room between */
-:root:not([data-skin]) #context-menu button {
-    border-radius: calc(var(--r-lg) - var(--sp-1));
-}
-
+/* A message's (8px in, its Undo a pill): its corner is the sidebar's
+   and the room between. The right-click menu's rows are pills (the 2.0
+   refinement: shape) */
 :root:not([data-skin]) .toast {
     border-radius: calc(var(--r-xl) + var(--sp-2));
 }
@@ -11365,29 +11362,31 @@ body.touring .controls.idle button { pointer-events: auto; }
     border-top: 1px solid var(--border-subtle);
 }
 
-/* ---- Menus: solid, in rows ---- */
+/* ---- Menus: frosted glass (thick, so a list reads over any photo;
+   tokens.css: --menu-bg), in rows that are pills ---- */
 :root:not([data-skin]) :is(#context-menu, .ctx-fly) {
     min-width: 232px;
-    padding: 5px;
+    padding: var(--sp-1);
     border: 1px solid var(--border-subtle);
-    border-radius: var(--r-lg);
-    background: var(--bg-surface);
-    box-shadow: var(--shadow-3);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+    border-radius: var(--r-xl);
+    background: var(--menu-bg);
+    box-shadow: var(--shadow-3), var(--highlight);
+    backdrop-filter: var(--menu-filter);
+    -webkit-backdrop-filter: var(--menu-filter);
 }
 
 :root:not([data-skin]) :is(#context-menu, .ctx-fly) button {
     min-height: var(--row);
-    padding: 0 10px;
+    padding: 0 var(--sp-3);
+    border-radius: var(--r-ctl);
 }
 
 :root:not([data-skin]) #context-menu button[aria-checked] {
-    padding-left: 30px;
+    padding-left: 32px;
 }
 
 :root:not([data-skin]) :is(#context-menu, .ctx-fly) .ctx-divider {
-    margin: 5px 10px;
+    margin: var(--sp-1) var(--sp-3);
     background: var(--border-subtle);
 }
 
@@ -11416,6 +11415,54 @@ body.touring .controls.idle button { pointer-events: auto; }
     :root:not([data-skin]) .dialog-foot .btn {
         height: var(--ctl-lg);
     }
+}
+
+/* ---- Shape: round and pill (the owner's rule at the 2.0 sign-off).
+   Buttons, fields, pop-ups, the switch between a few and its parts are
+   pills; an icon button is a circle, as in the pills; a row you point at
+   in a list is a pill. Only what holds them keeps a corner: a menu, a
+   card, a dialog. Each mode's own parts follow in its part below ---- */
+:root:not([data-skin]) :is(
+    .btn, input.field, select.field, .sort-control select,
+    .seg, .seg > button, .seg > label > span, .adj-tabs, .adj-tab,
+    .cv-seg, .cv-seg button, .rename-token, .oc-search, .sb-picker-find, .palette-row) {
+    border-radius: var(--r-ctl);
+}
+
+/* The text keeps clear of a pill's round ends */
+:root:not([data-skin]) :is(input.field, select.field) {
+    padding-left: 14px;
+}
+
+:root:not([data-skin]) :is(input.field.sm, select.field.sm) {
+    padding-left: var(--sp-3);
+}
+
+:root:not([data-skin]) input.field {
+    padding-right: 14px;
+}
+
+/* (As light as .btn itself, so a button's own size still wins) */
+:where(:root:not([data-skin])) .btn:where(:not(.icon)) {
+    padding-inline: var(--sp-4);
+}
+
+:root:not([data-skin]) .sb-picker-find {
+    padding-inline: var(--sp-3);
+}
+
+:root:not([data-skin]) .oc-search {
+    padding-inline: 18px;
+}
+
+/* A button of two lines (Convert's kinds) is too tall for a pill: a
+   rounder corner instead */
+:root:not([data-skin]) .cv-seg {
+    border-radius: var(--r-xl);
+}
+
+:root:not([data-skin]) .cv-seg button {
+    border-radius: calc(var(--r-xl) - 3px);
 }
 
 /* ==========================================================================
