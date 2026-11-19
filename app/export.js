@@ -445,7 +445,7 @@ const Export = {
     // What each section is set to, said in a few words (shown while it's closed)
     says(k, { n, starred, edited }) {
         const files = this.app.files;
-        if (k === 'which') return this.which === 'selected' ? `${n.toLocaleString()} selected` : this.which === 'star' ? `The ${starred.toLocaleString()} starred`
+        if (k === 'which') return this.which === 'selected' ? `${n.toLocaleString()} selected` : this.which === 'star' ? `The ${starred.toLocaleString()} picked`
             : this.which === 'edited' ? `The ${edited.toLocaleString()} edited` : `All ${files.length.toLocaleString()}`;
         if (k === 'where') return `${this.folderName()}, ${this.where === 'project' ? 'in this project' : this.where === 'chosen' ? `in ${this.whereLabel()}` : `on ${this.whereLabel()}`}`;
         if (k === 'naming') {
@@ -483,7 +483,7 @@ const Export = {
             const files = this.app.files;
             const opt = (v, label) => `<label class="ex-opt"><input type="radio" name="ex-which" value="${v}"${this.which === v ? ' checked' : ''}> ${this.esc(label)}</label>`;
             return '<div class="ex-opts">' + (this.files ? opt('selected', `The ${this.files.length === 1 ? 'photo' : `${this.files.length.toLocaleString()} photos`} selected`) : '') +
-                opt('all', `All ${files.length.toLocaleString()} in the project`) + (starred ? opt('star', `The ${starred.toLocaleString()} starred`) : '') +
+                opt('all', `All ${files.length.toLocaleString()} in the project`) + (starred ? opt('star', `The ${starred.toLocaleString()} picked`) : '') +
                 (edited ? opt('edited', `The ${edited.toLocaleString()} edited`) : '') + '</div>';
         }
         if (k === 'where') {

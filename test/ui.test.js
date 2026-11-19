@@ -4160,10 +4160,19 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
 
             sel('IMG_0001.jpg', 'IMG_0002.jpg');
             key('p');
+            // Needs rescan is Shift+X since 2.0 (X rejects)
             sel('IMG_0002.jpg', 'vows.jpg');
-            key('x');
+            key('X', { shiftKey: true });
             sel('IMG_0003.jpg');
             key('3');
+            // X rejects (the tile dims); P on it picks it, and the reject goes
+            sel('IMG_0005.jpg');
+            key('x');
+            out.rejected = Flags.has(f('IMG_0005.jpg'), 'reject') && f('IMG_0005.jpg')._gridEl.classList.contains('rejected') && !!f('IMG_0005.jpg')._gridEl.querySelector('.tf-reject');
+            key('p');
+            out.pickNotReject = Flags.has(f('IMG_0005.jpg'), 'star') && !Flags.has(f('IMG_0005.jpg'), 'reject') && !f('IMG_0005.jpg')._gridEl.classList.contains('rejected');
+            key('u');
+            out.cleared5 = !Flags.any(f('IMG_0005.jpg'));
             out.flags = Flags.has(f('IMG_0001.jpg'), 'star') && Flags.has(f('IMG_0002.jpg'), 'star') && Flags.has(f('IMG_0002.jpg'), 'rescan') &&
                 Flags.has(f('vows.jpg'), 'rescan') && Flags.has(f('IMG_0003.jpg'), 'green');
             out.badges = !!f('IMG_0002.jpg')._gridEl.querySelector('.tile-flags .tf-star') && !!f('IMG_0002.jpg')._gridEl.querySelector('.tf-rescan');
@@ -4234,7 +4243,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.cleanedUp = !app.files.some(x => x._flags);
             return out;
         });
-        check('flags: P, X and 1–5 set star, rescan and color on the selection', r.flags && r.badges, JSON.stringify(r));
+        check('flags: P, Shift+X and 1–5 set pick, rescan and color on the selection', r.flags && r.badges, JSON.stringify(r));
+        check('flags: X rejects and dims the tile; P picks it instead; U clears', r.rejected && r.pickNotReject && r.cleared5, JSON.stringify([r.rejected, r.pickNotReject, r.cleared5]));
         check('flags: P again unstars; Ctrl+Z undoes; a new color replaces the old', r.toggled && r.undone && r.colourSwap);
         check('flags: saved in .jeditor/flags.json, keyed by path', r.saved);
         check('flags: a rename carries them; saved under the new name', r.renamed);
@@ -5262,7 +5272,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('history: a toolbar button and H open it; empty says so; Esc closes', r.button && r.empty && r.closed, JSON.stringify(r));
         check('history: every step, newest first, with what and which photo', JSON.stringify(r.rows) === JSON.stringify(['Rotation:c.jpg', 'Red label:c.jpg', 'Rename:b.jpg → Smith_02.jpg', 'Star:a.jpg']), JSON.stringify(r.rows));
         check('history: clicking a step asks first, naming what is undone', r.askedFirst);
-        check('history: then goes back to before it, saying so once', r.wentBack && /Went back 3 steps/.test(r.toast) && r.left === 'Star', r.toast + ' ' + r.left);
+        check('history: then goes back to before it, saying so once', r.wentBack && /Went back 3 steps/.test(r.toast) && r.left === 'Pick', r.toast + ' ' + r.left);
         check('history: Info closes it', r.infoCloses);
         check('history suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
