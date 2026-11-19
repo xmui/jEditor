@@ -4713,6 +4713,15 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         // A narrow window, with and without the folder list: every pill in
         // the window, none over another (fit.js gives up parts in turn)
         const fit = [];
+        // A pill with more on it than the 2.0 default (people add buttons:
+        // the view switch, Rescan, History), so a narrow window still has to
+        // put some into More
+        const placed = await page.evaluate(() => {
+            const was = { ...app.uiPrefs.placement };
+            for (const k of ['view', 'refresh', 'history']) app.uiPrefs.placement[k] = 'main';
+            app.applyUiPrefs();
+            return was;
+        });
         for (const w of [1300, 900, 700, 480]) {
             await page.setViewportSize({ width: w, height: 700 });
             for (const rail of [true, false]) {
@@ -4773,6 +4782,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('narrow windows: no pill over another or off screen, top or bottom, with or without the folder list', fit.every(f => f.bad.length === 0), JSON.stringify(fit.filter(f => f.bad.length)));
         // (480 with the sidebar closed is the tightest: the mode's chip joins
         // the folder pill. With it open, over the grid, the 40 px pills fit)
+        await page.evaluate((was) => { app.uiPrefs.placement = was; app.applyUiPrefs(); }, placed);
         check('... wide, nothing given up; at 480 header buttons go into More, which shows; the file pill stays in single view', !fit[1].fit && fit[7].squeezed > 0 && fit.every(f => f.more && f.name), JSON.stringify(fit.map(f => [f.w, f.rail, f.fit, f.squeezed, f.more])));
         // The grid left alone: fitting the pills once, not every frame (its
         // own try at the folder pill's short labels used to wake it again)
