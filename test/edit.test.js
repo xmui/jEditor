@@ -3469,9 +3469,38 @@ const PROJECT = `
                 step = 'warp';
                 const w = Retouch.warp(c, { v: -100 });
                 out.warp = w.width === 400 && w.height === 300 && px(w, 50, 1) > 200 && px(w, 50, 298) < 60;
+                // Auto: a photo of a grid shot at a slant (its lines drawn where
+                // the warp p takes them from) is put back by p
+                step = 'auto';
+                const slanted = (p, W = 600, H = 400) => {
+                    const cv = document.createElement('canvas');
+                    cv.width = W; cv.height = H;
+                    const cg = cv.getContext('2d');
+                    cg.fillStyle = '#d8d4cc';
+                    cg.fillRect(0, 0, W, H);
+                    cg.strokeStyle = '#302820';
+                    cg.lineWidth = 3;
+                    const Mp = Retouch.perspMap(p);
+                    const line = (u0, v0, u1, v1) => {
+                        const [x0, y0] = Retouch.perspPoint(Mp, u0, v0), [x1, y1] = Retouch.perspPoint(Mp, u1, v1);
+                        cg.beginPath(); cg.moveTo(x0 * W, y0 * H); cg.lineTo(x1 * W, y1 * H); cg.stroke();
+                    };
+                    for (const u of [0.12, 0.3, 0.5, 0.7, 0.88]) line(u, 0.05, u, 0.95);
+                    for (const v of [0.15, 0.4, 0.65, 0.9]) line(0.05, v, 0.95, v);
+                    return cv;
+                };
+                const near = (q, p) => !!q && Math.abs((q.v || 0) - (p.v || 0)) <= 4 && Math.abs((q.h || 0) - (p.h || 0)) <= 4;
+                const inv = Retouch.perspInverse(M);
+                const back = Retouch.perspPoint(inv, ...Retouch.perspPoint(M, 0.3, 0.6));
+                out.inverse = Math.abs(back[0] - 0.3) < 1e-9 && Math.abs(back[1] - 0.6) < 1e-9;
+                out.autoV = Retouch.autoPersp(slanted({ v: -40 }));
+                out.autoVH = Retouch.autoPersp(slanted({ v: 30, h: -50 }));
+                out.autoNone = Retouch.autoPersp(slanted({}));
+                out.autoBlank = Retouch.autoPersp(c);
+                out.auto = near(out.autoV, { v: -40 }) && near(out.autoVH, { v: 30, h: -50 }) && near(out.autoNone, {}) && out.autoBlank === null;
                 // In Adjust: the Vertical slider
                 step = 'open';
-                await openProject('persp', { 'a.png': await canvasBlob(c), 'b.png': await canvasBlob(c) });
+                await openProject('persp', { 'a.png': await canvasBlob(c), 'b.png': await canvasBlob(slanted({ v: -40 })) });
                 const a = app.files.find(f => f.name === 'a.png');
                 const b = app.files.find(f => f.name === 'b.png');
                 app.openSingle(a);
@@ -3516,6 +3545,25 @@ const PROJECT = `
                 await Modes.go('photos');
                 await until(() => !Adjust.isOpen);
                 out.resetSaved = !a._edit;
+                // Auto in Adjust: nothing to go by on a (one line), b put back
+                step = 'auto in adjust';
+                await app.enterAdjust(a);
+                await until(() => Adjust.ready);
+                document.getElementById('adj-persp-auto').click();
+                out.autoNoLines = !Adjust.a.persp;
+                await Modes.go('photos');
+                await until(() => !Adjust.isOpen);
+                app.openSingle(b);
+                await app.enterAdjust(b);
+                await until(() => Adjust.ready && Adjust.file === b);
+                document.getElementById('adj-persp-auto').click();
+                Adjust.draw();
+                out.autoSet = near(Adjust.a.persp, { v: -40 }) && Adjust.base !== Adjust.raw && document.getElementById('adj-persp-v').value === String(Adjust.a.persp.v);
+                Adjust.undo();
+                Adjust.draw();
+                out.autoUndone = !Adjust.a.persp && Adjust.base === Adjust.raw;
+                await Modes.go('photos');
+                await until(() => !Adjust.isOpen);
                 return out;
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
@@ -3526,6 +3574,8 @@ const PROJECT = `
         check('perspective: kept with the photo\'s adjustments, and shown in Photos warped', r.saved && r.shown, JSON.stringify(r));
         check('perspective: never synced to other photos', r.notSynced && r.bUntouched, JSON.stringify(r));
         check('perspective: opened again it\'s there; Reset Geometry takes it off, and nothing is kept', r.again && r.reset && r.resetSaved, JSON.stringify(r));
+        check('perspective: Auto finds the photo\'s lines and the Vertical and Horizontal that make them parallel (none when there are no lines)', r.inverse && r.auto, JSON.stringify(r));
+        check('perspective: Auto in Adjust sets the sliders (Ctrl+Z takes it off), and leaves a photo with no lines alone', r.autoNoLines && r.autoSet && r.autoUndone, JSON.stringify(r));
         check('perspective: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }

@@ -572,13 +572,14 @@
                         <p class="adj-hint">1:1 — click the photo to look elsewhere</p>
                         <div id="adj-detail" class="adj-rows"></div>
                     </details>
-                    <!-- Geometry (adjust.js): straighten, as Crop's angle -->
+                    <!-- Geometry (adjust.js): straighten, as Crop's angle, and perspective -->
                     <details id="adj-geo-sec" class="adj-sec" data-reset="geometry" data-reset-name="Geometry">
                         <summary><span>Geometry</span></summary>
                         <div class="adj-sub adj-sub-acts"><span>Straighten</span>
                             <button id="adj-level" class="btn ghost sm" aria-pressed="false" title="Straighten: drag along something that should be level or upright">Draw a line</button></div>
                         <div id="adj-geo" class="adj-rows"></div>
-                        <div class="adj-sub">Perspective</div>
+                        <div class="adj-sub adj-sub-acts"><span>Perspective</span>
+                            <button id="adj-persp-auto" class="btn ghost sm" title="Auto perspective: makes the photo's upright lines parallel, and its level ones">Auto</button></div>
                         <div id="adj-persp" class="adj-rows"></div>
                     </details>
                     <details class="adj-sec" data-reset="effects" data-reset-name="Effects">
