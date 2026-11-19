@@ -12462,3 +12462,84 @@ body.touring .controls.idle button { pointer-events: auto; }
 .info-foot .btn {
     width: 100%;
 }
+
+/* ---- 2.0 camera dock (audit A6) ---- */
+
+/* One shutter: the round one on the live view (F12). Take photo stays
+   for when the live view is off */
+:root:not([data-skin]) .cam-dock:has(#cam-liveview:checked) #cam-take {
+    display: none;
+}
+
+/* Bigger is a double-click on the view; the header keeps Details (a
+   word, not a glyph), Make small and Close */
+:root:not([data-skin]) #cam-big {
+    display: none;
+}
+
+.scan-details-btn {
+    color: var(--text-2);
+}
+
+.scan-details-btn[aria-pressed="true"] {
+    color: var(--text-1);
+    background: var(--bg-raised);
+}
+
+/* The view's surround is the canvas: light in light */
+:root:not([data-skin]) .cam-view {
+    background: var(--bg-canvas);
+}
+
+:root:not([data-skin]) .cam-view-note {
+    background: linear-gradient(transparent, rgb(0 0 0 / 0.55));
+    color: #fff;
+}
+
+:root:not([data-skin]) .cam-dock:not(:has(#cam-frame[src])) .cam-view-note {
+    background: none;
+    color: var(--text-2);
+}
+
+:root:not([data-skin]) .cam-shoot {
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.25), var(--shadow-2);
+}
+
+/* ---- 2.0 scan dock (audit A5): the scanner, how and where first; the
+   rest folded under one line ---- */
+
+.scan-more {
+    border-top: 1px solid var(--border-subtle);
+}
+
+.scan-more-sum {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-4);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    cursor: pointer;
+    list-style: none;
+}
+
+.scan-more-sum::-webkit-details-marker {
+    display: none;
+}
+
+.scan-sum {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.scan-more-go {
+    flex: none;
+    color: var(--accent-text);
+}
+
+.scan-more[open] .scan-more-go {
+    visibility: hidden;
+}
