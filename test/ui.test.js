@@ -1623,6 +1623,32 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             ed.setAspect('1:1');
             out.aspectFits = !ed.zoomed;
             ed.setAspect('free');
+
+            // Polish: corners grabbed from a little outside the frame; a
+            // small frame keeps a middle to move the photo by; turning by
+            // hand catches at level; a quarter turn is seen turning and
+            // ends where it should
+            ed.setRect({ x0: -150, y0: -100, x1: 150, y1: 100 });
+            ed.fitView(false);
+            const f7 = frame();
+            out.cornerReach = ed.hit({ x: f7[2] + 18, y: f7[3] + 18 }) === 'se' && ed.hit({ x: f7[0] - 12, y: (f7[1] + f7[3]) / 2 }) === 'w'
+                && ed.hit({ x: f7[2] + 40, y: f7[3] + 40 }) === 'outside';
+            const tiny = ed.view();
+            const tc = { x: (f7[0] + f7[2]) / 2, y: (f7[1] + f7[3]) / 2 };
+            out.smallMiddle = ed.hit(tc, { s: tiny.s / 12, cx: tiny.cx, cy: tiny.cy }) === 'inside';
+            ed.setAngle(2);
+            const c7 = ed.toScreen((ed.rect.x0 + ed.rect.x1) / 2, (ed.rect.y0 + ed.rect.y1) / 2);
+            const r7 = Math.hypot(f7[2] - f7[0], f7[3] - f7[1]) / 2 + 30;
+            const at7 = (deg) => [c7.x + r7 * Math.cos(deg * Math.PI / 180), c7.y + r7 * Math.sin(deg * Math.PI / 180)];
+            ptr('pointerdown', ...at7(0)); ptr('pointermove', ...at7(-1.9)); ptr('pointerup', ...at7(-1.9));
+            out.snapLevel = ed.angle === 0;
+            ed.setAngle(0);
+            const q7 = ed.q;
+            ed.rotateQuarter(1);
+            const spun = !!ed._spin && Math.abs(ed._spin.rot + Math.PI / 2) < 1e-9;
+            await new Promise(res => setTimeout(res, ed.SPIN_MS + 150));
+            out.spin = spun && ed._spin === null && ed.q === (q7 + 1) % 4;
+            ed.rotateQuarter(-1);
             app.cancelCrop();
 
             // Close-ups draw from the full-size photo, not the screen-sized
@@ -1755,6 +1781,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('zoom: the wheel zooms about the pointer, and it stays zoomed through a resize', r.zoomIn && r.zoomKept, JSON.stringify([r.zoomIn, r.zoomKept]));
         check('zoom: Space+drag moves the view, not the crop', r.spacePan);
         check('zoom: Fit, zooming back, or a new aspect rest on the crop again', r.zoomFit && r.zoomBackRests && r.aspectFits, JSON.stringify([r.zoomFit, r.zoomBackRests, r.aspectFits]));
+        check('crop polish: corners reach outside the frame; a small frame keeps its middle', r.cornerReach && r.smallMiddle, JSON.stringify([r.cornerReach, r.smallMiddle]));
+        check('crop polish: turning by hand catches at level; a quarter turn is seen turning', r.snapLevel && r.spin, JSON.stringify([r.snapLevel, r.spin]));
         check('close-ups use the full-size photo, dropped on close', r.detail && r.detailDropped, JSON.stringify([r.detail, r.detailDropped]));
         check('"Every photo" runs Auto as each photo opens', r.autoEach);
         check('crop suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
