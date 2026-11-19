@@ -408,7 +408,9 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             for (let i = 0; i < 40 && document.getAnimations().some(a => a.playState === 'running' && a.effect && a.effect.getComputedTiming().iterations !== Infinity); i++) await new Promise(r => setTimeout(r, 50));
             const rail = document.getElementById('folder-rail').getBoundingClientRect();
             const bar = document.getElementById('folder-bar').getBoundingClientRect();
-            const docked = { left: rail.left, top: rail.top, full: Math.round(rail.bottom) === innerHeight, beside: bar.left >= rail.right };
+            // (with macOS 26's toolbar there's no folder pill: the toolbar has its controls)
+            const native = document.documentElement.classList.contains('native-toolbar');
+            const docked = { left: rail.left, top: rail.top, full: Math.round(rail.bottom) === innerHeight, beside: native ? !bar.width : bar.left >= rail.right, native };
             // Recents in the sidebar: Beta Jones, not the open one
             await Places.draw();
             const recents = [...document.querySelectorAll('#sb-places .sb-recent .fr-name')].map(n => n.textContent);
@@ -1019,7 +1021,9 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await page.waitForFunction(() => Modes.current() === 'photos', null, { timeout: 15000 });
             await settle();
             d = await describe();
-            check('... and back in Photos, the toolbar is back', d.visible && d.items.some(i => i.id === 'mode'), JSON.stringify(d).slice(0, 200));
+            // (its mode button, or, with the sidebar open, the sidebar's own row of modes under it)
+            const railRow = await page.evaluate(() => { const r = document.querySelector('.folder-rail:not(.hidden) #mode-row'); return !!r && !!r.getClientRects().length && r.getBoundingClientRect().top >= 52; });
+            check('... and back in Photos, the toolbar is back', d.visible && (d.items.some(i => i.id === 'mode') || railRow), JSON.stringify([railRow, d]).slice(0, 300));
 
             // The toolbar's empty space moves the window: pressed there, it's the
             // window's (the drag view), not the page's under it
