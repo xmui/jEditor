@@ -146,6 +146,7 @@ const app = {
             this.openContextMenu(this.selectionMoreItems(), r.left, r.top - 8, { above: true });
         });
         document.getElementById('btn-trash').addEventListener('click', () => this.moveToTrash([...this.selection]));
+        document.getElementById('btn-sel-export').addEventListener('click', () => Export.open({ files: [...this.selection] }));
         document.getElementById('btn-clear-selection').addEventListener('click', () => this.clearSelection());
         document.getElementById('btn-refresh').addEventListener('click', () => this.refreshFolder());
 
@@ -4004,7 +4005,13 @@ const app = {
         this.refreshInfoSoon();
         if (this.selection.size > 0) {
             this.elements.selectionBar.classList.remove('hidden');
-            this.elements.selectionCount.textContent = `${this.selection.size} selected`;
+            const count = this.elements.selectionCount;
+            count.textContent = this.selection.size.toLocaleString();
+            const word = document.createElement('span');
+            word.className = 'sel-word';
+            word.textContent = ' selected';
+            count.appendChild(word);
+            document.getElementById('btn-clear-selection').title = `${this.selection.size.toLocaleString()} selected: clear the selection (Esc)`;
             // Sync needs a photo to sync from and one to sync onto
             document.getElementById('btn-sync').classList.toggle('hidden', this.selection.size < 2);
         } else {
@@ -7839,9 +7846,14 @@ const app = {
     selectionMoreItems() {
         const sel = [...this.selection];
         const n = sel.length.toLocaleString();
+        // jEditor's own look: the pill has Rotate, Move to, Export and
+        // Delete as icons; Rename and Sync are here instead
+        const own = !document.documentElement.dataset.skin;
         const items = [
             ['flags', sel],
             ['—'],
+            ...(own ? [[`Rename ${n}…`, () => this.batchRename(sel), false, undefined, 'edit.rename']] : []),
+            ...(own && sel.length > 1 ? [['Sync adjustments…', () => this.syncAdjust(), false, undefined, 'edit.syncAdjust']] : []),
             // On the bar in the themes; in jEditor's own look only here (and [ ])
             [`Rotate ${n} left`, () => this.rotateBulk(-90), false, undefined, 'edit.rotateLeft'],
             [`Rotate ${n} right`, () => this.rotateBulk(90), false, undefined, 'edit.rotateRight'],
@@ -7853,7 +7865,7 @@ const app = {
                 ['Restore as one roll (faded together)', () => this.restoreColour(sel, { roll: true })]
             ]],
             [`Copy ${n} to…`, () => Folders.openPicker(sel, 'copy'), false, undefined, 'edit.copyTo'],
-            [`Export ${n}…`, () => Export.open({ files: sel })],
+            ...(own ? [] : [[`Export ${n}…`, () => Export.open({ files: sel })]]),
             [`Convert ${n}…`, () => Convert.open({ files: sel })],
             ...(this.canAddToPhotos() ? [[`Add ${n} to Photos library`, () => this.addToPhotos(sel)]] : []),
             ['—'],
