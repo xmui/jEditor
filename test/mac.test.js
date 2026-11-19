@@ -924,7 +924,8 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             const describe = () => app.evaluate(({ BrowserWindow }) => global.jeditorToolbar.describe(BrowserWindow.getAllWindows()[0].getNativeWindowHandle()));
             const click = (id, value) => app.evaluate(({ BrowserWindow }, [id, value]) => global.jeditorToolbar.click(BrowserWindow.getAllWindows()[0].getNativeWindowHandle(), id, value), [id, value]);
             const settle = () => page.waitForTimeout(400);
-            await page.evaluate(() => { app.setView('single'); app.loadIndex(0); });
+            // The view switch is in More in 2.0's pill: on the pill for this
+            await page.evaluate(() => { app.uiPrefs.placement.view = 'main'; app.applyUiPrefs(); app.setView('single'); app.loadIndex(0); });
             await settle();
             let d = await describe();
             const ids = d.items.map(i => i.id);
