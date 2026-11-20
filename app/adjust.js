@@ -1977,7 +1977,8 @@ const Adjust = {
         // Scaled to the tallest bar but the very ends (clipped pixels pile up there)
         let peak = 1;
         for (const c of chans) for (let i = 2; i < 254; i++) peak = Math.max(peak, H[c][i]);
-        ctx.globalCompositeOperation = 'lighter';
+        const light = document.documentElement.dataset.theme === 'light';
+        ctx.globalCompositeOperation = light ? 'multiply' : 'lighter';
         for (const c of chans) {
             ctx.fillStyle = this.CH_COLORS[c] + (chans.length > 1 ? 'a0' : 'd0');
             ctx.beginPath();
@@ -1993,7 +1994,7 @@ const Adjust = {
         ctx.globalCompositeOperation = 'source-over';
         // Clipping: a mark at an end with more than a sliver there
         const clip = (i) => chans.some(c => H[c][i] > H.n * 0.002);
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = light ? '#1c1c1e' : '#fff';
         if (clip(0)) ctx.fillRect(0, 0, 3, 8);
         if (clip(255)) ctx.fillRect(w - 3, 0, 3, 8);
     },

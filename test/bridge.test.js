@@ -122,10 +122,16 @@ const waitForPost = (page, type) => page.waitForFunction(
         check('no service worker is registered', r.sw === null || r.sw === undefined ? r.regs === 0 : false, JSON.stringify(r));
         check('recent orders stay available', r.recents);
 
-        // A theme change is reported once
-        await page.evaluate(() => { window.__posted.length = 0; document.documentElement.dataset.theme = 'light'; });
-        const light = await waitForPost(page, 'theme');
-        check('reports a theme change', light.dark === false, JSON.stringify(light));
+        // A theme change is reported once (to the other one: jEditor follows
+        // the system to start with, so it may already be light)
+        const to = await page.evaluate(() => {
+            window.__posted.length = 0;
+            const to = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+            document.documentElement.dataset.theme = to;
+            return to;
+        });
+        const changed = await waitForPost(page, 'theme');
+        check('reports a theme change', changed.dark === (to === 'dark'), JSON.stringify([to, changed]));
         check('start-up: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }

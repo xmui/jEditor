@@ -982,6 +982,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.loadUiPrefs();
             app.applyUiPrefs();
             out.defaults = [root.dataset.theme, root.dataset.density, root.dataset.glass, root.dataset.surround].join(',');
+            out.systemTheme = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+            out.themePref = app.uiPrefs.theme;
 
             // Settings opens on Ctrl+, from the start screen, and its radios apply at once
             window.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true }));
@@ -1039,7 +1041,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.applyUiPrefs();
             return out;
         });
-        check('appearance defaults: dark, compact, crystal glass, theme surround', r.defaults === 'dark,compact,crystal,auto', r.defaults);
+        check('appearance defaults: the system\'s light or dark, compact, crystal glass, theme surround', r.defaults === `${r.systemTheme},compact,crystal,auto` && r.themePref === 'system', r.defaults);
         check('glass saved before carries over: rich (the old default) is Crystal, Subtle and Off are Opaque; Off is gone from Settings',
             r.oldGlass === 'crystal,opaque,opaque,liquid' && r.glassOptions === 'crystal,liquid,clear,opaque,lens', JSON.stringify([r.oldGlass, r.glassOptions]));
         check('Ctrl+, opens Settings; Esc closes it', r.opened && r.closed, JSON.stringify({ o: r.opened, c: r.closed }));

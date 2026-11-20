@@ -4530,7 +4530,8 @@ const PROJECT = `
                 step = 'off';
                 Themes.choose('');
                 out.off = !root.dataset.skin && !root.dataset.layout && !$('th-top') && !document.querySelector('link[data-theme]')
-                    && calls[calls.length - 1] === 'titleBar:false' && root.dataset.theme === app.uiPrefs.theme;
+                    && calls[calls.length - 1] === 'titleBar:false'
+                    && root.dataset.theme === (app.uiPrefs.theme === 'system' ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : app.uiPrefs.theme);
                 app.toggleCustomizePanel(false);
                 delete window.JEditorNative;
                 return out;
