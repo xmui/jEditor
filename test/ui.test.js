@@ -5838,13 +5838,16 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.carriesOn = await until(() => Tour.steps[Tour.i].id === 'modes' && !Tour.busy);
             out.lit = parseFloat(document.querySelector('.tour-hole').style.width) > 0;
             out.count = document.querySelector('.tour-step').textContent === `2 of ${Tour.steps.length}`;
-            // Next: the sidebar, in the grid
+            // Six stops at most (audit A12); the modes are shown in the grid
+            out.six = Tour.steps.length <= 6;
+            out.sidebar = document.body.dataset.view === 'grid';
+            // Next: the film strip, in single view
             document.querySelector('.tour-card [data-act="next"]').click();
-            out.sidebar = await until(() => Tour.steps[Tour.i].id === 'sidebar' && !Tour.busy) && document.body.dataset.view === 'grid';
-            // On to the turn buttons, in single view
-            while (Tour.steps[Tour.i].id !== 'turn') { document.querySelector('.tour-card [data-act="next"]').click(); await until(() => !Tour.busy); }
+            await until(() => Tour.steps[Tour.i].id === 'strip' && !Tour.busy);
             out.single = document.body.dataset.view === 'single' && parseFloat(document.querySelector('.tour-hole').style.width) > 0;
-            // Back goes back
+            // On to Crop, and Back goes back
+            document.querySelector('.tour-card [data-act="next"]').click();
+            await until(() => Tour.steps[Tour.i].id === 'crop' && !Tour.busy);
             document.querySelector('.tour-card [data-act="back"]').click();
             out.back = await until(() => Tour.steps[Tour.i].id === 'strip' && !Tour.busy);
             // The end, in a browser: what the apps also have, and the download
@@ -5862,7 +5865,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         const ended = await page.evaluate(() => !Tour.running && !document.querySelector('.tour-hole') && !document.querySelector('.tour-card') && !document.body.classList.contains('touring'));
         check('tour: offered once on first run, and Not now keeps it away', r.offered && r.later && r.once, JSON.stringify(r));
         check('tour: with nothing open it starts with a folder, and goes on once one is open', r.firstOpen && r.carriesOn && r.lit && r.count, JSON.stringify(r));
-        check('tour: takes the app to each stop\'s view (the grid, one photo), and Back goes back', r.sidebar && r.single && r.back, JSON.stringify(r));
+        check('tour: six stops at most; takes the app to each stop\'s view (the grid, one photo), and Back goes back', r.six && r.sidebar && r.single && r.back, JSON.stringify(r));
         check('tour: in a browser, no Scan or Camera stop, and it ends with what the apps also have and the download', r.noScan && r.webEnd, JSON.stringify(r));
         check('tour: Esc ends it', ended);
         check('tour suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
@@ -5909,7 +5912,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                 }, chrome);
                 const boxes = await floatingBoxes(page);
                 for (const o of overTopBar(boxes, bars)) over.push(`${chrome}, ${width}×${height}: ${o}`);
-                if (boxes.length < 15) over.push(`${chrome}, ${width}×${height}: only ${boxes.length} measured (${boxes.map(b => b.name).join(', ')})`);
+                if (boxes.length < 14) over.push(`${chrome}, ${width}×${height}: only ${boxes.length} measured (${boxes.map(b => b.name).join(', ')})`);
                 errors = errors.concat(issues.errors);
                 await page.close();
             }

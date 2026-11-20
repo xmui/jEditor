@@ -12530,6 +12530,60 @@ body.touring .controls.idle button { pointer-events: auto; }
     box-shadow: 0 0 0 1px var(--border);
 }
 
+/* ---- 2.0 home (audit M6): one clear start, no wireframe ---- */
+
+/* The version is in Settings → Updates and the gear's What's new; here
+   it's only read out */
+:root:not([data-skin]) .home-ver {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+/* Nothing opened yet: one picture, not four dashed boxes */
+:root:not([data-skin]) .home-empty li:not(.ghost-first) {
+    display: none;
+}
+
+:root:not([data-skin]) .home-empty .recent-print.ghost.first {
+    border: 0;
+    background: var(--bg-raised);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-1) 8%, transparent), var(--shadow-3);
+    color: var(--accent-text);
+}
+
+:root:not([data-skin]) .home-empty .recent-print.ghost.first .i {
+    width: 40px;
+    height: 40px;
+    stroke-width: 1.4;
+}
+
+:root:not([data-skin]) .home-empty p {
+    max-width: 32ch;
+    font-size: var(--fs-body);
+    text-align: center;
+}
+
+/* ...and Open a folder the one main button, New project and Convert
+   quiet beside it */
+:root:not([data-skin]) .home:has(.home-empty:not(.hidden)) .home-tiles .home-tile:not(.primary) {
+    border-color: transparent;
+    background: none;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    color: var(--text-2);
+}
+
+:root:not([data-skin]) .home:has(.home-empty:not(.hidden)) .home-tiles .home-tile:not(.primary):hover {
+    transform: none;
+    background: var(--bg-raised);
+    color: var(--text-1);
+}
+
 /* ---- Adjust (2.0, the owner's picks 2 and 3): the panel is a floating
    glass card, as Info's and the pills, and a slider is one row: its name,
    the track, its number (Lightroom's density: twice the sliders in the
