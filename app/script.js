@@ -600,6 +600,10 @@ const app = {
                 if (typeof saved.accent === 'string' && /^#[0-9a-f]{6}$/i.test(saved.accent)) this.uiPrefs.accent = saved.accent;
                 if (typeof saved.singleControls === 'boolean') this.uiPrefs.singleControls = saved.singleControls;
                 if (typeof saved.folderRail === 'boolean') this.uiPrefs.folderRail = saved.folderRail;
+                if (saved.railIn && typeof saved.railIn === 'object') {
+                    this.uiPrefs.railIn = {};
+                    for (const m of ['adjust', 'paint']) if (typeof saved.railIn[m] === 'boolean') this.uiPrefs.railIn[m] = saved.railIn[m];
+                }
                 if (['photos', 'adjust', 'paint'].includes(saved.startIn)) this.uiPrefs.startIn = saved.startIn;
                 // The home page's Settings menu (start.js)
                 if (typeof saved.keepEdits === 'boolean') this.uiPrefs.keepEdits = saved.keepEdits;
