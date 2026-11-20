@@ -97,7 +97,26 @@ const Fit = {
         this.fitBottom(iface, tokens, set);
         this.fitToasts(tokens);
         set();
+        this.headRoom(iface);
         if (typeof Folders !== 'undefined' && Folders.fitBar) Folders.fitBar();
+    },
+
+    // How far down the top pills reach, and a gutter under them
+    // (--head-room): the single view fits the photo below it, so the pills
+    // never sit on it until it's zoomed (style.css). The file pill's
+    // bottom, or the actions pill's when there's no file pill; not More
+    // opened, which would push the photo down while it's open
+    headRoom(iface) {
+        if (document.documentElement.dataset.skin) return;
+        const top = iface.getBoundingClientRect().top;
+        const fi = document.querySelector('header .file-info'), hc = this.el('header-controls');
+        const pill = this.shown(fi) ? fi : (this.shown(hc) && !hc.classList.contains('expanded') ? hc : null);
+        if (!pill) return;
+        const r = pill.getBoundingClientRect();
+        if (!r.height) return;
+        const gutter = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gutter')) || 20;
+        const v = Math.round(r.bottom - top + gutter) + 'px';
+        if (iface.style.getPropertyValue('--head-room') !== v) iface.style.setProperty('--head-room', v);
     },
 
     // A theme's foot bar: the selection bar and the size slider share it,

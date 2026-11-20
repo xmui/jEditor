@@ -1189,7 +1189,8 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 if (!b.length && !c.full) unmeasured.push(name);
                 const boxes = await floatingBoxes(page);
                 for (const o of overTopBar(boxes, b)) over.push(`${name}: ${o}`);
-                if (boxes.length < 15) unmeasured.push(`${name}: only ${boxes.length} (${boxes.map(x => x.name).join(', ')})`);
+                // 14: the tour has six stops since 2.0 (ui.test.js counts the same)
+                if (boxes.length < 14) unmeasured.push(`${name}: only ${boxes.length} (${boxes.map(x => x.name).join(', ')})`);
                 if (c.full) { await full(false); await page.waitForTimeout(1500); }
             }
             await page.evaluate(() => { if (app.uiPrefs.skin) Themes.choose(''); });
