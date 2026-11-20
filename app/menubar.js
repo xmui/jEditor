@@ -37,7 +37,7 @@ const MenuBar = {
         ],
         Edit: [
             ['Undo', 'edit.undo'],
-            ['Redo', null],
+            ['Redo', 'edit.redo'],
             ['Undo history…', 'edit.history', { project: true }],
             '—',
             ['Copy image', 'edit.copyImage', { project: true }],
@@ -144,9 +144,9 @@ const MenuBar = {
     // Which commands a context's own table has in place of Photos' ones
     // (Undo in Adjust is Adjust's undo)
     SWAP: {
-        adjust: { 'edit.undo': 'adjust.undo', Redo: 'adjust.redo', 'edit.saveOver': 'adjust.saveOver', 'edit.copyImage': 'adjust.copyImage', 'edit.pasteImage': 'adjust.pasteImage', 'view.zoomIn': 'adjust.zoomIn', 'view.zoomOut': 'adjust.zoomOut', 'view.zoomFit': 'adjust.zoomFit' },
-        paint: { 'edit.undo': 'paint.undo', Redo: 'paint.redo', 'edit.saveOver': 'paint.saveOver', 'edit.selectAll': 'paint.selectAll', 'view.zoomIn': 'paint.zoomIn', 'view.zoomOut': 'paint.zoomOut', 'view.zoomFit': 'paint.fit' },
-        crop: { 'edit.undo': 'crop.undo', Redo: 'crop.redo', 'edit.selectAll': 'crop.selectAll', 'view.zoomIn': 'crop.zoomIn', 'view.zoomOut': 'crop.zoomOut', 'view.zoomFit': 'crop.zoomFit' }
+        adjust: { 'edit.undo': 'adjust.undo', 'edit.redo': 'adjust.redo', 'edit.saveOver': 'adjust.saveOver', 'edit.copyImage': 'adjust.copyImage', 'edit.pasteImage': 'adjust.pasteImage', 'view.zoomIn': 'adjust.zoomIn', 'view.zoomOut': 'adjust.zoomOut', 'view.zoomFit': 'adjust.zoomFit' },
+        paint: { 'edit.undo': 'paint.undo', 'edit.redo': 'paint.redo', 'edit.saveOver': 'paint.saveOver', 'edit.selectAll': 'paint.selectAll', 'view.zoomIn': 'paint.zoomIn', 'view.zoomOut': 'paint.zoomOut', 'view.zoomFit': 'paint.fit' },
+        crop: { 'edit.undo': 'crop.undo', 'edit.redo': 'crop.redo', 'edit.selectAll': 'crop.selectAll', 'view.zoomIn': 'crop.zoomIn', 'view.zoomOut': 'crop.zoomOut', 'view.zoomFit': 'crop.zoomFit' }
     },
 
     init(app) {
@@ -199,7 +199,6 @@ const MenuBar = {
                 continue;
             }
             let id = typeof act === 'string' ? (swap[act] || act) : null;
-            if (act === null) id = swap[label] || null; // Redo: only where there's one
             if (act === null && !id) continue;
             if (id && !app.actionOn(id)) continue; // an experiment that's off
             const run = typeof act === 'function' ? act : () => { const h = handlers[id]; if (h) h(); };

@@ -1007,10 +1007,24 @@ const Adjust = {
     MAX_ZOOM: 16,       // 1600%, as Lightroom
     PAD: 16,            // round the photo when it's fitted
 
+    // Where the fitted photo goes in the stage: PAD round it, and at the
+    // top clear of the head's pills by the gutter, so they never sit on it
+    // at Fit (the owner: "make sure pills aren't touching the photo")
+    fitBox() {
+        const box = this.el('adj-stage').getBoundingClientRect();
+        let top = this.PAD;
+        const head = this.root && this.root.querySelector('.adj-head');
+        if (head && head.offsetParent !== null && !document.documentElement.dataset.skin) {
+            const gutter = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gutter')) || 20;
+            top = Math.max(top, head.getBoundingClientRect().bottom - box.top + gutter);
+        }
+        return { x: this.PAD, y: top, w: Math.max(1, box.width - 2 * this.PAD), h: Math.max(1, box.height - top - this.PAD) };
+    },
+
     // The zoom that fits the photo (at most 4× the working copy, as before)
     fitZoom() {
-        const box = this.el('adj-stage').getBoundingClientRect();
-        return Math.max(1e-3, Math.min((box.width - 2 * this.PAD) / this.PW, (box.height - 2 * this.PAD) / this.PH, 4 * this.w / this.PW));
+        const f = this.fitBox();
+        return Math.max(1e-3, Math.min(f.w / this.PW, f.h / this.PH, 4 * this.w / this.PW));
     },
 
     // The view kept on the photo: centred on an axis where it's smaller
@@ -1019,7 +1033,16 @@ const Adjust = {
         const box = this.el('adj-stage').getBoundingClientRect(), v = this.view;
         const cw = this.PW * v.z, ch = this.PH * v.z;
         v.x = cw <= box.width ? (box.width - cw) / 2 : Math.min(0, Math.max(box.width - cw, v.x));
-        v.y = ch <= box.height ? (box.height - ch) / 2 : Math.min(0, Math.max(box.height - ch, v.y));
+        // Up and down: centred in the room under the pills (fitBox) while it
+        // fits there; bigger, its top can come down as far as that room's
+        // top, so it can be seen clear of the pills, and its bottom up to
+        // the stage's
+        const f = this.fitBox();
+        if (ch <= f.h) v.y = f.y + (f.h - ch) / 2;
+        else {
+            const lo = box.height - ch, hi = Math.max(lo, f.y);
+            v.y = Math.min(hi, Math.max(lo, v.y));
+        }
     },
 
     // The canvas at the view's size and place (fitted: the stage's size)
@@ -1029,7 +1052,8 @@ const Adjust = {
         if (!this.view || this.fitted) {
             const z = this.fitZoom();
             const cw = Math.max(1, Math.floor(this.PW * z)), ch = Math.max(1, Math.floor(this.PH * z));
-            this.view = { z: cw / this.PW, x: Math.round((box.width - cw) / 2), y: Math.round((box.height - ch) / 2) };
+            const f = this.fitBox();
+            this.view = { z: cw / this.PW, x: Math.round((box.width - cw) / 2), y: Math.round(f.y + (f.h - ch) / 2) };
         } else {
             this.clampView();
         }

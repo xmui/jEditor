@@ -235,6 +235,8 @@ const Folders = {
     // room (2.0, audit C1); Ctrl+B there opens it, and each mode remembers
     // its own (uiPrefs.railIn). Photos keeps folderRail
     railOpen() {
+        // Full screen: stepped aside for now (script.js: syncFullscreen)
+        if (this.aside) return false;
         const p = this.app.uiPrefs || {};
         const mode = typeof Modes !== 'undefined' && Modes.current ? Modes.current() : 'photos';
         if (mode !== 'photos') return !!(p.railIn && p.railIn[mode]);
@@ -249,6 +251,15 @@ const Folders = {
     // Shown or hidden, and remembered: by Ctrl+B, the button, or its edge
     // dragged in until it snaps hidden (script.js: SIDE_HIDES)
     setRail(on) {
+        // Brought back in full screen (Ctrl+B, the button): as it was
+        if (this.aside) {
+            this.aside = false;
+            if (on === this.railOpen()) {
+                this.render();
+                if (on) this.app.slideSide(this.el('folder-rail'), true);
+                return;
+            }
+        }
         if (on === this.railOpen()) return;
         const mode = typeof Modes !== 'undefined' && Modes.current ? Modes.current() : 'photos';
         if (mode !== 'photos') this.app.uiPrefs.railIn = { ...(this.app.uiPrefs.railIn || {}), [mode]: on };
@@ -944,7 +955,7 @@ const Folders = {
                     if (copy) {
                         const c = await this.copyOne(p.f, destDir, dest, p.name);
                         copies.push(c);
-                        items.push({ file: c });
+                        items.push({ file: c, src: p.f }); // (the photo copied: Redo copies it again)
                     } else {
                         const fromDir = this.dirOf(p.f), fromName = p.f.name;
                         await this.moveOne(p.f, destDir, dest, p.name);
@@ -1089,6 +1100,18 @@ const Folders = {
             await this.createPath('', entry.path);
             this.afterChange();
             app.showToast(`Folder “${this.baseName(entry.path)}” is back`, 3000, null, null, { kind: 'undo' });
+        } else if (entry.type === 'folder-make') {
+            // Redo of a new folder: made again (what it made, for its undo)
+            const made = [];
+            for (const p of entry.paths) made.push(...(await this.createPath('', p)).created);
+            this.afterChange();
+            return made;
+        } else if (entry.type === 'folder-remove') {
+            // Redo of deleting a folder: only while it's still empty
+            if (app.files.some(f => this.within(this.dirOf(f), entry.path)) || !(await this.removeIfEmpty(entry.path))) {
+                throw new Error(`“${this.baseName(entry.path)}” has things in it now`);
+            }
+            this.afterChange();
         }
     },
 
@@ -1614,11 +1637,16 @@ const Folders = {
     // A browser: into a folder chosen with its own picker. Ctrl+Z puts
     // them back (or removes the copies)
     async sendToHandle(dir) {
-        const app = this.app;
         const files = this.pickerFiles;
         const copy = this.pickerMode === 'copy';
         if (!files) return;
         this.closePicker();
+        return this.sendFiles(dir, files, copy);
+    },
+
+    // (Redo too: the same photos into the same folder)
+    async sendFiles(dir, files, copy) {
+        const app = this.app;
         const inside = await app.dirHandle.resolve(dir).catch(() => null);
         if (inside) {
             const known = this.find(inside.join('/'));

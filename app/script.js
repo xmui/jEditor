@@ -323,6 +323,10 @@ const app = {
             this.elements.btnMore.setAttribute('aria-expanded', String(open));
         });
         this.elements.btnFullscreen.addEventListener('click', () => this.toggleFullscreen());
+        // Full screen, however it came (F, the Mac's green button): the
+        // photo and its pills only (syncFullscreen)
+        document.addEventListener('fullscreenchange', () => this.syncFullscreen());
+        new MutationObserver(() => this.syncFullscreen()).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
         this.elements.btnCustomize.addEventListener('click', () => this.toggleCustomizePanel());
         document.getElementById('btn-shortcuts').addEventListener('click', () => this.toggleShortcutsPanel());
         document.getElementById('btn-whatsnew').addEventListener('click', () => this.toggleWhatsNew());
@@ -4131,6 +4135,8 @@ const app = {
             Edits.clearAll();
             // Trash undo steps can't be undone any more, and flags are gone
             this._undoStack = (this._undoStack || []).filter(e => !['trash', 'flags', 'auto-crop', 'edits', 'saved-edits'].includes(e.type));
+            // (and what was undone: its copies in originals/ are gone too)
+            this._redoStack = []; // (Clean Up removed their copies)
             const what = native ? 'Project cleaned up' : 'Folder cleaned up';
             this.showToast(inTrash ? `${what} — trash emptied (${inTrash})` : what, 3000);
         } catch (e) {
@@ -4985,6 +4991,18 @@ const app = {
     showToast(message, duration = 3000, key = null, action = null, opts = {}) {
         // Going back several steps (history.js) says so once, at the end
         if (this._quietToasts) return;
+        // An undo's message: Redo on it, while that's still the next redo
+        const redo = this._offerRedo;
+        if (redo && !action && opts && opts.kind === 'undo') {
+            action = {
+                label: 'Redo',
+                run: () => {
+                    const s = this._redoStack || [];
+                    if (s[s.length - 1] === redo) this.redo();
+                    else this.showToast(Host.say('Something else changed since — use Ctrl+Shift+Z'));
+                }
+            };
+        }
         // A kind turned off in Settings → Messages (errors always show)
         if (opts && opts.kind && opts.type !== 'error' && !this.toastOn(opts.kind)) return;
         message = Host.say(message);
@@ -5129,6 +5147,7 @@ const app = {
         ['edit.rename', 'global', 'Edit', 'Rename (the selection in grid view)', ['F2']],
         ['edit.trash', 'global', 'Edit', 'Move to trash', ['Delete']],
         ['edit.undo', 'global', 'Edit', 'Undo', ['Ctrl+Z']],
+        ['edit.redo', 'global', 'Edit', 'Redo', ['Ctrl+Shift+Z', 'Ctrl+Y']],
         ['edit.history', 'global', 'Edit', 'Undo history: go back several steps', ['H']],
         ['edit.selectAll', 'global', 'Edit', 'Select all (grid)', ['Ctrl+A']],
         ['flag.star', 'global', 'Flags', 'Pick / unpick', ['P']],
@@ -5364,6 +5383,7 @@ const app = {
             'edit.trash': () => this.moveToTrash(grid() && this.selection.size
                 ? [...this.selection] : [this.currentFile]),
             'edit.undo': () => this.undo(),
+            'edit.redo': () => this.redo(),
             'edit.history': () => History.toggle(),
             'edit.selectAll': () => {
                 if (!grid()) return false;
@@ -6760,6 +6780,9 @@ const app = {
         if (!this._undoStack) this._undoStack = [];
         const stack = this._undoStack;
         if (!entry.at) entry.at = Date.now(); // for the undo history (history.js)
+        // Something new done: what was undone can't be redone over it
+        // (while redoing, the step redone comes back here instead)
+        if (!this._redoing) this.clearRedo();
         stack.push(entry);
         while (stack.length > this.UNDO_LIMIT ||
             (stack.length > 1 && this.undoBytes() > this.UNDO_MAX_BYTES)) stack.shift();
@@ -6781,6 +6804,38 @@ const app = {
             return false;
         }
         History.changed();
+        // Its opposite, made before it's undone: what Redo does
+        let redo = null;
+        try { redo = await this.redoFor(entry); } catch (e) { console.warn('No redo for this step:', e); }
+        if (redo) redo.desc = History.describe(entry);
+        // The undo's message offers Redo (showToast)
+        this._offerRedo = redo;
+        let ok = false;
+        try {
+            ok = await this.applyUndo(entry);
+        } finally {
+            this._offerRedo = null;
+        }
+        if (redo && ok) {
+            if (redo.finish) redo.finish(this._undoResult);
+            delete redo.finish;
+            if (!this._redoStack) this._redoStack = [];
+            this._redoStack.push(redo);
+            // As many as the undo list keeps, and file copies in memory within its room
+            const size = (e) => (e.blob ? e.blob.size : 0) + (e.items ? e.items.reduce((n, it) => n + size(it), 0) : 0);
+            while (this._redoStack.length > this.UNDO_LIMIT ||
+                (this._redoStack.length > 1 && this._redoStack.reduce((n, e) => n + size(e), 0) > this.UNDO_MAX_BYTES)) this.dropRedo(this._redoStack.shift());
+        } else if (redo) {
+            this.dropRedo(redo);
+        }
+        History.changed();
+        return ok;
+    },
+
+    // A step taken back: true when it was. Undo runs it, and so does Redo
+    // (a redo is the opposite of an undo, in the same form)
+    async applyUndo(entry) {
+        this._undoResult = undefined;
         try {
             if (entry.type === 'bytes') {
                 await this.undoFileEdit(entry);
@@ -6826,9 +6881,11 @@ const app = {
             } else if (entry.type === 'saved-edits') {
                 await this.undoSavedEdits(entry);
             } else if (entry.type === 'project-rename') {
-                if (!(await Places.undoRename(entry))) throw new Error('the old name couldn\'t be put back');
+                const to = await Places.undoRename(entry);
+                if (!to) throw new Error('the old name couldn\'t be put back');
+                this._undoResult = to;
             } else if (entry.type === 'relocate' || entry.type.startsWith('folder-')) {
-                await Folders.undo(entry);
+                this._undoResult = await Folders.undo(entry);
             } else if (entry.type === 'transfer') {
                 await Windows.undo(entry);
             } else if (entry.type === 'convert') {
@@ -6838,6 +6895,9 @@ const app = {
                 this.sortFiles();
                 if (n < entry.items.length) this.showToast(`Restored ${n} of ${entry.items.length} photos — the rest are still in ${Host.words().bin}`, 4000);
                 else this.showToast(`Restored ${n} photo${n > 1 ? 's' : ''}`, 3000, null, null, { kind: 'undo' });
+            } else if (this.REDONE[entry.type]) {
+                // Redo's own steps: done again by the action itself
+                await this.REDONE[entry.type].call(this, entry);
             }
         } catch (e) {
             console.error('Undo failed:', e);
@@ -6848,6 +6908,269 @@ const app = {
             History.changed();
         }
         return true;
+    },
+
+    // ---- Redo ----
+    //
+    // Each undo makes its opposite first, in the undo list's own form:
+    // names, flags and edits as they are now, the photos' bytes copied
+    // into .jeditor/originals (as Auto crop keeps its originals) before
+    // they're written over. Redo takes that back through the same code as
+    // Undo, and its opposite goes back on the undo list. Moving, copying,
+    // deleting and converting are done again by the action itself (its
+    // checks, its name clashes asked again, its own undo step), so a redo
+    // never writes over a file without a copy kept, and never deletes one
+    // but into the bin. Anything new done clears what can be redone.
+
+    canRedo() {
+        return !!(this._redoStack && this._redoStack.length);
+    },
+
+    async redo() {
+        const stack = this._redoStack || [];
+        const step = stack.pop();
+        this._redoError = null;
+        if (!step) {
+            this.showToast('Nothing to redo', 1200);
+            return false;
+        }
+        History.changed();
+        const desc = step.desc || History.describe(step);
+        const forward = !!this.REDONE[step.type];
+        let back = null;
+        if (!forward) {
+            try {
+                back = await this.redoFor(step);
+            } catch (e) {
+                // Nothing written without a way back
+                console.error('Redo: no way to undo it again', e);
+                stack.push(step);
+                this._redoError = e.message;
+                this.showToast('Couldn\'t redo: ' + e.message, 4000);
+                History.changed();
+                return false;
+            }
+        }
+        const undos = this._undoStack || (this._undoStack = []);
+        const top = undos[undos.length - 1];
+        const quiet = this._quietToasts;
+        this._redoing = true;
+        // The undo's own message ("Undid…") isn't this one's
+        if (!forward) this._quietToasts = true;
+        let ok = false;
+        try {
+            ok = await this.applyUndo(step);
+        } finally {
+            this._quietToasts = quiet;
+            this._redoing = false;
+        }
+        if (!forward) {
+            if (ok && back) {
+                if (back.finish) back.finish(this._undoResult);
+                delete back.finish;
+                back.desc = step.desc;
+                this._redoing = true;
+                try { this.pushUndo(back); } finally { this._redoing = false; }
+            } else if (back) {
+                this.dropRedo(back);
+            }
+        }
+        // Done again by the action: it added its own undo step, or didn't
+        // run (canceled, nothing left to do), and can be redone later
+        if (forward && ok && undos[undos.length - 1] === top) ok = false;
+        if (!ok) {
+            if (!forward || !this._undoError) stack.push(step);
+            this._redoError = this._undoError || 'it couldn\'t be done again';
+            if (!forward) this.showToast('Redo failed: ' + this._redoError, 4000);
+            History.changed();
+            return false;
+        }
+        if (!forward) {
+            const last = undos[undos.length - 1];
+            this.showToast(`Redid: ${desc.detail ? `${desc.what}, ${desc.detail}` : desc.what}`, 3000, null, {
+                label: 'Undo',
+                run: () => {
+                    const s = this._undoStack || [];
+                    if (s[s.length - 1] === last) this.undo();
+                    else this.showToast('Something else changed since — use Ctrl+Z');
+                }
+            }, { kind: 'undo' });
+        }
+        History.changed();
+        return true;
+    },
+
+    // A redo step no longer kept: the copies it made go
+    dropRedo(step) {
+        if (step && step.backups) this.dropBackups(step.backups);
+        if (step && step.type === 'group') step.items.forEach(it => this.dropRedo(it));
+    },
+
+    clearRedo() {
+        const old = this._redoStack || [];
+        this._redoStack = [];
+        old.forEach(r => this.dropRedo(r));
+    },
+
+    async dropBackups(items) {
+        const root = await FolderCache.root(this, false).catch(() => null);
+        const dir = root && await root.getDirectoryHandle('originals').catch(() => null);
+        if (!dir) return;
+        for (const it of items) if (it.backupName) await dir.removeEntry(it.backupName).catch(() => { });
+    },
+
+    // A file's bytes as they are now, in memory
+    async bytesOf(file) {
+        if (file._rotationQueue) await file._rotationQueue.catch(() => { });
+        const data = await file.handle.getFile();
+        return new Blob([await data.arrayBuffer()], { type: data.type });
+    },
+
+    // Photos' bytes as they are now, before they're written over: copied
+    // into .jeditor/originals (in memory without a project), as an Auto
+    // crop step, which puts them back. edits: [{ file, edit }] put back too
+    async snapshot(files, label, edits = null) {
+        files = [...new Set(files.filter(Boolean))];
+        const root = await FolderCache.root(this, true).catch(() => null);
+        const dir = root && await root.getDirectoryHandle('originals', { create: true }).catch(() => null);
+        const items = [];
+        // (a big batch takes a while: it says so)
+        const many = files.length > 3;
+        if (many) this.beginTask('redo-copy', `Keeping copies to redo it… 0/${files.length}`);
+        try {
+            for (const file of files) {
+                if (many) this.updateTask('redo-copy', `Keeping copies to redo it… ${items.length}/${files.length}`);
+                const blob = await this.bytesOf(file);
+                if (!dir) { items.push({ file, blob }); continue; }
+                const backupName = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}-redo-${file.name}`;
+                const backup = await dir.getFileHandle(backupName, { create: true });
+                const w = await backup.createWritable();
+                await w.write(blob);
+                await w.close();
+                items.push({ file, backup, backupName });
+            }
+        } catch (e) {
+            await this.dropBackups(items);
+            throw new Error(`a copy of ${files.length === 1 ? files[0].name : 'the photos'} couldn't be kept: ${e.message}`);
+        } finally {
+            if (many) this.endTask('redo-copy');
+        }
+        const entry = { type: 'auto-crop', label, items, backups: items.filter(it => it.backupName) };
+        if (edits) entry.edits = edits;
+        return entry;
+    },
+
+    editsNow(files) {
+        return files.map(file => ({ file, edit: file._edit || null }));
+    },
+
+    // The opposite of an undo step, as an undo step: Redo runs it. Null
+    // when there's nothing to redo it with
+    async redoFor(e) {
+        const Fo = Folders;
+        switch (e.type) {
+            case 'bytes':
+                return { type: 'bytes', file: e.file, label: e.label, blob: await this.bytesOf(e.file) };
+            case 'rotate':
+                return { type: 'rotate', file: e.file, deg: -(e.deg || 0), label: e.label };
+            case 'flip':
+                // Its own opposite
+                return { type: 'flip', file: e.file, axis: e.axis, deg: e.deg || 0, label: e.label };
+            case 'group': {
+                await e.done;
+                const items = [];
+                for (const it of e.items) {
+                    const r = await this.redoFor(it);
+                    if (!r) return null;
+                    items.push(r);
+                }
+                return { type: 'group', label: e.label, count: items.length, items, done: Promise.resolve() };
+            }
+            case 'rename':
+                return { type: 'rename', file: e.file, oldName: e.file.name };
+            case 'batch-rename':
+                return { type: 'batch-rename', items: e.items.map(it => ({ file: it.file, oldName: it.file.name })) };
+            case 'flags':
+                return { type: 'flags', kind: e.kind, on: e.on, items: e.items.map(it => ({ file: it.file, flags: it.file._flags ? { ...it.file._flags } : null })) };
+            case 'edits':
+                return { type: 'edits', label: e.label, items: this.editsNow(e.items.map(it => it.file)) };
+            case 'auto-crop':
+                return this.snapshot(e.items.map(it => it.file), e.label || 'auto crop', e.edits ? this.editsNow(e.edits.map(it => it.file)) : null);
+            case 'saved-edits': {
+                await e.group.done;
+                const files = [...e.items.map(it => it.file), ...e.group.items.map(it => it.file)];
+                return this.snapshot(files, 'write edits to file', this.editsNow(e.edits.map(it => it.file)));
+            }
+            case 'project-rename': {
+                const name = String(e.path).split(/[\\/]/).filter(Boolean).pop();
+                const r = { type: 'project-rename', path: null, name };
+                r.finish = (to) => { r.path = to; };
+                return r;
+            }
+            case 'folder-create':
+                return { type: 'folder-make', paths: e.paths.slice() };
+            case 'folder-make': {
+                const r = { type: 'folder-create', paths: [] };
+                r.finish = (made) => { r.paths = made || []; };
+                return r;
+            }
+            case 'folder-rename':
+                return { type: 'folder-rename', path: Fo.join(Fo.parentOf(e.path), e.name), name: Fo.baseName(e.path) };
+            case 'folder-delete':
+                return { type: 'folder-remove', path: e.path };
+            case 'folder-remove':
+                return { type: 'folder-delete', path: e.path };
+            case 'relocate': {
+                const files = e.copy ? e.items.map(it => it.src) : e.items.map(it => it.file);
+                if (files.some(f => !f)) return null;
+                return { type: 'relocate-again', copy: e.copy, dest: e.dest, files, created: (e.created || []).slice() };
+            }
+            case 'folder-out':
+                return { type: 'out-again', dir: e.dir, copy: e.copy, where: e.where, items: e.items.map(it => ({ fromRel: it.fromRel, fromName: it.fromName })) };
+            case 'transfer':
+                return { type: 'transfer-again', copy: e.copy, where: e.where, items: e.items.map(it => ({ from: it.from, to: it.to })) };
+            case 'convert': {
+                const files = e.items.length ? e.items.map(it => it.file) : e.copies.map(c => c.src);
+                if (!e.quality || files.some(f => !f || f.outside)) return null;
+                return { type: 'convert-again', format: e.format, quality: e.quality, keep: !e.items.length, files };
+            }
+            case 'trash':
+                return { type: 'retrash', files: e.items.map(it => it.file).filter(Boolean) };
+            default:
+                return null;
+        }
+    },
+
+    // Redo's steps done again by the action itself, which adds its own undo step
+    REDONE: {
+        async 'retrash'(e) {
+            // Only those put back (one deleted meanwhile is already gone)
+            const files = e.files.filter(f => this.files.includes(f));
+            if (!files.length) throw new Error('those photos aren\'t here any more');
+            await this.moveToTrash(files);
+        },
+        async 'relocate-again'(e) {
+            const files = e.files.filter(f => this.files.includes(f));
+            if (!files.length) throw new Error('those photos aren\'t here any more');
+            const created = [];
+            for (const p of e.created) {
+                try { created.push(...(await Folders.createPath('', p)).created); } catch (err) { /* it's there */ }
+            }
+            await Folders.relocate(files, e.dest, { copy: e.copy, created });
+        },
+        async 'out-again'(e) {
+            const files = e.items.map(it => this.files.find(f => f.name === it.fromName && Folders.dirOf(f) === it.fromRel)).filter(Boolean);
+            if (!files.length) throw new Error('those photos aren\'t here any more');
+            await Folders.sendFiles(e.dir, files, e.copy);
+        },
+        async 'transfer-again'(e) {
+            await Windows.again(e);
+        },
+        async 'convert-again'(e) {
+            const files = e.files.filter(f => this.files.includes(f));
+            if (!files.length) throw new Error('those photos aren\'t here any more');
+            await Convert.again(e, files);
+        }
     },
 
     // A file's bytes changed outside the rotation pipeline (undo/restore):
@@ -7482,6 +7805,26 @@ const app = {
     },
 
     // ---- Fullscreen & slideshow ----
+
+    // Full screen is the photo and its pills (the owner's pick F2): the
+    // sidebar and the film strip step aside while it lasts, and come back
+    // as they were. Ctrl+B and the strip button still bring them in. In
+    // jEditor's own look; a slideshow has its own
+    syncFullscreen() {
+        const full = (!!document.fullscreenElement || document.documentElement.classList.contains('fullscreen'))
+            && !document.documentElement.dataset.skin && !document.body.classList.contains('slideshow');
+        if (full === !!this._fullAside) return;
+        if (full) {
+            this._fullAside = { strip: !this._stripOff, rail: typeof Folders !== 'undefined' && Folders.railOpen() };
+            if (this._fullAside.strip) this.toggleThumbnailStrip();
+            if (this._fullAside.rail) { Folders.aside = true; Folders.render(); }
+        } else {
+            const was = this._fullAside;
+            this._fullAside = null;
+            if (was.strip && this._stripOff) this.toggleThumbnailStrip();
+            if (typeof Folders !== 'undefined' && Folders.aside) { Folders.aside = false; Folders.render(); }
+        }
+    },
 
     toggleFullscreen() {
         if (document.fullscreenElement) {
@@ -9488,21 +9831,25 @@ const app = {
     async undoAutoCrop(entry) {
         const items = entry.items.slice();
         let failed = 0, next = 0;
+        const notBack = entry.failedFiles || new Set();
         const many = items.length > 1;
         if (many) this.beginTask('undo-auto-crop', `Undoing ${entry.label || 'auto crop'} of ${items.length} photos…`);
         const worker = async () => {
             while (next < items.length) {
                 const it = items[next++];
                 try {
-                    await this.undoFileEdit({ type: 'bytes', file: it.file, blob: await it.backup.getFile() });
-                    try {
-                        const backups = await (await FolderCache.root(this, false)).getDirectoryHandle('originals');
-                        await backups.removeEntry(it.backupName);
-                    } catch (e) { /* Clean Up removes it anyway */ }
+                    // (a redo's copy may be in memory, without a project)
+                    await this.undoFileEdit({ type: 'bytes', file: it.file, blob: it.blob || await it.backup.getFile() });
+                    if (it.backupName) {
+                        try {
+                            const backups = await (await FolderCache.root(this, false)).getDirectoryHandle('originals');
+                            await backups.removeEntry(it.backupName);
+                        } catch (e) { /* Clean Up removes it anyway */ }
+                    }
                 } catch (e) {
                     console.error('Undo failed for', it.file.name, e);
                     failed++;
-                    if (entry.failedFiles) entry.failedFiles.add(it.file);
+                    notBack.add(it.file);
                 }
             }
         };
@@ -9511,6 +9858,8 @@ const app = {
         } finally {
             if (many) this.endTask('undo-auto-crop');
         }
+        // A redo's step: the edits as they were with those bytes
+        if (entry.edits) Edits.restore(entry.edits.filter(e => !notBack.has(e.file)));
         if (failed) throw new Error(`${failed} photo${failed === 1 ? '' : 's'} could not be put back`);
         if (!entry.quiet) this.showToast(`Undid ${entry.label || 'auto crop'} on ${items.length} photo${items.length === 1 ? '' : 's'}`, 3000, null, null, { kind: 'undo' });
     },
