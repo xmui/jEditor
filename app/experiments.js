@@ -9,7 +9,7 @@
 // feature the app must have (host.js), or it isn't offered. soon: listed,
 // greyed out with Coming soon, and off in betas and releases alike; a
 // choice saved before is set aside. Only code (the tests) can turn it on,
-// for the page it's on, with set(). When one is done
+// with set(), for this profile's windows. When one is done
 // it leaves this list and is simply part of jEditor.
 //
 // What only shows with one on is marked data-experiment="id" in the page:
@@ -60,13 +60,21 @@ const Experiments = {
         return typeof APP_BUILD !== 'undefined' && /-beta\./.test(APP_BUILD);
     },
 
-    trying: {},
+    // A Coming soon one turned on by code (the tests), for every window of
+    // this profile: a window that opens in its place (a theme on Linux)
+    // still has it. Settings can't turn one on, so people never do.
+    TRYING: 'jeditor.experiments.trying',
+    trying: (() => {
+        try { return JSON.parse(localStorage.getItem('jeditor.experiments.trying') || '{}') || {}; } catch (e) { return {}; }
+    })(),
 
     set(id, value) {
         const app = this.app;
         const x = this.LIST.find(e => e.id === id);
-        if (x && x.soon) this.trying[id] = !!value;
-        else {
+        if (x && x.soon) {
+            this.trying[id] = !!value;
+            try { localStorage.setItem(this.TRYING, JSON.stringify(this.trying)); } catch (e) { /* no storage: this window only */ }
+        } else {
             app.uiPrefs.experiments = { ...(app.uiPrefs.experiments || {}), [id]: !!value };
             app.saveUiPrefs();
         }
