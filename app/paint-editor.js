@@ -357,6 +357,9 @@ const PaintEditor = {
             const r = b.getBoundingClientRect();
             this.app.openContextMenu(this.moreItems(), r.left, r.bottom + 6);
         });
+        // Done, in the file's pill: what Enter does (a crop, a paste or a
+        // shape being made is finished first; then back to Photos, kept)
+        bind('paint-done', () => this.app.keyHandlers()['paint.done']());
         bind('paint-zoom-fit', () => this.fit());
         bind('paint-zoom-1', () => this.zoomTo(1));
         bind('paint-swap', () => this.swapColours());
@@ -639,9 +642,9 @@ const PaintEditor = {
         this._layTimer = requestAnimationFrame(() => { this._layTimer = 0; this.layoutTop(); });
     },
 
-    // The top (jEditor's own look): the file and Undo at the left, after
-    // the mode switcher; ⋯ at the right. The tool's options in a pill at
-    // the bottom of the stage (2.0). What doesn't fit folds behind ›, last
+    // The top (jEditor's own look, 2.0, every mode's): the file and Done
+    // in the middle, Undo, Redo and ⋯ at the right. The tool's options in
+    // a pill at the bottom of the stage. What doesn't fit folds behind ›, last
     // first (a theme keeps its bars, the options under the head)
     layoutTop() {
         const box = this.el('paint-options'), head = this.root.querySelector('.paint-head');
@@ -649,7 +652,7 @@ const PaintEditor = {
         try {
             this.unfold(box);
             const own = !document.documentElement.hasAttribute('data-skin');
-            if (!own || !this.isOpen) { head.style.paddingLeft = box.style.left = box.style.top = box.style.maxWidth = ''; return; }
+            if (!own || !this.isOpen) { head.style.paddingLeft = head.style.paddingRight = box.style.left = box.style.top = box.style.maxWidth = ''; return; }
             const ed = this.root.getBoundingClientRect();
             const gap = 12;
             // After the mode switcher, when it floats over this row
@@ -665,7 +668,13 @@ const PaintEditor = {
                 const hr = head.getBoundingClientRect();
                 if (r.width && r.bottom > hr.top && r.top < hr.bottom && r.left < ed.left + ed.width / 2) from = Math.max(from, r.right - ed.left);
             }
-            head.style.paddingLeft = from ? `${Math.round(from + gap)}px` : '';
+            // The file's pill in the middle (2.0, every mode's top), kept clear
+            // of the mode switcher at the left and the actions at the right:
+            // the same room both sides, so it stays in the middle
+            const acts = head.querySelector('.mode-head-acts').getBoundingClientRect();
+            const hr = head.getBoundingClientRect();
+            const side = Math.max(from, acts.width ? hr.right - acts.left : 0);
+            head.style.paddingLeft = head.style.paddingRight = side ? `${Math.round(side + gap)}px` : '';
             // The options: a pill at the bottom of the stage, in the middle
             // of the room right of the tools (2.0, the header the owner
             // picked: the top is the file and the mode's actions only)
