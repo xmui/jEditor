@@ -2252,6 +2252,53 @@ header:has(.header-controls.expanded) {
     outline: none;
 }
 
+/* A command that can't run now (the menu bar's): there, greyed out */
+#context-menu button:disabled {
+    color: var(--text-3);
+    background: none;
+    cursor: default;
+}
+#context-menu button:disabled .ctx-key { opacity: 0.6; }
+
+/* The menu bar the page draws (menubar.js; Windows): a glass pill along
+   the top, shown when Alt is tapped, gone once a command is chosen */
+.menu-bar {
+    position: fixed;
+    top: calc(var(--safe-top, 0px) + 64px); /* under the top pills */
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: var(--z-menu);
+    display: flex;
+    gap: 2px;
+    padding: 4px;
+    border-radius: var(--r-pill);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-3), var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    animation: popover-in var(--dur-base) var(--ease-out);
+}
+.menu-bar.hidden { display: none; }
+.menu-bar-item {
+    height: 28px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: var(--r-pill);
+    background: none;
+    color: var(--text-1);
+    font: inherit;
+    font-size: var(--fs-body, 13px);
+    cursor: default;
+    text-shadow: var(--glass-halo);
+}
+.menu-bar-item:hover,
+.menu-bar-item:focus-visible,
+.menu-bar-item[aria-expanded="true"] {
+    background: var(--tb-hover);
+    outline: none;
+}
+
 #context-menu button.danger {
     color: var(--danger-text);
 }
@@ -2275,13 +2322,16 @@ header:has(.header-controls.expanded) {
     font-weight: var(--fw-semibold);
 }
 
-/* A setting in a menu: ticked when it's on */
-#context-menu button[aria-checked] {
+/* A setting in a menu: ticked when it's on (a menu beside one too:
+   View ▸ Sort by) */
+#context-menu button[aria-checked],
+.ctx-fly button[aria-checked] {
     padding-left: 30px;
     position: relative;
 }
 
-#context-menu button[aria-checked="true"]::before {
+#context-menu button[aria-checked="true"]::before,
+.ctx-fly button[aria-checked="true"]::before {
     content: '';
     position: absolute;
     left: 11px;
