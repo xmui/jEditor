@@ -923,6 +923,7 @@ const PaintEditor = {
         this.float = null;
         this.drag = null;
         this.root.classList.remove('hidden');
+        if (typeof Modes !== 'undefined') Modes.arrive(this.root);
         this.el('paint-file').textContent = file.name;
         this.el('paint-dims').textContent = 'Loading…';
         const token = this._token = (this._token || 0) + 1;
