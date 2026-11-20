@@ -161,6 +161,21 @@ const Windows = {
         return items;
     },
 
+    // Redo: moved or copied again from where they are, into the folder
+    // they went to (a free name there if theirs is taken now)
+    async again(entry) {
+        const byDir = new Map();
+        for (const it of entry.items) {
+            const dir = String(it.to).replace(/[\\/][^\\/]*$/, '');
+            if (!byDir.has(dir)) byDir.set(dir, []);
+            byDir.get(dir).push(it.from);
+        }
+        for (const [dir, paths] of byDir) {
+            const items = await this.send(paths, dir, '', entry.copy, entry.where);
+            if (!items) throw new Error('they couldn\'t be ' + (entry.copy ? 'copied' : 'moved') + ' again');
+        }
+    },
+
     async undo(entry) {
         const errors = await this.native().undoTransfer(entry.items, entry.copy);
         const failed = errors.filter(Boolean);

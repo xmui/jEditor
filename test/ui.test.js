@@ -4467,8 +4467,10 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                 return now.length === originals[n].length && now.every((v, i) => v === originals[n][i]);
             };
             out.restored = await same('scan1.jpg') && await same('scan2.jpg');
+            // (its own copies gone; the photos as cropped kept for Redo instead)
             out.backupsAfter = 0;
-            for await (const e of backups.values()) out.backupsAfter++;
+            out.redoCopies = 0;
+            for await (const e of backups.values()) { if (/-redo-/.test(e.name)) out.redoCopies++; else out.backupsAfter++; }
 
             // Auto crop's test set (crop-log.js): a photo batch Auto crop
             // cropped, then fixed in the editor, is a test scan of the
@@ -4544,7 +4546,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('auto crop experiment off: Find prints stays in the scan window', r.findStays);
         check('auto crop experiment on: all back', Object.values(r.onShows).every(v => v === true), JSON.stringify(r.onShows));
         check('auto crop: says what it did, with Undo', /Auto-cropped 2 photos — no print found on 1/.test(r.toast), r.toast);
-        check('auto crop: originals kept in .jeditor/originals; one Ctrl+Z restores every byte', r.backups === 2 && r.restored && r.backupsAfter === 0, JSON.stringify(r));
+        check('auto crop: originals kept in .jeditor/originals; one Ctrl+Z restores every byte (and keeps the cropped ones to redo)', r.backups === 2 && r.restored && r.backupsAfter === 0 && r.redoCopies === 2, JSON.stringify(r));
         {
             // scan1's print: 560 × 400 at (450, 350), turned 3°; the fix took
             // 20 px off each side of Auto's crop

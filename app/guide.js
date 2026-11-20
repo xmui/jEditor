@@ -29,7 +29,7 @@ const Guide = {
         ['start paint', 'brush', 'Paint on layers', 'Brush, fill, text and shapes, over the photo.', ['edit.paint']],
         ['start photos', 'find', 'Find anything', 'Type a command, a photo, a folder or a project, and Enter runs it. Each command shows its key.', ['app.palette']],
         ['photos', 'grid', 'One photo or the grid', 'The arrows move through the folder; this switches views.', ['view.toggle']],
-        ['photos', 'undo', 'Undo anything', 'Turns, crops, renames, moves and deletes, even after you\'ve moved on.', ['edit.undo', 'edit.history']],
+        ['photos', 'undo', 'Undo anything', 'Turns, crops, renames, moves and deletes, even after you\'ve moved on. Redo does them again.', ['edit.undo', 'edit.redo', 'edit.history']],
         ['photos files', 'rename', 'Rename', 'One photo, or every selected photo at once with a pattern.', ['edit.rename']],
         ['photos files', 'move', 'Move to a folder', 'Send the selection to a folder, or drag it onto one in the sidebar.', ['edit.moveTo']],
         ['photos', 'dupes', 'Find duplicates', 'Groups photos that look the same and suggests which to keep.', ['app.dupes']],
