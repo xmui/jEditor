@@ -12725,6 +12725,67 @@ body.touring .controls.idle button { pointer-events: auto; }
     width: 100%;
 }
 
+/* ---- 2.0 Crop (audit M1) ---- */
+
+/* How it works: a coach mark the first few times, then gone */
+:root:not([data-skin]) .crop-tip {
+    padding: 2px var(--sp-3);
+    border-radius: var(--r-pill);
+    background: var(--bg-raised);
+    transition: opacity var(--dur-slow) var(--ease-out);
+}
+
+.crop-tip.crop-tip-done {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Loupe on: a filled button, not an outline that reads as focus */
+:root:not([data-skin]) #crop-loupe[aria-pressed="true"] {
+    outline: none;
+    border-color: transparent;
+    box-shadow: none;
+    background: var(--bg-raised);
+    color: var(--text-1);
+}
+
+/* The degree sign inside its field */
+:root:not([data-skin]) .crop-angle-field {
+    position: relative;
+}
+
+:root:not([data-skin]) .crop-angle-field > span {
+    position: absolute;
+    right: 10px;
+    pointer-events: none;
+}
+
+:root:not([data-skin]) #crop-angle-num {
+    padding-right: 22px;
+}
+
+/* Two rows at most, down to 1024 wide: the slider gives way first */
+:root:not([data-skin]) .crop-straighten input[type="range"] {
+    width: clamp(140px, 28vw, 360px);
+}
+
+:root:not([data-skin]) .crop-row {
+    column-gap: var(--sp-1);
+}
+
+:root:not([data-skin]) .crop-row #crop-aspect {
+    width: 112px;
+    min-width: 0;
+}
+
+:root:not([data-skin]) .crop-row .crop-spacer {
+    flex: 1 0 0;
+}
+
+:root:not([data-skin]) .crop-row .crop-sep {
+    margin: 0 2px;
+}
+
 /* ---- 2.0 Paint's panel and text options (audit M4) ---- */
 
 /* Text: Bold and Italic as toggle buttons, Align as a segmented control */
