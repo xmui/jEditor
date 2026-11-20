@@ -3526,6 +3526,69 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('paintmesh')) {
+        console.log('paint: Warp with a mesh (paint-editor.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 200; c.height = 200;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 200, 200);
+                await openProject('mesh', { 'm.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                P.opts.snap = false;
+                const g = P.layers[P.cur].canvas.getContext('2d', { willReadFrequently: true });
+                g.fillStyle = '#ff0000'; g.fillRect(50, 50, 100, 100);
+                const a = (x, y) => g.getImageData(x, y, 1, 1).data[3];
+                const st = document.getElementById('paint-stage'), box = document.getElementById('paint-options');
+                const sc = (q) => { const sp = P.V().transformPoint(q); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                const drag = (from, to) => {
+                    st.dispatchEvent(new PointerEvent('pointerdown', { ...sc(from), pointerId: 1, bubbles: true, button: 0 }));
+                    st.dispatchEvent(new PointerEvent('pointermove', { ...sc(to), pointerId: 1, bubbles: true }));
+                    st.dispatchEvent(new PointerEvent('pointerup', { ...sc(to), pointerId: 1, bubbles: true }));
+                };
+                // Ctrl+T, then Mode → Warp: 16 points over the box
+                step = 'warp';
+                pressKey('t', { ctrlKey: true });
+                const sel = box.querySelector('.paint-tf-mode');
+                out.offered = [...sel.options].some(o => o.textContent === 'Warp');
+                sel.value = 'warp'; sel.dispatchEvent(new Event('change'));
+                const m = P.float.mesh;
+                out.mesh = m && [m.length, Math.round(m[0].x), Math.round(m[15].x), Math.round(m[5].x)].join();
+                out.buttons = ['Reset', 'Cancel', 'Done'].every(t => [...box.querySelectorAll('button')].some(b => b.textContent === t));
+                // The two top middle points up: the top edge bends up
+                step = 'bend';
+                for (const i of [1, 2]) { const q = P.float.mesh[i]; drag(q, { x: q.x, y: q.y - 30 }); }
+                out.moved = Math.round(P.float.mesh[1].y);
+                // Reset takes the bend out; bend again, then Done
+                [...box.querySelectorAll('button')].find(b => b.textContent === 'Reset').click();
+                out.reset = Math.round(P.float.mesh[1].y);
+                for (const i of [1, 2]) { const q = P.float.mesh[i]; drag(q, { x: q.x, y: q.y - 30 }); }
+                // Dragged inside, it all moves
+                drag({ x: 100, y: 100 }, { x: 105, y: 100 });
+                out.slid = Math.round(P.float.mesh[0].x);
+                [...box.querySelectorAll('button')].find(b => b.textContent === 'Done').click();
+                out.bent = [a(105, 32), a(105, 24), a(57, 52), a(57, 140)];
+                // One step to undo
+                step = 'undo';
+                pressKey('z', { ctrlKey: true });
+                out.undone = [a(105, 32), a(52, 52)];
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint warp mesh: Mode → Warp puts 16 points over the box, with Reset, Cancel and Done', r.offered && r.mesh === '16,50,150,83' && r.buttons, JSON.stringify(r));
+        check('paint warp mesh: a point dragged bends the edge; Reset takes it out; dragged inside, it moves', r.moved === 20 && r.reset === 50 && r.slid === 55, JSON.stringify(r));
+        check('paint warp mesh: Done bends the pixels (the top bowed up, the corners where they were)', r.bent && r.bent[0] === 255 && r.bent[1] === 0 && r.bent[2] === 255 && r.bent[3] === 255, JSON.stringify(r));
+        check('paint warp mesh: one step to undo', r.undone && r.undone.join() === '0,255', JSON.stringify(r));
+        check('paint warp mesh: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Restore colour (develop.js: restoreAuto; script.js: restoreColour) ----
     if (wanted('restore')) {
         console.log('restore colour (develop.js, script.js, adjust.js)');
