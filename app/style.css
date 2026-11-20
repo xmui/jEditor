@@ -978,6 +978,61 @@ header:has(.header-controls.expanded) {
     transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out);
 }
 
+/* ---- Slideshow: the photo on black and nothing else (audit A9) ---- */
+
+body.slideshow #image-container {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-mode);
+    background: #000;
+    cursor: none;
+}
+
+body.slideshow #image-container > .controls,
+body.slideshow #zoom-level {
+    display: none;
+}
+
+/* Between photos: a short fade through black */
+body.slideshow #current-image {
+    transition: opacity 200ms var(--ease-out);
+}
+
+body.slideshow #current-image.slide-out {
+    opacity: 0;
+}
+
+/* Its control: a small glass pill, there while the mouse moves */
+.slide-ctl {
+    position: absolute;
+    bottom: var(--gutter);
+    left: 50%;
+    z-index: var(--z-floating);
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-50%) translateY(8px);
+    transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out);
+}
+
+.slide-ctl.show {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(-50%);
+}
+
+body.slideshow #image-container:has(.slide-ctl.show) {
+    cursor: default;
+}
+
+.slide-ctl [data-slide="speed"] {
+    min-width: 44px;
+    font-variant-numeric: tabular-nums;
+    font-size: var(--fs-small);
+}
+
 /* Faded out a few seconds after showing; back when the pointer comes near
    (see initControlsAutoHide) */
 .controls.idle {
@@ -5543,8 +5598,9 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     width: 100%;
     height: 96px;
     border-radius: var(--r-sm);
-    /* Dark in either theme: the channels add up to white on it */
-    background: #141414;
+    /* Dark, the channels add up to white on it; light, they darken to
+       grey where they meet (adjust.js: drawHistogram) */
+    background: var(--hist-bg, #141414);
 }
 
 .adj-levels {
@@ -12475,6 +12531,71 @@ body.touring .controls.idle button { pointer-events: auto; }
     box-shadow: 0 0 0 1px var(--border);
 }
 
+/* Light, finished (2.0, audit H4): Crop's zoom pill is a glass pill as
+   the rest, not a black one over a light stage */
+:root[data-theme="light"]:not([data-skin]) .crop-zoom {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-2), var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    color: var(--text-1);
+}
+
+/* ---- 2.0 home (audit M6): one clear start, no wireframe ---- */
+
+/* The version is in Settings → Updates and the gear's What's new; here
+   it's only read out */
+:root:not([data-skin]) .home-ver {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+/* Nothing opened yet: one picture, not four dashed boxes */
+:root:not([data-skin]) .home-empty li:not(.ghost-first) {
+    display: none;
+}
+
+:root:not([data-skin]) .home-empty .recent-print.ghost.first {
+    border: 0;
+    background: var(--bg-raised);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-1) 8%, transparent), var(--shadow-3);
+    color: var(--accent-text);
+}
+
+:root:not([data-skin]) .home-empty .recent-print.ghost.first .i {
+    width: 40px;
+    height: 40px;
+    stroke-width: 1.4;
+}
+
+:root:not([data-skin]) .home-empty p {
+    max-width: 32ch;
+    font-size: var(--fs-body);
+    text-align: center;
+}
+
+/* ...and Open a folder the one main button, New project and Convert
+   quiet beside it */
+:root:not([data-skin]) .home:has(.home-empty:not(.hidden)) .home-tiles .home-tile:not(.primary) {
+    border-color: transparent;
+    background: none;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    color: var(--text-2);
+}
+
+:root:not([data-skin]) .home:has(.home-empty:not(.hidden)) .home-tiles .home-tile:not(.primary):hover {
+    transform: none;
+    background: var(--bg-raised);
+    color: var(--text-1);
+}
+
 /* ---- Adjust (2.0, the owner's picks 2 and 3): the panel is a floating
    glass card, as Info's and the pills, and a slider is one row: its name,
    the track, its number (Lightroom's density: twice the sliders in the
@@ -12665,6 +12786,78 @@ body.touring .controls.idle button { pointer-events: auto; }
     margin: 0 2px;
 }
 
+/* ---- 2.0 Paint's panel and text options (audit M4) ---- */
+
+/* Text: Bold and Italic as toggle buttons, Align as a segmented control */
+.paint-toggles,
+.paint-seg {
+    display: inline-flex;
+    gap: 2px;
+    padding: 2px;
+    border-radius: var(--r-sm);
+    background: var(--bg-raised);
+}
+
+.paint-toggle,
+.paint-seg button {
+    display: grid;
+    place-items: center;
+    min-width: 26px;
+    height: 24px;
+    padding: 0 var(--sp-1);
+    border: 0;
+    border-radius: calc(var(--r-sm) - 2px);
+    background: none;
+    color: var(--text-2);
+    font: inherit;
+    font-size: var(--fs-body);
+    cursor: pointer;
+}
+
+.paint-toggle i { font-family: Georgia, "Times New Roman", serif; }
+
+.paint-toggle:hover,
+.paint-seg button:hover {
+    color: var(--text-1);
+}
+
+.paint-toggle[aria-pressed="true"],
+.paint-seg button[aria-checked="true"] {
+    background: var(--bg-surface);
+    color: var(--text-1);
+    box-shadow: var(--shadow-1);
+}
+
+/* The panel: the layers first, taking the height; the colours under them
+   (not 16 swatches leading); as wide as Adjust's to start with */
+:root:not([data-skin]) .paint-panel {
+    width: min(var(--side-paint, var(--side-adjust, 300px)), 45vw);
+}
+
+:root:not([data-skin]) .paint-panel > .paint-layers-sec {
+    order: -1;
+    flex: 1 0 auto;
+}
+
+:root:not([data-skin]) .paint-panel > .paint-sec:not(.paint-layers-sec):not(.paint-history-sec) {
+    border-bottom: 0;
+    border-top: 1px solid var(--border-subtle);
+}
+
+/* The swatches, Swap, Reset and Choose… on one line, not out of it */
+:root:not([data-skin]) .paint-colors {
+    flex-wrap: nowrap;
+    gap: var(--sp-1);
+}
+
+:root:not([data-skin]) .paint-colors .btn {
+    padding: 0 var(--sp-2);
+}
+
+:root:not([data-skin]) .paint-colors .paint-swatch {
+    margin-right: var(--sp-2);
+}
+
 /* ---- 2.0 camera dock (audit A6) ---- */
 
 /* One shutter: the round one on the live view (F12). Take photo stays
@@ -12745,3 +12938,4 @@ body.touring .controls.idle button { pointer-events: auto; }
 .scan-more[open] .scan-more-go {
     visibility: hidden;
 }
+

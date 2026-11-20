@@ -39,6 +39,8 @@ const Tour = {
     // Each stop: where it is (the view it needs), what it lights up (the
     // first of these that's on screen), its words and where its card goes.
     STOPS: [
+        // Six stops (audit A12): open, the modes, flag, crop, find and the
+        // rest, the end. The guide ({key:app.guide}) has everything else
         {
             id: 'open', view: 'home', when: () => !app.files || !app.files.length,
             target: ['#btn-browse-folder'], side: 'above',
@@ -48,30 +50,12 @@ const Tour = {
         {
             id: 'modes', view: 'grid', target: ['#mode-seg', '#mode-chip-bar', '#mode-chip-float'], side: 'right',
             title: 'Three apps in one',
-            text: () => 'Photos, Adjust and Paint, each with only what it needs on screen. {key:edit.adjust} opens Adjust, {key:edit.paint} Paint, and Esc comes back.'
-        },
-        {
-            id: 'sidebar', view: 'grid', target: ['#folder-rail'], side: 'right',
-            title: 'The sidebar',
-            text: () => 'The folders in this project, with how many photos are in each' +
-                (Host.has('places') ? ', your recent projects, pinned folders and drives, with the room left on each' : '') +
-                (Host.has('photosLibrary') ? ', and your Photos library' : '') +
-                '. It stays beside the photo when you open one. {key:folders.rail} shows or hides it, and its edge drags wider, or right in to hide it.'
-        },
-        {
-            id: 'projects', needs: 'places', view: 'grid', target: ['#sb-card .sb-card-name'], side: 'right',
-            title: 'Switch projects',
-            text: () => 'Click the project\'s name for your recent projects, or type to find any of them. Right-click it, or any project in Recents, to rename it right there.'
+            text: () => 'Photos, Adjust and Paint, each with only what it needs on screen. {key:edit.adjust} opens Adjust, {key:edit.paint} Paint, and Esc comes back. {key:folders.rail} shows or hides the sidebar.'
         },
         {
             id: 'strip', view: 'single', target: ['#thumbnail-strip'], side: 'above',
             title: 'Look, flag, move on',
-            text: () => '{key:nav.prev} {key:nav.next} move through the folder. {key:flag.star} stars a photo and {key:flag.rescan} marks it to scan again; flags show here.'
-        },
-        {
-            id: 'turn', view: 'single', target: ['#btn-rotate-left', '#btn-rotate-right'], both: true, side: 'above',
-            title: 'Turn it the right way up',
-            text: () => 'Try it: {key:edit.rotateRight}. It\'s saved to the file straight away, and {key:edit.undo} puts it back.'
+            text: () => '{key:nav.prev} {key:nav.next} move through the folder, {key:flag.star} picks a photo and {key:edit.rotateRight} turns it. Turns are saved to the file at once, and {key:edit.undo} puts anything back.'
         },
         {
             id: 'crop', view: 'single', toolbar: true, target: ['#btn-crop'], side: 'below',
@@ -79,44 +63,9 @@ const Tour = {
             text: () => '{key:edit.crop} opens Crop: drag the corners, turn the dial. {key:crop.save} saves, and {key:crop.saveNext} saves and opens the next photo.'
         },
         {
-            id: 'scan', needs: 'scan', view: 'single', toolbar: true, target: ['#btn-scan'], side: 'below',
-            title: 'Scan',
-            text: () => 'Scans go straight into this project. Lay prints on the glass: each one becomes a photo of its own.'
-        },
-        {
-            id: 'camera', needs: 'camera', view: 'single', toolbar: true, target: ['#btn-camera'], side: 'below',
-            title: 'Shoot from the camera',
-            text: () => 'With the camera on a USB cable, the photos you take come straight into this project, RAW files too.'
-        },
-        {
-            id: 'more', view: 'single', more: false, target: ['#btn-more'], side: 'below',
-            title: 'The rest is a click away',
-            text: () => 'Rename ({key:edit.rename}), move ({key:edit.moveTo}), export and the rest are in More and the right-click menu, so the screen stays clear. The right-click menu shows each command\'s key, and turning and flipping are under Turn and flip.'
-        },
-        {
             id: 'find', view: 'single', target: ['#mode-chip-bar', '#mode-chip-float', '#mode-seg'], side: 'below',
             title: 'Find anything',
-            text: () => 'Or just type what you want: {key:app.palette}, then a command, a photo, a folder or a project, and Enter runs it. Each command shows its key, so you learn them. It\'s in this menu too.'
-        },
-        {
-            id: 'dupes', view: 'single', more: true, target: ['#btn-dupes'], side: 'below',
-            title: 'Find duplicates',
-            text: () => 'Groups the photos that look the same and suggests which to keep. Nothing goes until you say.'
-        },
-        {
-            id: 'convert', view: 'single', more: true, target: ['#btn-convert'], side: 'below',
-            title: 'Convert to save room',
-            text: () => 'AVIF, WebP or JPEG XL: the same photos in much less space, for a few photos or a whole folder.'
-        },
-        {
-            id: 'adjust', view: 'adjust', target: ['#adj-panel'], side: 'left', square: true,
-            title: 'Adjust: light and colour',
-            text: () => 'Exposure, white balance, curves and film looks. Nothing is lost: the photo stays as it was until you save or export.'
-        },
-        {
-            id: 'paint', view: 'paint', target: ['#paint-tools'], side: 'right', square: true,
-            title: 'Paint: layers and brushes',
-            text: () => 'Brush, fill, text and shapes, on layers over the photo. They\'re kept with the project, so the painting can be changed later.'
+            text: () => 'Type what you want: {key:app.palette}, then a command, a photo or a folder, and Enter runs it. Export, Move to and the rest are in More and the right-click menu too, each with its key.'
         },
         {
             id: 'end', view: 'single', target: [], side: 'center', end: true,

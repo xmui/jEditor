@@ -115,8 +115,9 @@
     --text-3: #8f8f8f;
     --text-disabled: #5c5c5c;
     --tile-bg: #1c1c1c;
-    /* The film strip is black in every theme, whatever the photo above it */
+    /* The film strip: black in dark; light in light (below) */
     --strip-bg: #000;
+    --hist-bg: #141414; /* Adjust's histogram well */
     --strip-text: rgb(255 255 255 / 0.62);
     --tb-hover: rgb(255 255 255 / 0.10);     /* buttons on glass toolbars */
     --tb-pressed: rgb(255 255 255 / 0.16);
@@ -201,6 +202,10 @@
 
 /* ---- Light theme ---- */
 :root[data-theme="light"] {
+    /* Light, finished (2.0, audit H4): the film strip and the histogram
+       well are light too, as in the pro tools' light look */
+    --strip-bg: #e4e4e7;
+    --hist-bg: #ececef;
     color-scheme: light;
     --accent-text: color-mix(in oklab, var(--accent) 80%, #000);
     --accent-hover: color-mix(in oklab, var(--accent) 88%, #000);
