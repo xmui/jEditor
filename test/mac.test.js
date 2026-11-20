@@ -296,6 +296,11 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         check('... and the other window shows it', await second.evaluate(() => app.files.some(f => f.name === 'photo2 (2).jpg')));
         await page.evaluate(() => app.undo());
         check('Ctrl+Z moves it back', fs.existsSync(path.join(smith, 'photo2.jpg')) && !fs.existsSync(path.join(jones, 'photo2 (2).jpg')));
+        // Redo (Ctrl+Shift+Z): moved over again, and Ctrl+Z takes it back again
+        const redid = await page.evaluate(() => app.redo());
+        const movedAgain = !fs.existsSync(path.join(smith, 'photo2.jpg')) && fs.existsSync(path.join(jones, 'photo2 (2).jpg'));
+        await page.evaluate(() => app.undo());
+        check('... Redo moves it over again, and Ctrl+Z back again', redid && movedAgain && fs.existsSync(path.join(smith, 'photo2.jpg')) && !fs.existsSync(path.join(jones, 'photo2 (2).jpg')), JSON.stringify([redid, movedAgain]));
 
         // Copied into Jones's Ceremony folder; undo removes the copy
         const copied = await page.evaluate(async (dest) => {
@@ -417,11 +422,18 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await Places.draw();
             const recents = [...document.querySelectorAll('#sb-places .sb-recent .fr-name')].map(n => n.textContent);
             await app.undo();
-            return { to, names: list.map(r => r.name), paths, step: step && step.type, docked, recents };
+            const undone = await JEditorNative.folderPath(app.dirHandle).catch(() => null);
+            // Redo: the new name again, and Ctrl+Z the old one again
+            const redid = await app.redo();
+            const redoneStep = (app._undoStack || []).slice(-1)[0];
+            const redo = { redid, step: redoneStep && redoneStep.type };
+            await app.undo();
+            return { to, names: list.map(r => r.name), paths, step: step && step.type, docked, recents, redo, undone };
         }, { beta, alphaTo });
         const betaTo = path.join(projectsDir, 'Beta Jones');
         check('the sidebar\'s Rename: Recents follow it to its new name', follow.to === betaTo && follow.names.includes('Beta Jones') && !follow.names.includes('Beta') && follow.paths.includes(betaTo), JSON.stringify(follow));
         check('... and Undo puts the old name back on the disk', follow.step === 'project-rename' && fs.existsSync(beta) && !fs.existsSync(betaTo), JSON.stringify([follow.step, fs.existsSync(beta)]));
+        check('... Redo gives it the new name again, and Ctrl+Z the old one again', follow.redo.redid && follow.redo.step === 'project-rename' && fs.existsSync(beta) && !fs.existsSync(betaTo), JSON.stringify(follow.redo));
         check('the sidebar is docked: the window\'s left edge, its full height, the folder pill beside it', follow.docked.left === 0 && follow.docked.top === 0 && follow.docked.full && follow.docked.beside, JSON.stringify(follow.docked));
         check('Recents lists the others opened, not the open project', follow.recents.includes('Beta Jones') && !follow.recents.includes('Alpha Smith'), JSON.stringify(follow.recents));
 

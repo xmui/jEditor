@@ -4734,6 +4734,252 @@ const PROJECT = `
         "turned": "SUkqAAgAAAANAAABBAABAAAADAAAAAEBBAABAAAACAAAAAIBAwADAAAAqgAAAAMBAwABAAAAAQAAAAYBAwABAAAAAgAAAA8BAgAGAAAAsAAAABEBBAABAAAAygAAABIBAwABAAAABgAAABUBAwABAAAAAwAAABYBBAABAAAACAAAABcBBAABAAAAIAEAABwBAwABAAAAAQAAADIBAgAUAAAAtgAAAAAAAAAIAAgACABFcHNvbgAyMDAxOjAyOjAzIDA0OjA1OjA2AAoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWsgeHsgeHsgeHsgeHsgeHgoQWgoQWgoQWgoQWgoQWgoQWgoQWsgeHsgeHsgeHsgeHsgeHgoQWgoQWgoQWgoQWgoQWgoQWgoQWsgeHsgeHsgeHsgeHsgeHgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWg=="
     };
 
+    // ---- Redo in Photos: every kind of undo step, done again ----
+    if (wanted('redo')) {
+        console.log('redo: Ctrl+Shift+Z and Ctrl+Y do again what Ctrl+Z took back, every kind of step, never losing a file (script.js, history.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            const out = {};
+            let step = 'project';
+            try {
+                const jpeg = async (i, w = 240, h = 160) => {
+                    const c = scene(w, h, { rect: { x: 10 + i * 20, y: 10, w: 40, h: 30, color: ['#c03020', '#2050c0', '#20a050', '#a020c0'][i % 4] } });
+                    return canvasBlob(c, 'image/jpeg', 0.92);
+                };
+                const png = await canvasBlob(scene(200, 140), 'image/png');
+                const dir = await openProject('redo', { 'a.jpg': await jpeg(0), 'b.jpg': await jpeg(1), 'c.jpg': await jpeg(2), 'd.png': png, 'Sub/e.jpg': await jpeg(3) });
+                // Turns and flips written into the files (not kept as edits), as with Keep edits off
+                app.uiPrefs.keepEdits = false;
+                const F = (n) => app.files.find(f => f.name === n);
+                const a = F('a.jpg'), b = F('b.jpg'), c = F('c.jpg'), d = F('d.png');
+                // A file's bytes, as a short signature
+                const sig = async (f) => {
+                    const u = new Uint8Array(await (await f.handle.getFile()).arrayBuffer());
+                    let h = 0;
+                    for (let i = 0; i < u.length; i++) h = (Math.imul(h, 31) + u[i]) | 0;
+                    return `${u.length}:${h}`;
+                };
+                const settled = async (...fs) => { for (const f of fs) await until(() => !f._rotationQueue && !f.isBusy && !f._flipping); await sleep(50); };
+                const top = () => app._undoStack[app._undoStack.length - 1];
+                // Undone, redone, undone again: what each gives (fn → a value to compare)
+                const cycle = async (look) => {
+                    const done = await look();
+                    await app.undo();
+                    const undone = await look();
+                    const could = app.canRedo();
+                    const redid = await app.redo();
+                    const redone = await look();
+                    await app.undo();
+                    const again = await look();
+                    return { changed: done !== undone, redo: could && redid && redone === done, undoAgain: again === undone, done, undone, redone, again };
+                };
+                const kinds = out.kinds = {};
+
+                step = 'rotate';
+                let s0 = await sig(a);
+                await app.rotateImage(a, 90);
+                await settled(a);
+                kinds.rotate = { type: top().type, ...(await cycle(() => sig(a))), back: (await sig(a)) === s0 };
+
+                step = 'group';
+                app.viewMode = 'grid';
+                app.selection = new Set([a, b]);
+                await app.rotateBulk(90);
+                await top().done;
+                await settled(a, b);
+                kinds.group = { type: top().type, ...(await cycle(async () => (await sig(a)) + (await sig(b)))) };
+                app.selection = new Set();
+
+                step = 'flip';
+                await app.flipFiles([a], 'h');
+                await settled(a);
+                kinds.flip = { type: top().type, ...(await cycle(async () => (await sig(a)))) };
+
+                step = 'bytes';
+                {
+                    const old = await (await d.handle.getFile()).arrayBuffer();
+                    const w = await d.handle.createWritable();
+                    await w.write(await canvasBlob(scene(180, 120, { rect: { x: 5, y: 5, w: 30, h: 30, color: '#f00' } }), 'image/png'));
+                    await w.close();
+                    app.pushUndo({ type: 'bytes', file: d, blob: new Blob([old], { type: 'image/png' }), label: 'crop' });
+                    await app.afterFileChanged(d);
+                }
+                kinds.bytes = { type: top().type, ...(await cycle(() => sig(d))) };
+
+                step = 'rename';
+                await app.renameFile(b, 'b2.jpg');
+                kinds.rename = { type: top().type, ...(await cycle(() => b.name)) };
+
+                step = 'batch-rename';
+                await app.renameMany([{ file: b, newName: 'x1.jpg' }, { file: c, newName: 'x2.jpg' }]);
+                kinds['batch-rename'] = { type: top().type, ...(await cycle(() => b.name + ',' + c.name)) };
+
+                step = 'flags';
+                Flags.apply('star', [a]);
+                kinds.flags = { type: top().type, ...(await cycle(() => String(!!(a._flags && a._flags.star)))) };
+
+                step = 'edits';
+                Edits.rotate([b], 90);
+                kinds.edits = { type: top().type, ...(await cycle(() => JSON.stringify(b._edit || null))) };
+
+                step = 'auto-crop';
+                {
+                    const entry = await app.snapshot([c], 'auto crop');
+                    const w = await c.handle.createWritable();
+                    await w.write(await jpeg(3, 200, 120));
+                    await w.close();
+                    await app.afterFileChanged(c);
+                    app.pushUndo(entry);
+                }
+                kinds['auto-crop'] = { type: top().type, ...(await cycle(() => sig(c))) };
+
+                step = 'saved-edits';
+                Edits.rotate([a], 90);
+                await app.saveOverOriginal([a], { how: 'originals' });
+                await settled(a);
+                kinds['saved-edits'] = { type: top().type, ...(await cycle(async () => (await sig(a)) + '|' + JSON.stringify(a._edit || null))) };
+
+                step = 'folder-create';
+                {
+                    const { created } = await Folders.createPath('', 'New one');
+                    app.pushUndo({ type: 'folder-create', paths: created });
+                    Folders.afterChange();
+                }
+                const has = (p) => Folders.find(p) !== null;
+                kinds['folder-create'] = { type: top().type, ...(await cycle(() => String(has('New one')))) };
+
+                step = 'folder-rename';
+                {
+                    const to = await Folders.renameDir('Sub', 'Sub2');
+                    app.pushUndo({ type: 'folder-rename', path: to, name: 'Sub' });
+                    Folders.afterChange();
+                }
+                kinds['folder-rename'] = { type: top().type, ...(await cycle(() => `${has('Sub')} ${has('Sub2')} ${Folders.dirOf(F('e.jpg'))}`)) };
+
+                step = 'folder-delete';
+                await Folders.createPath('', 'Empty');
+                Folders.afterChange();
+                await Folders.deleteFolder('Empty');
+                kinds['folder-delete'] = { type: top().type, ...(await cycle(() => String(has('Empty')))) };
+
+                step = 'relocate';
+                await Folders.relocate([b], 'Sub');
+                kinds.relocate = { type: top().type, ...(await cycle(() => Folders.dirOf(b) + '/' + b.name)) };
+
+                step = 'relocate copy';
+                const copies = () => app.files.filter(f => f.name === c.name).map(f => Folders.dirOf(f)).sort().join();
+                await Folders.relocate([c], 'Sub', { copy: true });
+                kinds['relocate (copy)'] = { type: top().type, ...(await cycle(copies)) };
+
+                step = 'folder-out';
+                {
+                    const opfs = await navigator.storage.getDirectory();
+                    try { await opfs.removeEntry('redo-outside', { recursive: true }); } catch (e) { /* fresh */ }
+                    const outside = await opfs.getDirectoryHandle('redo-outside', { create: true });
+                    const names = async () => { const n = []; for await (const k of outside.keys()) n.push(k); return n.sort().join(); };
+                    await Folders.sendFiles(outside, [c], true);
+                    kinds['folder-out (copy)'] = { type: top().type, ...(await cycle(names)) };
+                }
+
+                step = 'convert';
+                if (!window.SKIP_CONVERT) {
+                    Convert.prefs.format = 'webp';
+                    Convert.prefs.keep = false;
+                    await Convert.open({ files: [d] });
+                    await until(() => Convert.est && !Convert.est.working, 600);
+                    Convert.go();
+                    await until(() => Convert.done, 800);
+                    Convert.go(); // Done
+                    const look = async () => { await until(() => !Convert.run, 800); if (Convert.done) Convert.go(); return d.name; };
+                    kinds.convert = { type: top().type, ...(await cycle(look)) };
+                }
+
+                step = 'trash';
+                await app.moveToTrash([b]);
+                kinds.trash = { type: top().type, ...(await cycle(() => String(app.files.includes(b)))) };
+                out.kinds = kinds;
+
+                // Nothing lost: the project's photos are all still there (by name)
+                out.files = app.files.map(f => (f.relPath || f.name)).sort().join();
+
+                // A new step clears what can be redone, and the copies kept for it
+                step = 'cleared';
+                const originals = async () => {
+                    const root = await FolderCache.root(app, false);
+                    const o = await root.getDirectoryHandle('originals').catch(() => null);
+                    let n = 0;
+                    if (o) for await (const k of o.keys()) if (/-redo-/.test(k)) n++;
+                    return n;
+                };
+                await app.rotateImage(c, 90);
+                await settled(c);
+                await app.undo();
+                out.keptCopy = (await originals()) > 0 || app._redoStack[app._redoStack.length - 1].type === 'rotate';
+                Flags.apply('star', [c]);
+                await sleep(100);
+                out.cleared = !app.canRedo() && (await originals()) === 0;
+
+                // The keys: Ctrl+Y and Ctrl+Shift+Z
+                step = 'keys';
+                Flags.apply('reject', [a]);
+                await app.undo();
+                pressKey('y', { ctrlKey: true });
+                await until(() => !!(a._flags && a._flags.reject));
+                out.ctrlY = !!(a._flags && a._flags.reject);
+                await app.undo();
+                pressKey('z', { ctrlKey: true, shiftKey: true });
+                await until(() => !!(a._flags && a._flags.reject));
+                out.ctrlShiftZ = !!(a._flags && a._flags.reject);
+
+                // The undo's message offers Redo
+                step = 'toast';
+                await app.undo();
+                const toast = [...document.querySelectorAll('#toast-stack .toast')].reverse().find(t => /Undid/.test(t.textContent));
+                const btn = toast && toast.querySelector('.toast-action');
+                out.toastRedo = !!btn && /Redo/.test(btn.textContent);
+                if (btn) btn.click();
+                await until(() => !!(a._flags && a._flags.reject));
+                out.toastRedid = !!(a._flags && a._flags.reject);
+
+                // The undo history: a Redo row above the steps
+                step = 'history';
+                await app.undo();
+                History.toggle(true);
+                const row = document.getElementById('history-redo');
+                out.historyRow = !row.classList.contains('hidden') && /Redo: Reject/.test(row.textContent);
+                row.click();
+                await until(() => !!(a._flags && a._flags.reject));
+                out.historyRedid = !!(a._flags && a._flags.reject) && row.classList.contains('hidden');
+                History.toggle(false);
+
+                // The Edit menu has Redo, as Photos' own now
+                step = 'menu';
+                const edit = MenuBar.items('Edit');
+                const redoItem = edit.find(i => i.label === 'Redo');
+                out.menu = !!redoItem && redoItem.id === 'edit.redo' && redoItem.enabled;
+                out.nothing = (await app.redo()) === false;
+            } catch (e) {
+                out.error = `${step}: ${e.message}`;
+            }
+            return out;
+        });
+        check('redo: no error on the way', !r.error, r.error);
+        const kinds = r.kinds || {};
+        const want = ['rotate', 'group', 'flip', 'bytes', 'rename', 'batch-rename', 'flags', 'edits', 'auto-crop', 'saved-edits', 'folder-create', 'folder-rename', 'folder-delete', 'relocate', 'relocate (copy)', 'folder-out (copy)', 'convert', 'trash'];
+        for (const k of want) {
+            const v = kinds[k];
+            check(`redo: ${k} — undone, redone as it was done, and undone again`, !!v && v.changed && v.redo && v.undoAgain, JSON.stringify(v));
+        }
+        check('redo: every photo still there after all of it', r.files === 'Sub/e.jpg,a.jpg,b.jpg,c.jpg,d.png', r.files);
+        check('redo: something new done clears what could be redone, and the copies kept for it', r.keptCopy && r.cleared, JSON.stringify([r.keptCopy, r.cleared]));
+        check('redo: Ctrl+Y and Ctrl+Shift+Z', r.ctrlY && r.ctrlShiftZ, JSON.stringify([r.ctrlY, r.ctrlShiftZ]));
+        check('redo: the undo\'s message has Redo, and it redoes', r.toastRedo && r.toastRedid, JSON.stringify([r.toastRedo, r.toastRedid]));
+        check('redo: the undo history has a Redo row above the steps, and it redoes', r.historyRow && r.historyRedid, JSON.stringify([r.historyRow, r.historyRedid]));
+        check('redo: Edit → Redo is Photos\' own; with nothing to redo, nothing happens', r.menu && r.nothing, JSON.stringify([r.menu, r.nothing]));
+        check('redo: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Convert: AVIF, JPEG XL and WebP, their quality and storage (codec.js, convert.js) ----
     if (wanted('convert')) {
         console.log('convert: AVIF, JPEG XL, WebP, JPEG, PNG and TIFF, their EXIF, quality and storage, converting and Ctrl+Z (codec.js, convert.js, tiff.js)');

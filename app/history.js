@@ -15,6 +15,8 @@ const History = {
         this.list = document.getElementById('history-list');
         const btn = document.getElementById('btn-history');
         if (btn) btn.addEventListener('click', (e) => { e.stopPropagation(); this.toggle(); });
+        this.redoRow = document.getElementById('history-redo');
+        if (this.redoRow) this.redoRow.addEventListener('click', () => this.redoNext());
         this.list.addEventListener('click', (e) => {
             const row = e.target.closest('[data-step]');
             if (row) this.backTo(parseInt(row.dataset.step, 10));
@@ -56,7 +58,16 @@ const History = {
     changed() {
         if (this.isOpen()) this.render();
         const btn = document.getElementById('btn-history');
-        if (btn) btn.classList.toggle('has-steps', this.steps().length > 0);
+        if (btn) btn.classList.toggle('has-steps', this.steps().length > 0 || this.app.canRedo());
+    },
+
+    // The redo row: what Redo does next
+    async redoNext() {
+        if (this._running) return;
+        this._running = true;
+        this.render();
+        try { await this.app.redo(); } finally { this._running = false; }
+        this.changed();
     },
 
     // Newest first
@@ -67,7 +78,24 @@ const History = {
     render() {
         const steps = this.steps();
         this.list.textContent = '';
-        document.getElementById('history-empty').classList.toggle('hidden', steps.length > 0);
+        const redo = (this.app._redoStack || [])[(this.app._redoStack || []).length - 1];
+        if (this.redoRow) {
+            this.redoRow.classList.toggle('hidden', !redo);
+            this.redoRow.textContent = '';
+            if (redo) {
+                const d = this.describe(redo);
+                const keys = (this.app.keyBindings && this.app.keyBindings['edit.redo']) || [];
+                this.redoRow.title = Host.keys(keys.length ? `Redo this step (${keys[0]})` : 'Redo this step');
+                const what = document.createElement('span');
+                what.className = 'history-what';
+                what.textContent = `Redo: ${d.what}`;
+                const detail = document.createElement('span');
+                detail.className = 'history-detail';
+                detail.textContent = d.detail;
+                this.redoRow.append(what, detail);
+            }
+        }
+        document.getElementById('history-empty').classList.toggle('hidden', steps.length > 0 || !!redo);
         steps.forEach((entry, i) => {
             const d = this.describe(entry);
             const row = document.createElement('button');
@@ -95,9 +123,12 @@ const History = {
         const one = (items, name = it => it.file && it.file.name) => items.length === 1 ? (name(items[0]) || photos(1)) : photos(items.length);
         const base = (p) => String(p || '').split('/').filter(Boolean).pop() || 'the project';
         const label = (l) => l ? l.charAt(0).toUpperCase() + l.slice(1) : 'Edit';
+        // A redo, and the step it put back: as the step read when it was done
+        if (e.desc) return e.desc;
         switch (e.type) {
             case 'bytes': return { what: label(e.label), detail: e.file.name };
             case 'rotate': return { what: 'Rotation', detail: e.file.name };
+            case 'flip': return { what: 'Flip', detail: e.file.name };
             case 'group': return { what: 'Rotation', detail: photos(e.count || e.items.length) };
             case 'rename': return { what: 'Rename', detail: `${e.oldName} → ${e.file.name}` };
             case 'batch-rename': return { what: 'Rename', detail: one(e.items) };
