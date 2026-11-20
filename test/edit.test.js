@@ -2340,6 +2340,14 @@ const PROJECT = `
                 P.combineSelection(m, 'new');
                 pe('pointerdown', 70, 70); pe('pointermove', 70 - 50 + near, 70); pe('pointermove', 70 - 50 + near / 2, 70);
                 out.floatSnap = P.float && Math.round(P.float.x0 + P.float.t.tx);
+                // ...not from further off, so a small move by an edge can be
+                // made; Ctrl held, none; always whole pixels
+                pe('pointermove', 70 - 50 + 8 / P.view.z, 70);
+                out.floatFar = Math.round(P.float.x0 + P.float.t.tx);
+                pe('pointermove', 70 - 50 + near / 2, 70, { ctrlKey: true });
+                out.floatFree = P.float.x0 + P.float.t.tx;
+                pe('pointermove', 70 - 13.3, 70.6);
+                out.floatWhole = [P.float.t.tx, P.float.t.ty];
                 pe('pointerup', 70 - 50 + near / 2, 70);
                 app.cancelPaint();
                 return out;
@@ -2352,6 +2360,7 @@ const PROJECT = `
         check('paint view: Shift-drag with the Hand turns it; a click on the angle puts it straight', Math.abs(r.handTurn - 90) <= 1 && r.straight && r.straight[0] === 0 && r.straight[1], JSON.stringify(r));
         check('paint view: Snap puts a selection\'s corner on the canvas\'s; Ctrl+; turns it off', r.snapped === '0,0' && r.snapOff && r.unsnapped, JSON.stringify(r));
         check('paint view: what\'s moved snaps its edge onto the canvas\'s', r.floatSnap === 0, JSON.stringify(r));
+        check('paint view: what\'s moved snaps only within a few screen pixels; not with Ctrl held; it moves in whole pixels', r.floatFar > 0 && r.floatFree > 0 && r.floatWhole.every(Number.isInteger) && r.floatWhole[0] === -13, JSON.stringify(r));
         check('paint view: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
