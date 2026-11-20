@@ -425,6 +425,9 @@ const PROJECT = `
         await page.waitForTimeout(100);
         const zoomed = await view(), after = await under(px, py);
         check('zoom: Ctrl+wheel zooms in about the pointer', !zoomed.fitted && Math.abs(before[0] - after[0]) < 0.002 && Math.abs(before[1] - after[1]) < 0.002, JSON.stringify([zoomed, before, after]));
+        // At Fit the head's pills never sit on the photo (the owner's ask)
+        const clear = await page.evaluate(() => { const was = { ...Adjust.view }; Adjust.zoomFit(); const h = document.querySelector('.adjust-editor .adj-head').getBoundingClientRect(), c = Adjust.canvas.getBoundingClientRect(); const out = [Math.round(h.bottom), Math.round(c.top)]; Adjust.fitted = false; Adjust.view = was; Adjust.viewChanged(); return out; });
+        check('zoom: fitted, the photo starts below the head\'s pills, with room', clear[1] >= clear[0] + 8, JSON.stringify(clear));
         // A plain drag moves about, zoomed in
         await page.mouse.move(st.x + st.w / 2, st.y + st.h / 2);
         await page.mouse.down();

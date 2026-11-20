@@ -5675,6 +5675,14 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await sleep(50);
             out.cardFlag = Flags.has(app.currentFile, 'star') && !!document.querySelector('#info-extra .ctx-flag.fl-star.on');
             Flags.apply('star', [app.currentFile]);
+            // It stops above the film strip, with room, as Adjust's card;
+            // the photo starts under the top pills, never under them
+            const strip = document.getElementById('thumbnail-strip');
+            const ib = document.getElementById('info-panel').getBoundingClientRect();
+            out.cardRoom = !strip.classList.contains('hidden') && ib.bottom <= strip.getBoundingClientRect().top - 12;
+            const pillB = document.querySelector('header .file-info').getBoundingClientRect().bottom;
+            out.underPills = document.getElementById('image-container').getBoundingClientRect().top >= pillB + 8
+                && document.getElementById('current-image').getBoundingClientRect().top >= pillB + 8;
             app.toggleInfoPanel(false);
             out.cardShut = !document.getElementById('main-interface').classList.contains('info-open');
             out.gb = app.formatBytes(3 * 1024 * 1024 * 1024) === '3.00 GB';
@@ -5685,6 +5693,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('folder details: a selection, a folder with the whole project, Folder Info in the menu', r.selection && r.folder && r.menu, JSON.stringify(r));
         check('folder details: total under the folder list; single view still shows the photo', r.railTotal && r.single && r.gb, JSON.stringify(r));
         check('Info is a glass card: the photo moves over beside it; its flags change the photo\'s', r.card && r.cardFlag && r.cardShut, JSON.stringify([r.card, r.cardFlag, r.cardShut]));
+        check('... it stops above the film strip with room round it; the photo fits under the top pills', r.cardRoom && r.underPills, JSON.stringify([r.cardRoom, r.underPills]));
         check('folder details suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }

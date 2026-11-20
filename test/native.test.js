@@ -2306,7 +2306,10 @@ async function newPage(context, baseUrl, host = null) {
             out.asksFirst = Export.clash;
             $('ex-go').click();
             await wait(() => /Exported 1 to "Beta export"/.test(toasts()) && !$('export-panel').classList.contains('hidden') === false);
-            const inExport = async () => { const a = []; for await (const k of (await dir.getDirectoryHandle('Beta export')).keys()) a.push(k); return a.sort().join(); };
+            const listExport = async () => { const a = []; for await (const k of (await dir.getDirectoryHandle('Beta export')).keys()) a.push(k); return a.sort().join(); };
+            // Read once the writing's done: while a file is still being
+            // written the browser keeps a .crswap beside it (seen on CI)
+            const inExport = async () => { let l = await listExport(); for (let i = 0; i < 50 && /\.crswap/.test(l); i++) { await new Promise(r => setTimeout(r, 100)); l = await listExport(); } return l; };
             await wait(async () => /\(2\)/.test(await inExport()));
             out.both = await inExport();
             out.asked = asked && `${asked.title} | ${asked.ok} | ${asked.alt} | ${!!asked.check}`;
