@@ -814,7 +814,7 @@ const Convert = {
             const out = await this.copiesDir(Folders.dirOf(f), run.outside);
             const h = await out.getFileHandle(newName, { create: true });
             await this.write(h, bytes);
-            run.copies.push({ dir: out, name: newName });
+            run.copies.push({ dir: out, name: newName, src: f }); // (Redo converts it again)
             run.after += bytes.length;
             run.saved += before - bytes.length;
             return;
@@ -1032,7 +1032,7 @@ const Convert = {
         if (run.items.length && !run.outside) this.app.sortFiles();
         this.lastEntry = null;
         if (run.items.length || run.copies.length) {
-            this.lastEntry = { type: 'convert', label: 'convert', format: run.format, items: run.items, copies: run.copies };
+            this.lastEntry = { type: 'convert', label: 'convert', format: run.format, quality: run.quality, items: run.items, copies: run.copies };
             this.app.pushUndo(this.lastEntry);
         }
         this.el('cv-title').textContent = `Converted to ${Codec.FORMATS[run.format].label}`;
@@ -1043,6 +1043,26 @@ const Convert = {
         if (!this.isOpen() && !(run.start && this.onStart())) {
             this.app.showToast(`Converted ${(run.done - run.same - run.taken - run.failed).toLocaleString()} photos to ${Codec.FORMATS[run.format].label}: ${this.fmt(Math.abs(run.saved))} ${run.saved < 0 ? 'more' : 'less'} storage`, 6000, null,
                 { label: 'Show', run: () => this.show() }, { type: 'success' });
+        }
+    },
+
+    // Redo: the same photos converted again, as they were (format,
+    // quality, copies or not), shown in its window as a run from it is
+    async again(entry, files) {
+        if (this.run) throw new Error('a conversion is running');
+        if (!(await Codec.ready())) throw new Error('converting can\'t run here');
+        const was = { format: this.prefs.format, keep: this.prefs.keep, quality: this.prefs.quality[entry.format] };
+        this.prefs.format = entry.format;
+        this.prefs.keep = entry.keep;
+        this.prefs.quality[entry.format] = entry.quality;
+        try {
+            this.begin({ all: files, name: `${files.length.toLocaleString()} photo${files.length === 1 ? '' : 's'}` });
+            await this.go();
+        } finally {
+            this.prefs.format = was.format;
+            this.prefs.keep = was.keep;
+            if (was.quality === undefined) delete this.prefs.quality[entry.format];
+            else this.prefs.quality[entry.format] = was.quality;
         }
     },
 

@@ -2230,9 +2230,16 @@ body.slideshow #image-container:has(.slide-ctl.show) {
     color: var(--text-2);
 }
 
-.history-panel.busy .history-list {
+.history-panel.busy .history-list,
+.history-panel.busy .history-redo {
     opacity: 0.5;
     pointer-events: none;
+}
+
+/* The next redo: undone, so above the steps and quieter than them */
+.history-redo .history-what {
+    color: var(--text-2);
+    font-weight: var(--fw-regular);
 }
 
 /* File info drops down under the header pill */
@@ -7740,7 +7747,7 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
     margin-top: -2px;
     color: var(--text-2);
     font-size: var(--fs-caption);
-    font-weight: var(--fw-regular, 400);
+    font-weight: var(--fw-regular);
 }
 
 .home-tile.primary {

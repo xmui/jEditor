@@ -10,7 +10,7 @@ To install it, see the [README](../README.md). The version number is shown at th
 2. Move through photos with `←` / `→`. In single view the buttons above the film strip fade away after a few seconds; move the pointer there to bring them back, or turn off **Buttons above the film strip** in Settings to hide them for good. `Space` switches between single view and grid: a photo opened from the grid zooms quickly out of its thumbnail, and shrinks back into it on the way back (not with Animations off, the system's Reduce motion, or a theme). In the grid, the slider at the bottom right or `Ctrl` + mouse wheel makes the tiles bigger or smaller; the highlighted photo stays where it is on screen.
 3. Rotate with `[` / `]`. In grid view this rotates every selected photo.
 4. Press `C` to crop and straighten. `Enter` saves, `Shift+Enter` saves and opens the next photo, `Esc` cancels.
-5. `Ctrl+Z` undoes the last rotation, crop, rename or delete.
+5. `Ctrl+Z` undoes the last rotation, crop, rename or delete, and `Ctrl+Shift+Z` or `Ctrl+Y` redoes it. The message after an undo has **Redo** too, and the Undo history (`H`) shows what Redo does next above its steps. Every kind of step can be redone: before an undo writes over a photo, its bytes as they are now are kept in `.jeditor/originals`, a move, copy or convert is done again by the same code (asking again about a name that's taken), and a redone delete goes to the bin again, so nothing is lost. Doing something new clears what could be redone.
 
 Changes are saved to the original files as you go.
 
