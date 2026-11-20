@@ -12725,6 +12725,78 @@ body.touring .controls.idle button { pointer-events: auto; }
     width: 100%;
 }
 
+/* ---- 2.0 Paint's panel and text options (audit M4) ---- */
+
+/* Text: Bold and Italic as toggle buttons, Align as a segmented control */
+.paint-toggles,
+.paint-seg {
+    display: inline-flex;
+    gap: 2px;
+    padding: 2px;
+    border-radius: var(--r-sm);
+    background: var(--bg-raised);
+}
+
+.paint-toggle,
+.paint-seg button {
+    display: grid;
+    place-items: center;
+    min-width: 26px;
+    height: 24px;
+    padding: 0 var(--sp-1);
+    border: 0;
+    border-radius: calc(var(--r-sm) - 2px);
+    background: none;
+    color: var(--text-2);
+    font: inherit;
+    font-size: var(--fs-body);
+    cursor: pointer;
+}
+
+.paint-toggle i { font-family: Georgia, "Times New Roman", serif; }
+
+.paint-toggle:hover,
+.paint-seg button:hover {
+    color: var(--text-1);
+}
+
+.paint-toggle[aria-pressed="true"],
+.paint-seg button[aria-checked="true"] {
+    background: var(--bg-surface);
+    color: var(--text-1);
+    box-shadow: var(--shadow-1);
+}
+
+/* The panel: the layers first, taking the height; the colours under them
+   (not 16 swatches leading); as wide as Adjust's to start with */
+:root:not([data-skin]) .paint-panel {
+    width: min(var(--side-paint, var(--side-adjust, 300px)), 45vw);
+}
+
+:root:not([data-skin]) .paint-panel > .paint-layers-sec {
+    order: -1;
+    flex: 1 0 auto;
+}
+
+:root:not([data-skin]) .paint-panel > .paint-sec:not(.paint-layers-sec):not(.paint-history-sec) {
+    border-bottom: 0;
+    border-top: 1px solid var(--border-subtle);
+}
+
+/* The swatches, Swap, Reset and Choose… on one line, not out of it */
+:root:not([data-skin]) .paint-colors {
+    flex-wrap: nowrap;
+    gap: var(--sp-1);
+}
+
+:root:not([data-skin]) .paint-colors .btn {
+    padding: 0 var(--sp-2);
+}
+
+:root:not([data-skin]) .paint-colors .paint-swatch {
+    margin-right: var(--sp-2);
+}
+
 /* ---- 2.0 camera dock (audit A6) ---- */
 
 /* One shutter: the round one on the live view (F12). Take photo stays
