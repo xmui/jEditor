@@ -468,7 +468,9 @@
         <div class="mode-head adj-head">
             <!-- The file, as Photos' file pill (jEditor's own look: style.css) -->
             <span class="mode-file"><span id="adj-file" class="mode-title"></span>
-            <span id="adj-dims" class="crop-dims"></span></span>
+            <span id="adj-dims" class="crop-dims"></span>
+            <!-- Done (jEditor's own look): back to Photos, what's done is kept (Enter) -->
+            <button id="adj-done" class="btn primary sm mode-done" title="Back to Photos; what you did is kept (Enter)">Done</button></span>
             <span id="adj-before-tag" class="adj-tag hidden">Before</span>
             <!-- Auto Sync on (adjust-sync.js): what's changed goes onto the others selected in the strip -->
             <span id="adj-sync-chip" class="adj-sync-chip hidden" role="status">Auto sync: <span id="adj-sync-n"></span><button id="adj-sync-off" class="adj-sync-x" title="Turn Auto Sync off (Ctrl+Alt+Shift+S)" aria-label="Turn Auto Sync off">✕</button></span>
@@ -685,15 +687,18 @@
     <!-- Paint (paint-editor.js; layers kept by paint.js) -->
     <div id="paint-editor" class="paint-editor mode-screen hidden">
         <div class="mode-head paint-head">
-            <!-- The top, in three places: the file and Undo at the left, the
-                 tool's options in the middle (placed by layoutTop), ⋯ at the right -->
+            <!-- The top, as every mode's (2.0): the file and Done in the middle,
+                 Undo, Redo and ⋯ at the right; the tool's options in a pill at
+                 the bottom of the photo (placed by layoutTop) -->
             <span class="mode-file"><span id="paint-file" class="mode-title"></span>
             <span id="paint-dims" class="crop-dims"></span>
-            <span class="paint-undo-redo" role="group" aria-label="Undo and redo">
-                <button id="paint-undo" class="btn ghost sm icon" title="Undo (Ctrl+Z)" aria-label="Undo"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
-                <button id="paint-redo" class="btn ghost sm icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
-            </span></span>
+            <!-- Done (jEditor's own look): kept, back to Photos (Enter) -->
+            <button id="paint-done" class="btn primary sm mode-done" title="Back to Photos; the painting is kept (Enter)">Done</button></span>
             <span class="mode-head-acts" role="toolbar" aria-label="Paint">
+                <span class="paint-undo-redo" role="group" aria-label="Undo and redo">
+                    <button id="paint-undo" class="btn ghost sm icon" title="Undo (Ctrl+Z)" aria-label="Undo"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+                    <button id="paint-redo" class="btn ghost sm icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+                </span>
                 <button id="paint-more" class="btn ghost sm adj-more" title="More: Image, Select, Layer and the rest" aria-label="More" aria-haspopup="menu"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.25" fill="currentColor"/><circle cx="12" cy="12" r="1.25" fill="currentColor"/><circle cx="19" cy="12" r="1.25" fill="currentColor"/></svg></button>
             </span>
         </div>

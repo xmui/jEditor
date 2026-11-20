@@ -2051,7 +2051,7 @@ const PROJECT = `
                 sameRow: !!(file && more && Math.abs((file.t + file.b) / 2 - (more.t + more.b) / 2) < 3),
                 zoomAtBottom: zs.visibility === 'hidden',
                 rects: { file, more, opts, stage, tools, panel },
-                undo: !!r('.paint-head .mode-file #paint-undo') && !!r('.paint-head .mode-file #paint-redo'),
+                undo: !!r('.paint-head .mode-head-acts #paint-undo') && !!r('.paint-head .mode-head-acts #paint-redo') && !!r('.paint-head .mode-file #paint-done'),
                 folded: box.querySelectorAll('.paint-fold > *').length,
                 fits: box.scrollWidth <= box.clientWidth + 1,
                 text: box.textContent
@@ -4175,11 +4175,18 @@ const PROJECT = `
                 out.keepKeeps = await asked === true && !Adjust.isOpen && !!(adjFile._edit && adjFile._edit.adj && adjFile._edit.adj.exposure === 1);
                 $('mode-seg').querySelector('[data-mode="adjust"]').click();
                 await until(() => Adjust.ready);
-                // No Done bar: Esc goes back to Photos
-                out.noBar = !document.querySelector('#adjust-editor .crop-toolbar') && !document.querySelector('#paint-editor .crop-toolbar') && !$('adj-done') && !$('paint-done');
+                // No Done bar: Esc goes back to Photos. Done is in the file's
+                // pill (2.0, the owner's ask), and does the same
+                out.noBar = !document.querySelector('#adjust-editor .crop-toolbar') && !document.querySelector('#paint-editor .crop-toolbar')
+                    && !!document.querySelector('#adjust-editor .mode-file #adj-done') && !!document.querySelector('#paint-editor .mode-file #paint-done');
                 pressKey('Escape');
                 await until(() => !Adjust.isOpen);
                 out.escBack = Modes.current() === 'photos';
+                $('mode-seg').querySelector('[data-mode="adjust"]').click();
+                await until(() => Adjust.ready);
+                $('adj-done').click();
+                await until(() => !Adjust.isOpen);
+                out.doneBack = Modes.current() === 'photos';
                 // The toolbar's main row has no Adjust or Paint now
                 out.toolbar = app.uiPrefs.placement.adjust === 'more' && app.uiPrefs.placement.paint === 'more';
                 return out;
@@ -4201,7 +4208,7 @@ const PROJECT = `
         check('modes: Adjust and Paint are off the toolbar\'s main row', r.toolbar, JSON.stringify(r));
         check('modes: closing the window in Adjust or Paint is held for the page', r.holds && r.closeAtOnce, JSON.stringify(r));
         check('modes: closing with changes asks "Keep your changes?"; Cancel stays, Keep keeps them', r.askText && r.cancelStays && r.keepKeeps, JSON.stringify(r));
-        check('modes: no Done bar in Adjust or Paint; Esc goes back to Photos', r.noBar && r.escBack, JSON.stringify(r));
+        check('modes: no Done bar in Adjust or Paint, Done in the file\'s pill; Esc or Done goes back to Photos', r.noBar && r.escBack && r.doneBack, JSON.stringify(r));
         check('modes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
 

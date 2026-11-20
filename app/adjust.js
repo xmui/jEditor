@@ -51,6 +51,8 @@ const Adjust = {
             fn();
         });
         bind('adj-before', () => this.toggleBefore());
+        // Done, in the file's pill: back to Photos, what's done is kept (Enter)
+        bind('adj-done', () => { if (this.ready && !this.busy) Modes.go('photos'); });
         bind('adj-reset', () => this.reset());
         // ⋯: what isn't Before (the plan: extras go in menus, not on bars)
         this.el('adj-more').addEventListener('click', (e) => {

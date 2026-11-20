@@ -12270,12 +12270,7 @@ body.touring .controls.idle button { pointer-events: auto; }
    is a pill at the bottom. layoutTop (paint-editor.js) places the options
    between the two and folds what doesn't fit behind › */
 :root:not([data-skin]) .paint-head {
-    justify-content: flex-start;
-}
-
-:root:not([data-skin]) .paint-head .mode-file {
-    gap: var(--sp-2);
-    padding-right: var(--sp-1);
+    justify-content: center;
 }
 
 :root:not([data-skin]) .paint-head .mode-title {
@@ -12292,8 +12287,9 @@ body.touring .controls.idle button { pointer-events: auto; }
 }
 
 :root:not([data-skin]) .paint-undo-redo {
-    padding-left: var(--sp-2);
-    border-left: 1px solid var(--border);
+    margin-right: var(--sp-1);
+    padding-right: var(--sp-1);
+    border-right: 1px solid var(--border);
 }
 
 :root:not([data-skin]) .paint-undo-redo .btn {
@@ -13034,3 +13030,51 @@ body.touring .controls.idle button { pointer-events: auto; }
     translate: 0 8px;
     transition: opacity var(--dur-base) var(--ease-out), translate var(--dur-base) var(--ease-out), visibility 0s linear var(--dur-base);
 }
+
+/* ---- One top for every mode (the owner's pick A): the mode switcher at
+   the left, the photo's name in the middle, the mode's actions at the
+   right. In Adjust and Paint, Done joins the name's pill at its end (the
+   owner's ask), and slides in as the mode opens; the pill, in the middle
+   of its row, grows from both sides, so it re-centres as smoothly. A
+   theme keeps its own bars and its Enter and Esc ---- */
+.mode-done {
+    display: none;
+}
+
+:root:not([data-skin]) .mode-done {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    max-width: 120px;
+    height: calc(var(--ctl-lg) - 8px);
+    padding: 0 var(--sp-4);
+    overflow: hidden;
+    border: 0;
+    border-radius: var(--r-pill);
+    white-space: nowrap;
+    text-shadow: none;
+}
+
+:root:not([data-skin]) .mode-file:has(.mode-done) {
+    padding-right: 4px;
+}
+
+:root:not([data-skin]):not([data-motion="off"]) .mode-done {
+    animation: mode-done-in var(--dur-slow, 240ms) var(--ease-out) both;
+}
+
+@keyframes mode-done-in {
+    from {
+        max-width: 0;
+        margin-left: calc(-1 * var(--sp-3));
+        padding-inline: 0;
+        opacity: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root:not([data-skin]) .mode-done {
+        animation: none;
+    }
+}
+
