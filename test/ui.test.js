@@ -855,7 +855,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const out = {};
             localStorage.removeItem('jeditor.ui');
 
-            // Default pill: info, view, refresh, crop, history visible; rest in "More"
+            // Default pill (2.0): Scan, Camera, Crop and Info (Scan and Camera
+            // only in the apps); the rest in "More"
             const hc = document.getElementById('header-controls');
             const visible = [...hc.querySelectorAll('[data-hc]')]
                 .filter(b => !b.classList.contains('hc-extra') && !b.classList.contains('hidden') && getComputedStyle(b).display !== 'none')
@@ -866,6 +867,32 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.extrasHiddenCollapsed = getComputedStyle(document.getElementById('btn-toggle-fit')).display === 'none';
             document.getElementById('btn-more').click();
             out.extrasShownExpanded = getComputedStyle(document.getElementById('btn-toggle-fit')).display !== 'none';
+            document.getElementById('btn-more').click();
+
+            // Right-click on the pill: which it shows, ticked
+            hc.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 600, clientY: 40 }));
+            const rows = [...document.querySelectorAll('#context-menu button')];
+            const ticked = rows.filter(b => b.getAttribute('aria-checked') === 'true').map(b => b.textContent.trim());
+            const heading = document.querySelector('#context-menu .ctx-heading');
+            rows.find(b => b.textContent.trim() === 'Rescan folder').click();
+            const onPill = app.uiPrefs.placement.refresh === 'main' && !document.getElementById('btn-refresh').classList.contains('hc-extra');
+            app.uiPrefs.placement.refresh = 'more';
+            app.applyUiPrefs();
+            out.pillMenu = !!heading && heading.textContent === 'Show in the pill' && ticked.includes('Crop and straighten') && ticked.includes('Info') && !ticked.includes('Rescan folder')
+                && rows.some(b => b.textContent.trim() === 'Customize…') && onPill;
+
+            // Saved before 2.0: View, Rescan and History were on it; a
+            // Full screen put there by hand stays
+            const before = { ...app.defaultUiPrefs(), pill: undefined, order: ['scan', 'camera', 'info', 'view', 'refresh', 'crop', 'history'] };
+            before.placement = { ...before.placement, view: 'main', refresh: 'main', history: 'main', fullscreen: 'main' };
+            localStorage.setItem('jeditor.ui', JSON.stringify(before));
+            app.loadUiPrefs();
+            const pl = app.uiPrefs.placement;
+            out.migrated = pl.view === 'more' && pl.refresh === 'more' && pl.history === 'more' && pl.fullscreen === 'main'
+                && app.uiPrefs.order.indexOf('crop') < app.uiPrefs.order.indexOf('info');
+            localStorage.removeItem('jeditor.ui');
+            app.uiPrefs = app.defaultUiPrefs();
+            app.applyUiPrefs();
 
             // Placement + order + vertical + scale via prefs
             app.uiPrefs.placement.fullscreen = 'main';
@@ -920,12 +947,14 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.pillHidden = pill.classList.contains('hidden');
             return out;
         });
-        check('default main controls: info, view, refresh, crop, history', r.defaultMain === 'info,view,refresh,crop,history', r.defaultMain);
+        check('default pill: Crop and Info (Scan and Camera too in the apps), then More', r.defaultMain === 'crop,info', r.defaultMain);
+        check('the pill\'s right-click: what it shows, ticked; one picked goes on it; Customize… goes to Settings', r.pillMenu, JSON.stringify(r.pillMenu));
+        check('2.0\'s pill, once: the view switch, Rescan and History move to More, Crop before Info; other choices stay', r.migrated, JSON.stringify(r.migrated));
         // (Adjust and Paint too: the mode switch has them)
-        check('extras live in More (adjust, paint, fit, strip, fullscreen, dupes, convert, keys, whatsnew, customize)', r.defaultExtras === 'adjust,paint,fit,strip,fullscreen,dupes,convert,keys,whatsnew,customize', r.defaultExtras);
+        check('extras live in More (view, rescan, adjust, paint, history, fit, strip, fullscreen, dupes, convert, keys, whatsnew, customize)', r.defaultExtras === 'view,refresh,adjust,paint,history,fit,strip,fullscreen,dupes,convert,keys,whatsnew,customize', r.defaultExtras);
         check('More expander shows/hides extras', r.extrasHiddenCollapsed && r.extrasShownExpanded);
         // (Adjust, newer than that saved order, goes after Crop, and Paint after it)
-        check('reorder + hide + promote via prefs', r.reordered === 'crop,adjust,paint' && r.refreshHidden && r.fullscreenMain,
+        check('reorder + hide + promote via prefs', r.reordered === 'crop,info,view' && r.refreshHidden && r.fullscreenMain,
             JSON.stringify({ o: r.reordered, h: r.refreshHidden, f: r.fullscreenMain }));
         check('vertical pill + scale + persistence', r.vertical && r.persisted && parseFloat(r.scaleApplied) === 1.2,
             JSON.stringify({ v: r.vertical, p: r.persisted, z: r.scaleApplied }));
@@ -1827,6 +1856,10 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             // Panel: record a new key with the + button
             press('?');
             out.panelOpen = app.isShortcutsOpen();
+            // Short names (the rest in a tooltip), keys as the menus write them
+            const labels = [...document.querySelectorAll('.sc-label')];
+            out.short = labels.every(l => !/: /.test(l.textContent)) && labels.some(l => l.title && l.title.startsWith(l.textContent + ':'));
+            out.keyStyle = [...document.querySelectorAll('.sc-key')].every(k => !/ \+ /.test(k.textContent)) && [...document.querySelectorAll('.sc-key')].some(k => /^(Ctrl|⌘)\+/.test(k.textContent));
             const row = [...document.querySelectorAll('.sc-row')].find(x => x.textContent.startsWith('Full screen'));
             row.querySelector('.sc-add').click();
             press('k');
@@ -1848,6 +1881,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('rebound key works and persists', r.rebound && r.persisted);
         check('assigning a used key moves it', r.conflictMoved && r.newBindingWorks);
         check('? opens the shortcuts panel', r.panelOpen);
+        check('shortcuts: short names with the rest in a tooltip; keys written Ctrl+C, as in the menus', r.short && r.keyStyle, JSON.stringify([r.short, r.keyStyle]));
         check('+ records a new key', r.recorded);
         check('typing in the filter is not a shortcut', r.typingSafe);
         check('Esc closes the panel', r.panelClosed);
@@ -1982,6 +2016,68 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
     }
 
     // ---- 7d. Opening a folder, instant navigation, grid & read-only fixes ----
+    console.log('slideshow: the photo on black, a control that fades');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('slides', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('slides', { create: true });
+            const bytes = await makeRealJpeg(120, 80);
+            for (let i = 1; i <= 3; i++) {
+                const w = await (await dir.getFileHandle(`S_${i}.jpg`, { create: true })).createWritable();
+                await w.write(new Blob([bytes], { type: 'image/jpeg' }));
+                await w.close();
+            }
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            await sleep(100);
+            document.getElementById('fo-ok')?.click();
+            app.setView('grid');
+            const $ = (id) => document.getElementById(id);
+            const key = (k) => document.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+            app.startSlideshow();
+            await sleep(50);
+            const cs = getComputedStyle($('image-container'));
+            out.box = [cs.position, cs.top, cs.left, cs.right, cs.bottom, cs.backgroundColor, cs.display];
+            out.black = document.body.classList.contains('slideshow') && cs.backgroundColor === 'rgb(0, 0, 0)'
+                && cs.position === 'fixed' && [cs.top, cs.left, cs.right, cs.bottom].every(v => v === '0px');
+            out.noChrome = getComputedStyle(document.querySelector('#image-container > .controls')).display === 'none';
+            const ctl = $('slide-ctl');
+            out.hidden = !!ctl && !ctl.classList.contains('show');
+            document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+            out.shows = ctl.classList.contains('show');
+            out.buttons = [...ctl.querySelectorAll('button')].map(b => b.getAttribute('aria-label')).join();
+            // Space pauses (and the control stays), the speed steps 3, 5, 10
+            const first = app.currentFile;
+            key(' ');
+            out.paused = app._slide.paused && !app._slideshowTimer && ctl.querySelector('[data-slide="pause"]').getAttribute('aria-label') === 'Play';
+            ctl.querySelector('[data-slide="speed"]').click();
+            out.speed = ctl.querySelector('[data-slide="speed"]').textContent === '5 s' && app._slide.ms === 5000;
+            // The right arrow steps, through a fade
+            key('ArrowRight');
+            out.fading = $('current-image').classList.contains('slide-out');
+            await sleep(300);
+            out.stepped = app.currentFile !== first && document.body.classList.contains('slideshow');
+            // Any other key ends it, and everything's back
+            key('x');
+            out.ended = !document.body.classList.contains('slideshow') && !$('slide-ctl') && !app._slide && !app._slideshowTimer;
+            // A click on the photo ends it too
+            app.startSlideshow();
+            $('current-image').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+            out.clicked = !app._slide;
+            return out;
+        });
+        check('slideshow: the photo alone, full window, on black; the floating pill hidden', r.black && r.noChrome, JSON.stringify(r));
+        check('slideshow: its control shows when the mouse moves: previous, pause, next, speed, end', r.hidden && r.shows && r.buttons === 'Previous,Pause,Next,Seconds on each photo,End the slideshow', r.buttons);
+        check('slideshow: Space pauses, the speed steps to 5 s, the arrow steps through a fade', r.paused && r.speed && r.fading && r.stepped, JSON.stringify(r));
+        check('slideshow: any other key ends it, and so does a click on the photo', r.ended && r.clicked, JSON.stringify(r));
+        check('slideshow: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     console.log('find anything: Ctrl+K (palette.js)');
     {
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
@@ -2023,6 +2119,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             type('remove'); out.also = first();
             type('vows'); out.photo = first() + ' ' + heads().join(',');
             type('cerem'); out.folder = heads().includes('Folders') && [...document.querySelectorAll('#palette-list .palette-row[data-kind=folder] .palette-name')].some(n => n.textContent === 'Ceremony');
+            // No match: says what was looked for, with one way on
+            type('zzqx');
+            out.none = document.querySelector('#palette-list .palette-none-what')?.textContent;
+            document.querySelector('#palette-list [data-go="all"]').click();
+            out.all = heads().join() === 'Every command' && document.querySelectorAll('#palette-list .palette-row[data-kind=cmd]').length > 20 && input.value === '';
             type('rotate left'); out.says = document.querySelector('#palette-list .palette-row.on .palette-sub')?.textContent;
             out.key = document.querySelector('#palette-list .palette-row.on .palette-key')?.textContent;
             // Enter runs it on the selection, and closes
@@ -2061,6 +2162,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             Tour.end();
             return out;
         });
+        check('find anything: no match says "Nothing matches “zzqx”", and Show every command lists them all', r.none === 'Nothing matches \u201czzqx\u201d' && r.all, JSON.stringify([r.none, r.all]));
         check('Ctrl+K opens Find anything, its box ready to type in', r.opens, JSON.stringify(r));
         check('find anything: says what is selected, and suggests what fits it', r.selected === '2 selected' && r.suggests === 'For the 2 selected', JSON.stringify(r));
         check('find anything: letters in order, a typo and other words for it all match', r.letters === 'Rotate left' && r.typo === 'Move to trash' && r.also === 'Move to trash', JSON.stringify(r));
@@ -2130,6 +2232,13 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.selection = new Set([app.files[0]]);
             app.updateSelectionUI();
             out.selectionText = document.getElementById('selection-count').textContent;
+            // The pill (jEditor's own look): the count, then Rotate, Move to,
+            // Export and Delete as icons, then More, which has Rename
+            const shown = [...document.querySelectorAll('#selection-bar > button')].filter(b => b.getClientRects().length)
+                .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left).map(b => b.id);
+            out.pill = shown.join();
+            out.pillWords = getComputedStyle(document.querySelector('#selection-count .sel-word')).display === 'none';
+            out.moreRename = app.selectionMoreItems().some(it => /^Rename 1…$/.test(it[0])) && !app.selectionMoreItems().some(it => /^Export/.test(it[0]));
             // Leaving the grid clears the tiles' highlight too, so photos
             // selected earlier don't light up when the grid comes back
             app.setView('grid');
@@ -2147,6 +2256,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('grid Up/Down uses the real column count', r.cols);
         check('read-only photos refuse edits with a message', r.readOnly);
         check('selection count reads "1 selected"', r.selectionText === '1 selected', r.selectionText);
+        check('selection pill: the count, Rotate, Move to, Export, Delete, then More (with Rename); icons only', r.pill === 'btn-clear-selection,btn-rotate-left-bulk,btn-move-to,btn-sel-export,btn-trash,btn-export' && r.pillWords && r.moreRename, JSON.stringify([r.pill, r.pillWords, r.moreRename]));
         check('back in the grid, only the current photo is selected (no stale rings)', r.noStaleRings && r.onlyCurrentRinged,
             JSON.stringify({ stale: !r.noStaleRings, only: r.onlyCurrentRinged }));
         check('debug console is off until turned on in Settings', r.debugOff);
@@ -2495,6 +2605,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await new Promise(r => setTimeout(r, 400));
         });
         const ring = () => page.evaluate(() => [...document.querySelectorAll(':focus-visible')].map(e => e.id || e.className).join());
+        // The view switch is in More in 2.0's pill: on the pill for this
+        await page.evaluate(() => { app.uiPrefs.placement.view = 'main'; app.applyUiPrefs(); });
         const stuck = [];
         for (const [id, key] of [['btn-info', 'Escape'], ['btn-toggle-view', 'ArrowRight'], ['btn-export', 'Escape'], ['fb-all', 'Escape']]) {
             const b = await page.$('#' + id);
@@ -4162,10 +4274,19 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
 
             sel('IMG_0001.jpg', 'IMG_0002.jpg');
             key('p');
+            // Needs rescan is Shift+X since 2.0 (X rejects)
             sel('IMG_0002.jpg', 'vows.jpg');
-            key('x');
+            key('X', { shiftKey: true });
             sel('IMG_0003.jpg');
             key('3');
+            // X rejects (the tile dims); P on it picks it, and the reject goes
+            sel('IMG_0005.jpg');
+            key('x');
+            out.rejected = Flags.has(f('IMG_0005.jpg'), 'reject') && f('IMG_0005.jpg')._gridEl.classList.contains('rejected') && !!f('IMG_0005.jpg')._gridEl.querySelector('.tf-reject');
+            key('p');
+            out.pickNotReject = Flags.has(f('IMG_0005.jpg'), 'star') && !Flags.has(f('IMG_0005.jpg'), 'reject') && !f('IMG_0005.jpg')._gridEl.classList.contains('rejected');
+            key('u');
+            out.cleared5 = !Flags.any(f('IMG_0005.jpg'));
             out.flags = Flags.has(f('IMG_0001.jpg'), 'star') && Flags.has(f('IMG_0002.jpg'), 'star') && Flags.has(f('IMG_0002.jpg'), 'rescan') &&
                 Flags.has(f('vows.jpg'), 'rescan') && Flags.has(f('IMG_0003.jpg'), 'green');
             out.badges = !!f('IMG_0002.jpg')._gridEl.querySelector('.tile-flags .tf-star') && !!f('IMG_0002.jpg')._gridEl.querySelector('.tf-rescan');
@@ -4236,7 +4357,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.cleanedUp = !app.files.some(x => x._flags);
             return out;
         });
-        check('flags: P, X and 1–5 set star, rescan and color on the selection', r.flags && r.badges, JSON.stringify(r));
+        check('flags: P, Shift+X and 1–5 set pick, rescan and color on the selection', r.flags && r.badges, JSON.stringify(r));
+        check('flags: X rejects and dims the tile; P picks it instead; U clears', r.rejected && r.pickNotReject && r.cleared5, JSON.stringify([r.rejected, r.pickNotReject, r.cleared5]));
         check('flags: P again unstars; Ctrl+Z undoes; a new color replaces the old', r.toggled && r.undone && r.colourSwap);
         check('flags: saved in .jeditor/flags.json, keyed by path', r.saved);
         check('flags: a rename carries them; saved under the new name', r.renamed);
@@ -4670,6 +4792,15 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         // A narrow window, with and without the folder list: every pill in
         // the window, none over another (fit.js gives up parts in turn)
         const fit = [];
+        // A pill with more on it than the 2.0 default (people add buttons:
+        // the view switch, Rescan, History), so a narrow window still has to
+        // put some into More
+        const placed = await page.evaluate(() => {
+            const was = { ...app.uiPrefs.placement };
+            for (const k of ['view', 'refresh', 'history']) app.uiPrefs.placement[k] = 'main';
+            app.applyUiPrefs();
+            return was;
+        });
         for (const w of [1300, 900, 700, 480]) {
             await page.setViewportSize({ width: w, height: 700 });
             for (const rail of [true, false]) {
@@ -4730,6 +4861,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('narrow windows: no pill over another or off screen, top or bottom, with or without the folder list', fit.every(f => f.bad.length === 0), JSON.stringify(fit.filter(f => f.bad.length)));
         // (480 with the sidebar closed is the tightest: the mode's chip joins
         // the folder pill. With it open, over the grid, the 40 px pills fit)
+        await page.evaluate((was) => { app.uiPrefs.placement = was; app.applyUiPrefs(); }, placed);
         check('... wide, nothing given up; at 480 header buttons go into More, which shows; the file pill stays in single view', !fit[1].fit && fit[7].squeezed > 0 && fit.every(f => f.more && f.name), JSON.stringify(fit.map(f => [f.w, f.rail, f.fit, f.squeezed, f.more])));
         // The grid left alone: fitting the pills once, not every frame (its
         // own try at the folder pill's short labels used to wake it again)
@@ -5229,13 +5361,14 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const f = (n) => app.files.find(x => x.name === n);
             const key = (k, o = {}) => window.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, ...o }));
 
-            out.button = !!document.querySelector('#header-controls [data-hc="history"]:not(.hidden):not(.hc-extra)');
+            // In the pill's More (2.0), and on H
+            out.button = !!document.querySelector('#header-controls [data-hc="history"]:not(.hidden)');
             key('h');
             out.empty = History.isOpen() && !document.getElementById('history-empty').classList.contains('hidden');
             key('Escape');
             out.closed = !History.isOpen();
 
-            // Four steps: a star, a rename, a red label, a rotation
+            // Four steps: a pick, a rename, a red label, a rotation
             Flags.apply('star', [f('a.jpg')]);
             await app.renameFile(f('b.jpg'), 'Smith_02.jpg');
             Flags.apply('red', [f('c.jpg')]);
@@ -5261,10 +5394,10 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.infoCloses = !History.isOpen();
             return out;
         });
-        check('history: a toolbar button and H open it; empty says so; Esc closes', r.button && r.empty && r.closed, JSON.stringify(r));
-        check('history: every step, newest first, with what and which photo', JSON.stringify(r.rows) === JSON.stringify(['Rotation:c.jpg', 'Red label:c.jpg', 'Rename:b.jpg → Smith_02.jpg', 'Star:a.jpg']), JSON.stringify(r.rows));
+        check('history: in the toolbar (its More) and H opens it; empty says so; Esc closes', r.button && r.empty && r.closed, JSON.stringify(r));
+        check('history: every step, newest first, with what and which photo', JSON.stringify(r.rows) === JSON.stringify(['Rotation:c.jpg', 'Red label:c.jpg', 'Rename:b.jpg → Smith_02.jpg', 'Pick:a.jpg']), JSON.stringify(r.rows));
         check('history: clicking a step asks first, naming what is undone', r.askedFirst);
-        check('history: then goes back to before it, saying so once', r.wentBack && /Went back 3 steps/.test(r.toast) && r.left === 'Star', r.toast + ' ' + r.left);
+        check('history: then goes back to before it, saying so once', r.wentBack && /Went back 3 steps/.test(r.toast) && r.left === 'Pick', r.toast + ' ' + r.left);
         check('history: Info closes it', r.infoCloses);
         check('history suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
@@ -5485,6 +5618,18 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.setView('single');
             await sleep(80);
             out.single = title() === 'File info' && rows().Name === app.currentFile.name;
+            // The glass card: the flags to click, the photo moved over beside it
+            await sleep(100);
+            const extra = document.getElementById('info-extra');
+            out.card = !!extra && !extra.hidden && !!extra.querySelector('.info-flags .ctx-flag.fl-star')
+                && document.getElementById('main-interface').classList.contains('info-open')
+                && parseFloat(getComputedStyle(document.getElementById('image-container')).marginRight) >= 300;
+            extra.querySelector('.ctx-flag.fl-star').click();
+            await sleep(50);
+            out.cardFlag = Flags.has(app.currentFile, 'star') && !!document.querySelector('#info-extra .ctx-flag.fl-star.on');
+            Flags.apply('star', [app.currentFile]);
+            app.toggleInfoPanel(false);
+            out.cardShut = !document.getElementById('main-interface').classList.contains('info-open');
             out.gb = app.formatBytes(3 * 1024 * 1024 * 1024) === '3.00 GB';
             return out;
         });
@@ -5492,6 +5637,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('folder details: how much room .jeditor takes, trash counted', r.own, JSON.stringify(r));
         check('folder details: a selection, a folder with the whole project, Folder Info in the menu', r.selection && r.folder && r.menu, JSON.stringify(r));
         check('folder details: total under the folder list; single view still shows the photo', r.railTotal && r.single && r.gb, JSON.stringify(r));
+        check('Info is a glass card: the photo moves over beside it; its flags change the photo\'s', r.card && r.cardFlag && r.cardShut, JSON.stringify([r.card, r.cardFlag, r.cardShut]));
         check('folder details suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -5694,13 +5840,16 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.carriesOn = await until(() => Tour.steps[Tour.i].id === 'modes' && !Tour.busy);
             out.lit = parseFloat(document.querySelector('.tour-hole').style.width) > 0;
             out.count = document.querySelector('.tour-step').textContent === `2 of ${Tour.steps.length}`;
-            // Next: the sidebar, in the grid
+            // Six stops at most (audit A12); the modes are shown in the grid
+            out.six = Tour.steps.length <= 6;
+            out.sidebar = document.body.dataset.view === 'grid';
+            // Next: the film strip, in single view
             document.querySelector('.tour-card [data-act="next"]').click();
-            out.sidebar = await until(() => Tour.steps[Tour.i].id === 'sidebar' && !Tour.busy) && document.body.dataset.view === 'grid';
-            // On to the turn buttons, in single view
-            while (Tour.steps[Tour.i].id !== 'turn') { document.querySelector('.tour-card [data-act="next"]').click(); await until(() => !Tour.busy); }
+            await until(() => Tour.steps[Tour.i].id === 'strip' && !Tour.busy);
             out.single = document.body.dataset.view === 'single' && parseFloat(document.querySelector('.tour-hole').style.width) > 0;
-            // Back goes back
+            // On to Crop, and Back goes back
+            document.querySelector('.tour-card [data-act="next"]').click();
+            await until(() => Tour.steps[Tour.i].id === 'crop' && !Tour.busy);
             document.querySelector('.tour-card [data-act="back"]').click();
             out.back = await until(() => Tour.steps[Tour.i].id === 'strip' && !Tour.busy);
             // The end, in a browser: what the apps also have, and the download
@@ -5718,7 +5867,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         const ended = await page.evaluate(() => !Tour.running && !document.querySelector('.tour-hole') && !document.querySelector('.tour-card') && !document.body.classList.contains('touring'));
         check('tour: offered once on first run, and Not now keeps it away', r.offered && r.later && r.once, JSON.stringify(r));
         check('tour: with nothing open it starts with a folder, and goes on once one is open', r.firstOpen && r.carriesOn && r.lit && r.count, JSON.stringify(r));
-        check('tour: takes the app to each stop\'s view (the grid, one photo), and Back goes back', r.sidebar && r.single && r.back, JSON.stringify(r));
+        check('tour: six stops at most; takes the app to each stop\'s view (the grid, one photo), and Back goes back', r.six && r.sidebar && r.single && r.back, JSON.stringify(r));
         check('tour: in a browser, no Scan or Camera stop, and it ends with what the apps also have and the download', r.noScan && r.webEnd, JSON.stringify(r));
         check('tour: Esc ends it', ended);
         check('tour suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
@@ -5765,7 +5914,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                 }, chrome);
                 const boxes = await floatingBoxes(page);
                 for (const o of overTopBar(boxes, bars)) over.push(`${chrome}, ${width}×${height}: ${o}`);
-                if (boxes.length < 15) over.push(`${chrome}, ${width}×${height}: only ${boxes.length} measured (${boxes.map(b => b.name).join(', ')})`);
+                if (boxes.length < 14) over.push(`${chrome}, ${width}×${height}: only ${boxes.length} measured (${boxes.map(b => b.name).join(', ')})`);
                 errors = errors.concat(issues.errors);
                 await page.close();
             }
@@ -5831,6 +5980,101 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('Settings → Experimental: Themes is coming soon, greyed out and off (betas too); only the tests turn it on', Object.values(r.soon).every(Boolean), JSON.stringify(r.soon));
         check('an experiment is off until turned on; on, it says so and stays on', !r.off && r.heard && r.heard.id === 'trial' && r.heard.on && r.kept && !r.unknown, JSON.stringify(r));
         check('no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // The menu bar (menubar.js): every command with its key. Windows: the
+    // page draws it, shown when Alt is tapped; the Mac: sent to the menu bar
+    console.log('menu bar');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.addInitScript(() => {
+            const answers = { platform: 'windows', features: ['menuBar'], titleBar() {}, windowAction() {}, setState() {}, watchLog() {}, setMenus: undefined };
+            window.JEditorNative = new Proxy(answers, { get: (t, k) => k in t ? t[k] : (typeof k === 'string' && !k.startsWith('on') ? async () => [] : undefined) });
+        });
+        await page.reload({ waitUntil: 'networkidle' });
+        await page.evaluate(PAGE_HELPERS);
+        const wait = (ms) => new Promise(r => setTimeout(r, ms));
+        const out = {};
+        // No project yet: there, with what needs one greyed out
+        out.hidden = await page.evaluate(() => document.getElementById('menu-bar').classList.contains('hidden'));
+        await page.keyboard.press('Alt');
+        await wait(100);
+        Object.assign(out, await page.evaluate(() => {
+            const bar = document.getElementById('menu-bar');
+            const names = [...bar.querySelectorAll('.menu-bar-item')].map(b => b.textContent).join();
+            MenuBar.openMenu('Photo');
+            const rows = [...document.querySelectorAll('#context-menu button')];
+            return { shown: !bar.classList.contains('hidden'), names, focused: document.activeElement.closest('#context-menu, #menu-bar') !== null,
+                greyed: rows.length > 10 && rows.every(b => b.disabled) };
+        }));
+        await page.keyboard.press('Escape');
+        await page.keyboard.press('Escape');
+        out.closed = await page.evaluate(() => document.getElementById('menu-bar').classList.contains('hidden') && !document.getElementById('context-menu'));
+        // A project open: the commands run, with their keys
+        await page.evaluate(async () => {
+            const dir = makeDir('Menus');
+            for (let i = 1; i <= 3; i++) dir._files.set(`m${i}.jpg`, makeHandle(`m${i}.jpg`, await makeRealJpeg(300, 200, { color: `hsl(${i * 90},60%,50%)` }), 'image/jpeg'));
+            dir.values = async function* () { yield* dir._files.values(); };
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+        });
+        await page.keyboard.press('F10');
+        await wait(100);
+        Object.assign(out, await page.evaluate(async () => {
+            MenuBar.openMenu('View');
+            const rows = [...document.querySelectorAll('#context-menu button')];
+            const single = rows.find(b => b.textContent.startsWith('Single photo'));
+            const r = { keyShown: !!single && !single.disabled && single.querySelector('.ctx-key').textContent === 'S' };
+            // Right goes to the next menu
+            document.getElementById('context-menu').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+            r.next = MenuBar.openName === 'Photo';
+            const label = [...document.querySelectorAll('#context-menu button')].find(b => b.textContent.startsWith('Colour label'));
+            r.submenu = !!label && label.classList.contains('ctx-more');
+            MenuBar.openMenu('View');
+            [...document.querySelectorAll('#context-menu button')].find(b => b.textContent.startsWith('Single photo')).click();
+            await new Promise(res => setTimeout(res, 300));
+            r.ran = document.body.dataset.view === 'single' && document.getElementById('menu-bar').classList.contains('hidden');
+            // Settings is in Edit here (the Mac has it in its app menu)
+            r.settings = MenuBar.items('Edit', { inPage: true }).some(it => it.label === 'Settings…') && !MenuBar.items('Edit').some(it => it.label === 'Settings…');
+            // Sort: jEditor's menu, not the system's list; a field, ticked, then which way
+            const sel = document.getElementById('sort-mode');
+            sel.value = 'name_asc';
+            sel.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+            const sortRows = [...document.querySelectorAll('#context-menu button')];
+            r.sortMenu = sortRows.map(b => (b.getAttribute('aria-checked') === 'true' ? '✓' : '') + b.textContent).join('|');
+            sortRows.find(b => b.textContent === 'Date taken').click();
+            r.sortTaken = sel.value === 'taken_desc' && app.sortMode === 'taken_desc';
+            r.sortSub = MenuBar.items('View').find(it => it.label === 'Sort by').items.filter(it => it.checked).map(it => it.label).join();
+            sel.value = 'name_asc';
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+            return r;
+        }));
+        await page.keyboard.press('Alt+ArrowUp');
+        await wait(100);
+        out.altCombo = await page.evaluate(() => document.getElementById('menu-bar').classList.contains('hidden'));
+        // The Mac: the same menus, sent to the menu bar, and one chosen there runs
+        Object.assign(out, await page.evaluate(async () => {
+            let sent = null, own = null;
+            window.JEditorNative.setMenus = (m, o) => { sent = m; own = o && o.own; };
+            Themes._menuKey = '';
+            const ok = MenuBar.system();
+            const photo = sent && sent.find(m => m.label === 'Photo');
+            const grid = sent && sent.find(m => m.label === 'View').items.find(it => it.label === 'Grid');
+            const label = photo && photo.items.find(it => it.label === 'Colour label');
+            if (grid) Themes.runMenu(grid.id);
+            await new Promise(res => setTimeout(res, 300));
+            delete window.JEditorNative.setMenus;
+            return { mac: ok && own === true && sent.map(m => m.label).join() === 'File,Edit,View,Photo,Help' && grid.key === 'G' && grid.enabled,
+                macSub: !!label && label.items.length === 5, macRan: document.body.dataset.view === 'grid' };
+        }));
+        check('menu bar: hidden until Alt is tapped; File, Edit, View, Photo and Help', out.hidden && out.shown && out.names === 'File,Edit,View,Photo,Help' && out.focused, JSON.stringify(out));
+        check('menu bar: with no project, what needs one is there but greyed out; Esc closes the menu, then the bar', out.greyed && out.closed, JSON.stringify(out));
+        check('menu bar: F10 too; each command shows its key and runs, then the bar goes; right goes to the next menu', out.keyShown && out.next && out.ran && out.submenu, JSON.stringify(out));
+        check('Sort: jEditor\'s menu (the field ticked, then which way in words); picking Date taken sorts newest first; View ▸ Sort by agrees', out.sortMenu === '✓Name|Date taken|Date modified|Size|✓A to Z|Z to A' && out.sortTaken && out.sortSub === 'Date taken,Newest first', JSON.stringify([out.sortMenu, out.sortTaken, out.sortSub]));
+        check('menu bar: Settings in Edit on Windows; Alt with another key leaves it alone', out.settings && out.altCombo, JSON.stringify(out));
+        check('menu bar: the Mac gets the same menus with their keys, colour labels as a menu of their own, and runs the one chosen', out.mac && out.macSub && out.macRan, JSON.stringify(out));
+        check('menu bar: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

@@ -120,7 +120,8 @@ const History = {
 
     flagWhat(e) {
         if (e.kind === 'clear') return 'Clear flags';
-        if (e.kind === 'star') return e.on === false ? 'Unstar' : 'Star';
+        if (e.kind === 'star') return e.on === false ? 'Unpick' : 'Pick';
+        if (e.kind === 'reject') return e.on === false ? 'Unreject' : 'Reject';
         if (e.kind === 'rescan') return e.on === false ? 'Rescan flag off' : 'Needs rescan';
         if (e.kind) return `${Flags.label(e.kind)} label${e.on === false ? ' off' : ''}`;
         return 'Flags';
