@@ -534,11 +534,14 @@ const PaintEditor = {
 
     // ---- Snap (View → Snap, Ctrl+;): to the canvas's edges and middle ----
 
-    // Within 8 screen px of an edge or the middle, on it; the lines snapped
-    // to show while dragging
+    // Within 5 screen px of an edge or a middle, on it (near enough to
+    // catch, not so far it stops a small move by an edge); the lines
+    // snapped to show while dragging. Ctrl held while moving: no snapping
+    SNAP_NEAR: 5,
+
     snapTargets() {
         const xs = [0, this.OW / 2, this.OW], ys = [0, this.OH / 2, this.OH];
-        for (const b of this.layerEdges()) { xs.push(b.x0, b.x1); ys.push(b.y0, b.y1); }
+        for (const b of this.layerEdges()) { xs.push(b.x0, (b.x0 + b.x1) / 2, b.x1); ys.push(b.y0, (b.y0 + b.y1) / 2, b.y1); }
         return { xs, ys };
     },
 
@@ -577,7 +580,7 @@ const PaintEditor = {
     snapPoint(p) {
         this._snapLines = null;
         if (!this.opts.snap || this.view.r) return p;
-        const near = 8 / this.view.z, { xs, ys } = this.snapTargets();
+        const near = this.SNAP_NEAR / this.view.z, { xs, ys } = this.snapTargets();
         const fx = xs.find(x => Math.abs(p.ox - x) < near), fy = ys.find(y => Math.abs(p.oy - y) < near);
         if (fx === undefined && fy === undefined) return p;
         const o = { x: fx === undefined ? p.ox : fx, y: fy === undefined ? p.oy : fy };
@@ -591,7 +594,7 @@ const PaintEditor = {
         this._snapLines = null;
         const f = this.float, t = f.t;
         if (!this.opts.snap || this.view.r || t.rot) return;
-        const near = 8 / this.view.z, { xs, ys } = this.snapTargets();
+        const near = this.SNAP_NEAR / this.view.z, { xs, ys } = this.snapTargets();
         const w = f.w * Math.abs(t.sx), h = f.h * Math.abs(t.sy);
         const cx = f.x0 + f.w / 2 + t.tx, cy = f.y0 + f.h / 2 + t.ty;
         const best = (c, half, targets) => {
@@ -1848,7 +1851,7 @@ const PaintEditor = {
             const last = d.pts[d.pts.length - 1];
             if (Math.hypot(p.sx - last.sx, p.sy - last.sy) >= 2) d.pts.push(p);
         } else if (d.kind === 'float') {
-            this.dragFloat(p, e.shiftKey);
+            this.dragFloat(p, e.shiftKey, e.ctrlKey || e.metaKey);
         } else if (d.kind === 'crop') {
             this.dragCrop(p);
         }
@@ -4325,14 +4328,22 @@ const PaintEditor = {
         return null;
     },
 
-    dragFloat(p, keepShape) {
+    // free: Ctrl held, moved without snapping
+    dragFloat(p, keepShape, free = false) {
         const d = this.drag, f = this.float, t = f.t, o = d.orig;
         if (f.quad && d.quad) { this.dragQuad(p); return; }
         const cx = f.x0 + f.w / 2 + o.tx, cy = f.y0 + f.h / 2 + o.ty;
         if (d.part === 'move') {
             t.tx = o.tx + (p.ox - d.start.ox);
             t.ty = o.ty + (p.oy - d.start.oy);
-            this.snapFloat();
+            if (free) this._snapLines = null;
+            else this.snapFloat();
+            // Neither turned nor sized: in whole pixels, so it stays crisp
+            // and goes a pixel at a time
+            if (!t.rot && Math.abs(t.sx) === 1 && Math.abs(t.sy) === 1) {
+                t.tx = Math.round(t.tx);
+                t.ty = Math.round(t.ty);
+            }
         } else if (d.part === 'rotate') {
             const a0 = Math.atan2(d.start.oy - cy, d.start.ox - cx), a1 = Math.atan2(p.oy - cy, p.ox - cx);
             let rot = o.rot + a1 - a0;
