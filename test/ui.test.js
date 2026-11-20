@@ -6109,6 +6109,24 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.keyboard.press('Alt+ArrowUp');
         await wait(100);
         out.altCombo = await page.evaluate(() => document.getElementById('menu-bar').classList.contains('hidden'));
+        // With the real mouse: a menu's name opens it and shuts it again, and
+        // the next name opens that one (the press that closes a menu off it
+        // leaves the open one's name to its own click)
+        await page.keyboard.press('F10');
+        await wait(100);
+        const name = (n) => page.evaluate((n) => { const b = [...document.querySelectorAll('#menu-bar .menu-bar-item')].find(x => x.textContent === n); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, n);
+        const clickName = async (n) => { const at = await name(n); await page.mouse.click(at.x, at.y); await wait(100); };
+        const openOne = () => page.evaluate(() => document.getElementById('context-menu') ? MenuBar.openName : null);
+        await clickName('Photo');
+        out.mouseOpen = await openOne();
+        await clickName('Photo');
+        out.mouseShut = await openOne();
+        await clickName('Photo');
+        await clickName('Edit');
+        out.mouseNext = await openOne();
+        await page.keyboard.press('Escape');
+        await page.keyboard.press('Escape');
+        await wait(100);
         // The Mac: the same menus, sent to the menu bar, and one chosen there runs
         Object.assign(out, await page.evaluate(async () => {
             let sent = null, own = null;
@@ -6127,6 +6145,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('menu bar: hidden until Alt is tapped; File, Edit, View, Photo and Help', out.hidden && out.shown && out.names === 'File,Edit,View,Photo,Help' && out.focused, JSON.stringify(out));
         check('menu bar: with no project, what needs one is there but greyed out; Esc closes the menu, then the bar', out.greyed && out.closed, JSON.stringify(out));
         check('menu bar: F10 too; each command shows its key and runs, then the bar goes; right goes to the next menu', out.keyShown && out.next && out.ran && out.submenu, JSON.stringify(out));
+        check('menu bar, with the mouse: a name opens its menu and shuts it again; the next name opens that one', out.mouseOpen === 'Photo' && out.mouseShut === null && out.mouseNext === 'Edit', JSON.stringify([out.mouseOpen, out.mouseShut, out.mouseNext]));
         check('Sort: jEditor\'s menu (the field ticked, then which way in words); picking Date taken sorts newest first; View ▸ Sort by agrees', out.sortMenu === '✓Name|Date taken|Date modified|Size|✓A to Z|Z to A' && out.sortTaken && out.sortSub === 'Date taken,Newest first', JSON.stringify([out.sortMenu, out.sortTaken, out.sortSub]));
         check('menu bar: Settings in Edit on Windows; Alt with another key leaves it alone', out.settings && out.altCombo, JSON.stringify(out));
         check('menu bar: the Mac gets the same menus with their keys, colour labels as a menu of their own, and runs the one chosen', out.mac && out.macSub && out.macRan, JSON.stringify(out));

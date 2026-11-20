@@ -4099,11 +4099,30 @@ const PROJECT = `
         await page.evaluate(async () => { app.openSingle(app.files[0]); await sleep(200); });
         out.single = await press('#image-container');
         await page.evaluate(async () => { await app.enterAdjust(app.files[0]); await until(() => Adjust.ready); });
+        // The press that closes it reaches nothing under it (no pin moved,
+        // no dot painted); with no menu open, a press goes through
+        const counted = (sel) => page.evaluate((s) => { window._downs = 0; document.querySelector(s).addEventListener('pointerdown', () => window._downs++); }, sel);
+        const downs = () => page.evaluate(() => window._downs);
+        const bare = async (sel) => { const at = await mid(sel); await page.mouse.click(at.x, at.y); };
+        await counted('#adj-stage');
         out.adjustPhoto = await press('#adj-stage');
+        out.adjustSwallowed = await downs() === 0;
+        await bare('#adj-stage');
+        out.adjustThrough = await downs() === 1;
         out.adjustPane = await press('#adj-panel');
+        // ⋯ opens its menu with the mouse, and another press shuts it
+        const more = async (sel) => { const at = await mid(sel); await page.mouse.click(at.x, at.y); await page.waitForTimeout(100); const opened = !(await page.evaluate(() => !document.getElementById('context-menu'))); await page.mouse.click(at.x, at.y + 200 > 700 ? at.y - 50 : at.y + 200); return opened; };
+        out.adjustMore = await more('#adj-more');
         await page.evaluate(async () => { await Modes.leave(true); await app.enterPaint(); await until(() => PaintEditor.ready); });
+        await counted('#paint-stage');
+        const strokes = () => page.evaluate(() => PaintEditor.history.length);
+        const before = await strokes();
         out.paintCanvas = await press('#paint-stage');
+        out.paintSwallowed = await downs() === 0 && await strokes() === before;
+        await bare('#paint-stage');
+        out.paintThrough = await downs() === 1;
         out.paintPane = await press('#paint-panel');
+        out.paintMore = await more('#paint-more');
         await page.evaluate(() => Modes.leave(true));
         check('menus: a press on the grid closes the right-click menu, left or right button', setup && out.grid === true && out.gridRight === true, JSON.stringify(out));
         check('menus: a press in the menu or its row\'s own menu keeps it', out.keptMenu && out.keptFly, JSON.stringify(out));
@@ -4111,6 +4130,8 @@ const PROJECT = `
         check('menus: a press on the photo, in Photos, closes it', out.single === true, JSON.stringify(out));
         check('menus: a press on Adjust\'s photo or its pane closes it', out.adjustPhoto === true && out.adjustPane === true, JSON.stringify(out));
         check('menus: a press on Paint\'s canvas or its pane closes it', out.paintCanvas === true && out.paintPane === true, JSON.stringify(out));
+        check('menus: ⋯ in Adjust and in Paint opens its menu with the mouse', out.adjustMore && out.paintMore, JSON.stringify(out));
+        check('menus: the press that closes it, on Adjust\'s or Paint\'s photo, only closes it (no pin moved, nothing painted); with none open a press goes through', out.adjustSwallowed && out.paintSwallowed && out.adjustThrough && out.paintThrough, JSON.stringify(out));
         check('menus: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
