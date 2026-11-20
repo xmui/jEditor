@@ -534,11 +534,14 @@ const PaintEditor = {
 
     // ---- Snap (View → Snap, Ctrl+;): to the canvas's edges and middle ----
 
-    // Within 8 screen px of an edge or the middle, on it; the lines snapped
-    // to show while dragging
+    // Within 5 screen px of an edge or a middle, on it (near enough to
+    // catch, not so far it stops a small move by an edge); the lines
+    // snapped to show while dragging. Ctrl held while moving: no snapping
+    SNAP_NEAR: 5,
+
     snapTargets() {
         const xs = [0, this.OW / 2, this.OW], ys = [0, this.OH / 2, this.OH];
-        for (const b of this.layerEdges()) { xs.push(b.x0, b.x1); ys.push(b.y0, b.y1); }
+        for (const b of this.layerEdges()) { xs.push(b.x0, (b.x0 + b.x1) / 2, b.x1); ys.push(b.y0, (b.y0 + b.y1) / 2, b.y1); }
         return { xs, ys };
     },
 
@@ -577,7 +580,7 @@ const PaintEditor = {
     snapPoint(p) {
         this._snapLines = null;
         if (!this.opts.snap || this.view.r) return p;
-        const near = 8 / this.view.z, { xs, ys } = this.snapTargets();
+        const near = this.SNAP_NEAR / this.view.z, { xs, ys } = this.snapTargets();
         const fx = xs.find(x => Math.abs(p.ox - x) < near), fy = ys.find(y => Math.abs(p.oy - y) < near);
         if (fx === undefined && fy === undefined) return p;
         const o = { x: fx === undefined ? p.ox : fx, y: fy === undefined ? p.oy : fy };
@@ -591,7 +594,7 @@ const PaintEditor = {
         this._snapLines = null;
         const f = this.float, t = f.t;
         if (!this.opts.snap || this.view.r || t.rot) return;
-        const near = 8 / this.view.z, { xs, ys } = this.snapTargets();
+        const near = this.SNAP_NEAR / this.view.z, { xs, ys } = this.snapTargets();
         const w = f.w * Math.abs(t.sx), h = f.h * Math.abs(t.sy);
         const cx = f.x0 + f.w / 2 + t.tx, cy = f.y0 + f.h / 2 + t.ty;
         const best = (c, half, targets) => {
@@ -1848,7 +1851,7 @@ const PaintEditor = {
             const last = d.pts[d.pts.length - 1];
             if (Math.hypot(p.sx - last.sx, p.sy - last.sy) >= 2) d.pts.push(p);
         } else if (d.kind === 'float') {
-            this.dragFloat(p, e.shiftKey);
+            this.dragFloat(p, e.shiftKey, e.ctrlKey || e.metaKey);
         } else if (d.kind === 'crop') {
             this.dragCrop(p);
         }
@@ -4229,6 +4232,7 @@ const PaintEditor = {
             const f = this.float, hit = this.floatHit(p);
             if (hit) {
                 this.drag = { kind: 'float', part: hit, start: p, orig: { ...f.t } };
+                if (f.mesh) { this.drag.mesh = f.mesh.map(q => ({ ...q })); return; }
                 // A corner or side with Ctrl (Ctrl+Alt+Shift: perspective),
                 // or in Skew, Distort or Perspective: the corners go free
                 const how = e.ctrlKey || e.metaKey ? (e.altKey && e.shiftKey ? 'perspective' : 'distort') : f.mode;
@@ -4268,8 +4272,9 @@ const PaintEditor = {
         } else {
             g.clearRect(0, 0, this.W, this.H);
         }
-        // Into the picture as shown, its bounds there
-        const lb = this.sel ? this.sel.box : { x: 0, y: 0, w: this.W, h: this.H };
+        // Into the picture as shown, its bounds there: the selection's, or
+        // just what's on the layer (its box fits it, not the whole canvas)
+        const lb = this.sel ? this.sel.box : this.contentBox(lifted) || { x: 0, y: 0, w: this.W, h: this.H };
         const corners = [[lb.x, lb.y], [lb.x + lb.w, lb.y], [lb.x, lb.y + lb.h], [lb.x + lb.w, lb.y + lb.h]].map(([x, y]) => this.C.transformPoint({ x, y }));
         const x0 = Math.floor(Math.min(...corners.map(q => q.x))), y0 = Math.floor(Math.min(...corners.map(q => q.y)));
         const x1 = Math.ceil(Math.max(...corners.map(q => q.x))), y1 = Math.ceil(Math.max(...corners.map(q => q.y)));
@@ -4316,7 +4321,13 @@ const PaintEditor = {
     },
 
     floatHit(p) {
-        const h = this.floatHandles(), r = 9 / this.view.z;
+        const r = 9 / this.view.z;
+        if (this.float.mesh) {
+            const m = this.float.mesh;
+            for (let i = 0; i < 16; i++) if (Math.hypot(p.ox - m[i].x, p.oy - m[i].y) <= r) return 'm' + i;
+            return this.inMesh(m, p.ox, p.oy) ? 'move' : null;
+        }
+        const h = this.floatHandles();
         if (h.knob && Math.hypot(p.ox - h.knob.x, p.oy - h.knob.y) <= r) return 'rotate';
         for (const [id, q] of [...h.corners, ...h.edges]) if (Math.hypot(p.ox - q.x, p.oy - q.y) <= r) return id;
         if (h.quad) return this.inQuad(h.quad, p.ox, p.oy) ? 'move' : null;
@@ -4325,14 +4336,23 @@ const PaintEditor = {
         return null;
     },
 
-    dragFloat(p, keepShape) {
+    // free: Ctrl held, moved without snapping
+    dragFloat(p, keepShape, free = false) {
         const d = this.drag, f = this.float, t = f.t, o = d.orig;
+        if (f.mesh && d.mesh) { this.dragMesh(p); return; }
         if (f.quad && d.quad) { this.dragQuad(p); return; }
         const cx = f.x0 + f.w / 2 + o.tx, cy = f.y0 + f.h / 2 + o.ty;
         if (d.part === 'move') {
             t.tx = o.tx + (p.ox - d.start.ox);
             t.ty = o.ty + (p.oy - d.start.oy);
-            this.snapFloat();
+            if (free) this._snapLines = null;
+            else this.snapFloat();
+            // Neither turned nor sized: in whole pixels, so it stays crisp
+            // and goes a pixel at a time
+            if (!t.rot && Math.abs(t.sx) === 1 && Math.abs(t.sy) === 1) {
+                t.tx = Math.round(t.tx);
+                t.ty = Math.round(t.ty);
+            }
         } else if (d.part === 'rotate') {
             const a0 = Math.atan2(d.start.oy - cy, d.start.ox - cx), a1 = Math.atan2(p.oy - cy, p.ox - cx);
             let rot = o.rot + a1 - a0;
@@ -4395,11 +4415,24 @@ const PaintEditor = {
         mode.className = 'paint-opt';
         mode.innerHTML = '<span>Mode</span><select class="field paint-tf-mode"></select>';
         const ms = mode.querySelector('select');
-        for (const [v, t] of [['free', 'Size and turn'], ['skew', 'Skew'], ['distort', 'Distort'], ['perspective', 'Perspective']]) ms.add(new Option(t, v));
+        for (const [v, t] of [['free', 'Size and turn'], ['skew', 'Skew'], ['distort', 'Distort'], ['perspective', 'Perspective'], ['warp', 'Warp']]) ms.add(new Option(t, v));
         ms.value = f.mode || 'free';
         ms.title = 'How the corners and sides drag. Ctrl-drag a corner to distort it whatever this is';
-        ms.addEventListener('change', () => { f.mode = ms.value; ms.blur(); });
+        ms.addEventListener('change', () => { this.setWarp(ms.value === 'warp'); f.mode = ms.value; ms.blur(); });
         box.appendChild(mode);
+        if (f.mesh) {
+            const fin = (label, title, fn, cls) => { const x = document.createElement('button'); x.className = cls; x.textContent = label; x.title = title; x.addEventListener('click', () => { x.blur(); fn(); }); box.appendChild(x); };
+            const hint = document.createElement('span');
+            hint.className = 'paint-opt paint-hint';
+            hint.textContent = 'Drag a point to bend it; drag inside to move it';
+            hint.title = hint.textContent;
+            box.appendChild(hint);
+            fin('Reset', 'Take the bend out', () => { f.mesh = this.meshOf({ ...f, mesh: null }, true); this.renderSoon(); }, 'btn ghost sm');
+            fin('Cancel', 'Put it back as it was (Esc)', () => this.cancelFloat(), 'btn secondary paint-tf-cancel');
+            fin('Done', 'Put it down (Enter)', () => this.commitFloat(), 'btn primary paint-tf-ok');
+            this.tfRows = [];
+            return;
+        }
         if (f.quad) {
             // The corners free: W, H and the angle no longer say it all
             const flip = (order) => { f.quad = order.map(i => f.quad[i]); this.renderSoon(); };
@@ -4445,7 +4478,10 @@ const PaintEditor = {
         const f = this.float;
         ctx.save();
         ctx.imageSmoothingEnabled = true;
-        if (f.quad) {
+        if (f.mesh) {
+            ctx.setTransform(VD);
+            this.drawMap(ctx, f.canvas, (x, y) => this.patchAt(f.mesh, x / f.w, y / f.h), f.w, f.h, 16);
+        } else if (f.quad) {
             ctx.setTransform(VD);
             this.drawHom(ctx, f.canvas, this.homRectToQuad(f.w, f.h, f.quad), f.w, f.h, 10);
         } else {
@@ -4511,6 +4547,12 @@ const PaintEditor = {
             g.restore();
             return;
         }
+        this.drawMap(g, src, (x, y) => this.homAt(H, x, y), sw, sh, n);
+    },
+
+    // src's sw × sh px drawn through any smooth mapping of them (as small
+    // triangles, each drawn straight)
+    drawMap(g, src, at, sw, sh, n = 24) {
         const tri = (s0, s1, s2, d0, d1, d2, cx, cy, cw, ch) => {
             const det = (s1.x - s0.x) * (s2.y - s0.y) - (s2.x - s0.x) * (s1.y - s0.y);
             if (!det) return;
@@ -4534,7 +4576,7 @@ const PaintEditor = {
         for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
             const u0 = sw * i / n, u1 = sw * (i + 1) / n, v0 = sh * j / n, v1 = sh * (j + 1) / n;
             const s00 = { x: u0, y: v0 }, s10 = { x: u1, y: v0 }, s11 = { x: u1, y: v1 }, s01 = { x: u0, y: v1 };
-            const [d00, d10, d11, d01] = [s00, s10, s11, s01].map(q => this.homAt(H, q.x, q.y));
+            const [d00, d10, d11, d01] = [s00, s10, s11, s01].map(q => at(q.x, q.y));
             const cx = Math.max(0, Math.floor(u0) - 2), cy = Math.max(0, Math.floor(v0) - 2);
             const cw = Math.min(sw, Math.ceil(u1) + 2) - cx, ch = Math.min(sh, Math.ceil(v1) + 2) - cy;
             if (cw <= 0 || ch <= 0) continue;
@@ -4573,8 +4615,11 @@ const PaintEditor = {
 
     // Put down where it is
     commitFloat() {
-        const f = this.float;
+        let f = this.float;
         if (!f) return;
+        // Put past the layers' edges: they grow to keep all of it
+        this.growFor(f);
+        f = this.float;
         this.float = null;
         const l = f.layer;
         const g = l.canvas.getContext('2d');
@@ -4583,8 +4628,24 @@ const PaintEditor = {
         const A = this.hom(new DOMMatrix().translate(-f.x0, -f.y0).multiply(this.C));
         const out = f.quad ? this.homRectToQuad(f.w, f.h, f.quad) : this.hom(this.floatM.call({ float: f, view: this.view }));
         const K = this.homMul(this.hom(this.Ci), this.homMul(out, A));
-        const slid = !f.quad && !l.src && f.t.rot === 0 && f.t.sx === 1 && f.t.sy === 1;
-        if (!f.sel && !l.text && !l.shape && !slid) {
+        const slid = !f.quad && !f.mesh && !l.src && f.t.rot === 0 && f.t.sx === 1 && f.t.sy === 1;
+        let warped = null;
+        if (f.mesh) {
+            // Warped: plain pixels from here (text and shapes too)
+            const at = (x, y) => this.patchAt(f.mesh, x / f.w, y / f.h);
+            g.save();
+            g.setTransform(this.Ci);
+            g.imageSmoothingEnabled = true;
+            g.imageSmoothingQuality = 'high';
+            this.drawMap(g, f.canvas, at, f.w, f.h, 32);
+            g.restore();
+            if (this.sel) {
+                warped = this.newCanvas();
+                const wg = warped.getContext('2d');
+                wg.setTransform(this.Ci);
+                this.drawMap(wg, f.canvas, at, f.w, f.h, 32);
+            }
+        } else if (!f.sel && !l.text && !l.shape && !slid) {
             // A smart layer: kept as it was before its first transform, so
             // each transform after is drawn from that, not resampled again
             // (the first time, what was lifted, from its own px)
@@ -4621,8 +4682,12 @@ const PaintEditor = {
             g.restore();
         }
         if (!f.kept) f.canvas.width = f.canvas.height = 0;
-        // The selection moves with it
-        if (this.sel) {
+        // The selection moves with it (warped: what's left where it went)
+        if (warped) {
+            this.dropSelection();
+            this.sel = { mask: warped };
+            this.selectionChanged();
+        } else if (this.sel) {
             const m = this.newCanvas();
             const mg = m.getContext('2d');
             mg.imageSmoothingEnabled = true;
@@ -4634,6 +4699,137 @@ const PaintEditor = {
         this.endPixels(l, { x: 0, y: 0, w: this.W, h: this.H }, { free: true, name: 'Move', vec: text });
         this.buildOptions();
         this.renderSoon();
+    },
+
+    // ---- Warp (Free transform's Mode → Warp) ----
+    //
+    // A smooth bend: 16 points (f.mesh, rows top to bottom, in the picture
+    // as shown), a bicubic Bézier patch over what's lifted. The corners are
+    // its corners; the others pull the edges and the middle toward them
+
+    // The mesh over what's floating as it is now (its quad or its box)
+    meshOf(f, flat = false) {
+        const c = flat || !f.mesh ? (f.quad || this.quadOf(f)) : null;
+        if (!c) return f.mesh;
+        const lerp = (a, b, k) => ({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k });
+        const m = [];
+        for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) m.push(lerp(lerp(c[0], c[1], i / 3), lerp(c[3], c[2], i / 3), j / 3));
+        return m;
+    },
+
+    // Warp on (a mesh from the shape it has) or off (back to that shape)
+    setWarp(on) {
+        const f = this.float;
+        if (!f || !!f.mesh === on) return;
+        f.mesh = on ? this.meshOf(f) : null;
+        this.buildOptions();
+        this.renderSoon();
+    },
+
+    // The patch at (u, v), each 0 to 1
+    patchAt(m, u, v) {
+        const b = (t) => { const s = 1 - t; return [s * s * s, 3 * s * s * t, 3 * s * t * t, t * t * t]; };
+        const bu = b(u), bv = b(v);
+        let x = 0, y = 0;
+        for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) { const w = bu[i] * bv[j], q = m[j * 4 + i]; x += q.x * w; y += q.y * w; }
+        return { x, y };
+    },
+
+    // Inside the patch (near enough: inside its outline, sampled)
+    inMesh(m, x, y) {
+        const n = 12, pts = [];
+        for (let i = 0; i < n; i++) pts.push(this.patchAt(m, i / n, 0));
+        for (let i = 0; i < n; i++) pts.push(this.patchAt(m, 1, i / n));
+        for (let i = n; i > 0; i--) pts.push(this.patchAt(m, i / n, 1));
+        for (let i = n; i > 0; i--) pts.push(this.patchAt(m, 0, i / n));
+        let inside = false;
+        for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+            const a = pts[i], b = pts[j];
+            if ((a.y > y) !== (b.y > y) && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+        }
+        return inside;
+    },
+
+    dragMesh(p) {
+        const d = this.drag, f = this.float, dx = p.ox - d.start.ox, dy = p.oy - d.start.oy;
+        f.mesh = d.mesh.map((q, i) => d.part === 'move' || d.part === 'm' + i ? { x: q.x + dx, y: q.y + dy } : { ...q });
+    },
+
+    // Its outline and the lines across at the thirds, and the points
+    drawMesh(ctx, outline) {
+        const m = this.float.mesh, z = this.view.z, path = new Path2D(), n = 16;
+        for (const k of [0, 1 / 3, 2 / 3, 1]) {
+            for (const across of [true, false]) {
+                for (let i = 0; i <= n; i++) {
+                    const q = across ? this.patchAt(m, i / n, k) : this.patchAt(m, k, i / n);
+                    if (i) path.lineTo(q.x, q.y); else path.moveTo(q.x, q.y);
+                }
+            }
+        }
+        outline(path, [4 / z, 3 / z]);
+        for (const q of m) {
+            ctx.beginPath();
+            ctx.arc(q.x, q.y, 4 / z, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ctx.lineWidth = 1.5 / z;
+            ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+            ctx.stroke();
+        }
+    },
+
+    // How far past the layers' edges what's floating reaches (layer px,
+    // each side), or null: inside them
+    reachOf(f) {
+        const pts = f.mesh ? f.mesh : f.quad ? f.quad : (() => { const M = this.floatM.call({ float: f, view: this.view }); return [[0, 0], [f.w, 0], [0, f.h], [f.w, f.h]].map(([x, y]) => M.transformPoint({ x, y })); })();
+        const q = pts.map(p => this.Ci.transformPoint(p)), xs = q.map(p => p.x), ys = q.map(p => p.y);
+        const out = (v) => Math.max(0, Math.ceil(v - 0.01));
+        const r = { l: out(-Math.min(...xs)), t: out(-Math.min(...ys)), r: out(Math.max(...xs) - this.W), b: out(Math.max(...ys) - this.H) };
+        return r.l || r.t || r.r || r.b ? r : null;
+    },
+
+    // The layers grown so what's floating fits on them, kept past the
+    // canvas (hidden there, not written by Export) to come back when it's
+    // moved in again or the canvas is made bigger. One step of Undo before
+    // the move's own; up to three times the photo's size
+    growFor(f) {
+        const need = this.reachOf(f);
+        if (!need) return;
+        const cap = 3 * Math.max(this.PW, this.PH);
+        const room = (have, k) => Math.max(0, Math.min(need[k], cap - have));
+        const e0 = this.ext;
+        const add = { l: room(this.W, 'l') }; add.r = room(this.W + add.l, 'r');
+        add.t = room(this.H, 't'); add.b = room(this.H + add.t, 'b');
+        const W = this.W + add.l + add.r, H = this.H + add.t + add.b;
+        if (!(add.l || add.t || add.r || add.b) || W > 16384 || H > 16384 || W * H > Math.max(36e6, 4 * this.PW * this.PH)) return;
+        const l = f.layer, grow = (c, white = false) => {
+            const n = this.newCanvas(W, H), g = n.getContext('2d');
+            if (white) { g.fillRect(0, 0, W, H); g.clearRect(add.l, add.t, c.width, c.height); }
+            g.drawImage(c, add.l, add.t);
+            return n;
+        };
+        // The layer as it was before it was lifted, and as it is (lifted)
+        const was = this.newCanvas(this.W, this.H);
+        was.getContext('2d').drawImage(this.before, 0, 0);
+        const before = this.canvasState();
+        before.canvases.set(l.id, was);
+        const canvases = new Map();
+        for (const k of this.layers) {
+            canvases.set(k.id, grow(k === l ? was : k.canvas));
+            if (k.mask) canvases.set(k.id + 'm', grow(k.mask, true));
+        }
+        const lifted = grow(l.canvas), sel = this.sel && grow(this.sel.mask);
+        const ext = { l: e0.l + add.l, t: e0.t + add.t, r: e0.r + add.r, b: e0.b + add.b };
+        const after = { ext, pad: this.pad, fill: this.fill, canvases, keepView: true };
+        before.keepView = true;
+        this.float = null;
+        this.applyCanvas(after);
+        this.record({ kind: 'canvas', name: 'Move', before, after, bytes: W * H * 4 * this.layers.length });
+        // Lifted again, on the grown layer: the move's own step from here
+        this.beginPixels(l);
+        l.canvas = lifted;
+        if (sel) { this.sel = { mask: sel }; this.selectionChanged(); }
+        this.float = f;
     },
 
     // Put back as it was
@@ -4894,7 +5090,8 @@ const PaintEditor = {
             d.pts.forEach((q, i) => i ? p.lineTo(q.ox, q.oy) : p.moveTo(q.ox, q.oy));
             outline(p);
         }
-        if (this.float) {
+        if (this.float && this.float.mesh) this.drawMesh(ctx, outline);
+        else if (this.float) {
             const h = this.floatHandles(), f = this.float;
             const box = new Path2D();
             const c = h.corners.map(x => x[1]);
@@ -5875,8 +6072,10 @@ const PaintEditor = {
     nudge(dx, dy) {
         if (!this.ready || this.drag || this.crop) return false;
         if (this.float) {
-            this.float.t.tx += dx;
-            this.float.t.ty += dy;
+            const f = this.float;
+            for (const q of f.mesh || f.quad || []) { q.x += dx; q.y += dy; }
+            f.t.tx += dx;
+            f.t.ty += dy;
             this.renderSoon();
             return true;
         }
@@ -5978,6 +6177,25 @@ const PaintEditor = {
     },
 
     // Is there anything on a layer?
+    // Where a canvas has anything on it, in its own px, or null: nothing
+    contentBox(c) {
+        const w = c.width, h = c.height, d = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+        let x0 = w, y0 = h, x1 = -1, y1 = -1;
+        for (let y = 0; y < h; y++) {
+            const row = y * w * 4;
+            let first = -1;
+            for (let x = 0; x < w; x++) if (d[row + x * 4 + 3]) { first = x; break; }
+            if (first < 0) continue;
+            let last = first;
+            for (let x = w - 1; x > first; x--) if (d[row + x * 4 + 3]) { last = x; break; }
+            if (first < x0) x0 = first;
+            if (last > x1) x1 = last;
+            if (y < y0) y0 = y;
+            y1 = y;
+        }
+        return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+    },
+
     empty(l) {
         const d = l.canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, this.W, this.H).data;
         for (let i = 3; i < d.length; i += 4) if (d[i]) return false;
@@ -6023,7 +6241,9 @@ const PaintEditor = {
         if (same(pad, this.pad)) return false;
         if (!this.canvasFits(pad)) { this.app.showToast('That canvas is too big: up to three times the photo\'s size', 2400); return false; }
         const before = this.canvasState();
-        const ext = this.extFor(pad), W = this.PW + ext.l + ext.r, H = this.PH + ext.t + ext.b;
+        // (the layers keep what's past the canvas)
+        const want = this.extFor(pad), ext = { l: Math.max(want.l, this.ext.l), t: Math.max(want.t, this.ext.t), r: Math.max(want.r, this.ext.r), b: Math.max(want.b, this.ext.b) };
+        const W = this.PW + ext.l + ext.r, H = this.PH + ext.t + ext.b;
         const dx = ext.l - this.ext.l, dy = ext.t - this.ext.t;
         const canvases = new Map();
         for (const l of this.layers) {
@@ -6076,7 +6296,7 @@ const PaintEditor = {
         this.lastDab = null;
         this.extendPhoto();
         this.setView(this.edit);
-        this.fit();
+        if (!s.keepView) this.fit();
         this.drawLayers();
         this.buildOptions();
         this.renderSoon();

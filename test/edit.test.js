@@ -2340,6 +2340,14 @@ const PROJECT = `
                 P.combineSelection(m, 'new');
                 pe('pointerdown', 70, 70); pe('pointermove', 70 - 50 + near, 70); pe('pointermove', 70 - 50 + near / 2, 70);
                 out.floatSnap = P.float && Math.round(P.float.x0 + P.float.t.tx);
+                // ...not from further off, so a small move by an edge can be
+                // made; Ctrl held, none; always whole pixels
+                pe('pointermove', 70 - 50 + 8 / P.view.z, 70);
+                out.floatFar = Math.round(P.float.x0 + P.float.t.tx);
+                pe('pointermove', 70 - 50 + near / 2, 70, { ctrlKey: true });
+                out.floatFree = P.float.x0 + P.float.t.tx;
+                pe('pointermove', 70 - 13.3, 70.6);
+                out.floatWhole = [P.float.t.tx, P.float.t.ty];
                 pe('pointerup', 70 - 50 + near / 2, 70);
                 app.cancelPaint();
                 return out;
@@ -2352,6 +2360,7 @@ const PROJECT = `
         check('paint view: Shift-drag with the Hand turns it; a click on the angle puts it straight', Math.abs(r.handTurn - 90) <= 1 && r.straight && r.straight[0] === 0 && r.straight[1], JSON.stringify(r));
         check('paint view: Snap puts a selection\'s corner on the canvas\'s; Ctrl+; turns it off', r.snapped === '0,0' && r.snapOff && r.unsnapped, JSON.stringify(r));
         check('paint view: what\'s moved snaps its edge onto the canvas\'s', r.floatSnap === 0, JSON.stringify(r));
+        check('paint view: what\'s moved snaps only within a few screen pixels; not with Ctrl held; it moves in whole pixels', r.floatFar > 0 && r.floatFree > 0 && r.floatWhole.every(Number.isInteger) && r.floatWhole[0] === -13, JSON.stringify(r));
         check('paint view: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -2466,6 +2475,14 @@ const PROJECT = `
                 P.addLayer();
                 pressKey('t', { ctrlKey: true });
                 out.empty = !P.float;
+                // Something small on it: the box fits it, not the canvas
+                step = 'fits';
+                const g1 = P.layers[1].canvas.getContext('2d');
+                g1.fillStyle = '#0000ff'; g1.fillRect(10, 150, 30, 20);
+                pressKey('t', { ctrlKey: true });
+                out.fits = P.float && [P.float.x0, P.float.y0, P.float.w, P.float.h].join();
+                P.cancelFloat();
+                g1.clearRect(0, 0, 200, 200);
                 P.cur = 0; P.drawLayers();
                 // Ctrl+T: lifted, Move picked, its numbers along the top
                 step = 'lift';
@@ -2508,6 +2525,7 @@ const PROJECT = `
                 return out;
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
+        check('paint transform: the box fits what\'s on the layer, not the whole canvas', r.fits === '10,150,30,20', JSON.stringify(r.fits));
         check('paint transform: nothing on the layer, nothing lifted', r.empty, JSON.stringify(r));
         check('paint transform: Ctrl+T lifts it with Move, W, H, Angle, flips, Cancel and Done along the top; in ⋯ → Layer', r.lifted && r.lifted[0] && r.lifted[1] === 'move' && r.lifted[2] && r.menu, JSON.stringify(r));
         check('paint transform: a side stretches it one way, the numbers following', r.stretched && r.stretched[0] > 120 && r.stretched[1] === 100 && r.stretched[2] === `${r.stretched[0]},100,0`, JSON.stringify(r));
@@ -2795,7 +2813,7 @@ const PROJECT = `
                 // Ctrl-drag a corner: the corners go free (Mode along the top, no W or H)
                 step = 'distort';
                 pressKey('t', { ctrlKey: true });
-                const ne = P.floatHandles().corners.find(x => x[0] === 'ne')[1], to = { x: ne.x - 100, y: ne.y };
+                const ne = P.floatHandles().corners.find(x => x[0] === 'ne')[1], to = { x: ne.x - 50, y: ne.y };
                 st.dispatchEvent(new PointerEvent('pointerdown', { ...sc(ne), pointerId: 1, bubbles: true, button: 0, ctrlKey: true }));
                 st.dispatchEvent(new PointerEvent('pointermove', { ...sc(to), pointerId: 1, bubbles: true, ctrlKey: true }));
                 st.dispatchEvent(new PointerEvent('pointerup', { ...sc(to), pointerId: 1, bubbles: true, ctrlKey: true }));
@@ -2804,6 +2822,7 @@ const PROJECT = `
                 out.distorted = [a(140, 55), a(67, 67), !!P.layer().src];
                 pressKey('z', { ctrlKey: true });
                 out.undone = [a(140, 55), !P.layer().src];
+                // (the box is what's on the layer: the square, 50 to 150)
                 // Perspective: one corner out, its neighbour along the side the other way
                 step = 'perspective';
                 pressKey('t', { ctrlKey: true });
@@ -2843,7 +2862,7 @@ const PROJECT = `
         });
         check('paint warp: Ctrl-drag a corner sets the corners free, with Mode along the top', r.free && r.free[0] && r.free[1] === 100 && r.free[2] && r.free[3], JSON.stringify(r));
         check('paint warp: Done distorts it; Ctrl+Z puts it back', r.distorted && r.distorted[0] === 0 && r.distorted[1] >= 250 && r.distorted[2] && JSON.stringify(r.undone) === '[255,true]', JSON.stringify(r));
-        check('paint warp: Perspective moves the neighbour along the side the other way', r.persp === '0,200,230,-30', JSON.stringify(r));
+        check('paint warp: Perspective moves the neighbour along the side the other way', r.persp === '50,150,180,20', JSON.stringify(r));
         check('paint warp: transformed small then big again, it\'s as sharp as it was', JSON.stringify(r.sharp) === '[255,255,0,255]', JSON.stringify(r));
         check('paint warp: the original is kept with the layers; painting on it makes it plain pixels; a slide keeps no copy', r.kept && r.kept[0] === 'sx' && r.kept[1] === false && r.plain && r.slid, JSON.stringify(r));
         check('paint warp: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
@@ -3445,6 +3464,128 @@ const PROJECT = `
         check('paint: a stroke is mirrored, and one Undo takes both', r.stroke && r.stroke.every(v => v > 200) && r.undo.every(v => v === 0), JSON.stringify([r.stroke, r.undo]));
         check('paint: symmetry is kept', r.kept === 'x', r.kept);
         check('paint: symmetry, no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    if (wanted('paintgrow')) {
+        console.log('paint: layers grow past the canvas to keep what\'s moved there (paint-editor.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 200; c.height = 150;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 200, 150);
+                await openProject('grow', { 'g.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                P.opts.snap = false;
+                const L = () => P.layers[P.cur];
+                const a = (x, y) => L().canvas.getContext('2d', { willReadFrequently: true }).getImageData(x + P.ext.l, y + P.ext.t, 1, 1).data[3];
+                L().canvas.getContext('2d').fillStyle = '#ff0000';
+                L().canvas.getContext('2d').fillRect(10, 10, 30, 30);
+                const z0 = P.view.z;
+                // Moved half off the left edge: the layer grows to keep it
+                step = 'out';
+                pressKey('t', { ctrlKey: true });
+                P.float.t.tx = -25;
+                P.commitFloat();
+                out.out = [P.ext.l, P.W, P.OW, a(-14, 20), a(14, 20), P.view.z === z0, P.history.length];
+                // Back in: all of it's there
+                step = 'in';
+                pressKey('t', { ctrlKey: true });
+                P.float.t.tx = 25;
+                P.commitFloat();
+                out.back = [a(10, 10), a(39, 39), a(9, 20), a(40, 20)];
+                // Undo goes back through both, one step each
+                step = 'undo';
+                P.undo(); P.undo(); P.undo();
+                out.undone = [P.ext.l, P.W, a(10, 10), a(39, 39), a(-5, 20)];
+                P.redo(); P.redo();
+                out.redone = [P.ext.l, a(-14, 20), a(14, 20)];
+                // Kept with the layers past the canvas; the canvas the same size
+                step = 'keep';
+                const paint = await P.keep();
+                out.kept = [paint.ext && paint.ext.l, !paint.pad];
+                // A canvas made bigger later shows it
+                step = 'canvas';
+                P.setCanvas({ l: 30, t: 0, r: 0, b: 0 });
+                out.canvas = [P.ext.l, P.OW, a(-14, 20)];
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint grow: moved past the canvas\'s edge, the layer grows to keep it, the canvas and view the same', r.out && r.out[0] === 15 && r.out[1] === 215 && r.out[2] === 200 && r.out[3] === 255 && r.out[4] === 255 && r.out[5], JSON.stringify(r));
+        check('paint grow: moved back in, all of it\'s there', r.back && r.back.join() === '255,255,0,0', JSON.stringify(r));
+        check('paint grow: Undo and Redo go through the growing and the move', r.undone && r.undone.join() === '0,200,255,255,0' && r.redone && r.redone.join() === '15,255,255', JSON.stringify(r));
+        check('paint grow: kept with the layers, the canvas unchanged', r.kept && r.kept.join() === '15,true', JSON.stringify(r));
+        check('paint grow: a bigger canvas shows what was past its edge', r.canvas && r.canvas[0] === 30 && r.canvas[1] === 230 && r.canvas[2] === 255, JSON.stringify(r));
+        check('paint grow: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    if (wanted('paintmesh')) {
+        console.log('paint: Warp with a mesh (paint-editor.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 200; c.height = 200;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 200, 200);
+                await openProject('mesh', { 'm.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                P.opts.snap = false;
+                const g = P.layers[P.cur].canvas.getContext('2d', { willReadFrequently: true });
+                g.fillStyle = '#ff0000'; g.fillRect(50, 50, 100, 100);
+                const a = (x, y) => g.getImageData(x, y, 1, 1).data[3];
+                const st = document.getElementById('paint-stage'), box = document.getElementById('paint-options');
+                const sc = (q) => { const sp = P.V().transformPoint(q); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                const drag = (from, to) => {
+                    st.dispatchEvent(new PointerEvent('pointerdown', { ...sc(from), pointerId: 1, bubbles: true, button: 0 }));
+                    st.dispatchEvent(new PointerEvent('pointermove', { ...sc(to), pointerId: 1, bubbles: true }));
+                    st.dispatchEvent(new PointerEvent('pointerup', { ...sc(to), pointerId: 1, bubbles: true }));
+                };
+                // Ctrl+T, then Mode → Warp: 16 points over the box
+                step = 'warp';
+                pressKey('t', { ctrlKey: true });
+                const sel = box.querySelector('.paint-tf-mode');
+                out.offered = [...sel.options].some(o => o.textContent === 'Warp');
+                sel.value = 'warp'; sel.dispatchEvent(new Event('change'));
+                const m = P.float.mesh;
+                out.mesh = m && [m.length, Math.round(m[0].x), Math.round(m[15].x), Math.round(m[5].x)].join();
+                out.buttons = ['Reset', 'Cancel', 'Done'].every(t => [...box.querySelectorAll('button')].some(b => b.textContent === t));
+                // The two top middle points up: the top edge bends up
+                step = 'bend';
+                for (const i of [1, 2]) { const q = P.float.mesh[i]; drag(q, { x: q.x, y: q.y - 30 }); }
+                out.moved = Math.round(P.float.mesh[1].y);
+                // Reset takes the bend out; bend again, then Done
+                [...box.querySelectorAll('button')].find(b => b.textContent === 'Reset').click();
+                out.reset = Math.round(P.float.mesh[1].y);
+                for (const i of [1, 2]) { const q = P.float.mesh[i]; drag(q, { x: q.x, y: q.y - 30 }); }
+                // Dragged inside, it all moves
+                drag({ x: 100, y: 100 }, { x: 105, y: 100 });
+                out.slid = Math.round(P.float.mesh[0].x);
+                [...box.querySelectorAll('button')].find(b => b.textContent === 'Done').click();
+                out.bent = [a(105, 32), a(105, 24), a(57, 52), a(57, 140)];
+                // One step to undo
+                step = 'undo';
+                pressKey('z', { ctrlKey: true });
+                out.undone = [a(105, 32), a(52, 52)];
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint warp mesh: Mode → Warp puts 16 points over the box, with Reset, Cancel and Done', r.offered && r.mesh === '16,50,150,83' && r.buttons, JSON.stringify(r));
+        check('paint warp mesh: a point dragged bends the edge; Reset takes it out; dragged inside, it moves', r.moved === 20 && r.reset === 50 && r.slid === 55, JSON.stringify(r));
+        check('paint warp mesh: Done bends the pixels (the top bowed up, the corners where they were)', r.bent && r.bent[0] === 255 && r.bent[1] === 0 && r.bent[2] === 255 && r.bent[3] === 255, JSON.stringify(r));
+        check('paint warp mesh: one step to undo', r.undone && r.undone.join() === '0,255', JSON.stringify(r));
+        check('paint warp mesh: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
