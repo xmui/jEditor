@@ -195,6 +195,23 @@ const Modes = {
         if (this.current() !== mode && file && app.currentFile !== file) app.openSingle(file);
     },
 
+    // Switching modes, a short fade in of the one arriving (the owner's
+    // ask: sleek, at almost no cost): opacity and a slight scale, which the
+    // GPU does without laying anything out, 180ms; only a fade under
+    // Reduce motion, nothing with motion off or in a theme (style.css:
+    // .mode-arrive). Not when the strip steps to another photo in the same
+    // mode, which closes and opens it again
+    arrive(el) {
+        if (!el || this._stepping) return;
+        const root = document.documentElement;
+        if (root.dataset.skin || root.dataset.motion === 'off') return;
+        el.classList.remove('mode-arrive');
+        void el.offsetWidth; // (to play it again)
+        el.classList.add('mode-arrive');
+        clearTimeout(el._arrived);
+        el._arrived = setTimeout(() => el.classList.remove('mode-arrive'), 400);
+    },
+
     async go(mode) {
         const app = this.app;
         this.closeMenu();
@@ -230,12 +247,14 @@ const Modes = {
         if (mode === 'photos') { app.openSingle(file); return; }
         if (file === (mode === 'adjust' ? Adjust.file : PaintEditor.file)) return;
         this._busy = true;
+        this._stepping = true;
         try {
             if (!(await this.leave(true))) return;
             await this.enter(mode, file);
         } finally {
             this._busy = false;
             this.render();
+            this._stepping = false;
         }
     },
 
@@ -284,6 +303,9 @@ const Modes = {
         const mode = this.current();
         const ui = app.elements.mainInterface;
         const open = !!ui && !ui.classList.contains('hidden');
+        // Back in Photos from Adjust or Paint: it comes in as they do (arrive)
+        if (mode === 'photos' && this._last && this._last !== 'photos') this.arrive(ui);
+        this._last = mode;
         document.documentElement.classList.toggle('modes-on', any);
         // Into or out of an editing mode: the sidebar as that mode has it
         // (folders.js: railOpen), which renders this again

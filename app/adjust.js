@@ -424,6 +424,7 @@ const Adjust = {
         this.a = Develop.full(kept && kept.adj);
         this.start = JSON.stringify(Develop.clean(this.a));
         this.root.classList.remove('hidden');
+        if (typeof Modes !== 'undefined') Modes.arrive(this.root);
         this.el('adj-file').textContent = file.name;
         this.el('adj-dims').textContent = 'Loading…';
         this.sync();
