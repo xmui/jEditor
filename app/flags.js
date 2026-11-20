@@ -35,7 +35,8 @@ const Flags = {
         // A pick: a flag, filled
         star: '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M5 21V4h12l-2.5 4.5L17 13H5"/></svg>',
         reject: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="m6.5 6.5 11 11"/></svg>',
-        rescan: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>',
+        // Needs a rescan: the Scan button's scanner, not Refresh's arrow
+        rescan: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13h18"/><path d="M6 13V4h8l4 4v5"/><rect x="3" y="17" width="18" height="4" rx="1"/></svg>',
         none: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7.5" stroke-dasharray="3 3"/></svg>',
         clear: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>'
     },
@@ -586,15 +587,44 @@ const Flags = {
 
     // ---- Context menu row ----
 
-    // A row of flag buttons for the right-click menu
-    menuRow(files) {
+    // A row of flag buttons for the right-click menu and the Info panel.
+    // In the menu (opts.say), as Finder does its tags: a line under the
+    // symbols says what the one pointed at does, with its key
+    menuRow(files, opts = {}) {
         const row = document.createElement('div');
         row.className = 'ctx-flags';
-        const btn = (kind, html, title) => {
+        const keyOf = (id) => {
+            const k = (this.app.keyBindings && this.app.keyBindings[id]) || [];
+            return k.length ? this.app.formatCombo(k[0]) : '';
+        };
+        let say = null, sayWord = null, sayKey = null;
+        const IDLE = 'Flag and label';
+        if (opts.say) {
+            say = document.createElement('div');
+            say.className = 'ctx-flags-say';
+            sayWord = document.createElement('span');
+            sayKey = document.createElement('span');
+            sayKey.className = 'ctx-key';
+            say.append(sayWord, sayKey);
+            sayWord.textContent = IDLE;
+        }
+        const show = (word, key) => {
+            if (!say) return;
+            sayWord.textContent = word;
+            sayKey.textContent = key ? key.replace(/ \+ /g, '+') : '';
+        };
+        const btn = (kind, html, word, undo, id) => {
+            const on = kind !== 'clear' && files.length && files.every(f => this.has(f, kind));
             const b = document.createElement('button');
-            b.className = `ctx-flag fl-${kind}` + (kind !== 'clear' && files.length && files.every(f => this.has(f, kind)) ? ' on' : '');
+            b.className = `ctx-flag fl-${kind}` + (on ? ' on' : '');
             b.innerHTML = html;
-            b.title = title;
+            const label = on ? undo : word;
+            const key = keyOf(id);
+            b.setAttribute('aria-label', label + (key ? ` (${key})` : ''));
+            if (kind !== 'clear') b.setAttribute('aria-pressed', String(!!on));
+            // A tooltip only where there's no line to say it (the Info panel)
+            if (!say) b.title = label + (key ? ` (${key})` : '');
+            b.onmouseenter = b.onfocus = () => show(label, key);
             b.onclick = (ev) => {
                 ev.stopPropagation();
                 this.app.closeContextMenu();
@@ -602,15 +632,27 @@ const Flags = {
             };
             row.appendChild(b);
         };
-        const key = (id) => {
-            const k = (this.app.keyBindings && this.app.keyBindings[id]) || [];
-            return k.length ? ` (${this.app.formatCombo(k[0])})` : '';
-        };
-        btn('star', this.ICONS.star, 'Pick' + key('flag.star'));
-        btn('reject', this.ICONS.reject, 'Reject' + key('flag.reject'));
-        btn('rescan', this.ICONS.rescan, 'Needs rescan' + key('flag.rescan'));
-        this.COLORS.forEach((c, i) => btn(c, `<i class="tf-dot" style="--c:${this.COLOR_HEX[c]}"></i>`, `${this.label(c)} label` + key('flag.' + c)));
-        btn('clear', this.ICONS.clear, 'Clear flags' + key('flag.clear'));
-        return row;
+        btn('star', this.ICONS.star, 'Pick', 'Remove the pick', 'flag.star');
+        btn('reject', this.ICONS.reject, 'Reject', 'Remove the reject', 'flag.reject');
+        btn('rescan', this.ICONS.rescan, 'Needs rescan', 'Doesn\'t need a rescan', 'flag.rescan');
+        this.COLORS.forEach(c => btn(c, `<i class="tf-dot" style="--c:${this.COLOR_HEX[c]}"></i>`, `${this.label(c)} label`, `Remove the ${this.label(c).toLowerCase()} label`, 'flag.' + c));
+        btn('clear', this.ICONS.clear, 'Clear flags and labels', 'Clear flags and labels', 'flag.clear');
+        // Left and right move along the row; up and down leave it (menuKey)
+        row.addEventListener('keydown', (e) => {
+            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+            const all = [...row.children];
+            const i = all.indexOf(document.activeElement);
+            if (i < 0) return;
+            e.preventDefault();
+            e.stopPropagation();
+            all[(i + (e.key === 'ArrowRight' ? 1 : -1) + all.length) % all.length].focus();
+        });
+        if (!say) return row;
+        row.addEventListener('mouseleave', () => { if (!row.contains(document.activeElement)) show(IDLE); });
+        row.addEventListener('focusout', (e) => { if (!row.contains(e.relatedTarget)) show(IDLE); });
+        const box = document.createElement('div');
+        box.className = 'ctx-flagbox';
+        box.append(row, say);
+        return box;
     }
 };
