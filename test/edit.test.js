@@ -4049,6 +4049,72 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('menus')) {
+        console.log('right-click menus close on a press off them (script.js), in every mode');
+        const { page, issues } = await open();
+        const out = {};
+        // The test's menu (marked): a right-click may open another in its place
+        const shut = () => page.evaluate(() => !document.querySelector('#context-menu[data-t]'));
+        const menu = () => page.evaluate(() => { app.openContextMenu([['One', () => { }], ['More', [['Two', () => { }]]]], 5, 5); const m = document.getElementById('context-menu'); if (m) m.dataset.t = '1'; return !!m; });
+        const mid = (sel) => page.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, sel);
+        // Pressed (and checked before the button comes up, so no click
+        // closes it), with the left button or the right one
+        const press = async (sel, button = 'left') => {
+            const at = await mid(sel);
+            if (!(await menu())) return 'no menu';
+            await page.mouse.move(at.x, at.y);
+            await page.mouse.down({ button });
+            const gone = await shut();
+            await page.mouse.up({ button });
+            await page.evaluate(() => app.closeContextMenu());
+            return gone;
+        };
+        const setup = await page.evaluate(async () => {
+            const bytes = await makeRealJpeg(300, 200, { color: '#777' });
+            await openProject('menus', { 'a.jpg': new Blob([bytes], { type: 'image/jpeg' }) });
+            app.setView('grid');
+            await sleep(200);
+            return app.files.length === 1 && app.viewMode === 'grid';
+        });
+        out.grid = await press('#grid-view');
+        out.gridRight = await press('#grid-view', 'right');
+        // A press in the menu, or on its row's own menu, keeps it
+        await menu();
+        await page.evaluate(() => document.querySelector('#context-menu .ctx-more').click());
+        const inFly = await mid('.ctx-fly button');
+        await page.mouse.move(inFly.x, inFly.y);
+        await page.mouse.down();
+        out.keptFly = !(await shut());
+        await page.mouse.up();
+        await page.evaluate(() => { app.closeContextMenu(); app.openContextMenu([['One', () => { }]], 5, 5); document.getElementById('context-menu').dataset.t = '1'; });
+        const inMenu = await mid('#context-menu button');
+        await page.mouse.move(inMenu.x + 30, inMenu.y);
+        await page.mouse.down();
+        out.keptMenu = !(await shut());
+        await page.evaluate(() => app.closeContextMenu());
+        // Leaving the window closes it
+        await menu();
+        await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+        out.blur = await shut();
+        await page.evaluate(async () => { app.openSingle(app.files[0]); await sleep(200); });
+        out.single = await press('#image-container');
+        await page.evaluate(async () => { await app.enterAdjust(app.files[0]); await until(() => Adjust.ready); });
+        out.adjustPhoto = await press('#adj-stage');
+        out.adjustPane = await press('#adj-panel');
+        await page.evaluate(async () => { await Modes.leave(true); await app.enterPaint(); await until(() => PaintEditor.ready); });
+        out.paintCanvas = await press('#paint-stage');
+        out.paintPane = await press('#paint-panel');
+        await page.evaluate(() => Modes.leave(true));
+        check('menus: a press on the grid closes the right-click menu, left or right button', setup && out.grid === true && out.gridRight === true, JSON.stringify(out));
+        check('menus: a press in the menu or its row\'s own menu keeps it', out.keptMenu && out.keptFly, JSON.stringify(out));
+        check('menus: leaving the window closes it', out.blur, JSON.stringify(out));
+        check('menus: a press on the photo, in Photos, closes it', out.single === true, JSON.stringify(out));
+        check('menus: a press on Adjust\'s photo or its pane closes it', out.adjustPhoto === true && out.adjustPane === true, JSON.stringify(out));
+        check('menus: a press on Paint\'s canvas or its pane closes it', out.paintCanvas === true && out.paintPane === true, JSON.stringify(out));
+        check('menus: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     if (wanted('modes')) {
         console.log('modes: Photos, Adjust and Paint (modes.js), Start in, Paint\'s start (blank.js)');
         const { page, issues } = await open();

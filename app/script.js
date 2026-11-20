@@ -8294,6 +8294,20 @@ const app = {
             this.openContextMenu(this.buildContextItems(tile, inSingle), e.clientX, e.clientY);
         });
         window.addEventListener('click', () => this.closeContextMenu());
+        // A press anywhere off the menu closes it, even where the press is
+        // stopped or never makes a click (a canvas, a right-click elsewhere).
+        // A button that opens a menu is left to its own click, so it can
+        // toggle its menu shut.
+        const off = (e) => {
+            if (!document.getElementById('context-menu')) return;
+            const t = e.target;
+            const keep = e.type === 'pointerdown' && e.button === 0 ? '#context-menu, .ctx-fly, [aria-haspopup]' : '#context-menu, .ctx-fly';
+            if (t && t.closest && t.closest(keep)) return;
+            this.closeContextMenu();
+        };
+        window.addEventListener('pointerdown', off, true);
+        window.addEventListener('contextmenu', off, true);
+        window.addEventListener('blur', () => this.closeContextMenu());
         window.addEventListener('scroll', () => this.closeContextMenu(), true);
         window.addEventListener('resize', () => this.closeContextMenu());
     },
