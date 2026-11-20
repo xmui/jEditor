@@ -541,7 +541,7 @@ const app = {
     // [kind, label, on to start with, help]
     TOAST_KINDS: [
         ['rotate', 'Rotating', false, 'Turned 1 photo right…'],
-        ['flags', 'Flags and labels', true, 'Starred, needs rescan, color labels'],
+        ['flags', 'Flags and labels', true, 'Picked, rejected, needs rescan, color labels'],
         ['crop', 'Cropping and Auto crop', true, 'Saved, crop kept, auto cropped'],
         ['adjust', 'Adjusting', true, 'Adjustments kept, copied, pasted'],
         ['move', 'Moving, copying and folders', true, 'Moved to a folder, new folder'],
@@ -5127,8 +5127,9 @@ const app = {
         ['edit.undo', 'global', 'Edit', 'Undo', ['Ctrl+Z']],
         ['edit.history', 'global', 'Edit', 'Undo history: go back several steps', ['H']],
         ['edit.selectAll', 'global', 'Edit', 'Select all (grid)', ['Ctrl+A']],
-        ['flag.star', 'global', 'Flags', 'Star / unstar', ['P']],
-        ['flag.rescan', 'global', 'Flags', 'Needs rescan on / off', ['X']],
+        ['flag.star', 'global', 'Flags', 'Pick / unpick', ['P']],
+        ['flag.reject', 'global', 'Flags', 'Reject / unreject (the tile dims)', ['X']],
+        ['flag.rescan', 'global', 'Flags', 'Needs rescan on / off', ['Shift+X']],
         ['flag.red', 'global', 'Flags', 'Red label', ['1']],
         ['flag.yellow', 'global', 'Flags', 'Yellow label', ['2']],
         ['flag.green', 'global', 'Flags', 'Green label', ['3']],
@@ -5367,6 +5368,7 @@ const app = {
             },
             'flag.star': () => Flags.apply('star'),
             'flag.rescan': () => Flags.apply('rescan'),
+            'flag.reject': () => Flags.apply('reject'),
             'flag.red': () => Flags.apply('red'),
             'flag.yellow': () => Flags.apply('yellow'),
             'flag.green': () => Flags.apply('green'),
