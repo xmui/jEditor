@@ -2466,6 +2466,14 @@ const PROJECT = `
                 P.addLayer();
                 pressKey('t', { ctrlKey: true });
                 out.empty = !P.float;
+                // Something small on it: the box fits it, not the canvas
+                step = 'fits';
+                const g1 = P.layers[1].canvas.getContext('2d');
+                g1.fillStyle = '#0000ff'; g1.fillRect(10, 150, 30, 20);
+                pressKey('t', { ctrlKey: true });
+                out.fits = P.float && [P.float.x0, P.float.y0, P.float.w, P.float.h].join();
+                P.cancelFloat();
+                g1.clearRect(0, 0, 200, 200);
                 P.cur = 0; P.drawLayers();
                 // Ctrl+T: lifted, Move picked, its numbers along the top
                 step = 'lift';
@@ -2508,6 +2516,7 @@ const PROJECT = `
                 return out;
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
+        check('paint transform: the box fits what\'s on the layer, not the whole canvas', r.fits === '10,150,30,20', JSON.stringify(r.fits));
         check('paint transform: nothing on the layer, nothing lifted', r.empty, JSON.stringify(r));
         check('paint transform: Ctrl+T lifts it with Move, W, H, Angle, flips, Cancel and Done along the top; in ⋯ → Layer', r.lifted && r.lifted[0] && r.lifted[1] === 'move' && r.lifted[2] && r.menu, JSON.stringify(r));
         check('paint transform: a side stretches it one way, the numbers following', r.stretched && r.stretched[0] > 120 && r.stretched[1] === 100 && r.stretched[2] === `${r.stretched[0]},100,0`, JSON.stringify(r));
@@ -2795,7 +2804,7 @@ const PROJECT = `
                 // Ctrl-drag a corner: the corners go free (Mode along the top, no W or H)
                 step = 'distort';
                 pressKey('t', { ctrlKey: true });
-                const ne = P.floatHandles().corners.find(x => x[0] === 'ne')[1], to = { x: ne.x - 100, y: ne.y };
+                const ne = P.floatHandles().corners.find(x => x[0] === 'ne')[1], to = { x: ne.x - 50, y: ne.y };
                 st.dispatchEvent(new PointerEvent('pointerdown', { ...sc(ne), pointerId: 1, bubbles: true, button: 0, ctrlKey: true }));
                 st.dispatchEvent(new PointerEvent('pointermove', { ...sc(to), pointerId: 1, bubbles: true, ctrlKey: true }));
                 st.dispatchEvent(new PointerEvent('pointerup', { ...sc(to), pointerId: 1, bubbles: true, ctrlKey: true }));
@@ -2804,6 +2813,7 @@ const PROJECT = `
                 out.distorted = [a(140, 55), a(67, 67), !!P.layer().src];
                 pressKey('z', { ctrlKey: true });
                 out.undone = [a(140, 55), !P.layer().src];
+                // (the box is what's on the layer: the square, 50 to 150)
                 // Perspective: one corner out, its neighbour along the side the other way
                 step = 'perspective';
                 pressKey('t', { ctrlKey: true });
@@ -2843,7 +2853,7 @@ const PROJECT = `
         });
         check('paint warp: Ctrl-drag a corner sets the corners free, with Mode along the top', r.free && r.free[0] && r.free[1] === 100 && r.free[2] && r.free[3], JSON.stringify(r));
         check('paint warp: Done distorts it; Ctrl+Z puts it back', r.distorted && r.distorted[0] === 0 && r.distorted[1] >= 250 && r.distorted[2] && JSON.stringify(r.undone) === '[255,true]', JSON.stringify(r));
-        check('paint warp: Perspective moves the neighbour along the side the other way', r.persp === '0,200,230,-30', JSON.stringify(r));
+        check('paint warp: Perspective moves the neighbour along the side the other way', r.persp === '50,150,180,20', JSON.stringify(r));
         check('paint warp: transformed small then big again, it\'s as sharp as it was', JSON.stringify(r.sharp) === '[255,255,0,255]', JSON.stringify(r));
         check('paint warp: the original is kept with the layers; painting on it makes it plain pixels; a slide keeps no copy', r.kept && r.kept[0] === 'sx' && r.kept[1] === false && r.plain && r.slid, JSON.stringify(r));
         check('paint warp: no JS errors', issues.errors.length === 0, issues.errors.join('; '));

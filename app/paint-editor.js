@@ -4268,8 +4268,9 @@ const PaintEditor = {
         } else {
             g.clearRect(0, 0, this.W, this.H);
         }
-        // Into the picture as shown, its bounds there
-        const lb = this.sel ? this.sel.box : { x: 0, y: 0, w: this.W, h: this.H };
+        // Into the picture as shown, its bounds there: the selection's, or
+        // just what's on the layer (its box fits it, not the whole canvas)
+        const lb = this.sel ? this.sel.box : this.contentBox(lifted) || { x: 0, y: 0, w: this.W, h: this.H };
         const corners = [[lb.x, lb.y], [lb.x + lb.w, lb.y], [lb.x, lb.y + lb.h], [lb.x + lb.w, lb.y + lb.h]].map(([x, y]) => this.C.transformPoint({ x, y }));
         const x0 = Math.floor(Math.min(...corners.map(q => q.x))), y0 = Math.floor(Math.min(...corners.map(q => q.y)));
         const x1 = Math.ceil(Math.max(...corners.map(q => q.x))), y1 = Math.ceil(Math.max(...corners.map(q => q.y)));
@@ -5978,6 +5979,25 @@ const PaintEditor = {
     },
 
     // Is there anything on a layer?
+    // Where a canvas has anything on it, in its own px, or null: nothing
+    contentBox(c) {
+        const w = c.width, h = c.height, d = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+        let x0 = w, y0 = h, x1 = -1, y1 = -1;
+        for (let y = 0; y < h; y++) {
+            const row = y * w * 4;
+            let first = -1;
+            for (let x = 0; x < w; x++) if (d[row + x * 4 + 3]) { first = x; break; }
+            if (first < 0) continue;
+            let last = first;
+            for (let x = w - 1; x > first; x--) if (d[row + x * 4 + 3]) { last = x; break; }
+            if (first < x0) x0 = first;
+            if (last > x1) x1 = last;
+            if (y < y0) y0 = y;
+            y1 = y;
+        }
+        return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+    },
+
     empty(l) {
         const d = l.canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, this.W, this.H).data;
         for (let i = 3; i < d.length; i += 4) if (d[i]) return false;
