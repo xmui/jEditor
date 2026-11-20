@@ -304,8 +304,11 @@ const app = {
         this.initRubberBand();
         this.initShortcutsPanel();
 
-        // Any pointer interaction stops a running slideshow
-        document.addEventListener('pointerdown', () => this.stopSlideshow());
+        // Any pointer interaction stops a running slideshow, but for its
+        // own control
+        document.addEventListener('pointerdown', (e) => {
+            if (!(e.target.closest && e.target.closest('#slide-ctl'))) this.stopSlideshow();
+        });
 
         // Header pill: More expander, fullscreen, settings
         this.elements.btnMore.addEventListener('click', () => {
@@ -486,7 +489,7 @@ const app = {
 
     // Allowed values for the appearance settings; the first is the default
     APPEARANCE: {
-        theme: ['dark', 'light', 'system'],
+        theme: ['system', 'dark', 'light'], // 2.0: follows the system to start with (audit H4)
         density: ['compact', 'comfortable'],
         glass: ['crystal', 'liquid', 'clear', 'opaque', 'lens'], // Settings → Glass (tokens.css; liquid.js bends Liquid's edges)
         tint: ['none', 'accent', 'warm', 'cool', 'rose'], // Settings → Glass tint, over any glass
@@ -522,7 +525,8 @@ const app = {
             writeEdits: 'ask', // Write edits to file: ask, 'originals' or 'copies' (askWriteEdits; Settings → Projects → Saving)
             modes: 1, // 1.43: Adjust and Paint are modes (modes.js), off the toolbar's main row
             pill: 2, // 2.0: the pill is Scan, Camera, Crop and Info (view, rescan and history in More)
-            theme: 'dark',
+            theme: 'system',
+
             skin: '', // a theme (themes.js): 'xp/royale'; '' is jEditor's own look
             skinSettings: {}, // each theme's own settings, by theme
             density: 'compact',
@@ -5815,6 +5819,14 @@ const app = {
 
         const combo = this.comboFromEvent(e);
         if (!combo) return;
+        // In a slideshow: Space pauses, the arrows step, any other key stops
+        if (this._slide) {
+            e.preventDefault();
+            if (combo === 'Space') this.slidePause();
+            else if (combo === 'ArrowRight' || combo === 'ArrowLeft') { this.slideStep(combo === 'ArrowRight' ? 1 : -1); this.slideReveal(); }
+            else this.stopSlideshow();
+            return;
+        }
         this.stopSlideshow();
 
         // Escape closes an open context menu before anything else
@@ -7479,21 +7491,138 @@ const app = {
         }
     },
 
+    // A slideshow is the photo on black and nothing else (audit A9), with a
+    // small glass control that shows when the mouse moves and fades after
+    // 2 seconds. Space pauses, the arrows step, Esc or a click stops.
+    SLIDE_SPEEDS: [3000, 5000, 10000],
+
     startSlideshow() {
         this.stopSlideshow();
         this.setView('single');
-        if (!document.fullscreenElement) {
-            document.documentElement.requestFullscreen().catch(() => { });
-        }
-        this._slideshowTimer = setInterval(() => this.navigate(1), 3000);
-        this.showToast('Slideshow started — press any key to stop', 2500);
+        if (!this.currentFile) return;
+        this._slide = { ms: this._slideMs || this.SLIDE_SPEEDS[0], paused: false, full: !document.fullscreenElement };
+        document.body.classList.add('slideshow');
+        if (this._slide.full) document.documentElement.requestFullscreen().catch(() => { });
+        this.slideControl();
+        this.slideTick();
+        requestAnimationFrame(() => this.updateImageTransform());
     },
 
     stopSlideshow() {
         if (this._slideshowTimer) {
-            clearInterval(this._slideshowTimer);
+            clearTimeout(this._slideshowTimer);
             this._slideshowTimer = null;
         }
+        if (!this._slide) return;
+        const full = this._slide.full;
+        this._slide = null;
+        clearTimeout(this._slideHide);
+        document.body.classList.remove('slideshow');
+        this.elements.currentImage.classList.remove('slide-out');
+        const ctl = document.getElementById('slide-ctl');
+        if (ctl) ctl.remove();
+        document.removeEventListener('mousemove', this._slideMove);
+        document.removeEventListener('fullscreenchange', this._slideFull);
+        if (full && document.fullscreenElement) document.exitFullscreen().catch(() => { });
+        requestAnimationFrame(() => this.updateImageTransform());
+    },
+
+    slideTick() {
+        clearTimeout(this._slideshowTimer);
+        this._slideshowTimer = null;
+        if (this._slide && !this._slide.paused) this._slideshowTimer = setTimeout(() => this.slideStep(1), this._slide.ms);
+    },
+
+    // The next (or last) photo, through a short fade: out, then in once
+    // the next one has drawn
+    slideStep(dir) {
+        if (!this._slide) return;
+        const img = this.elements.currentImage;
+        img.classList.add('slide-out');
+        clearTimeout(this._slideshowTimer);
+        setTimeout(() => {
+            if (!this._slide) return;
+            this.navigate(dir);
+            const back = () => img.classList.remove('slide-out');
+            if (img.complete) requestAnimationFrame(back);
+            else img.addEventListener('load', back, { once: true });
+            setTimeout(back, 700);
+            this.slideTick();
+        }, 200);
+    },
+
+    slidePause() {
+        if (!this._slide) return;
+        this._slide.paused = !this._slide.paused;
+        this.slideTick();
+        this.slideSync();
+        this.slideReveal();
+    },
+
+    slideSpeed() {
+        if (!this._slide) return;
+        const at = this.SLIDE_SPEEDS.indexOf(this._slide.ms);
+        this._slide.ms = this._slideMs = this.SLIDE_SPEEDS[(at + 1) % this.SLIDE_SPEEDS.length];
+        this.slideTick();
+        this.slideSync();
+    },
+
+    slideControl() {
+        const svg = (d) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
+        const bar = document.createElement('div');
+        bar.id = 'slide-ctl';
+        bar.className = 'slide-ctl toolbar';
+        bar.setAttribute('role', 'toolbar');
+        bar.setAttribute('aria-label', 'Slideshow');
+        const rows = [
+            ['prev', 'Previous (←)', svg('<path d="m15 18-6-6 6-6"/>'), () => this.slideStep(-1)],
+            ['pause', 'Pause (Space)', '', () => this.slidePause()],
+            ['next', 'Next (→)', svg('<path d="m9 18 6-6-6-6"/>'), () => this.slideStep(1)],
+            ['speed', 'Seconds on each photo', '', () => this.slideSpeed()],
+            ['close', 'End the slideshow (Esc)', svg('<path d="M18 6 6 18M6 6l12 12"/>'), () => this.stopSlideshow()]
+        ];
+        for (const [id, title, icon, run] of rows) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'tb-btn';
+            b.dataset.slide = id;
+            b.title = title;
+            b.setAttribute('aria-label', title.replace(/ \(.*\)$/, ''));
+            b.innerHTML = icon;
+            b.addEventListener('click', (e) => { e.stopPropagation(); run(); });
+            bar.append(b);
+            if (id === 'next') bar.insertAdjacentHTML('beforeend', '<span class="tb-sep" aria-hidden="true"></span>');
+        }
+        this.elements.imageContainer.append(bar);
+        this.slideSync();
+        this._slideMove = () => this.slideReveal();
+        document.addEventListener('mousemove', this._slideMove);
+        // Leaving full screen (Esc there is the system's) ends it too
+        this._slideFull = () => { if (!document.fullscreenElement && this._slide && this._slide.full) this.stopSlideshow(); };
+        document.addEventListener('fullscreenchange', this._slideFull);
+    },
+
+    slideSync() {
+        const bar = document.getElementById('slide-ctl');
+        if (!bar || !this._slide) return;
+        const p = bar.querySelector('[data-slide="pause"]');
+        p.innerHTML = this._slide.paused
+            ? '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>'
+            : '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>';
+        p.title = this._slide.paused ? 'Play (Space)' : 'Pause (Space)';
+        p.setAttribute('aria-label', this._slide.paused ? 'Play' : 'Pause');
+        bar.querySelector('[data-slide="speed"]').textContent = `${this._slide.ms / 1000} s`;
+        bar.classList.toggle('paused', this._slide.paused);
+    },
+
+    // Shown while the mouse moves, gone 2 seconds after it rests (always
+    // there while paused)
+    slideReveal() {
+        const bar = document.getElementById('slide-ctl');
+        if (!bar) return;
+        bar.classList.add('show');
+        clearTimeout(this._slideHide);
+        this._slideHide = setTimeout(() => { if (this._slide && !this._slide.paused) bar.classList.remove('show'); }, 2000);
     },
 
     // ---- Rubber-band selection in the grid ----
