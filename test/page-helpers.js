@@ -251,7 +251,10 @@ async function floatingBoxes(page, { tour = true } = {}) {
         ['the first-time questions', () => { FirstOpen.welcome(); }, '.first-open'],
         ['the Open a folder card', () => { if (typeof OpenCard !== 'undefined' && OpenCard.available()) OpenCard.open(); }, '#open-card:not(.hidden) .dialog'],
         // (the apps': a click on the project's name in the sidebar)
-        ['the project picker', () => { const n = document.querySelector('#sb-card .sb-card-name'); if (n && n.offsetParent && typeof Picker !== 'undefined') Picker.open(n); }, '#sb-picker:not([hidden])']
+        // From the grid: in the single view the sidebar is beside the photo
+        // only in jEditor's own look on a wide window (folders.js:
+        // besideSingle), so at 640 wide or in a theme its name isn't there
+        ['the project picker', () => { window.__viewWas = document.body.dataset.view; if (window.__viewWas !== 'grid') app.setView('grid'); const n = document.querySelector('#sb-card .sb-card-name'); if (n && n.offsetParent && typeof Picker !== 'undefined') Picker.open(n); }, '#sb-picker:not([hidden])']
     ];
     for (const [name, open, selector] of each) {
         await page.evaluate(open).catch(() => null);
@@ -259,6 +262,9 @@ async function floatingBoxes(page, { tour = true } = {}) {
         await measure(name, selector);
         await esc();
     }
+    // The view it was in, back
+    await page.evaluate(() => { if (window.__viewWas && window.__viewWas !== document.body.dataset.view) app.setView(window.__viewWas); }).catch(() => null);
+    await settle(150);
     // Right-click menus: one asked for at the very top, a long one from the bottom
     for (const [name, at, n] of [['a right-click menu at the top', 'top', 4], ['a long right-click menu', 'bottom', 40]]) {
         await page.evaluate(([at, n]) => {

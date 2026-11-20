@@ -3317,6 +3317,33 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.railHidden = document.getElementById('folder-rail').classList.contains('hidden') &&
                 !document.getElementById('folder-bar').classList.contains('hidden') && JSON.parse(localStorage.getItem('jeditor.ui')).folderRail === false;
             Folders.toggleRail();
+            // Full screen (the owner's pick F2): the sidebar and the film strip
+            // step aside, and come back as they were; Ctrl+B brings the
+            // sidebar back in full screen, and that's kept
+            {
+                const wait = () => new Promise(r => setTimeout(r, 60));
+                const strip = () => !document.getElementById('thumbnail-strip').classList.contains('hidden');
+                const rail = () => !document.getElementById('folder-rail').classList.contains('hidden');
+                app.setView('single');
+                await wait();
+                const before = [strip(), rail()];
+                document.documentElement.classList.add('fullscreen');
+                await wait();
+                const inFull = [strip(), rail()];
+                document.documentElement.classList.remove('fullscreen');
+                await wait();
+                const after = [strip(), rail()];
+                app.setView('grid');
+                await wait();
+                document.documentElement.classList.add('fullscreen');
+                await wait();
+                const gridAside = !rail();
+                Folders.toggleRail();
+                const back = rail();
+                document.documentElement.classList.remove('fullscreen');
+                await wait();
+                out.full = { before, inFull, after, gridAside, back, kept: rail() && JSON.parse(localStorage.getItem('jeditor.ui')).folderRail === true };
+            }
             // Rename All in a folder renames that folder's photos only
             Folders.setScope('Wedding');
             Renamer.open(app, []);
@@ -3364,6 +3391,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('folders: delete an empty folder; undo; folders with photos are kept', r.deleted && r.deleteUndone && r.notEmptyKept);
         check('folders: moved photos keep their cached thumbnail and preview', r.cacheCarried);
         check('folders: folder list can be hidden (remembered)', r.railHidden);
+        check('folders: full screen: the sidebar and the film strip step aside and come back as they were; Ctrl+B brings the sidebar back', r.full && r.full.before[0] && !r.full.inFull[0] && !r.full.inFull[1] && String(r.full.after) === String(r.full.before) && r.full.gridAside && r.full.back && r.full.kept, JSON.stringify(r.full));
         check('folders: Rename All in a folder covers that folder only', r.renameScope === 'Wedding/b.jpg,Wedding/w1.jpg|All photos in Wedding (2)', r.renameScope);
         check('folders: folder menu', r.menu === 'Open|Folder info|—|New folder inside…|New blank image…|Rename folder…|—|Delete folder', r.menu);
         check('folders: grid rows keep their gap (tiles never overlap)', r.rowGap === 16 && r.square, `gap=${r.rowGap}`);
@@ -4467,8 +4495,10 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                 return now.length === originals[n].length && now.every((v, i) => v === originals[n][i]);
             };
             out.restored = await same('scan1.jpg') && await same('scan2.jpg');
+            // (its own copies gone; the photos as cropped kept for Redo instead)
             out.backupsAfter = 0;
-            for await (const e of backups.values()) out.backupsAfter++;
+            out.redoCopies = 0;
+            for await (const e of backups.values()) { if (/-redo-/.test(e.name)) out.redoCopies++; else out.backupsAfter++; }
 
             // Auto crop's test set (crop-log.js): a photo batch Auto crop
             // cropped, then fixed in the editor, is a test scan of the
@@ -4544,7 +4574,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('auto crop experiment off: Find prints stays in the scan window', r.findStays);
         check('auto crop experiment on: all back', Object.values(r.onShows).every(v => v === true), JSON.stringify(r.onShows));
         check('auto crop: says what it did, with Undo', /Auto-cropped 2 photos — no print found on 1/.test(r.toast), r.toast);
-        check('auto crop: originals kept in .jeditor/originals; one Ctrl+Z restores every byte', r.backups === 2 && r.restored && r.backupsAfter === 0, JSON.stringify(r));
+        check('auto crop: originals kept in .jeditor/originals; one Ctrl+Z restores every byte (and keeps the cropped ones to redo)', r.backups === 2 && r.restored && r.backupsAfter === 0 && r.redoCopies === 2, JSON.stringify(r));
         {
             // scan1's print: 560 × 400 at (450, 350), turned 3°; the fix took
             // 20 px off each side of Auto's crop
@@ -5645,6 +5675,14 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await sleep(50);
             out.cardFlag = Flags.has(app.currentFile, 'star') && !!document.querySelector('#info-extra .ctx-flag.fl-star.on');
             Flags.apply('star', [app.currentFile]);
+            // It stops above the film strip, with room, as Adjust's card;
+            // the photo starts under the top pills, never under them
+            const strip = document.getElementById('thumbnail-strip');
+            const ib = document.getElementById('info-panel').getBoundingClientRect();
+            out.cardRoom = !strip.classList.contains('hidden') && ib.bottom <= strip.getBoundingClientRect().top - 12;
+            const pillB = document.querySelector('header .file-info').getBoundingClientRect().bottom;
+            out.underPills = document.getElementById('image-container').getBoundingClientRect().top >= pillB + 8
+                && document.getElementById('current-image').getBoundingClientRect().top >= pillB + 8;
             app.toggleInfoPanel(false);
             out.cardShut = !document.getElementById('main-interface').classList.contains('info-open');
             out.gb = app.formatBytes(3 * 1024 * 1024 * 1024) === '3.00 GB';
@@ -5655,6 +5693,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('folder details: a selection, a folder with the whole project, Folder Info in the menu', r.selection && r.folder && r.menu, JSON.stringify(r));
         check('folder details: total under the folder list; single view still shows the photo', r.railTotal && r.single && r.gb, JSON.stringify(r));
         check('Info is a glass card: the photo moves over beside it; its flags change the photo\'s', r.card && r.cardFlag && r.cardShut, JSON.stringify([r.card, r.cardFlag, r.cardShut]));
+        check('... it stops above the film strip with room round it; the photo fits under the top pills', r.cardRoom && r.underPills, JSON.stringify([r.cardRoom, r.underPills]));
         check('folder details suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
