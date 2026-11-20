@@ -57,6 +57,8 @@
     <script src="blank.js"></script>
     <script src="modes.js"></script>
     <script src="themes.js"></script>
+    <script src="menubar.js"></script>
+    <script src="menu-icons.js"></script>
     <script src="liquid.js"></script>
     <script src="disc.js"></script>
     <script src="export.js"></script>
@@ -337,6 +339,9 @@
                 <button id="btn-move-to" class="tb-btn labelled" title="Move to a folder (M) — Shift+M copies">
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 9V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1"/><path d="M2 13h10"/><path d="m9 16 3-3-3-3"/></svg>
                     <span>Move to…</span>
+                </button>
+                <button id="btn-sel-export" class="tb-btn sel-own" title="Export…" aria-label="Export">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v13"/><path d="m16 6-4-4-4 4"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/></svg>
                 </button>
                 <button id="btn-batch-rename" class="tb-btn labelled" title="Rename (F2)">
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></svg>
@@ -1456,9 +1461,7 @@
         <div id="scan-head" class="scan-dock-head" title="Drag to move">
             <span class="scan-dot" aria-hidden="true"></span>
             <h2 id="scan-title" class="scan-dock-title">Scan into this project</h2>
-            <button id="scan-details" type="button" class="btn ghost icon sm" title="Details: what the scanner is doing" aria-label="Details" aria-pressed="false">
-                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>
-            </button>
+            <button id="scan-details" type="button" class="btn ghost sm scan-details-btn" title="Details: what the scanner is doing" aria-pressed="false">Details</button>
             <button id="scan-min" type="button" class="btn ghost icon sm" title="Make small" aria-label="Make small">
                 <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>
             </button>
@@ -1494,6 +1497,10 @@
                     </span>
                     <small id="scan-preview" class="scan-preview"></small>
                 </section>
+                <!-- The rest, folded under one line that says what it's set to,
+                     until Change… (audit A5: the scanner, how and where first) -->
+                <details class="scan-more" id="scan-more">
+                <summary class="scan-more-sum"><span id="scan-sum" class="scan-sum"></span><span class="scan-more-go">Change…</span></summary>
                 <section class="scan-sec" id="scan-opts-home"></section>
                 <section class="scan-sec scan-checks">
                     <h3 class="scan-sec-head">Each photo</h3>
@@ -1556,6 +1563,7 @@
                         <input id="scan-compat" type="checkbox">
                         <span>Older TWAIN mode<small>Try this if the scanner doesn't respond. Some older drivers need it.</small></span>
                     </label>
+                </details>
                 </details>
             </div>
             <div id="scan-opts" class="scan-opts">
@@ -1676,9 +1684,7 @@
         <div id="cam-head" class="scan-dock-head" title="Drag to move">
             <span class="scan-dot" aria-hidden="true"></span>
             <h2 id="cam-title" class="scan-dock-title">Camera</h2>
-            <button id="cam-details" type="button" class="btn ghost icon sm" title="Details: what the camera is doing" aria-label="Details" aria-pressed="false">
-                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>
-            </button>
+            <button id="cam-details" type="button" class="btn ghost sm scan-details-btn" title="Details: what the camera is doing" aria-pressed="false">Details</button>
             <button id="cam-big" type="button" class="btn ghost icon sm" title="Bigger live view" aria-label="Bigger live view" aria-pressed="false">
                 <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
             </button>
@@ -1721,7 +1727,7 @@
                 <p class="set-help">On the camera: Menu → Network (or Setup) → USB Connection → <b>PC Remote</b>, then plug it into this PC with a USB cable. Photos taken here (F12) or with the camera's own button come straight into the project, RAW files too.</p>
             </div>
             <div id="cam-live" class="cam-live">
-                <div id="cam-view" class="cam-view">
+                <div id="cam-view" class="cam-view" title="Double-click for a bigger view">
                     <img id="cam-frame" alt="" draggable="false">
                     <div id="cam-view-note" class="cam-view-note"></div>
                     <button id="cam-shoot" type="button" class="cam-shoot" title="Take a photo (F12)" aria-label="Take a photo (F12)"></button>

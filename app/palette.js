@@ -87,6 +87,7 @@ const Palette = {
         this.list.addEventListener('click', (e) => {
             const row = e.target.closest('[data-i]');
             if (row) this.run(this.shown[Number(row.dataset.i)]);
+            else if (e.target.closest('[data-go="all"]')) this.showAll();
         });
     },
 
@@ -353,6 +354,15 @@ const Palette = {
         this.mark(i >= 0 ? i : 0);
     },
 
+    // Every command, by name: the way on from a search that found nothing
+    showAll() {
+        const all = this.items.filter(x => x.kind === 'cmd').sort((a, b) => a.name.localeCompare(b.name));
+        this.input.value = '';
+        this.render([{ title: 'Every command', items: all }]);
+        this.mark(0);
+        this.input.focus();
+    },
+
     matches(q) {
         const words = q.split(/\s+/).filter(Boolean);
         const by = { cmd: [], photo: [], folder: [], project: [] };
@@ -455,7 +465,13 @@ const Palette = {
             }
         }
         if (!this.shown.length) {
-            html = `<div class="palette-none">${this.input.value.trim() ? 'Nothing found' : 'Type to find a photo, folder or command'}</div>`;
+            // No match: say what was looked for, and offer the way on, as
+            // Spotlight does (audit A10)
+            const q = this.input.value.trim();
+            html = q
+                ? `<div class="palette-none"><span class="palette-none-what">Nothing matches \u201c${this.esc(q)}\u201d</span>`
+                    + '<button type="button" class="palette-none-go" data-go="all">Show every command</button></div>'
+                : '<div class="palette-none">Type to find a photo, folder or command</div>';
         }
         this.list.innerHTML = html;
     },

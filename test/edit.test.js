@@ -468,11 +468,24 @@ const PROJECT = `
         await page.mouse.dblclick(...dpt);
         const d2 = await view();
         check('zoom: double-click goes to 100% on the spot clicked, and back to fit', !d1.fitted && Math.abs(d1.z - 1) < 1e-6 && Math.abs(dBefore[0] - dAfter[0]) < 0.002 && d2.fitted, JSON.stringify([d1, d2, dBefore, dAfter]));
-        // The chip: 100% and Fit
-        await page.click('#adj-zoom-100');
-        const c1 = await view();
+        // The chip: not there at Fit; zoomed in, it pops up, and its Fit
+        // goes back (and it goes); its 100% does as it says
+        const shown = () => page.evaluate(() => getComputedStyle(document.getElementById('adj-zoom')).visibility === 'visible');
+        await page.waitForTimeout(300);
+        const atFit = await shown();
+        await page.keyboard.press('Control+1');
+        await page.waitForTimeout(300);
+        const zoomedIn = await shown();
         await page.click('#adj-zoom-fit');
         const c2 = await view();
+        await page.waitForTimeout(300);
+        const goneAgain = !(await shown());
+        await page.keyboard.press('Control+1');
+        await page.waitForTimeout(300);
+        await page.click('#adj-zoom-100');
+        const c1 = await view();
+        await page.keyboard.press('Control+0');
+        check('zoom: the chip is hidden at Fit, pops up zoomed in, and goes again back at Fit', !atFit && zoomedIn && goneAgain, JSON.stringify([atFit, zoomedIn, goneAgain]));
         check('zoom: the chip\'s 100% and Fit do as they say', !c1.fitted && Math.abs(c1.z - 1) < 1e-6 && c2.fitted, JSON.stringify([c1, c2]));
         check('zoom: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
@@ -1776,14 +1789,20 @@ const PROJECT = `
             await app.enterPaint();
             await until(() => PaintEditor.ready);
             const P = PaintEditor;
+            // Right-click on the canvas: Paint's menu, with the layer's own (audit A3)
+            document.getElementById('paint-stage').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 300, clientY: 300 }));
+            const paintRows = [...document.querySelectorAll('#context-menu button')].map(b => b.textContent);
+            const paintMenu = paintRows.some(t => t.startsWith('Paste')) && paintRows.some(t => t.startsWith('Select all')) && paintRows.some(t => t.startsWith('The layer'));
+            app.closeContextMenu();
             P.layers[0].canvas.getContext('2d').fillRect(0, 0, 50, 50);
             P.history.push({ kind: 'px', layer: P.layers[0], r: { x: 0, y: 0, w: 1, h: 1 }, before: new ImageData(1, 1), after: new ImageData(1, 1) });
             await app.savePaint();
             const h = app.files[0].handle;
             await until(() => h.edited);
-            return { edited: !!h.edited, noEdit: !app.files[0]._edit, closed: !P.isOpen };
+            return { edited: !!h.edited, noEdit: !app.files[0]._edit, closed: !P.isOpen, paintMenu };
         });
         check('paint: without a project, Done paints it into the photo', p.edited && p.noEdit && p.closed, JSON.stringify(p));
+        check('paint: right-click on the canvas has Paste, Select all and the layer\'s menu', p.paintMenu, JSON.stringify(p.paintMenu));
 
         // On a turned photo; the eraser, gradient, merging, and scaling what's moved
         const t = await page.evaluate(async () => {
@@ -3978,6 +3997,11 @@ const PROJECT = `
                 $('mode-seg').querySelector('[data-mode="adjust"]').click();
                 await until(() => Adjust.ready);
                 out.segGo = Modes.current() === 'adjust';
+                // Right-click on the photo: Adjust's menu, each with its key (audit A3)
+                $('adj-canvas').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 300, clientY: 300 }));
+                const adjRows = [...document.querySelectorAll('#context-menu button')].map(b => b.textContent);
+                out.adjMenu = adjRows.some(t => t.startsWith('Before and after')) && adjRows.some(t => t.startsWith('Copy adjustments')) && adjRows.some(t => t.startsWith('Reset all'));
+                app.closeContextMenu();
                 // Closing the window in Adjust: held (the app asks the page first)
                 step = 'closing';
                 const held = [];
@@ -4024,6 +4048,7 @@ const PROJECT = `
         check('modes: what was painted is kept when another photo is chosen', r.kept, JSON.stringify(r));
         check('modes: back to Photos closes it', r.back, JSON.stringify(r));
         check('modes: the sidebar open, the row is along its top; closed, the same row floats as a pill, the folder pill after it', r.seg && r.chipBar && r.segGo, JSON.stringify(r));
+        check('Adjust: right-click on the photo has Before and after, Copy adjustments and Reset all', r.adjMenu, JSON.stringify(r.adjMenu));
         check('modes: Adjust and Paint are off the toolbar\'s main row', r.toolbar, JSON.stringify(r));
         check('modes: closing the window in Adjust or Paint is held for the page', r.holds && r.closeAtOnce, JSON.stringify(r));
         check('modes: closing with changes asks "Keep your changes?"; Cancel stays, Keep keeps them', r.askText && r.cancelStays && r.keepKeeps, JSON.stringify(r));
@@ -4250,12 +4275,18 @@ const PROJECT = `
             CropEditor.undo();
             CropEditor.undo();
             out.editorUndo = !CropEditor.m && CropEditor.q === 0;
+            // Right-click on the photo: Crop's menu (audit A3)
+            document.querySelector('.crop-stage').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 300, clientY: 300 }));
+            const cropRows = [...document.querySelectorAll('#context-menu button')].map(b => b.textContent);
+            out.cropMenu = cropRows.some(t => t.startsWith('Turn and flip')) && cropRows.some(t => t.startsWith('Straighten back')) && cropRows.some(t => t.startsWith('Done'));
+            app.closeContextMenu();
             CropEditor.flip('h');
             await app.saveCrop();
             for (let i = 0; i < 100 && readOrientation(await bytesOf(a)) !== 2; i++) await sleep(50);
             out.editorSaved = [await look(await a.handle.getFile()), readOrientation(await bytesOf(a))];
             return out;
         });
+        check('Crop: right-click on the photo has Turn and flip, Straighten back to 0° and Done', r.cropMenu, JSON.stringify(r.cropMenu));
         check('flip: each flip twice is back as it was, and both together are half a turn', r.involution && r.halfTurn && r.turnedFlip, JSON.stringify(r));
         check('flip: the test photo is red left, blue right, green along the top', r.before === 'red blue green red', r.before);
         check('flip: a JPEG flipped left to right, by its orientation (2)', r.jpegH[0] === 'blue red green blue' && r.jpegH[1] === 2, JSON.stringify(r.jpegH));

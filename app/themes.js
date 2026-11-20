@@ -392,6 +392,8 @@ const Themes = {
         const native = Host.get();
         if (!native || !native.setMenus) return;
         const names = theme && (theme.systemMenus || theme.menus);
+        // jEditor's own look: its own menus (menubar.js)
+        if (!names && typeof MenuBar !== 'undefined' && MenuBar.system()) return;
         if (!names) {
             if (this._menuKey) { this._menuKey = ''; native.setMenus(null); }
             return;

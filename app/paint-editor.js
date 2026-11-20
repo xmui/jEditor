@@ -1740,6 +1740,9 @@ const PaintEditor = {
         if (!this.ready || this.busy) return;
         if (e.pointerType === 'touch' && this.touchDown(e)) return;
         this.alt = e.altKey;
+        // A fresh press: only an Alt+right-drag from here on holds back the
+        // menu, not one that ended without a right-click after it
+        this._sized = false;
         // Alt + right-drag: the brush's size sideways, its hardness up and down
         if (e.button === 2 && e.altKey && this.isBrush()) {
             e.preventDefault();
