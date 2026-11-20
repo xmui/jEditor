@@ -323,6 +323,10 @@ const app = {
             this.elements.btnMore.setAttribute('aria-expanded', String(open));
         });
         this.elements.btnFullscreen.addEventListener('click', () => this.toggleFullscreen());
+        // Full screen, however it came (F, the Mac's green button): the
+        // photo and its pills only (syncFullscreen)
+        document.addEventListener('fullscreenchange', () => this.syncFullscreen());
+        new MutationObserver(() => this.syncFullscreen()).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
         this.elements.btnCustomize.addEventListener('click', () => this.toggleCustomizePanel());
         document.getElementById('btn-shortcuts').addEventListener('click', () => this.toggleShortcutsPanel());
         document.getElementById('btn-whatsnew').addEventListener('click', () => this.toggleWhatsNew());
@@ -7801,6 +7805,26 @@ const app = {
     },
 
     // ---- Fullscreen & slideshow ----
+
+    // Full screen is the photo and its pills (the owner's pick F2): the
+    // sidebar and the film strip step aside while it lasts, and come back
+    // as they were. Ctrl+B and the strip button still bring them in. In
+    // jEditor's own look; a slideshow has its own
+    syncFullscreen() {
+        const full = (!!document.fullscreenElement || document.documentElement.classList.contains('fullscreen'))
+            && !document.documentElement.dataset.skin && !document.body.classList.contains('slideshow');
+        if (full === !!this._fullAside) return;
+        if (full) {
+            this._fullAside = { strip: !this._stripOff, rail: typeof Folders !== 'undefined' && Folders.railOpen() };
+            if (this._fullAside.strip) this.toggleThumbnailStrip();
+            if (this._fullAside.rail) { Folders.aside = true; Folders.render(); }
+        } else {
+            const was = this._fullAside;
+            this._fullAside = null;
+            if (was.strip && this._stripOff) this.toggleThumbnailStrip();
+            if (typeof Folders !== 'undefined' && Folders.aside) { Folders.aside = false; Folders.render(); }
+        }
+    },
 
     toggleFullscreen() {
         if (document.fullscreenElement) {

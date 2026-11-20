@@ -235,6 +235,8 @@ const Folders = {
     // room (2.0, audit C1); Ctrl+B there opens it, and each mode remembers
     // its own (uiPrefs.railIn). Photos keeps folderRail
     railOpen() {
+        // Full screen: stepped aside for now (script.js: syncFullscreen)
+        if (this.aside) return false;
         const p = this.app.uiPrefs || {};
         const mode = typeof Modes !== 'undefined' && Modes.current ? Modes.current() : 'photos';
         if (mode !== 'photos') return !!(p.railIn && p.railIn[mode]);
@@ -249,6 +251,15 @@ const Folders = {
     // Shown or hidden, and remembered: by Ctrl+B, the button, or its edge
     // dragged in until it snaps hidden (script.js: SIDE_HIDES)
     setRail(on) {
+        // Brought back in full screen (Ctrl+B, the button): as it was
+        if (this.aside) {
+            this.aside = false;
+            if (on === this.railOpen()) {
+                this.render();
+                if (on) this.app.slideSide(this.el('folder-rail'), true);
+                return;
+            }
+        }
         if (on === this.railOpen()) return;
         const mode = typeof Modes !== 'undefined' && Modes.current ? Modes.current() : 'photos';
         if (mode !== 'photos') this.app.uiPrefs.railIn = { ...(this.app.uiPrefs.railIn || {}), [mode]: on };

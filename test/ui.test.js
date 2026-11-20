@@ -3317,6 +3317,33 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.railHidden = document.getElementById('folder-rail').classList.contains('hidden') &&
                 !document.getElementById('folder-bar').classList.contains('hidden') && JSON.parse(localStorage.getItem('jeditor.ui')).folderRail === false;
             Folders.toggleRail();
+            // Full screen (the owner's pick F2): the sidebar and the film strip
+            // step aside, and come back as they were; Ctrl+B brings the
+            // sidebar back in full screen, and that's kept
+            {
+                const wait = () => new Promise(r => setTimeout(r, 60));
+                const strip = () => !document.getElementById('thumbnail-strip').classList.contains('hidden');
+                const rail = () => !document.getElementById('folder-rail').classList.contains('hidden');
+                app.setView('single');
+                await wait();
+                const before = [strip(), rail()];
+                document.documentElement.classList.add('fullscreen');
+                await wait();
+                const inFull = [strip(), rail()];
+                document.documentElement.classList.remove('fullscreen');
+                await wait();
+                const after = [strip(), rail()];
+                app.setView('grid');
+                await wait();
+                document.documentElement.classList.add('fullscreen');
+                await wait();
+                const gridAside = !rail();
+                Folders.toggleRail();
+                const back = rail();
+                document.documentElement.classList.remove('fullscreen');
+                await wait();
+                out.full = { before, inFull, after, gridAside, back, kept: rail() && JSON.parse(localStorage.getItem('jeditor.ui')).folderRail === true };
+            }
             // Rename All in a folder renames that folder's photos only
             Folders.setScope('Wedding');
             Renamer.open(app, []);
@@ -3364,6 +3391,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('folders: delete an empty folder; undo; folders with photos are kept', r.deleted && r.deleteUndone && r.notEmptyKept);
         check('folders: moved photos keep their cached thumbnail and preview', r.cacheCarried);
         check('folders: folder list can be hidden (remembered)', r.railHidden);
+        check('folders: full screen: the sidebar and the film strip step aside and come back as they were; Ctrl+B brings the sidebar back', r.full && r.full.before[0] && !r.full.inFull[0] && !r.full.inFull[1] && String(r.full.after) === String(r.full.before) && r.full.gridAside && r.full.back && r.full.kept, JSON.stringify(r.full));
         check('folders: Rename All in a folder covers that folder only', r.renameScope === 'Wedding/b.jpg,Wedding/w1.jpg|All photos in Wedding (2)', r.renameScope);
         check('folders: folder menu', r.menu === 'Open|Folder info|—|New folder inside…|New blank image…|Rename folder…|—|Delete folder', r.menu);
         check('folders: grid rows keep their gap (tiles never overlap)', r.rowGap === 16 && r.square, `gap=${r.rowGap}`);
