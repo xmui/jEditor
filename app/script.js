@@ -146,8 +146,10 @@ const app = {
             this.openContextMenu(this.selectionMoreItems(), r.left, r.top - 8, { above: true });
         });
         document.getElementById('btn-trash').addEventListener('click', () => this.moveToTrash([...this.selection]));
+        document.getElementById('btn-sel-export').addEventListener('click', () => Export.open({ files: [...this.selection] }));
         document.getElementById('btn-clear-selection').addEventListener('click', () => this.clearSelection());
         document.getElementById('btn-refresh').addEventListener('click', () => this.refreshFolder());
+        this.elements.headerControls.addEventListener('contextmenu', (e) => this.pillMenu(e));
 
         // Crop Controls
         if (this.elements.btnCrop) this.elements.btnCrop.addEventListener('click', () => this.enterCrop());
@@ -294,6 +296,7 @@ const app = {
         Themes.init(this);
         Fit.init();
         History.init(this);
+        MenuBar.init(this);
         Tour.init();
         Watch.init(this);
         this.initContextMenu();
@@ -494,9 +497,12 @@ const app = {
 
     defaultUiPrefs() {
         return {
-            order: ['scan', 'camera', 'info', 'view', 'refresh', 'crop', 'adjust', 'paint', 'history', 'fit', 'strip', 'fullscreen', 'dupes', 'convert', 'keys', 'whatsnew', 'customize'],
+            // The pill at the top right (the owner's, 19 November): Scan,
+            // Camera, Crop and Info, then More; the rest are in More, and
+            // a right-click on the pill (or Settings) puts any of them on it
+            order: ['scan', 'camera', 'crop', 'info', 'view', 'refresh', 'adjust', 'paint', 'history', 'fit', 'strip', 'fullscreen', 'dupes', 'convert', 'keys', 'whatsnew', 'customize'],
             placement: { // 'main' | 'more' | 'hidden'
-                scan: 'main', camera: 'main', info: 'main', view: 'main', refresh: 'main', crop: 'main', adjust: 'more', paint: 'more', history: 'main',
+                scan: 'main', camera: 'main', info: 'main', view: 'more', refresh: 'more', crop: 'main', adjust: 'more', paint: 'more', history: 'more',
                 fit: 'more', strip: 'more', fullscreen: 'more', dupes: 'more', convert: 'more', keys: 'more', whatsnew: 'more', customize: 'more'
             },
             vertical: false,
@@ -515,6 +521,7 @@ const app = {
             startIn: 'photos', // the landing page's Start in (modes.js): photos, adjust or paint
             writeEdits: 'ask', // Write edits to file: ask, 'originals' or 'copies' (askWriteEdits; Settings → Projects → Saving)
             modes: 1, // 1.43: Adjust and Paint are modes (modes.js), off the toolbar's main row
+            pill: 2, // 2.0: the pill is Scan, Camera, Crop and Info (view, rescan and history in More)
             theme: 'dark',
             skin: '', // a theme (themes.js): 'xp/royale'; '' is jEditor's own look
             skinSettings: {}, // each theme's own settings, by theme
@@ -534,7 +541,7 @@ const app = {
     // [kind, label, on to start with, help]
     TOAST_KINDS: [
         ['rotate', 'Rotating', false, 'Turned 1 photo right…'],
-        ['flags', 'Flags and labels', true, 'Starred, needs rescan, color labels'],
+        ['flags', 'Flags and labels', true, 'Picked, rejected, needs rescan, color labels'],
         ['crop', 'Cropping and Auto crop', true, 'Saved, crop kept, auto cropped'],
         ['adjust', 'Adjusting', true, 'Adjustments kept, copied, pasted'],
         ['move', 'Moving, copying and folders', true, 'Moved to a folder, new folder'],
@@ -593,6 +600,10 @@ const app = {
                 if (typeof saved.accent === 'string' && /^#[0-9a-f]{6}$/i.test(saved.accent)) this.uiPrefs.accent = saved.accent;
                 if (typeof saved.singleControls === 'boolean') this.uiPrefs.singleControls = saved.singleControls;
                 if (typeof saved.folderRail === 'boolean') this.uiPrefs.folderRail = saved.folderRail;
+                if (saved.railIn && typeof saved.railIn === 'object') {
+                    this.uiPrefs.railIn = {};
+                    for (const m of ['adjust', 'paint']) if (typeof saved.railIn[m] === 'boolean') this.uiPrefs.railIn[m] = saved.railIn[m];
+                }
                 if (['photos', 'adjust', 'paint'].includes(saved.startIn)) this.uiPrefs.startIn = saved.startIn;
                 // The home page's Settings menu (start.js)
                 if (typeof saved.keepEdits === 'boolean') this.uiPrefs.keepEdits = saved.keepEdits;
@@ -603,6 +614,14 @@ const app = {
                 // Before the mode switch, Adjust and Paint had buttons on the main row: the switch has them now
                 if (saved.modes !== 1) {
                     for (const k of ['adjust', 'paint']) if (this.uiPrefs.placement[k] === 'main') this.uiPrefs.placement[k] = 'more';
+                }
+                // 2.0's pill, once: the view switch, Rescan and History go to
+                // More (the grid has its switch, the folder is watched, H opens
+                // History), and Crop comes before Info. Anything else chosen stays
+                if (saved.pill !== 2) {
+                    for (const k of ['view', 'refresh', 'history']) if (this.uiPrefs.placement[k] === 'main') this.uiPrefs.placement[k] = 'more';
+                    const o = this.uiPrefs.order, c = o.indexOf('crop'), i = o.indexOf('info');
+                    if (c > i && i >= 0) { o.splice(c, 1); o.splice(i, 0, 'crop'); }
                 }
                 if (saved.transparency >= 10 && saved.transparency <= 100) this.uiPrefs.transparency = saved.transparency;
                 // The theme (themes.js checks it's one it knows) and each theme's own settings
@@ -641,6 +660,29 @@ const app = {
 
     saveUiPrefs() {
         try { localStorage.setItem('jeditor.ui', JSON.stringify(this.uiPrefs)); } catch (e) { /* private mode */ }
+    },
+
+    // Right-click on the pill: which buttons it shows, ticked; the rest stay
+    // in More. Customize… goes to Settings, where they can be dragged into order
+    pillMenu(e) {
+        if (document.documentElement.dataset.skin) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const p = this.uiPrefs;
+        const rows = [['Show in the pill', null]];
+        for (const key of p.order) {
+            const btn = this.headerButton(key);
+            if (!btn || key === 'customize' || btn.classList.contains('host-missing') || btn.classList.contains('exp-off')) continue;
+            const on = p.placement[key] === 'main';
+            rows.push([this.HC_LABELS[key] || key, () => {
+                p.placement[key] = on ? 'more' : 'main';
+                this.saveUiPrefs();
+                this.applyUiPrefs();
+                if (this.renderCustomizePanel) this.renderCustomizePanel();
+            }, false, on]);
+        }
+        rows.push(['—'], ['Customize…', () => { this.toggleCustomizePanel(true); if (this.showSettingsPage) this.showSettingsPage('toolbar'); }]);
+        this.openContextMenu(rows, e.clientX, e.clientY);
     },
 
     headerButton(key) {
@@ -1581,6 +1623,17 @@ const app = {
         }
     },
 
+    // With no photos at all, what needs a photo is greyed out rather than
+    // live and doing nothing (audit A13)
+    NEEDS_PHOTO: ['btn-info', 'btn-crop', 'btn-adjust', 'btn-paint', 'btn-toggle-view', 'btn-fullscreen', 'btn-dupes', 'btn-convert'],
+    syncNoPhotos() {
+        const none = !this.files.length;
+        for (const id of this.NEEDS_PHOTO) {
+            const b = document.getElementById(id);
+            if (b) b.disabled = none;
+        }
+    },
+
     // An empty grid says why, with a button for the way out
     emptyState(files, folderTiles) {
         if (files.length || folderTiles.length) return null;
@@ -1606,6 +1659,10 @@ const app = {
         } else return null;
         const box = document.createElement('div');
         box.className = 'grid-empty-box';
+        if (grid.contains('grid-empty-project')) {
+            // A picture in the app's own line style: photos waiting
+            box.insertAdjacentHTML('beforeend', '<svg class="grid-empty-art" viewBox="0 0 64 64" aria-hidden="true"><rect x="14" y="10" width="40" height="32" rx="5"/><rect x="8" y="18" width="40" height="32" rx="5"/><circle cx="20" cy="29" r="3.5"/><path d="m8 44 12-11 9 8 6-5 13 11"/></svg>');
+        }
         const p = document.createElement('p');
         p.textContent = text;
         box.append(p);
@@ -3324,6 +3381,7 @@ const app = {
         this.elements.gridView.classList.toggle('grid-empty', !files.length && !folderTiles.length && Folders.scope !== null && this.files.length > 0);
         // A project with no photos at all yet
         this.elements.gridView.classList.toggle('grid-empty-project', !this.files.length && !folderTiles.length);
+        this.syncNoPhotos();
         this.elements.gridView.classList.toggle('grid-no-match', !files.length && Flags.active());
         const empty = this.emptyState(files, folderTiles);
         if (empty) this.elements.gridView.append(empty);
@@ -4164,7 +4222,13 @@ const app = {
         this.refreshInfoSoon();
         if (this.selection.size > 0) {
             this.elements.selectionBar.classList.remove('hidden');
-            this.elements.selectionCount.textContent = `${this.selection.size} selected`;
+            const count = this.elements.selectionCount;
+            count.textContent = this.selection.size.toLocaleString();
+            const word = document.createElement('span');
+            word.className = 'sel-word';
+            word.textContent = ' selected';
+            count.appendChild(word);
+            document.getElementById('btn-clear-selection').title = `${this.selection.size.toLocaleString()} selected: clear the selection (Esc)`;
             // Sync needs a photo to sync from and one to sync onto
             document.getElementById('btn-sync').classList.toggle('hidden', this.selection.size < 2);
         } else {
@@ -5063,8 +5127,9 @@ const app = {
         ['edit.undo', 'global', 'Edit', 'Undo', ['Ctrl+Z']],
         ['edit.history', 'global', 'Edit', 'Undo history: go back several steps', ['H']],
         ['edit.selectAll', 'global', 'Edit', 'Select all (grid)', ['Ctrl+A']],
-        ['flag.star', 'global', 'Flags', 'Star / unstar', ['P']],
-        ['flag.rescan', 'global', 'Flags', 'Needs rescan on / off', ['X']],
+        ['flag.star', 'global', 'Flags', 'Pick / unpick', ['P']],
+        ['flag.reject', 'global', 'Flags', 'Reject / unreject (the tile dims)', ['X']],
+        ['flag.rescan', 'global', 'Flags', 'Needs rescan on / off', ['Shift+X']],
         ['flag.red', 'global', 'Flags', 'Red label', ['1']],
         ['flag.yellow', 'global', 'Flags', 'Yellow label', ['2']],
         ['flag.green', 'global', 'Flags', 'Green label', ['3']],
@@ -5303,6 +5368,7 @@ const app = {
             },
             'flag.star': () => Flags.apply('star'),
             'flag.rescan': () => Flags.apply('rescan'),
+            'flag.reject': () => Flags.apply('reject'),
             'flag.red': () => Flags.apply('red'),
             'flag.yellow': () => Flags.apply('yellow'),
             'flag.green': () => Flags.apply('green'),
@@ -5991,6 +6057,20 @@ const app = {
         }
     },
 
+    // A key as the menus write it: Ctrl+Shift+C
+    keyText(combo) {
+        return this.formatCombo(combo).replace(/ \+ /g, '+');
+    },
+
+    // A command's name in a few words: without its brackets, and up to a
+    // colon ("Write edits to file: the original…" is "Write edits to file",
+    // "Brush (or line, or text) bigger" is "Brush bigger")
+    shortLabel(label) {
+        const bare = label.replace(/ \([^)]*\)/g, '');
+        const cut = bare.indexOf(': ');
+        return (cut > 0 ? bare.slice(0, cut) : bare).trim() || label;
+    },
+
     renderShortcutsPanel() {
         const list = document.getElementById('shortcuts-list');
         const filter = (document.getElementById('shortcuts-filter').value || '').trim().toLowerCase();
@@ -6002,7 +6082,7 @@ const app = {
             const [id, , group, label] = a;
             if (!this.actionOn(id)) return;
             const keys = this.keyBindings[id];
-            const text = (label + ' ' + keys.map(k => this.formatCombo(k)).join(' ')).toLowerCase();
+            const text = (label + ' ' + keys.map(k => this.formatCombo(k) + ' ' + this.keyText(k)).join(' ')).toLowerCase();
             if (filter && !text.includes(filter)) return;
             if (!groups.has(group)) groups.set(group, []);
             groups.get(group).push(a);
@@ -6017,9 +6097,12 @@ const app = {
                 const defaults = profileDefaults[id];
                 const row = document.createElement('div');
                 row.className = 'sc-row';
+                // A short name; the rest of a long one in its tooltip (audit M7)
                 const name = document.createElement('span');
                 name.className = 'sc-label';
-                name.textContent = label;
+                const short = this.shortLabel(label);
+                name.textContent = short;
+                if (short !== label) name.title = label;
                 const keysEl = document.createElement('span');
                 keysEl.className = 'sc-keys';
 
@@ -6027,7 +6110,7 @@ const app = {
                     const kbd = document.createElement('button');
                     kbd.className = 'sc-key';
                     kbd.title = 'Remove this key';
-                    kbd.textContent = this.formatCombo(combo);
+                    kbd.textContent = this.keyText(combo);
                     kbd.onclick = () => { this.removeKey(id, combo); this.renderShortcutsPanel(); };
                     keysEl.appendChild(kbd);
                 });
@@ -6050,7 +6133,7 @@ const app = {
                 if (this.keyBindings[id].join('\n') !== defaults.join('\n')) {
                     const reset = document.createElement('button');
                     reset.className = 'sc-reset';
-                    reset.title = 'Back to default: ' + (defaults.map(k => this.formatCombo(k)).join(', ') || 'none');
+                    reset.title = 'Back to default: ' + (defaults.map(k => this.keyText(k)).join(', ') || 'none');
                     reset.textContent = '↺';
                     reset.onclick = () => { this.resetKeys(id); this.renderShortcutsPanel(); };
                     keysEl.appendChild(reset);
@@ -7712,17 +7795,16 @@ const app = {
 
     initContextMenu() {
         document.addEventListener('contextmenu', (e) => {
-            if (this.cropState.active && CropEditor.ready && e.target.closest && e.target.closest('.crop-stage')) {
-                e.preventDefault();
-                const ed = CropEditor;
-                this.openContextMenu([
-                    ['Rotate left', () => ed.rotateQuarter(-1)],
-                    ['Rotate right', () => ed.rotateQuarter(1)],
-                    ['Rotate 180°', () => ed.rotateHalf()],
-                    ['Flip left to right', () => ed.flip('h')],
-                    ['Flip upside down', () => ed.flip('v')]
-                ], e.clientX, e.clientY);
-                return;
+            // Crop, Adjust and Paint: a menu where the photo is, as the pro
+            // tools have it (audit A3). Each row runs what its key runs, and
+            // shows the key
+            if (this.cropState.active && !e.defaultPrevented) {
+                const items = this.editStageItems(e.target);
+                if (items) {
+                    e.preventDefault();
+                    this.openContextMenu(items, e.clientX, e.clientY);
+                    return;
+                }
             }
             if (this.cropState.active || Dupes.isOpen) { e.preventDefault(); return; }
             if (this.elements.mainInterface.classList.contains('hidden')) return;
@@ -7742,6 +7824,67 @@ const app = {
         window.addEventListener('click', () => this.closeContextMenu());
         window.addEventListener('scroll', () => this.closeContextMenu(), true);
         window.addEventListener('resize', () => this.closeContextMenu());
+    },
+
+    // The right-click menu on Crop's, Adjust's or Paint's photo, or null
+    editStageItems(target) {
+        const at = (sel) => target && target.closest && target.closest(sel);
+        const h = this.keyHandlers();
+        const run = (id) => () => { if (this.actionOn(id) && h[id]) h[id](); };
+        const row = (label, id, danger = false) => (this.actionOn(id) ? [[label, run(id), danger, undefined, id]] : []);
+        const tool = this.cropState.tool;
+        if (tool !== 'adjust' && tool !== 'paint' && at('.crop-stage') && typeof CropEditor !== 'undefined' && CropEditor.ready) {
+            return [
+                ['Turn and flip', [...row('Rotate left', 'crop.rotateLeft'), ...row('Rotate right', 'crop.rotateRight'), ...row('Rotate 180°', 'crop.rotate180'),
+                    ['—'], ...row('Flip left to right', 'crop.flipH'), ...row('Flip upside down', 'crop.flipV')]],
+                ...row('Next aspect ratio', 'crop.aspect'),
+                ...row('Swap portrait and landscape', 'crop.swap'),
+                ...row('Straighten back to 0°', 'crop.angleZero'),
+                ...row('Auto', 'crop.auto'),
+                ['—'],
+                ...row('Reset', 'crop.reset'),
+                ['—'],
+                ...row('Done', 'crop.save'),
+                ...row('Done, then the next photo', 'crop.saveNext'),
+                ...row('Cancel', 'crop.cancel')
+            ];
+        }
+        if (tool === 'adjust' && at('#adj-stage') && typeof Adjust !== 'undefined' && Adjust.ready) {
+            return [
+                ...row('Before and after', 'adjust.before'),
+                ['—'],
+                ...row('Auto', 'adjust.auto'),
+                ...row('Auto color', 'adjust.autoColor'),
+                ...row('White balance: click something grey', 'adjust.whiteBalance'),
+                ['—'],
+                ...row('Copy adjustments', 'adjust.copy'),
+                ...row('Paste adjustments', 'adjust.paste'),
+                ['—'],
+                ...row('Fit', 'adjust.zoomFit'),
+                ...row('100%', 'adjust.zoom100'),
+                ['—'],
+                ...row('Reset all', 'adjust.reset', true)
+            ];
+        }
+        if (tool === 'paint' && at('#paint-stage') && typeof PaintEditor !== 'undefined' && PaintEditor.ready) {
+            const ed = PaintEditor;
+            return [
+                ...row('Copy', 'paint.copy'),
+                ...row('Copy merged', 'paint.copyMerged'),
+                ...row('Paste', 'paint.paste'),
+                ...row('Paste in place', 'paint.pasteInPlace'),
+                ['—'],
+                ...row('Select all', 'paint.selectAll'),
+                ...row('Select nothing', 'paint.deselect'),
+                ...row('Invert the selection', 'paint.invert'),
+                ...row('Delete what\'s selected', 'paint.clear'),
+                ['—'],
+                ...row('Free transform', 'paint.transform'),
+                ...(typeof ed.layerItems === 'function' && ed.layers && ed.layers[ed.cur] ? [['The layer', ed.layerItems(ed.cur)]] : []),
+                ...row('New layer', 'paint.newLayer')
+            ];
+        }
+        return null;
     },
 
     buildContextItems(tile, inSingle) {
@@ -7999,9 +8142,14 @@ const app = {
     selectionMoreItems() {
         const sel = [...this.selection];
         const n = sel.length.toLocaleString();
+        // jEditor's own look: the pill has Rotate, Move to, Export and
+        // Delete as icons; Rename and Sync are here instead
+        const own = !document.documentElement.dataset.skin;
         const items = [
             ['flags', sel],
             ['—'],
+            ...(own ? [[`Rename ${n}…`, () => this.batchRename(sel), false, undefined, 'edit.rename']] : []),
+            ...(own && sel.length > 1 ? [['Sync adjustments…', () => this.syncAdjust(), false, undefined, 'edit.syncAdjust']] : []),
             // On the bar in the themes; in jEditor's own look only here (and [ ])
             [`Rotate ${n} left`, () => this.rotateBulk(-90), false, undefined, 'edit.rotateLeft'],
             [`Rotate ${n} right`, () => this.rotateBulk(90), false, undefined, 'edit.rotateRight'],
@@ -8013,7 +8161,7 @@ const app = {
                 ['Restore as one roll (faded together)', () => this.restoreColour(sel, { roll: true })]
             ]],
             [`Copy ${n} to…`, () => Folders.openPicker(sel, 'copy'), false, undefined, 'edit.copyTo'],
-            [`Export ${n}…`, () => Export.open({ files: sel })],
+            ...(own ? [] : [[`Export ${n}…`, () => Export.open({ files: sel })]]),
             [`Convert ${n}…`, () => Convert.open({ files: sel })],
             ...(this.canAddToPhotos() ? [[`Add ${n} to Photos library`, () => this.addToPhotos(sel)]] : []),
             ['—'],
@@ -8054,7 +8202,7 @@ const app = {
 
     // A menu's rows (the right-click menu's, and a menu opened beside one)
     fillMenu(menu, items) {
-        items.forEach(([label, action, danger, checked, key, more]) => {
+        items.forEach(([label, action, danger, checked, key, more, off]) => {
             // A heading over the items after it
             if (action === null) {
                 const h = document.createElement('div');
@@ -8079,6 +8227,8 @@ const app = {
             btn.textContent = label;
             btn.setAttribute('role', 'menuitem');
             if (danger) btn.classList.add('danger');
+            // One that can't run now (the menu bar's): there, greyed out
+            if (off) btn.disabled = true;
             // A setting that's on (true) or off (false): ticked when on
             if (typeof checked === 'boolean') {
                 btn.setAttribute('role', 'menuitemcheckbox');
@@ -8119,6 +8269,8 @@ const app = {
                     };
                 }
             }
+            // jEditor's own look: its picture at the left (menu-icons.js)
+            if (!document.documentElement.dataset.skin && typeof MenuIcons !== 'undefined' && !btn.hasAttribute('aria-checked')) btn.prepend(MenuIcons.el(label, key));
             menu.appendChild(btn);
         });
         if (menu.lastChild && menu.lastChild.className === 'ctx-divider') menu.lastChild.remove();
@@ -8169,9 +8321,11 @@ const app = {
             document.body.appendChild(fly);
             row.setAttribute('aria-expanded', 'true');
             const r = row.getBoundingClientRect(), f = fly.getBoundingClientRect();
-            const right = r.right + f.width + 8 <= window.innerWidth;
-            fly.style.left = (right ? r.right + 2 : Math.max(8, r.left - f.width - 2)) + 'px';
-            fly.style.top = Math.max(UI.topSafe() + 8, Math.min(r.top - 5, window.innerHeight - f.height - 8)) + 'px';
+            // Beside the menu's edge, not the row's (the rows sit inside its padding)
+            const m = (row.closest('#context-menu, .ctx-fly') || row).getBoundingClientRect();
+            const right = m.right + f.width + 8 <= window.innerWidth;
+            fly.style.left = (right ? m.right + 2 : Math.max(8, m.left - f.width - 2)) + 'px';
+            fly.style.top = Math.max(UI.topSafe() + 8, Math.min(r.top - (document.documentElement.dataset.skin ? 5 : 9), window.innerHeight - f.height - 8)) + 'px';
         }
         if (focus) {
             const first = fly.querySelector('button');

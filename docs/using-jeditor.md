@@ -43,7 +43,7 @@ jEditor keeps an eye on the open folder. Photos a scanner saves into the order s
 
 Mark photos while you work through an order:
 
-- `P` stars a photo (a pick), `X` marks it as needing a rescan, `1`–`5` give it a colour label (red, yellow, green, blue, purple; the same key again takes it off) and `U` clears all three. In the grid they apply to the selection, in single view to the photo shown. They're also at the top of the right-click menu, and `Ctrl+Z` undoes them.
+- `P` picks a photo and `X` rejects it (a rejected tile dims; a pick takes the reject off), `Shift+X` marks it as needing a rescan, `1`–`5` give it a colour label (red, yellow, green, blue, purple; the same key again takes it off) and `U` clears them all. Search finds them with `is:picked` and `is:rejected`. In the grid they apply to the selection, in single view to the photo shown. They're also at the top of the right-click menu, and `Ctrl+Z` undoes them.
 - Flags show on the grid tiles, the film strip and beside the file name.
 - The **Flags** section at the bottom of the folder list counts each flag. Click one to show only those photos (click again, or the × on the chip in the folder pill, to show everything). `Ctrl+A` then selects just them, ready for **Move to…**, **Export** (under ⋯ on the selection bar) or **Delete**: moving every "needs rescan" photo into a Rescan folder takes two clicks and `M`.
 - Right-click a flag in the list to **Copy list of names** or **Save list as text…**: one path per line, for whoever is on the scanner.
@@ -319,7 +319,8 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `F` | Full screen |
 | `F2` | Rename (the selected photos in grid view) |
 | `M` / `Shift+M` | Move / copy to a folder (the selection in grid view) |
-| `P` / `X` | Star / needs rescan on or off |
+| `P` / `X` | Pick / reject on or off |
+| `Shift+X` | Needs rescan on or off |
 | `1`–`5` | Red, yellow, green, blue, purple label |
 | `U` | Clear flags |
 | `Shift+A` | Auto crop (the selection in grid view) |

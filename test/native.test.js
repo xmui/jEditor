@@ -1568,6 +1568,13 @@ async function newPage(context, baseUrl, host = null) {
             $('cam-shoot').click();
             await wait(() => app.files.some(f => f.name === 'photo4.jpg'));
             out.calls = window.__tetherCalls.slice();
+            // One shutter while the live view is on (Take photo hidden);
+            // a double-click on the view makes it bigger, and back
+            out.oneShutter = getComputedStyle($('cam-take')).display === 'none' && getComputedStyle($('cam-big')).display === 'none';
+            $('cam-view').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+            out.bigger = $('cam-panel').classList.contains('big');
+            $('cam-view').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+            out.bigger = out.bigger && !$('cam-panel').classList.contains('big');
             // Keep a copy on the card: changed while connected, sent at once
             $('cam-card').checked = false;
             $('cam-card').dispatchEvent(new Event('change'));
@@ -1616,6 +1623,7 @@ async function newPage(context, baseUrl, host = null) {
         check('Disconnect: says how many, and the names carry on for next time', /Disconnected · 2 photos into Shoot Order/.test(r.ended) && r.nextNames === '5', JSON.stringify([r.ended, r.nextNames]));
         check('the camera going away says so, with what came in, and shows Details', /disconnected/.test(r.alert) && /unplugged/.test(r.alert) && /1 photo came in/.test(r.alert) && r.detailsOnError, r.alert);
         check('choices are remembered', r.prefs && r.prefs.camera === 'cam-1' && r.prefs.keepOnCard === false, JSON.stringify(r.prefs));
+        check('camera: one shutter on the live view (no Take photo beside it), and a double-click makes the view bigger and back', r.oneShutter && r.bigger, JSON.stringify([r.oneShutter, r.bigger]));
         check('camera suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
@@ -1635,6 +1643,9 @@ async function newPage(context, baseUrl, host = null) {
             out.noAlert = !UI.isOpen();
             const box = $('grid-view').querySelector('.grid-empty-box');
             out.message = box ? box.textContent : '';
+            // With no photos, what needs one is greyed out (Scan stays)
+            out.greyed = ['btn-info', 'btn-crop', 'btn-adjust'].every(id => $(id).disabled) && !$('btn-scan').disabled;
+            out.art = !!box.querySelector('.grid-empty-art');
             // Its buttons: Scan opens the scan dock, Explorer shows the folder
             box.querySelector('.btn.primary').click();
             out.scanOpened = !$('scan-panel').classList.contains('hidden');
@@ -1649,18 +1660,21 @@ async function newPage(context, baseUrl, host = null) {
             out.names = scanned.names.join();
             out.files = app.files.length;
             out.noMessage = !$('grid-view').classList.contains('grid-empty-project');
+            out.live = ['btn-info', 'btn-crop', 'btn-adjust'].every(id => !$(id).disabled);
             // Every photo deleted: it stays open, empty
             window.__noBin = false;
             await app.moveToTrash([...app.files]);
             await wait(() => app.files.length === 0);
             out.stillOpen = !$('main-interface').classList.contains('hidden') && $('drop-zone').classList.contains('hidden');
             out.emptyAgain = $('grid-view').classList.contains('grid-empty-project');
+            out.greyedAgain = $('btn-crop').disabled;
             return out;
         });
         check('an empty folder opens as an empty project, no "No photos found"', r.open && r.noAlert && r.view === 'grid', JSON.stringify(r));
         check('... saying how to fill it, with Scan and Show in Explorer buttons', /Scan into this project/.test(r.message) && /ScanShow in Explorer$/.test(r.message) && r.scanOpened && /Empty Project$/.test(r.revealed || ''), JSON.stringify([r.message, r.scanOpened, r.revealed]));
         check('scanning into it shows the photos', r.names === 'Empty-001.jpg,Empty-002.jpg' && r.files === 2 && r.noMessage, JSON.stringify([r.names, r.files, r.noMessage]));
         check('deleting every photo keeps it open, empty', r.stillOpen && r.emptyAgain, JSON.stringify([r.stillOpen, r.emptyAgain]));
+        check('... Info, Crop and Adjust greyed out with no photos (with a picture), live once photos come, greyed again when they go', r.greyed && r.art && r.live && r.greyedAgain, JSON.stringify([r.greyed, r.art, r.live, r.greyedAgain]));
         check('empty project suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
@@ -2365,11 +2379,13 @@ async function newPage(context, baseUrl, host = null) {
             await wait(() => window.__ejected);
             out.copiesEjected = window.__ejected;
             out.keptWhere = JSON.parse(localStorage.getItem('jeditor.export')).where;
-            // ⋯ on the selection bar: Export… opens it on Copies
+            // The selection pill's Export opens it on Copies (in jEditor's
+            // own look it's a button on the pill, not in its ⋯ menu)
             app.selection = new Set([f('photo1.jpg'), f('photo2.jpg')]);
-            const item = app.selectionMoreItems().find(i => /^Export/.test(i[0]));
-            out.menu = item[0];
-            item[1]();
+            app.updateSelectionUI();
+            out.inMore = app.selectionMoreItems().some(i => /^Export/.test(i[0] || ''));
+            out.menu = $('btn-sel-export').getAttribute('aria-label') || $('btn-sel-export').title;
+            $('btn-sel-export').click();
             out.fromMenu = $('ex-title').textContent + ' / ' + $('ex-go').textContent;
             $('ex-cancel').click();
             out.closed = $('export-panel').classList.contains('hidden');
@@ -2409,7 +2425,7 @@ async function newPage(context, baseUrl, host = null) {
         check('... Copies: no presets of its own, the sections of an export window (location, naming, file settings, sizing, metadata, after) closed and saying their settings, the line by the buttons, the folder named after the project', r.copiesTab === 'Copies' && r.noPresets &&
             r.secs === 'Photos: 1 selected | Export location: Beta export, in this project | File naming: Original names · photo1.jpg | File settings: Original format | Image sizing: Full size | Metadata: All metadata | After export: Do nothing' &&
             /^1 photo, about .+, into Beta export in this project\.$/.test(r.sum) && r.folder === 'Beta export', JSON.stringify([r.noPresets, r.secs, r.sum, r.folder]));
-        check('... the photo selected, a size typed, into "Beta export", left out of the project', /The photo selected\*/.test(r.which) && /2 starred/.test(r.which) && r.copiesGo === 'Export 1 photo' && r.size === 100 && r.leftOut, JSON.stringify(r));
+        check('... the photo selected, a size typed, into "Beta export", left out of the project', /The photo selected\*/.test(r.which) && /2 picked/.test(r.which) && r.copiesGo === 'Export 1 photo' && r.size === 100 && r.leftOut, JSON.stringify(r));
         check('... a name already there is asked about: keep both (the copy numbered), replace, or cancel', r.asksFirst === 'ask' && r.asked === '“photo1.jpg” is already there | Keep both | Replace | false'
             && r.both === 'photo1 (2).jpg,photo1.jpg' && r.replaced === r.both && r.canceled === r.both, JSON.stringify([r.asksFirst, r.asked, r.both, r.replaced, r.canceled]));
         check('... or, set to skip, the photo is skipped', r.skipped === r.both, r.skipped);
@@ -2419,7 +2435,7 @@ async function newPage(context, baseUrl, host = null) {
         check('... Eject when done for copies onto a drive (remembered), and it ejects', r.copiesEjectOff && r.copiesEjected === 'E:\\', JSON.stringify([r.copiesEjectOff, r.copiesEjected]));
         check('... Leave out is in Where; a bad folder name stops it', r.whereMenu && r.badName, JSON.stringify([r.whereMenu, r.badName]));
         check('... the settings are remembered, a drive isn\'t', !r.kept.preset && r.kept.custom.size === 100 && r.keptWhere === 'project', JSON.stringify(r.kept));
-        check('... ⋯ on the selection bar opens it, on the selection', r.menu === 'Export 2…' && r.fromMenu === 'Export 2 photos / Export 2 photos' && r.closed, JSON.stringify([r.menu, r.fromMenu]));
+        check('... Export on the selection pill opens it, on the selection (and isn\'t in its ⋯ too)', /Export/.test(r.menu || '') && !r.inMore && r.fromMenu === 'Export 2 photos / Export 2 photos' && r.closed, JSON.stringify([r.menu, r.inMore, r.fromMenu]));
         check('right-click a USB drive: Export or Copy the project to it, each opening Export there', r.usbMenu === 'Export Beta to USB drive (E:)… | Copy Beta to USB drive (E:)…' && r.fromDrive === 'Copies / drive:E:\\' && r.copyFromDrive === 'USB drive or card / Copy to USB drive (E:)', JSON.stringify([r.usbMenu, r.fromDrive, r.copyFromDrive]));
         check('right-click a disc drive: Burn the project, with that drive\'s burner', r.discMenu === 'Burn Beta to a disc…' && r.burnerPicked === 'b1', JSON.stringify([r.discMenu, r.burnerPicked]));
         check('export: no JS errors', errors.length === 0, errors.join('; '));

@@ -262,7 +262,9 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         check('XP: its own menus in the Mac\'s menu bar too', names(xp) === 'File,Edit,View,Picture,Tools,Window,Help', names(xp));
         await choose('');
         const back = await bar();
-        check('jEditor\'s own look: the app\'s usual menus again', names(back) === names(own) && names(own) === 'File,Edit,View,Window', names(back));
+        check('jEditor\'s own look: its own menus again (menubar.js), with every command', names(back) === names(own) && names(own) === 'File,Edit,View,Photo,Window,Help' && !!find(own, 'Photo', 'Rotate left') && !!find(own, 'File', 'New Window'), names(back));
+        const open = find(own, 'File', 'Open folder…'), rotate = find(own, 'Photo', 'Rotate left');
+        check('... Open folder is the app\'s own ⌘O; the rest have their keys, left to the page', !!open && open.key === 'CmdOrCtrl+O' && open.reg !== false && !!rotate && rotate.key === '[' && rotate.reg === false, JSON.stringify([open, rotate]));
         check('no JS errors', errors.length === 0, errors.join('; '));
         await app.close();
     }
@@ -924,7 +926,8 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             const describe = () => app.evaluate(({ BrowserWindow }) => global.jeditorToolbar.describe(BrowserWindow.getAllWindows()[0].getNativeWindowHandle()));
             const click = (id, value) => app.evaluate(({ BrowserWindow }, [id, value]) => global.jeditorToolbar.click(BrowserWindow.getAllWindows()[0].getNativeWindowHandle(), id, value), [id, value]);
             const settle = () => page.waitForTimeout(400);
-            await page.evaluate(() => { app.setView('single'); app.loadIndex(0); });
+            // The view switch is in More in 2.0's pill: on the pill for this
+            await page.evaluate(() => { app.uiPrefs.placement.view = 'main'; app.applyUiPrefs(); app.setView('single'); app.loadIndex(0); });
             await settle();
             let d = await describe();
             const ids = d.items.map(i => i.id);
