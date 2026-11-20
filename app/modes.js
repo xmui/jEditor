@@ -196,10 +196,9 @@ const Modes = {
     },
 
     // Switching modes, a short fade in of the one arriving (the owner's
-    // ask: sleek, at almost no cost): opacity and a slight scale, which the
-    // GPU does without laying anything out, 180ms; only a fade under
-    // Reduce motion, nothing with motion off or in a theme (style.css:
-    // .mode-arrive). Not when the strip steps to another photo in the same
+    // ask: sleek, at almost no cost): opacity only, which the GPU does
+    // without laying anything out, 180ms; nothing with motion off or in a
+    // theme (style.css: .mode-arrive). Not when the strip steps to another photo in the same
     // mode, which closes and opens it again
     arrive(el) {
         if (!el || this._stepping) return;

@@ -13061,18 +13061,11 @@ body.touring .controls.idle button { pointer-events: auto; }
     transition: opacity var(--dur-base) var(--ease-out), translate var(--dur-base) var(--ease-out), visibility 0s linear var(--dur-base);
 }
 
-/* ---- Switching modes: the one arriving fades in, from a touch smaller
-   (modes.js: arrive). Opacity and transform only, which the GPU does
-   without laying anything out; 180ms. Only while it plays (backwards,
-   not both): a transform left on would pin what's fixed inside it ---- */
+/* ---- Switching modes: the one arriving fades in (modes.js: arrive).
+   Opacity only, which the GPU does without laying anything out, 180ms.
+   Not a scale or a slide: Adjust, Paint and the pills measure where
+   things are as a mode opens, and a transform would throw that off ---- */
 @keyframes mode-arrive {
-    from {
-        opacity: 0;
-        transform: scale(0.985);
-    }
-}
-
-@keyframes mode-arrive-fade {
     from {
         opacity: 0;
     }
@@ -13080,10 +13073,4 @@ body.touring .controls.idle button { pointer-events: auto; }
 
 :root:not([data-skin]):not([data-motion="off"]) .mode-arrive {
     animation: mode-arrive var(--dur-base) var(--ease-out) backwards;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    :root:not([data-skin]):not([data-motion="off"]) .mode-arrive {
-        animation-name: mode-arrive-fade;
-    }
 }
