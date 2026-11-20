@@ -2457,6 +2457,32 @@ body.slideshow #image-container:has(.slide-ctl.show) {
     color: var(--text-2);
 }
 
+/* Under the menu's row, as Finder's tags: what the symbol pointed at does,
+   and its key; "Flag and label" until one is */
+.ctx-flagbox {
+    display: flex;
+    flex-direction: column;
+}
+
+.ctx-flags-say {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    min-height: 20px;
+    padding: 0 10px 4px;
+    font-size: var(--fs-small);
+    color: var(--text-2);
+    white-space: nowrap;
+}
+
+.ctx-flags-say .ctx-key {
+    margin-left: auto;
+}
+
+.ctx-flags-say .ctx-key:empty {
+    display: none;
+}
+
 /* ---- 10. Toasts and the task pill ---- */
 /* One stack in the bottom-left corner, clear of the photo in the middle.
    --toast-bottom / --toast-left follow the view (set below). */

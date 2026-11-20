@@ -534,11 +534,14 @@ const PaintEditor = {
 
     // ---- Snap (View → Snap, Ctrl+;): to the canvas's edges and middle ----
 
-    // Within 8 screen px of an edge or the middle, on it; the lines snapped
-    // to show while dragging
+    // Within 5 screen px of an edge or a middle, on it (near enough to
+    // catch, not so far it stops a small move by an edge); the lines
+    // snapped to show while dragging. Ctrl held while moving: no snapping
+    SNAP_NEAR: 5,
+
     snapTargets() {
         const xs = [0, this.OW / 2, this.OW], ys = [0, this.OH / 2, this.OH];
-        for (const b of this.layerEdges()) { xs.push(b.x0, b.x1); ys.push(b.y0, b.y1); }
+        for (const b of this.layerEdges()) { xs.push(b.x0, (b.x0 + b.x1) / 2, b.x1); ys.push(b.y0, (b.y0 + b.y1) / 2, b.y1); }
         return { xs, ys };
     },
 
@@ -577,7 +580,7 @@ const PaintEditor = {
     snapPoint(p) {
         this._snapLines = null;
         if (!this.opts.snap || this.view.r) return p;
-        const near = 8 / this.view.z, { xs, ys } = this.snapTargets();
+        const near = this.SNAP_NEAR / this.view.z, { xs, ys } = this.snapTargets();
         const fx = xs.find(x => Math.abs(p.ox - x) < near), fy = ys.find(y => Math.abs(p.oy - y) < near);
         if (fx === undefined && fy === undefined) return p;
         const o = { x: fx === undefined ? p.ox : fx, y: fy === undefined ? p.oy : fy };
@@ -591,7 +594,7 @@ const PaintEditor = {
         this._snapLines = null;
         const f = this.float, t = f.t;
         if (!this.opts.snap || this.view.r || t.rot) return;
-        const near = 8 / this.view.z, { xs, ys } = this.snapTargets();
+        const near = this.SNAP_NEAR / this.view.z, { xs, ys } = this.snapTargets();
         const w = f.w * Math.abs(t.sx), h = f.h * Math.abs(t.sy);
         const cx = f.x0 + f.w / 2 + t.tx, cy = f.y0 + f.h / 2 + t.ty;
         const best = (c, half, targets) => {
@@ -1848,7 +1851,7 @@ const PaintEditor = {
             const last = d.pts[d.pts.length - 1];
             if (Math.hypot(p.sx - last.sx, p.sy - last.sy) >= 2) d.pts.push(p);
         } else if (d.kind === 'float') {
-            this.dragFloat(p, e.shiftKey);
+            this.dragFloat(p, e.shiftKey, e.ctrlKey || e.metaKey);
         } else if (d.kind === 'crop') {
             this.dragCrop(p);
         }
@@ -4268,8 +4271,9 @@ const PaintEditor = {
         } else {
             g.clearRect(0, 0, this.W, this.H);
         }
-        // Into the picture as shown, its bounds there
-        const lb = this.sel ? this.sel.box : { x: 0, y: 0, w: this.W, h: this.H };
+        // Into the picture as shown, its bounds there: the selection's, or
+        // just what's on the layer (its box fits it, not the whole canvas)
+        const lb = this.sel ? this.sel.box : this.contentBox(lifted) || { x: 0, y: 0, w: this.W, h: this.H };
         const corners = [[lb.x, lb.y], [lb.x + lb.w, lb.y], [lb.x, lb.y + lb.h], [lb.x + lb.w, lb.y + lb.h]].map(([x, y]) => this.C.transformPoint({ x, y }));
         const x0 = Math.floor(Math.min(...corners.map(q => q.x))), y0 = Math.floor(Math.min(...corners.map(q => q.y)));
         const x1 = Math.ceil(Math.max(...corners.map(q => q.x))), y1 = Math.ceil(Math.max(...corners.map(q => q.y)));
@@ -4325,14 +4329,22 @@ const PaintEditor = {
         return null;
     },
 
-    dragFloat(p, keepShape) {
+    // free: Ctrl held, moved without snapping
+    dragFloat(p, keepShape, free = false) {
         const d = this.drag, f = this.float, t = f.t, o = d.orig;
         if (f.quad && d.quad) { this.dragQuad(p); return; }
         const cx = f.x0 + f.w / 2 + o.tx, cy = f.y0 + f.h / 2 + o.ty;
         if (d.part === 'move') {
             t.tx = o.tx + (p.ox - d.start.ox);
             t.ty = o.ty + (p.oy - d.start.oy);
-            this.snapFloat();
+            if (free) this._snapLines = null;
+            else this.snapFloat();
+            // Neither turned nor sized: in whole pixels, so it stays crisp
+            // and goes a pixel at a time
+            if (!t.rot && Math.abs(t.sx) === 1 && Math.abs(t.sy) === 1) {
+                t.tx = Math.round(t.tx);
+                t.ty = Math.round(t.ty);
+            }
         } else if (d.part === 'rotate') {
             const a0 = Math.atan2(d.start.oy - cy, d.start.ox - cx), a1 = Math.atan2(p.oy - cy, p.ox - cx);
             let rot = o.rot + a1 - a0;
@@ -4573,8 +4585,11 @@ const PaintEditor = {
 
     // Put down where it is
     commitFloat() {
-        const f = this.float;
+        let f = this.float;
         if (!f) return;
+        // Put past the layers' edges: they grow to keep all of it
+        this.growFor(f);
+        f = this.float;
         this.float = null;
         const l = f.layer;
         const g = l.canvas.getContext('2d');
@@ -4634,6 +4649,60 @@ const PaintEditor = {
         this.endPixels(l, { x: 0, y: 0, w: this.W, h: this.H }, { free: true, name: 'Move', vec: text });
         this.buildOptions();
         this.renderSoon();
+    },
+
+    // How far past the layers' edges what's floating reaches (layer px,
+    // each side), or null: inside them
+    reachOf(f) {
+        const pts = f.quad ? f.quad : (() => { const M = this.floatM.call({ float: f, view: this.view }); return [[0, 0], [f.w, 0], [0, f.h], [f.w, f.h]].map(([x, y]) => M.transformPoint({ x, y })); })();
+        const q = pts.map(p => this.Ci.transformPoint(p)), xs = q.map(p => p.x), ys = q.map(p => p.y);
+        const out = (v) => Math.max(0, Math.ceil(v - 0.01));
+        const r = { l: out(-Math.min(...xs)), t: out(-Math.min(...ys)), r: out(Math.max(...xs) - this.W), b: out(Math.max(...ys) - this.H) };
+        return r.l || r.t || r.r || r.b ? r : null;
+    },
+
+    // The layers grown so what's floating fits on them, kept past the
+    // canvas (hidden there, not written by Export) to come back when it's
+    // moved in again or the canvas is made bigger. One step of Undo before
+    // the move's own; up to three times the photo's size
+    growFor(f) {
+        const need = this.reachOf(f);
+        if (!need) return;
+        const cap = 3 * Math.max(this.PW, this.PH);
+        const room = (have, k) => Math.max(0, Math.min(need[k], cap - have));
+        const e0 = this.ext;
+        const add = { l: room(this.W, 'l') }; add.r = room(this.W + add.l, 'r');
+        add.t = room(this.H, 't'); add.b = room(this.H + add.t, 'b');
+        const W = this.W + add.l + add.r, H = this.H + add.t + add.b;
+        if (!(add.l || add.t || add.r || add.b) || W > 16384 || H > 16384 || W * H > Math.max(36e6, 4 * this.PW * this.PH)) return;
+        const l = f.layer, grow = (c, white = false) => {
+            const n = this.newCanvas(W, H), g = n.getContext('2d');
+            if (white) { g.fillRect(0, 0, W, H); g.clearRect(add.l, add.t, c.width, c.height); }
+            g.drawImage(c, add.l, add.t);
+            return n;
+        };
+        // The layer as it was before it was lifted, and as it is (lifted)
+        const was = this.newCanvas(this.W, this.H);
+        was.getContext('2d').drawImage(this.before, 0, 0);
+        const before = this.canvasState();
+        before.canvases.set(l.id, was);
+        const canvases = new Map();
+        for (const k of this.layers) {
+            canvases.set(k.id, grow(k === l ? was : k.canvas));
+            if (k.mask) canvases.set(k.id + 'm', grow(k.mask, true));
+        }
+        const lifted = grow(l.canvas), sel = this.sel && grow(this.sel.mask);
+        const ext = { l: e0.l + add.l, t: e0.t + add.t, r: e0.r + add.r, b: e0.b + add.b };
+        const after = { ext, pad: this.pad, fill: this.fill, canvases, keepView: true };
+        before.keepView = true;
+        this.float = null;
+        this.applyCanvas(after);
+        this.record({ kind: 'canvas', name: 'Move', before, after, bytes: W * H * 4 * this.layers.length });
+        // Lifted again, on the grown layer: the move's own step from here
+        this.beginPixels(l);
+        l.canvas = lifted;
+        if (sel) { this.sel = { mask: sel }; this.selectionChanged(); }
+        this.float = f;
     },
 
     // Put back as it was
@@ -5978,6 +6047,25 @@ const PaintEditor = {
     },
 
     // Is there anything on a layer?
+    // Where a canvas has anything on it, in its own px, or null: nothing
+    contentBox(c) {
+        const w = c.width, h = c.height, d = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+        let x0 = w, y0 = h, x1 = -1, y1 = -1;
+        for (let y = 0; y < h; y++) {
+            const row = y * w * 4;
+            let first = -1;
+            for (let x = 0; x < w; x++) if (d[row + x * 4 + 3]) { first = x; break; }
+            if (first < 0) continue;
+            let last = first;
+            for (let x = w - 1; x > first; x--) if (d[row + x * 4 + 3]) { last = x; break; }
+            if (first < x0) x0 = first;
+            if (last > x1) x1 = last;
+            if (y < y0) y0 = y;
+            y1 = y;
+        }
+        return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+    },
+
     empty(l) {
         const d = l.canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, this.W, this.H).data;
         for (let i = 3; i < d.length; i += 4) if (d[i]) return false;
@@ -6023,7 +6111,9 @@ const PaintEditor = {
         if (same(pad, this.pad)) return false;
         if (!this.canvasFits(pad)) { this.app.showToast('That canvas is too big: up to three times the photo\'s size', 2400); return false; }
         const before = this.canvasState();
-        const ext = this.extFor(pad), W = this.PW + ext.l + ext.r, H = this.PH + ext.t + ext.b;
+        // (the layers keep what's past the canvas)
+        const want = this.extFor(pad), ext = { l: Math.max(want.l, this.ext.l), t: Math.max(want.t, this.ext.t), r: Math.max(want.r, this.ext.r), b: Math.max(want.b, this.ext.b) };
+        const W = this.PW + ext.l + ext.r, H = this.PH + ext.t + ext.b;
         const dx = ext.l - this.ext.l, dy = ext.t - this.ext.t;
         const canvases = new Map();
         for (const l of this.layers) {
@@ -6076,7 +6166,7 @@ const PaintEditor = {
         this.lastDab = null;
         this.extendPhoto();
         this.setView(this.edit);
-        this.fit();
+        if (!s.keepView) this.fit();
         this.drawLayers();
         this.buildOptions();
         this.renderSoon();
