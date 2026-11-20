@@ -6121,9 +6121,17 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         out.mouseOpen = await openOne();
         await clickName('Photo');
         out.mouseShut = await openOne();
+        // Shut, the bar goes too (it shows on Alt or F10): show it again
+        if (await page.evaluate(() => !MenuBar.isOpen())) { await page.keyboard.press('F10'); await wait(100); }
+        // With one open, pointing at the next name opens that one (as in
+        // Windows); a click on it then shuts it
         await clickName('Photo');
-        await clickName('Edit');
+        const edit = await name('Edit');
+        await page.mouse.move(edit.x, edit.y);
+        await wait(100);
         out.mouseNext = await openOne();
+        await clickName('Edit');
+        out.mouseNextShut = await openOne();
         await page.keyboard.press('Escape');
         await page.keyboard.press('Escape');
         await wait(100);
@@ -6145,7 +6153,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('menu bar: hidden until Alt is tapped; File, Edit, View, Photo and Help', out.hidden && out.shown && out.names === 'File,Edit,View,Photo,Help' && out.focused, JSON.stringify(out));
         check('menu bar: with no project, what needs one is there but greyed out; Esc closes the menu, then the bar', out.greyed && out.closed, JSON.stringify(out));
         check('menu bar: F10 too; each command shows its key and runs, then the bar goes; right goes to the next menu', out.keyShown && out.next && out.ran && out.submenu, JSON.stringify(out));
-        check('menu bar, with the mouse: a name opens its menu and shuts it again; the next name opens that one', out.mouseOpen === 'Photo' && out.mouseShut === null && out.mouseNext === 'Edit', JSON.stringify([out.mouseOpen, out.mouseShut, out.mouseNext]));
+        check('menu bar, with the mouse: a name opens its menu and shuts it again; pointing at the next opens that one, a click shuts it', out.mouseOpen === 'Photo' && out.mouseShut === null && out.mouseNext === 'Edit' && out.mouseNextShut === null, JSON.stringify([out.mouseOpen, out.mouseShut, out.mouseNext, out.mouseNextShut]));
         check('Sort: jEditor\'s menu (the field ticked, then which way in words); picking Date taken sorts newest first; View ▸ Sort by agrees', out.sortMenu === '✓Name|Date taken|Date modified|Size|✓A to Z|Z to A' && out.sortTaken && out.sortSub === 'Date taken,Newest first', JSON.stringify([out.sortMenu, out.sortTaken, out.sortSub]));
         check('menu bar: Settings in Edit on Windows; Alt with another key leaves it alone', out.settings && out.altCombo, JSON.stringify(out));
         check('menu bar: the Mac gets the same menus with their keys, colour labels as a menu of their own, and runs the one chosen', out.mac && out.macSub && out.macRan, JSON.stringify(out));
