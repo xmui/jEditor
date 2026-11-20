@@ -9997,8 +9997,9 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     padding-top: var(--top-row);
 }
 
-/* (Adjust's head lies over its photo, from the top: below the toolbar too) */
-:root.native-toolbar:not([data-skin]) .adj-head {
+/* (Adjust's and Paint's heads lie over the photo, from the top: below the
+   toolbar too) */
+:root.native-toolbar:not([data-skin]) :is(.adj-head, .paint-head) {
     top: var(--top-row);
 }
 
@@ -12992,6 +12993,74 @@ body.touring .controls.idle button { pointer-events: auto; }
     margin-top: max(var(--top-row), var(--head-room, 0px));
 }
 
+/* ---- Paint matches Adjust (the owner: "paint should match adjust", and
+   no pane under the pills). The panel is Adjust's floating glass card,
+   the head floats over the photo beside it, as Adjust's, and the tool's
+   options are a pill at the bottom of the photo (placed by layoutTop,
+   paint-editor.js). Zoom shows only zoomed in or with the view turned,
+   above the options, as Adjust's does ---- */
+/* Beside the photo, where the window's wide enough; a narrow one keeps
+   Paint's stacked layout, the panel under the photo */
+@media (min-width: 761px) {
+    :root:not([data-skin]) .paint-head {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: calc(min(var(--side-paint, var(--side-adjust, 300px)), 45vw) + var(--gutter));
+        z-index: 3;
+    }
+
+    :root:not([data-skin]) .paint-editor.panel-hidden .paint-head {
+        right: 0;
+    }
+
+    /* The tools in the middle of the room between the head's pills and
+       the options, never up into the top row (a big Toolbar size) */
+    :root:not([data-skin]) .paint-tools {
+        top: calc(var(--gutter) + var(--ctl-lg) * var(--ui-scale, 1) + var(--gutter));
+        bottom: calc(var(--gutter) + var(--ctl-lg) + var(--gutter));
+        height: fit-content;
+        max-height: none;
+        margin: auto 0;
+        transform: none;
+        overflow-y: auto;
+    }
+
+    :root:not([data-skin]) .paint-panel {
+        margin: var(--gutter) var(--gutter) var(--gutter) 0;
+        border: 1px solid var(--glass-border);
+        border-radius: 22px;
+        background: var(--glass-bg);
+        box-shadow: var(--shadow-3), var(--glass-rim);
+        backdrop-filter: var(--glass-filter);
+        -webkit-backdrop-filter: var(--glass-filter);
+    }
+}
+
+:root:not([data-skin]) .paint-editor .paint-options,
+:root:not([data-skin]) .paint-editor:not(.panel-hidden) .paint-options {
+    top: auto;
+}
+
+/* What doesn't fit: the card behind › opens upwards, over the photo */
+:root:not([data-skin]) .paint-fold {
+    top: auto;
+    bottom: calc(100% + var(--sp-2));
+}
+
+:root:not([data-skin]) .paint-zoom {
+    bottom: calc(2 * var(--gutter) + var(--ctl-lg));
+    transition: opacity var(--dur-base) var(--ease-out), translate var(--dur-base) var(--ease-out), visibility 0s;
+}
+
+:root:not([data-skin]) .paint-editor:not(.paint-zoomed) .paint-zoom {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    translate: 0 8px;
+    transition: opacity var(--dur-base) var(--ease-out), translate var(--dur-base) var(--ease-out), visibility 0s linear var(--dur-base);
+}
+
 /* ---- Switching modes: the one arriving fades in, from a touch smaller
    (modes.js: arrive). Opacity and transform only, which the GPU does
    without laying anything out; 180ms. Only while it plays (backwards,
@@ -13018,4 +13087,3 @@ body.touring .controls.idle button { pointer-events: auto; }
         animation-name: mode-arrive-fade;
     }
 }
-

@@ -530,6 +530,9 @@ const PaintEditor = {
         this.el('paint-zoom-fit').setAttribute('aria-pressed', String(!!this.fitted));
         this.el('paint-zoom-1').setAttribute('aria-pressed', String(at1));
         this.el('paint-zoom-level').textContent = this.fitted || at1 ? '' : `${Math.round(z * 100)}%`;
+        // In jEditor's own look the pill shows only zoomed in or turned, as
+        // Adjust's (style.css)
+        this.root.classList.toggle('paint-zoomed', !this.fitted || !!deg);
     },
 
     // ---- Snap (View → Snap, Ctrl+;): to the canvas's edges and middle ----
@@ -636,17 +639,17 @@ const PaintEditor = {
         this._layTimer = requestAnimationFrame(() => { this._layTimer = 0; this.layoutTop(); });
     },
 
-    // The top in three places (jEditor's own look): the file and Undo at the
-    // left, after the mode switcher; ⋯ at the right; the tool's options in
-    // the middle of the room between them. What doesn't fit folds behind ›,
-    // last first (a theme keeps its bars, the options under the head)
+    // The top (jEditor's own look): the file and Undo at the left, after
+    // the mode switcher; ⋯ at the right. The tool's options in a pill at
+    // the bottom of the stage (2.0). What doesn't fit folds behind ›, last
+    // first (a theme keeps its bars, the options under the head)
     layoutTop() {
         const box = this.el('paint-options'), head = this.root.querySelector('.paint-head');
         if (!box || !head) return;
         try {
             this.unfold(box);
             const own = !document.documentElement.hasAttribute('data-skin');
-            if (!own || !this.isOpen) { head.style.paddingLeft = box.style.left = box.style.maxWidth = ''; return; }
+            if (!own || !this.isOpen) { head.style.paddingLeft = box.style.left = box.style.top = box.style.maxWidth = ''; return; }
             const ed = this.root.getBoundingClientRect();
             const gap = 12;
             // After the mode switcher, when it floats over this row
@@ -663,15 +666,21 @@ const PaintEditor = {
                 if (r.width && r.bottom > hr.top && r.top < hr.bottom && r.left < ed.left + ed.width / 2) from = Math.max(from, r.right - ed.left);
             }
             head.style.paddingLeft = from ? `${Math.round(from + gap)}px` : '';
-            const file = head.querySelector('.mode-file').getBoundingClientRect();
-            const acts = head.querySelector('.mode-head-acts').getBoundingClientRect();
+            // The options: a pill at the bottom of the stage, in the middle
+            // of the room right of the tools (2.0, the header the owner
+            // picked: the top is the file and the mode's actions only)
+            const st = this.el('paint-stage').getBoundingClientRect();
+            const tools = this.el('paint-tools').getBoundingClientRect();
+            const toolsOver = tools.width && getComputedStyle(this.el('paint-tools')).position === 'absolute';
+            const g = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gutter')) || 20;
             const zoom = parseFloat(getComputedStyle(box).zoom) || 1;
-            const x0 = file.right - ed.left + gap, x1 = (acts.width ? acts.left : ed.right) - ed.left - gap;
+            const x0 = (toolsOver ? tools.right : st.left) - ed.left + gap, x1 = st.right - ed.left - gap;
             const room = Math.max(0, x1 - x0);
             box.style.maxWidth = `${room / zoom}px`;
             this.fold(box, room);
-            const w = box.getBoundingClientRect().width;
-            box.style.left = `${(x0 + Math.max(0, (room - w) / 2)) / zoom}px`;
+            const b = box.getBoundingClientRect();
+            box.style.left = `${(x0 + Math.max(0, (room - b.width) / 2)) / zoom}px`;
+            box.style.top = `${(st.bottom - ed.top - b.height - g) / zoom}px`;
         } finally {
             // Its own folding isn't a change to lay out again
             if (this._optsSeen) this._optsSeen.takeRecords();
@@ -1454,15 +1463,37 @@ const PaintEditor = {
         this.dpr = dpr;
     },
 
+    // Where the fitted picture goes in the stage: 24px round it, and in
+    // jEditor's own look clear of what floats over the stage, by the
+    // gutter: the head's pills at the top, the tools at the left, the
+    // options at the bottom (the owner: pills never on the photo at Fit)
+    fitBox() {
+        const pad = 24, box = { l: pad, t: pad, r: pad, b: pad };
+        if (!document.documentElement.hasAttribute('data-skin') && this.root) {
+            const st = this.el('paint-stage').getBoundingClientRect();
+            const g = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gutter')) || 20;
+            const over = (el) => { if (!el || !el.getClientRects().length) return null; const r = el.getBoundingClientRect(); return r.width && r.right > st.left && r.left < st.right && r.bottom > st.top && r.top < st.bottom ? r : null; };
+            const head = this.root.querySelector('.paint-head');
+            const pills = head ? [...head.querySelectorAll('.mode-file, .mode-head-acts')].map(over).filter(Boolean) : [];
+            if (pills.length) box.t = Math.max(pad, Math.max(...pills.map(r => r.bottom)) - st.top + g);
+            const tools = over(this.el('paint-tools'));
+            if (tools) box.l = Math.max(pad, tools.right - st.left + g);
+            const opts = this.el('paint-options');
+            if (opts && opts.children.length && opts.getClientRects().length) box.b = Math.max(pad, opts.getBoundingClientRect().height + 2 * g);
+        }
+        return { x: box.l, y: box.t, w: Math.max(1, this.cssW - box.l - box.r), h: Math.max(1, this.cssH - box.t - box.b) };
+    },
+
     fit() {
         if (!this.ready) return;
-        const pad = 24, r = (this.view && this.view.r) || 0;
+        const r = (this.view && this.view.r) || 0;
         // Turned (View → Rotate), the picture's bounds turned
         const c = Math.abs(Math.cos(r)), sn = Math.abs(Math.sin(r));
         const bw = this.OW * c + this.OH * sn, bh = this.OW * sn + this.OH * c;
-        const z = Math.min((this.cssW - 2 * pad) / bw, (this.cssH - 2 * pad) / bh, 8);
+        const f = this.fitBox();
+        const z = Math.min(f.w / bw, f.h / bh, 8);
         this.view = { z, x: 0, y: 0, r };
-        this.place({ x: this.OW / 2, y: this.OH / 2 }, this.cssW / 2, this.cssH / 2);
+        this.place({ x: this.OW / 2, y: this.OH / 2 }, f.x + f.w / 2, f.y + f.h / 2);
         this.fitted = true;
         this.positionText();
         this.render();
