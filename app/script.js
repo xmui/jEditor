@@ -8598,16 +8598,16 @@ const app = {
             ['—'],
             ...(own ? [[`Rename ${n}…`, () => this.batchRename(sel), false, undefined, 'edit.rename']] : []),
             ...(own && sel.length > 1 ? [['Sync adjustments…', () => this.syncAdjust(), false, undefined, 'edit.syncAdjust']] : []),
-            // On the bar in the themes; in jEditor's own look only here (and [ ])
-            [`Rotate ${n} left`, () => this.rotateBulk(-90), false, undefined, 'edit.rotateLeft'],
-            [`Rotate ${n} right`, () => this.rotateBulk(90), false, undefined, 'edit.rotateRight'],
-            [`Rotate ${n} 180°`, () => this.rotateBulk(180), false, undefined, 'edit.rotate180'],
-            // Each on its own, or as a roll: photos faded together (a film,
+            // With Adjust's: each on its own, or as a roll: photos faded together (a film,
             // a box of prints) restored the same way
             [`Restore colour of ${n}`, [
                 ['Restore each on its own', () => this.restoreColour(sel)],
                 ['Restore as one roll (faded together)', () => this.restoreColour(sel, { roll: true })]
             ]],
+            // On the bar in the themes; in jEditor's own look only here (and [ ])
+            [`Rotate ${n} left`, () => this.rotateBulk(-90), false, undefined, 'edit.rotateLeft'],
+            [`Rotate ${n} right`, () => this.rotateBulk(90), false, undefined, 'edit.rotateRight'],
+            [`Rotate ${n} 180°`, () => this.rotateBulk(180), false, undefined, 'edit.rotate180'],
             [`Copy ${n} to…`, () => Folders.openPicker(sel, 'copy'), false, undefined, 'edit.copyTo'],
             ...(own ? [] : [[`Export ${n}…`, () => Export.open({ files: sel })]]),
             [`Convert ${n}…`, () => Convert.open({ files: sel })],
@@ -8660,7 +8660,7 @@ const app = {
                 return;
             }
             if (label === 'flags') {
-                if (this.dirHandle && !this.readOnlyMode) menu.appendChild(Flags.menuRow(action));
+                if (this.dirHandle && !this.readOnlyMode) menu.appendChild(Flags.menuRow(action, { say: true }));
                 return;
             }
             if (label === '—') {

@@ -819,6 +819,21 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const items = tile && tile.offsetParent ? app.contextItemsFor(tile, false) : app.contextItemsFor(null, true);
             const sub = items.find(it => it[0] === 'Turn and flip');
             out.subPhoto = !!sub && sub[1].filter(it => typeof it[1] === 'function').length === 6 && !items.some(it => it[0] === 'Rotate left');
+            // The menu's flag row: a line under it says what the symbol
+            // pointed at does, and its key (as Finder's tags); no tooltips
+            const box = Flags.menuRow([app.files[0]], { say: true });
+            document.body.appendChild(box);
+            const say = () => box.querySelector('.ctx-flags-say').textContent;
+            const rej = box.querySelector('.ctx-flag.fl-reject');
+            const idle = say();
+            rej.dispatchEvent(new MouseEvent('mouseenter'));
+            const pointed = say();
+            box.querySelector('.ctx-flags').dispatchEvent(new MouseEvent('mouseleave'));
+            const back = say();
+            box.querySelector('.ctx-flag.fl-red').focus();
+            const focused = say();
+            out.flagSay = { idle, pointed, back, focused, labels: [...box.querySelectorAll('.ctx-flag')].every(b => b.getAttribute('aria-label') && !b.title) };
+            box.remove();
 
             // --- Ctrl+wheel grid zoom ---
             const before = document.getElementById('grid-size-slider').value;
@@ -843,6 +858,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('... a row\'s own menu opens beside it (right arrow, a click), goes back on the left arrow and runs its commands; a command shows its key',
             r.subShut && r.subOpen && r.subBeside && r.subBack && r.subRan && r.subKey === 'Enter', JSON.stringify([r.subShut, r.subOpen, r.subBeside, r.subBack, r.subRan, r.subKey]));
         check('... a photo\'s six turn and flip commands are under Turn and flip', r.subPhoto);
+        check('... the flag row says what the symbol pointed at does, with its key',
+            r.flagSay.idle === 'Flag and label' && /^Reject/.test(r.flagSay.pointed) && r.flagSay.back === 'Flag and label' && /^Red label/.test(r.flagSay.focused) && r.flagSay.labels, JSON.stringify(r.flagSay));
         check('ctrl+wheel zooms the grid', r.zoomChanged);
         await page.close();
     }
