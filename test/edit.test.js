@@ -4185,6 +4185,15 @@ const PROJECT = `
                 pressKey('Escape');
                 await until(() => !Adjust.isOpen);
                 out.escBack = Modes.current() === 'photos';
+                // Back in Photos it fades in, as a mode does (Modes.arrive):
+                // the GPU's opacity, not with motion off
+                const mi = $('main-interface');
+                out.arrive = mi.classList.contains('mode-arrive') && getComputedStyle(mi).animationName === 'mode-arrive';
+                document.documentElement.dataset.motion = 'off';
+                mi.classList.remove('mode-arrive');
+                Modes.arrive(mi);
+                out.arriveOff = !mi.classList.contains('mode-arrive');
+                delete document.documentElement.dataset.motion;
                 $('mode-seg').querySelector('[data-mode="adjust"]').click();
                 await until(() => Adjust.ready);
                 $('adj-done').click();
@@ -4212,6 +4221,7 @@ const PROJECT = `
         check('modes: closing the window in Adjust or Paint is held for the page', r.holds && r.closeAtOnce, JSON.stringify(r));
         check('modes: closing with changes asks "Keep your changes?"; Cancel stays, Keep keeps them', r.askText && r.cancelStays && r.keepKeeps, JSON.stringify(r));
         check('modes: no Done bar in Adjust or Paint, Done in the file\'s pill; Esc or Done goes back to Photos', r.noBar && r.escBack && r.doneBack, JSON.stringify(r));
+        check('modes: switching, the mode arriving fades in (none with motion off)', r.arrive && r.arriveOff, JSON.stringify([r.arrive, r.arriveOff]));
         check('modes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
 

@@ -13057,6 +13057,20 @@ body.touring .controls.idle button { pointer-events: auto; }
     transition: opacity var(--dur-base) var(--ease-out), translate var(--dur-base) var(--ease-out), visibility 0s linear var(--dur-base);
 }
 
+/* ---- Switching modes: the one arriving fades in (modes.js: arrive).
+   Opacity only, which the GPU does without laying anything out, 180ms.
+   Not a scale or a slide: Adjust, Paint and the pills measure where
+   things are as a mode opens, and a transform would throw that off ---- */
+@keyframes mode-arrive {
+    from {
+        opacity: 0;
+    }
+}
+
+:root:not([data-skin]):not([data-motion="off"]) .mode-arrive {
+    animation: mode-arrive var(--dur-base) var(--ease-out) backwards;
+}
+
 /* ---- One top for every mode (the owner's pick A): the mode switcher at
    the left, the photo's name in the middle, the mode's actions at the
    right. In Adjust and Paint, Done joins the name's pill at its end (the
