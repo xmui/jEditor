@@ -383,7 +383,7 @@
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
         platform: mac.platform,
-        features: ['reveal', 'windows', 'places', 'folderMove'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions'] : [], ['themes'], mac.platform === 'mac' && mac.photos ? ['photosLibrary', 'photosAdd'] : []),
+        features: ['reveal', 'windows', 'places', 'folderMove', 'menuBar'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions'] : [], ['themes'], mac.platform === 'mac' && mac.photos ? ['photosLibrary', 'photosAdd'] : []),
         // jEditor's storage on this Mac: one folder per project (see
         // app/folder-cache.js), in the app's own private storage
         async dataDir() {
@@ -551,14 +551,14 @@
         windowAction(action) {
             if (action !== 'resizeTop') mac.request('windowAction', { action });
         },
-        // A theme's menus for the Mac's menu bar: [{ label, items: [{ id,
-        // label, key, enabled } or '—'] }], or null for the app's own. A
-        // command chosen comes back as a 'menu' message, 'theme:' + its id
-        ...(mac.platform === 'mac' ? {
-            setMenus(menus) {
-                mac.request('menus', { menus: menus || null });
-            }
-        } : {}),
+        // The menu bar's menus: [{ label, items: [{ id, label, key,
+        // enabled } or '—'] }], a theme's or (own: true) jEditor's own
+        // (menubar.js), or null for the app's usual ones. A command chosen
+        // comes back as a 'menu' message, 'theme:' + its id. Linux takes
+        // only jEditor's own: a theme draws its menus in the window there.
+        setMenus(menus, { own = false } = {}) {
+            mac.request('menus', { menus: menus || null, own: !!own });
+        },
         // The other windows' projects → [{ id, name, path, folders }]
         async windows() {
             return (await answer('windows')).windows;

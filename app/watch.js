@@ -596,6 +596,7 @@ const Watch = {
             }
         });
         grid.classList.remove('grid-empty', 'grid-empty-project');
+        app.syncNoPhotos();
         Folders.render();
         if (!Folders.inView(app.currentFile) && view.length) app.setCurrent(view[0]);
         else if (app.currentFile) app.updateFileCount();
