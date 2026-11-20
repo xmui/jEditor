@@ -3458,6 +3458,65 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('paintgrow')) {
+        console.log('paint: layers grow past the canvas to keep what\'s moved there (paint-editor.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 200; c.height = 150;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 200, 150);
+                await openProject('grow', { 'g.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                P.opts.snap = false;
+                const L = () => P.layers[P.cur];
+                const a = (x, y) => L().canvas.getContext('2d', { willReadFrequently: true }).getImageData(x + P.ext.l, y + P.ext.t, 1, 1).data[3];
+                L().canvas.getContext('2d').fillStyle = '#ff0000';
+                L().canvas.getContext('2d').fillRect(10, 10, 30, 30);
+                const z0 = P.view.z;
+                // Moved half off the left edge: the layer grows to keep it
+                step = 'out';
+                pressKey('t', { ctrlKey: true });
+                P.float.t.tx = -25;
+                P.commitFloat();
+                out.out = [P.ext.l, P.W, P.OW, a(-14, 20), a(14, 20), P.view.z === z0, P.history.length];
+                // Back in: all of it's there
+                step = 'in';
+                pressKey('t', { ctrlKey: true });
+                P.float.t.tx = 25;
+                P.commitFloat();
+                out.back = [a(10, 10), a(39, 39), a(9, 20), a(40, 20)];
+                // Undo goes back through both, one step each
+                step = 'undo';
+                P.undo(); P.undo(); P.undo();
+                out.undone = [P.ext.l, P.W, a(10, 10), a(39, 39), a(-5, 20)];
+                P.redo(); P.redo();
+                out.redone = [P.ext.l, a(-14, 20), a(14, 20)];
+                // Kept with the layers past the canvas; the canvas the same size
+                step = 'keep';
+                const paint = await P.keep();
+                out.kept = [paint.ext && paint.ext.l, !paint.pad];
+                // A canvas made bigger later shows it
+                step = 'canvas';
+                P.setCanvas({ l: 30, t: 0, r: 0, b: 0 });
+                out.canvas = [P.ext.l, P.OW, a(-14, 20)];
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint grow: moved past the canvas\'s edge, the layer grows to keep it, the canvas and view the same', r.out && r.out[0] === 15 && r.out[1] === 215 && r.out[2] === 200 && r.out[3] === 255 && r.out[4] === 255 && r.out[5], JSON.stringify(r));
+        check('paint grow: moved back in, all of it\'s there', r.back && r.back.join() === '255,255,0,0', JSON.stringify(r));
+        check('paint grow: Undo and Redo go through the growing and the move', r.undone && r.undone.join() === '0,200,255,255,0' && r.redone && r.redone.join() === '15,255,255', JSON.stringify(r));
+        check('paint grow: kept with the layers, the canvas unchanged', r.kept && r.kept.join() === '15,true', JSON.stringify(r));
+        check('paint grow: a bigger canvas shows what was past its edge', r.canvas && r.canvas[0] === 30 && r.canvas[1] === 230 && r.canvas[2] === 255, JSON.stringify(r));
+        check('paint grow: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Restore colour (develop.js: restoreAuto; script.js: restoreColour) ----
     if (wanted('restore')) {
         console.log('restore colour (develop.js, script.js, adjust.js)');

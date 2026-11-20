@@ -4574,8 +4574,11 @@ const PaintEditor = {
 
     // Put down where it is
     commitFloat() {
-        const f = this.float;
+        let f = this.float;
         if (!f) return;
+        // Put past the layers' edges: they grow to keep all of it
+        this.growFor(f);
+        f = this.float;
         this.float = null;
         const l = f.layer;
         const g = l.canvas.getContext('2d');
@@ -4635,6 +4638,60 @@ const PaintEditor = {
         this.endPixels(l, { x: 0, y: 0, w: this.W, h: this.H }, { free: true, name: 'Move', vec: text });
         this.buildOptions();
         this.renderSoon();
+    },
+
+    // How far past the layers' edges what's floating reaches (layer px,
+    // each side), or null: inside them
+    reachOf(f) {
+        const pts = f.quad ? f.quad : (() => { const M = this.floatM.call({ float: f, view: this.view }); return [[0, 0], [f.w, 0], [0, f.h], [f.w, f.h]].map(([x, y]) => M.transformPoint({ x, y })); })();
+        const q = pts.map(p => this.Ci.transformPoint(p)), xs = q.map(p => p.x), ys = q.map(p => p.y);
+        const out = (v) => Math.max(0, Math.ceil(v - 0.01));
+        const r = { l: out(-Math.min(...xs)), t: out(-Math.min(...ys)), r: out(Math.max(...xs) - this.W), b: out(Math.max(...ys) - this.H) };
+        return r.l || r.t || r.r || r.b ? r : null;
+    },
+
+    // The layers grown so what's floating fits on them, kept past the
+    // canvas (hidden there, not written by Export) to come back when it's
+    // moved in again or the canvas is made bigger. One step of Undo before
+    // the move's own; up to three times the photo's size
+    growFor(f) {
+        const need = this.reachOf(f);
+        if (!need) return;
+        const cap = 3 * Math.max(this.PW, this.PH);
+        const room = (have, k) => Math.max(0, Math.min(need[k], cap - have));
+        const e0 = this.ext;
+        const add = { l: room(this.W, 'l') }; add.r = room(this.W + add.l, 'r');
+        add.t = room(this.H, 't'); add.b = room(this.H + add.t, 'b');
+        const W = this.W + add.l + add.r, H = this.H + add.t + add.b;
+        if (!(add.l || add.t || add.r || add.b) || W > 16384 || H > 16384 || W * H > Math.max(36e6, 4 * this.PW * this.PH)) return;
+        const l = f.layer, grow = (c, white = false) => {
+            const n = this.newCanvas(W, H), g = n.getContext('2d');
+            if (white) { g.fillRect(0, 0, W, H); g.clearRect(add.l, add.t, c.width, c.height); }
+            g.drawImage(c, add.l, add.t);
+            return n;
+        };
+        // The layer as it was before it was lifted, and as it is (lifted)
+        const was = this.newCanvas(this.W, this.H);
+        was.getContext('2d').drawImage(this.before, 0, 0);
+        const before = this.canvasState();
+        before.canvases.set(l.id, was);
+        const canvases = new Map();
+        for (const k of this.layers) {
+            canvases.set(k.id, grow(k === l ? was : k.canvas));
+            if (k.mask) canvases.set(k.id + 'm', grow(k.mask, true));
+        }
+        const lifted = grow(l.canvas), sel = this.sel && grow(this.sel.mask);
+        const ext = { l: e0.l + add.l, t: e0.t + add.t, r: e0.r + add.r, b: e0.b + add.b };
+        const after = { ext, pad: this.pad, fill: this.fill, canvases, keepView: true };
+        before.keepView = true;
+        this.float = null;
+        this.applyCanvas(after);
+        this.record({ kind: 'canvas', name: 'Move', before, after, bytes: W * H * 4 * this.layers.length });
+        // Lifted again, on the grown layer: the move's own step from here
+        this.beginPixels(l);
+        l.canvas = lifted;
+        if (sel) { this.sel = { mask: sel }; this.selectionChanged(); }
+        this.float = f;
     },
 
     // Put back as it was
@@ -6043,7 +6100,9 @@ const PaintEditor = {
         if (same(pad, this.pad)) return false;
         if (!this.canvasFits(pad)) { this.app.showToast('That canvas is too big: up to three times the photo\'s size', 2400); return false; }
         const before = this.canvasState();
-        const ext = this.extFor(pad), W = this.PW + ext.l + ext.r, H = this.PH + ext.t + ext.b;
+        // (the layers keep what's past the canvas)
+        const want = this.extFor(pad), ext = { l: Math.max(want.l, this.ext.l), t: Math.max(want.t, this.ext.t), r: Math.max(want.r, this.ext.r), b: Math.max(want.b, this.ext.b) };
+        const W = this.PW + ext.l + ext.r, H = this.PH + ext.t + ext.b;
         const dx = ext.l - this.ext.l, dy = ext.t - this.ext.t;
         const canvases = new Map();
         for (const l of this.layers) {
@@ -6096,7 +6155,7 @@ const PaintEditor = {
         this.lastDab = null;
         this.extendPhoto();
         this.setView(this.edit);
-        this.fit();
+        if (!s.keepView) this.fit();
         this.drawLayers();
         this.buildOptions();
         this.renderSoon();
