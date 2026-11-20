@@ -38,6 +38,10 @@
 //                enginePreview; JEditorNative.engineThumb and enginePreview).
 //                Today's code is the fallback, for the web and for whatever
 //                the engine can't do
+//   menuBar      a menu bar with every command and its key (menubar.js): the
+//                Mac's along the top of the screen, Linux's in the window
+//                (Alt shows it), and on Windows one the page draws, shown
+//                when Alt is tapped
 //   engineHeic   the engine does HEICs too, grid thumbnails and the viewer's
 //                picture (libheif, with libde265; its DLLs beside the
 //                engine's), natively and on every core, rather than the

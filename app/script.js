@@ -296,6 +296,7 @@ const app = {
         Themes.init(this);
         Fit.init();
         History.init(this);
+        MenuBar.init(this);
         Tour.init();
         Watch.init(this);
         this.initContextMenu();
@@ -540,7 +541,7 @@ const app = {
     // [kind, label, on to start with, help]
     TOAST_KINDS: [
         ['rotate', 'Rotating', false, 'Turned 1 photo right…'],
-        ['flags', 'Flags and labels', true, 'Starred, needs rescan, color labels'],
+        ['flags', 'Flags and labels', true, 'Picked, rejected, needs rescan, color labels'],
         ['crop', 'Cropping and Auto crop', true, 'Saved, crop kept, auto cropped'],
         ['adjust', 'Adjusting', true, 'Adjustments kept, copied, pasted'],
         ['move', 'Moving, copying and folders', true, 'Moved to a folder, new folder'],
@@ -599,6 +600,10 @@ const app = {
                 if (typeof saved.accent === 'string' && /^#[0-9a-f]{6}$/i.test(saved.accent)) this.uiPrefs.accent = saved.accent;
                 if (typeof saved.singleControls === 'boolean') this.uiPrefs.singleControls = saved.singleControls;
                 if (typeof saved.folderRail === 'boolean') this.uiPrefs.folderRail = saved.folderRail;
+                if (saved.railIn && typeof saved.railIn === 'object') {
+                    this.uiPrefs.railIn = {};
+                    for (const m of ['adjust', 'paint']) if (typeof saved.railIn[m] === 'boolean') this.uiPrefs.railIn[m] = saved.railIn[m];
+                }
                 if (['photos', 'adjust', 'paint'].includes(saved.startIn)) this.uiPrefs.startIn = saved.startIn;
                 // The home page's Settings menu (start.js)
                 if (typeof saved.keepEdits === 'boolean') this.uiPrefs.keepEdits = saved.keepEdits;
@@ -5122,8 +5127,9 @@ const app = {
         ['edit.undo', 'global', 'Edit', 'Undo', ['Ctrl+Z']],
         ['edit.history', 'global', 'Edit', 'Undo history: go back several steps', ['H']],
         ['edit.selectAll', 'global', 'Edit', 'Select all (grid)', ['Ctrl+A']],
-        ['flag.star', 'global', 'Flags', 'Star / unstar', ['P']],
-        ['flag.rescan', 'global', 'Flags', 'Needs rescan on / off', ['X']],
+        ['flag.star', 'global', 'Flags', 'Pick / unpick', ['P']],
+        ['flag.reject', 'global', 'Flags', 'Reject / unreject (the tile dims)', ['X']],
+        ['flag.rescan', 'global', 'Flags', 'Needs rescan on / off', ['Shift+X']],
         ['flag.red', 'global', 'Flags', 'Red label', ['1']],
         ['flag.yellow', 'global', 'Flags', 'Yellow label', ['2']],
         ['flag.green', 'global', 'Flags', 'Green label', ['3']],
@@ -5362,6 +5368,7 @@ const app = {
             },
             'flag.star': () => Flags.apply('star'),
             'flag.rescan': () => Flags.apply('rescan'),
+            'flag.reject': () => Flags.apply('reject'),
             'flag.red': () => Flags.apply('red'),
             'flag.yellow': () => Flags.apply('yellow'),
             'flag.green': () => Flags.apply('green'),
@@ -6050,6 +6057,20 @@ const app = {
         }
     },
 
+    // A key as the menus write it: Ctrl+Shift+C
+    keyText(combo) {
+        return this.formatCombo(combo).replace(/ \+ /g, '+');
+    },
+
+    // A command's name in a few words: without its brackets, and up to a
+    // colon ("Write edits to file: the original…" is "Write edits to file",
+    // "Brush (or line, or text) bigger" is "Brush bigger")
+    shortLabel(label) {
+        const bare = label.replace(/ \([^)]*\)/g, '');
+        const cut = bare.indexOf(': ');
+        return (cut > 0 ? bare.slice(0, cut) : bare).trim() || label;
+    },
+
     renderShortcutsPanel() {
         const list = document.getElementById('shortcuts-list');
         const filter = (document.getElementById('shortcuts-filter').value || '').trim().toLowerCase();
@@ -6061,7 +6082,7 @@ const app = {
             const [id, , group, label] = a;
             if (!this.actionOn(id)) return;
             const keys = this.keyBindings[id];
-            const text = (label + ' ' + keys.map(k => this.formatCombo(k)).join(' ')).toLowerCase();
+            const text = (label + ' ' + keys.map(k => this.formatCombo(k) + ' ' + this.keyText(k)).join(' ')).toLowerCase();
             if (filter && !text.includes(filter)) return;
             if (!groups.has(group)) groups.set(group, []);
             groups.get(group).push(a);
@@ -6076,9 +6097,12 @@ const app = {
                 const defaults = profileDefaults[id];
                 const row = document.createElement('div');
                 row.className = 'sc-row';
+                // A short name; the rest of a long one in its tooltip (audit M7)
                 const name = document.createElement('span');
                 name.className = 'sc-label';
-                name.textContent = label;
+                const short = this.shortLabel(label);
+                name.textContent = short;
+                if (short !== label) name.title = label;
                 const keysEl = document.createElement('span');
                 keysEl.className = 'sc-keys';
 
@@ -6086,7 +6110,7 @@ const app = {
                     const kbd = document.createElement('button');
                     kbd.className = 'sc-key';
                     kbd.title = 'Remove this key';
-                    kbd.textContent = this.formatCombo(combo);
+                    kbd.textContent = this.keyText(combo);
                     kbd.onclick = () => { this.removeKey(id, combo); this.renderShortcutsPanel(); };
                     keysEl.appendChild(kbd);
                 });
@@ -6109,7 +6133,7 @@ const app = {
                 if (this.keyBindings[id].join('\n') !== defaults.join('\n')) {
                     const reset = document.createElement('button');
                     reset.className = 'sc-reset';
-                    reset.title = 'Back to default: ' + (defaults.map(k => this.formatCombo(k)).join(', ') || 'none');
+                    reset.title = 'Back to default: ' + (defaults.map(k => this.keyText(k)).join(', ') || 'none');
                     reset.textContent = '↺';
                     reset.onclick = () => { this.resetKeys(id); this.renderShortcutsPanel(); };
                     keysEl.appendChild(reset);
@@ -8178,7 +8202,7 @@ const app = {
 
     // A menu's rows (the right-click menu's, and a menu opened beside one)
     fillMenu(menu, items) {
-        items.forEach(([label, action, danger, checked, key, more]) => {
+        items.forEach(([label, action, danger, checked, key, more, off]) => {
             // A heading over the items after it
             if (action === null) {
                 const h = document.createElement('div');
@@ -8203,6 +8227,8 @@ const app = {
             btn.textContent = label;
             btn.setAttribute('role', 'menuitem');
             if (danger) btn.classList.add('danger');
+            // One that can't run now (the menu bar's): there, greyed out
+            if (off) btn.disabled = true;
             // A setting that's on (true) or off (false): ticked when on
             if (typeof checked === 'boolean') {
                 btn.setAttribute('role', 'menuitemcheckbox');

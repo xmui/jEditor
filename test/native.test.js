@@ -1568,6 +1568,13 @@ async function newPage(context, baseUrl, host = null) {
             $('cam-shoot').click();
             await wait(() => app.files.some(f => f.name === 'photo4.jpg'));
             out.calls = window.__tetherCalls.slice();
+            // One shutter while the live view is on (Take photo hidden);
+            // a double-click on the view makes it bigger, and back
+            out.oneShutter = getComputedStyle($('cam-take')).display === 'none' && getComputedStyle($('cam-big')).display === 'none';
+            $('cam-view').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+            out.bigger = $('cam-panel').classList.contains('big');
+            $('cam-view').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+            out.bigger = out.bigger && !$('cam-panel').classList.contains('big');
             // Keep a copy on the card: changed while connected, sent at once
             $('cam-card').checked = false;
             $('cam-card').dispatchEvent(new Event('change'));
@@ -1616,6 +1623,7 @@ async function newPage(context, baseUrl, host = null) {
         check('Disconnect: says how many, and the names carry on for next time', /Disconnected · 2 photos into Shoot Order/.test(r.ended) && r.nextNames === '5', JSON.stringify([r.ended, r.nextNames]));
         check('the camera going away says so, with what came in, and shows Details', /disconnected/.test(r.alert) && /unplugged/.test(r.alert) && /1 photo came in/.test(r.alert) && r.detailsOnError, r.alert);
         check('choices are remembered', r.prefs && r.prefs.camera === 'cam-1' && r.prefs.keepOnCard === false, JSON.stringify(r.prefs));
+        check('camera: one shutter on the live view (no Take photo beside it), and a double-click makes the view bigger and back', r.oneShutter && r.bigger, JSON.stringify([r.oneShutter, r.bigger]));
         check('camera suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
@@ -2417,7 +2425,7 @@ async function newPage(context, baseUrl, host = null) {
         check('... Copies: no presets of its own, the sections of an export window (location, naming, file settings, sizing, metadata, after) closed and saying their settings, the line by the buttons, the folder named after the project', r.copiesTab === 'Copies' && r.noPresets &&
             r.secs === 'Photos: 1 selected | Export location: Beta export, in this project | File naming: Original names · photo1.jpg | File settings: Original format | Image sizing: Full size | Metadata: All metadata | After export: Do nothing' &&
             /^1 photo, about .+, into Beta export in this project\.$/.test(r.sum) && r.folder === 'Beta export', JSON.stringify([r.noPresets, r.secs, r.sum, r.folder]));
-        check('... the photo selected, a size typed, into "Beta export", left out of the project', /The photo selected\*/.test(r.which) && /2 starred/.test(r.which) && r.copiesGo === 'Export 1 photo' && r.size === 100 && r.leftOut, JSON.stringify(r));
+        check('... the photo selected, a size typed, into "Beta export", left out of the project', /The photo selected\*/.test(r.which) && /2 picked/.test(r.which) && r.copiesGo === 'Export 1 photo' && r.size === 100 && r.leftOut, JSON.stringify(r));
         check('... a name already there is asked about: keep both (the copy numbered), replace, or cancel', r.asksFirst === 'ask' && r.asked === '“photo1.jpg” is already there | Keep both | Replace | false'
             && r.both === 'photo1 (2).jpg,photo1.jpg' && r.replaced === r.both && r.canceled === r.both, JSON.stringify([r.asksFirst, r.asked, r.both, r.replaced, r.canceled]));
         check('... or, set to skip, the photo is skipped', r.skipped === r.both, r.skipped);

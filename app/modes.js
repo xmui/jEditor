@@ -285,6 +285,12 @@ const Modes = {
         const ui = app.elements.mainInterface;
         const open = !!ui && !ui.classList.contains('hidden');
         document.documentElement.classList.toggle('modes-on', any);
+        // Into or out of an editing mode: the sidebar as that mode has it
+        // (folders.js: railOpen), which renders this again
+        if (this._railFor !== mode) {
+            this._railFor = mode;
+            if (typeof Folders !== 'undefined' && Folders.app) { Folders.render(); return; }
+        }
         // The sidebar's switch
         const seg = this.el('mode-seg');
         if (seg) {
