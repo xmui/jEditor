@@ -338,6 +338,11 @@ const app = {
         document.addEventListener('fullscreenchange', () => this.syncFullscreen());
         new MutationObserver(() => this.syncFullscreen()).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
         this.elements.btnCustomize.addEventListener('click', () => this.toggleCustomizePanel());
+        // The same gear in Adjust's and Paint's pill, before their ⋯
+        for (const id of ['adj-settings', 'paint-settings']) {
+            const b = document.getElementById(id);
+            if (b) b.addEventListener('click', () => this.toggleCustomizePanel());
+        }
         document.getElementById('btn-shortcuts').addEventListener('click', () => this.toggleShortcutsPanel());
         document.getElementById('btn-whatsnew').addEventListener('click', () => this.toggleWhatsNew());
         document.getElementById('btn-whatsnew-start').addEventListener('click', () => this.toggleWhatsNew(true));
@@ -520,7 +525,7 @@ const app = {
             order: ['scan', 'camera', 'crop', 'info', 'view', 'refresh', 'adjust', 'paint', 'history', 'fit', 'strip', 'fullscreen', 'dupes', 'convert', 'keys', 'whatsnew', 'customize'],
             placement: { // 'main' | 'more' | 'hidden'
                 scan: 'main', camera: 'main', info: 'main', view: 'more', refresh: 'more', crop: 'main', adjust: 'more', paint: 'more', history: 'more',
-                fit: 'more', strip: 'more', fullscreen: 'more', dupes: 'more', convert: 'more', keys: 'more', whatsnew: 'more', customize: 'more'
+                fit: 'more', strip: 'more', fullscreen: 'more', dupes: 'more', convert: 'more', keys: 'more', whatsnew: 'more', customize: 'main'
             },
             vertical: false,
             scale: 1,
@@ -538,7 +543,7 @@ const app = {
             startIn: 'photos', // the landing page's Start in (modes.js): photos, adjust or paint
             writeEdits: 'ask', // Write edits to file: ask, 'originals' or 'copies' (askWriteEdits; Settings → Projects → Saving)
             modes: 1, // 1.43: Adjust and Paint are modes (modes.js), off the toolbar's main row
-            pill: 2, // 2.0: the pill is Scan, Camera, Crop and Info (view, rescan and history in More)
+            pill: 3, // 2.0: the pill is Scan, Camera, Crop and Info (view, rescan and history in More); 3: Settings at its end, before ⋯
             theme: 'system',
 
             skin: '', // a theme (themes.js): 'xp/royale'; '' is jEditor's own look
@@ -636,10 +641,17 @@ const app = {
                 // 2.0's pill, once: the view switch, Rescan and History go to
                 // More (the grid has its switch, the folder is watched, H opens
                 // History), and Crop comes before Info. Anything else chosen stays
-                if (saved.pill !== 2) {
+                if (!(saved.pill >= 2)) {
                     for (const k of ['view', 'refresh', 'history']) if (this.uiPrefs.placement[k] === 'main') this.uiPrefs.placement[k] = 'more';
                     const o = this.uiPrefs.order, c = o.indexOf('crop'), i = o.indexOf('info');
                     if (c > i && i >= 0) { o.splice(c, 1); o.splice(i, 0, 'crop'); }
+                }
+                // Settings (the gear) at the pill's end, just before ⋯, in
+                // every mode (the owner's ask), once; taken off after, it stays off
+                if (!(saved.pill >= 3)) {
+                    this.uiPrefs.placement.customize = 'main';
+                    const o = this.uiPrefs.order, k = o.indexOf('customize');
+                    if (k >= 0) { o.splice(k, 1); o.push('customize'); }
                 }
                 if (saved.transparency >= 10 && saved.transparency <= 100) this.uiPrefs.transparency = saved.transparency;
                 // The theme (themes.js checks it's one it knows) and each theme's own settings

@@ -11,6 +11,7 @@ const CHANGELOG = [
             'One top in every mode: Photos, Adjust and Paint have the same pills along the top, the modes at the left, the photo\'s name in the middle and the mode\'s own buttons at the right. In Adjust and Paint, Done is a blue button at the end of the name\'s pill and does what `Enter` does: back to Photos, with what you did kept. It slides in as the mode opens, and the pill stays in the middle.',
             'Switching between Photos, Adjust and Paint, the mode arriving fades in. There\'s no fade with Settings → Animations off or with reduced motion.',
             'A new shape in jEditor\'s own look: buttons, text fields, pop-up menus and switches are pills, and a button with only a picture on it is round.',
+            'Settings is on the top-right pill in every mode, at its end just before ⋯ (the gear), in Photos, Adjust and Paint. The menu bar that Alt shows is made as the name pill above it is, the same glass, height and type, and slides in from under it.',
             'The photo is never under the pills: in Photos\' viewer and in Adjust it\'s fitted below the pills at the top, with a margin round it, and zoomed in it stays clipped there.',
             'Full screen (`F`) is just the photo and its pills: the sidebar and the film strip step aside, and come back as they were when you leave. `Ctrl+B` and the strip\'s button still bring them in.',
             'Menus are rounder and simpler: big glass cards with tall rows and a small picture beside each command.',

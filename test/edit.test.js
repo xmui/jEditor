@@ -4482,6 +4482,23 @@ const PROJECT = `
         // ⋯ opens its menu with the mouse, and another press shuts it
         const more = async (sel) => { const at = await mid(sel); await page.mouse.click(at.x, at.y); await page.waitForTimeout(100); const opened = !(await page.evaluate(() => !document.getElementById('context-menu'))); await page.mouse.click(at.x, at.y + 200 > 700 ? at.y - 50 : at.y + 200); return opened; };
         out.adjustMore = await more('#adj-more');
+        // Settings: the gear at the end of the pill, just before ⋯ (as in
+        // Photos), and it opens Settings
+        const gear = async (id, more) => {
+            const at = await page.evaluate(([id, more]) => {
+                const g = document.getElementById(id);
+                if (!g || !g.getClientRects().length || g.nextElementSibling !== document.getElementById(more)) return null;
+                const r = g.getBoundingClientRect();
+                return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+            }, [id, more]);
+            if (!at) return 'not before ⋯';
+            await page.mouse.click(at.x, at.y);
+            await page.waitForTimeout(150);
+            const open = await page.evaluate(() => app.isSettingsOpen());
+            await page.evaluate(() => app.toggleCustomizePanel(false));
+            return open;
+        };
+        out.gearAdjust = await gear('adj-settings', 'adj-more');
         await page.evaluate(async () => { await Modes.leave(true); await app.enterPaint(); await until(() => PaintEditor.ready); });
         await counted('#paint-stage');
         const strokes = () => page.evaluate(() => PaintEditor.history.length);
@@ -4492,12 +4509,14 @@ const PROJECT = `
         out.paintThrough = await downs() === 1;
         out.paintPane = await press('#paint-panel');
         out.paintMore = await more('#paint-more');
+        out.gearPaint = await gear('paint-settings', 'paint-more');
         await page.evaluate(() => Modes.leave(true));
         check('menus: a press on the grid closes the right-click menu, left or right button', setup && out.grid === true && out.gridRight === true, JSON.stringify(out));
         check('menus: a press in the menu or its row\'s own menu keeps it', out.keptMenu && out.keptFly, JSON.stringify(out));
         check('menus: leaving the window closes it', out.blur, JSON.stringify(out));
         check('menus: a press on the photo, in Photos, closes it', out.single === true, JSON.stringify(out));
         check('menus: a press on Adjust\'s photo or its pane closes it', out.adjustPhoto === true && out.adjustPane === true, JSON.stringify(out));
+        check('Settings in Adjust\'s and Paint\'s pill: the gear just before ⋯, and it opens Settings', out.gearAdjust === true && out.gearPaint === true, JSON.stringify([out.gearAdjust, out.gearPaint]));
         check('menus: a press on Paint\'s canvas or its pane closes it', out.paintCanvas === true && out.paintPane === true, JSON.stringify(out));
         check('menus: ⋯ in Adjust and in Paint opens its menu with the mouse', out.adjustMore && out.paintMore, JSON.stringify(out));
         check('menus: the press that closes it, on Adjust\'s or Paint\'s photo, only closes it (no pin moved, nothing painted); with none open a press goes through', out.adjustSwallowed && out.paintSwallowed && out.adjustThrough && out.paintThrough, JSON.stringify(out));
