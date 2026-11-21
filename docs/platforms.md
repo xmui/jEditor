@@ -6,7 +6,7 @@ jEditor is one web app (`app/`) in four places: the Windows app (`src/`), the Ma
 
 1. **Every feature is for every platform unless there's a reason it can't be.** Windows comes first (the lab runs it), so a feature is made and tested there, then brought to the others.
 2. **A feature is exclusive only for one of three reasons**, and its row in the table gives it:
-   - **system**: only that system has the thing, such as Mica, Liquid Glass, Quick Access, or the Mac's privacy settings. These stay exclusive by design.
+   - **system**: only that system has the thing, such as Mica, Liquid Glass, or the Mac's privacy settings. These stay exclusive by design.
    - **not yet**: it needs native work that hasn't been done for the other systems, such as a scanner, a camera or disc burning. The **Gaps** section below says what it would take to bring each one over.
    - **browser**: a browser can't do it (paths on disk, its own windows, the system's bin).
 3. **Code asks for the feature, never the platform.** The app lists what it has in `JEditorNative.features` (`src/bridge.js`, `mac/bridge.js`), the page asks `Host.has('feature')` or marks the element `data-needs="feature"`, and an app without it never shows it (`app/host.js`). Checking `Host.platform()` or `Host.mac()` is only for wording and feel: the names of things, the keys, how a trackpad scrolls.
@@ -30,7 +30,6 @@ Checked by `test/parity.test.js`: each ✓ must match the app's `features` list,
 | `burn` | Burning a project onto a CD or DVD | ✓ | | | | not yet on Mac and Linux; browser |
 | `themes` | Themes in Settings → Appearance, with their own title bar (paused: an experiment, off to start with) | ✓ | ✓ | ✓ | | browser (by choice: the web keeps today's look) |
 | `menuBar` | A menu bar with every command and its key: the Mac's along the top of the screen, Linux's in the window, Windows' shown when Alt is tapped | ✓ | ✓ | ✓ | | browser (Alt and F10 belong to the browser) |
-| `quickAccess` | Explorer's Quick Access in the sidebar's Pinned | ✓ | | | | system |
 | `backdrop` | Mica or Acrylic behind the window | ✓ | | | | system |
 | `folderMove` | Changing the projects folder moves the projects there (copied, checked, then removed) | ✓ | ✓ | ✓ | | browser |
 | `cacheFolder` | Choosing where the cache is kept, in Settings → Projects | ✓ | | | | not yet on Mac and Linux (their cache is in the app's private storage); browser |
@@ -69,7 +68,6 @@ Each of these is exclusive only because nobody has built it for the other system
 |---|---|---|---|
 | `recycle` | Electron's `shell.trashItem` moves a photo to the Trash. Ctrl+Z also needs to find it there and put it back. | The same, to the desktop's trash (freedesktop). | small |
 | `log` | The Electron host writes a log file, and the page shows it as on Windows. | The same. | small |
-| Pinned from the system (like `quickAccess`) | Finder's sidebar favourites can't be read easily, so probably not. | GTK bookmarks (`~/.config/gtk-3.0/bookmarks`) | small (Linux) |
 | `cacheFolder` | The Electron host keeps the cache in Chromium's private storage. It would need the page's storage to come from a real folder (as on Windows), then the same move. | The same. | medium |
 | `burn` | `drutil` / `hdiutil burn` | `xorriso` / `growisofs` | medium |
 | `scan` | ImageCaptureCore, for scanners with a Mac (ICA) driver | SANE | large |

@@ -302,7 +302,7 @@ const Motion = {
             const r = cur.getBoundingClientRect();
             if (r.width) return r;
         }
-        const box = app.elements.imageContainer.getBoundingClientRect();
+        const box = app.viewBox();
         if (!box.width || !box.height) return null;
         w = w || (f && f._dims && f._dims.w) || box.width;
         h = h || (f && f._dims && f._dims.h) || box.height;

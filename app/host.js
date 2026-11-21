@@ -10,7 +10,6 @@
 //   recycle      deleted photos to the system's bin, and back (Ctrl+Z)
 //   reveal       show a folder in Explorer / Finder
 //   places       the sidebar: projects, pinned folders, drives
-//   quickAccess  Explorer's Quick Access in the sidebar's Pinned
 //   windows      several windows, Split, moving photos between them
 //   scan         scanning into the project
 //   camera       tethered shooting
