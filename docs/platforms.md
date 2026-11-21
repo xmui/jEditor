@@ -34,6 +34,7 @@ Checked by `test/parity.test.js`: each ✓ must match the app's `features` list,
 | `backdrop` | Mica or Acrylic behind the window | ✓ | | | | system |
 | `folderMove` | Changing the projects folder moves the projects there (copied, checked, then removed) | ✓ | ✓ | ✓ | | browser |
 | `cacheFolder` | Choosing where the cache is kept, in Settings → Projects | ✓ | | | | not yet on Mac and Linux (their cache is in the app's private storage); browser |
+| `systemFonts` | Paint's Text tool lists the fonts installed on the computer, each in its own typeface, with search and the recent ones first | ✓ | ✓ | ✓ | Chrome, Edge | browser (only Chrome and Edge can list them, after asking; other browsers get Paint's five fonts) |
 | `permissions` | The Mac's privacy settings jEditor needs, in one window | | ✓ | | | system |
 | `photosLibrary` | The Photos library in the sidebar (Locations): its albums open as the project, and edits are saved back into Photos on top of the current version | | ✓ | | | system |
 | `photosAdd` | Add to Photos library: a project's photos into Photos, in an album named after it | | ✓ | | | system |

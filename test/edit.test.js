@@ -3600,6 +3600,88 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('paintfonts')) {
+        console.log('paint: the computer\'s fonts in Text (paint-editor.js: fontChoice, openFonts)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 300; c.height = 200;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 300, 200);
+                await openProject('fonts', { 'f.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                try { localStorage.removeItem('jeditor.paint.fonts'); } catch (e) { /* none */ }
+                // An app's list, as the bridges give it (systemFonts)
+                const had = window.JEditorNative;
+                window.JEditorNative = { ...(had || {}), features: [...((had && had.features) || []), 'systemFonts'], fonts: async () => ['Verdana', 'Arial', 'arial', '.Hidden', 'Georgia'] };
+                P._fonts = null;
+                P.setTool('text');
+                const box = document.getElementById('paint-options');
+                const btn = () => box.querySelector('.paint-font-btn');
+                step = 'button';
+                out.shown = btn() && btn().textContent;
+                out.noSelect = !box.querySelector('select option[value="Georgia, serif"]');
+                btn().click();
+                await sleep(30);
+                const pop = () => document.querySelector('.paint-fonts');
+                const names = () => [...pop().querySelectorAll('.paint-font')].map(b => b.textContent);
+                const heads = () => [...pop().querySelectorAll('.paint-fonts-heading')].map(h => h.textContent);
+                out.heads = heads().join();
+                out.names = names().join();
+                out.ownFace = getComputedStyle(pop().querySelector('.paint-font[data-font="Impact, \\"Arial Black\\", sans-serif"]') || pop().querySelector('.paint-font:nth-of-type(5)')).fontFamily.includes('Impact');
+                step = 'search';
+                const q = pop().querySelector('input');
+                q.value = 'ver'; q.dispatchEvent(new Event('input'));
+                out.found = names().join();
+                q.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+                out.picked = P.opts.font;
+                out.closed = !pop();
+                out.after = btn().textContent;
+                out.btnFace = btn().style.fontFamily.includes('Verdana');
+                step = 'recent';
+                btn().click();
+                await sleep(30);
+                out.recent = heads()[0] + ':' + names()[0];
+                document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+                out.offClosed = !pop();
+                // Typed in it: the text layer keeps the font, with its fallback
+                step = 'text';
+                const st = document.getElementById('paint-stage'), ta = document.getElementById('paint-text');
+                const sc = (qq) => { const sp = P.V().transformPoint(qq); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                st.dispatchEvent(new PointerEvent('pointerdown', { ...sc({ x: 40, y: 40 }), pointerId: 1, bubbles: true, button: 0 }));
+                st.dispatchEvent(new PointerEvent('pointerup', { ...sc({ x: 40, y: 40 }), pointerId: 1, bubbles: true }));
+                await sleep(20);
+                ta.value = 'Hi'; ta.dispatchEvent(new Event('input'));
+                ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
+                await sleep(20);
+                const tl = P.layers.find(l => l.text);
+                out.layerFont = tl && tl.text.font;
+                // A file's font this computer doesn't have: shown in Sans, its name greyed
+                step = 'missing';
+                P.opts.font = 'Futura';
+                P.buildOptions();
+                out.missing = btn().classList.contains('missing') && btn().textContent === 'Futura';
+                out.fallback = P.textFont({ size: 20, font: 'Futura' });
+                window.JEditorNative = had;
+                P._fonts = null;
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint fonts: Font is a button in its typeface, not the old list', r.shown === 'Sans' && r.noSelect, JSON.stringify(r));
+        check('paint fonts: the picker lists jEditor\'s five, then the computer\'s, each once, hidden ones left out', r.heads === 'jEditor,On this computer' && r.names === 'Sans,Serif,Mono,Comic,Impact,Arial,Georgia,Verdana' && r.ownFace, JSON.stringify(r));
+        check('paint fonts: search finds it, Enter picks it and closes, the button shows it', r.found === 'Verdana' && r.picked === '"Verdana", system-ui, sans-serif' && r.closed && r.after === 'Verdana' && r.btnFace, JSON.stringify(r));
+        check('paint fonts: the font used last is at the top; a press off it closes it', r.recent === 'Recent:Verdana' && r.offClosed, JSON.stringify(r));
+        check('paint fonts: the text layer keeps the font, with a fallback', r.layerFont === '"Verdana", system-ui, sans-serif', JSON.stringify(r));
+        check('paint fonts: a font not on this computer is greyed and falls back to Sans', r.missing && r.fallback === '20px Futura, system-ui, sans-serif', JSON.stringify(r));
+        check('paint fonts: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Restore colour (develop.js: restoreAuto; script.js: restoreColour) ----
     if (wanted('restore')) {
         console.log('restore colour (develop.js, script.js, adjust.js)');
@@ -4046,6 +4128,93 @@ const PROJECT = `
         check('lens: Sync copies it, as Lens fixes, and nothing else does', r.synced && r.bUntouched, JSON.stringify(r));
         check('lens: opened again it\'s there; Reset Geometry takes it off', r.again && r.reset && r.resetSaved, JSON.stringify(r));
         check('lens: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    if (wanted('menus')) {
+        console.log('right-click menus close on a press off them (script.js), in every mode');
+        const { page, issues } = await open();
+        const out = {};
+        // The test's menu (marked): a right-click may open another in its place
+        const shut = () => page.evaluate(() => !document.querySelector('#context-menu[data-t]'));
+        const menu = () => page.evaluate(() => { app.openContextMenu([['One', () => { }], ['More', [['Two', () => { }]]]], 5, 5); const m = document.getElementById('context-menu'); if (m) m.dataset.t = '1'; return !!m; });
+        const mid = (sel) => page.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, sel);
+        // Pressed (and checked before the button comes up, so no click
+        // closes it), with the left button or the right one
+        const press = async (sel, button = 'left') => {
+            const at = await mid(sel);
+            if (!(await menu())) return 'no menu';
+            await page.mouse.move(at.x, at.y);
+            await page.mouse.down({ button });
+            const gone = await shut();
+            await page.mouse.up({ button });
+            await page.evaluate(() => app.closeContextMenu());
+            return gone;
+        };
+        const setup = await page.evaluate(async () => {
+            const bytes = await makeRealJpeg(300, 200, { color: '#777' });
+            await openProject('menus', { 'a.jpg': new Blob([bytes], { type: 'image/jpeg' }) });
+            app.setView('grid');
+            await sleep(200);
+            return app.files.length === 1 && app.viewMode === 'grid';
+        });
+        out.grid = await press('#grid-view');
+        out.gridRight = await press('#grid-view', 'right');
+        // A press in the menu, or on its row's own menu, keeps it
+        await menu();
+        await page.evaluate(() => document.querySelector('#context-menu .ctx-more').click());
+        const inFly = await mid('.ctx-fly button');
+        await page.mouse.move(inFly.x, inFly.y);
+        await page.mouse.down();
+        out.keptFly = !(await shut());
+        await page.mouse.up();
+        await page.evaluate(() => { app.closeContextMenu(); app.openContextMenu([['One', () => { }]], 5, 5); document.getElementById('context-menu').dataset.t = '1'; });
+        const inMenu = await mid('#context-menu button');
+        await page.mouse.move(inMenu.x + 30, inMenu.y);
+        await page.mouse.down();
+        out.keptMenu = !(await shut());
+        await page.evaluate(() => app.closeContextMenu());
+        // Leaving the window closes it
+        await menu();
+        await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+        out.blur = await shut();
+        await page.evaluate(async () => { app.openSingle(app.files[0]); await sleep(200); });
+        out.single = await press('#image-container');
+        await page.evaluate(async () => { await app.enterAdjust(app.files[0]); await until(() => Adjust.ready); });
+        // The press that closes it reaches nothing under it (no pin moved,
+        // no dot painted); with no menu open, a press goes through
+        const counted = (sel) => page.evaluate((s) => { window._downs = 0; document.querySelector(s).addEventListener('pointerdown', () => window._downs++); }, sel);
+        const downs = () => page.evaluate(() => window._downs);
+        const bare = async (sel) => { const at = await mid(sel); await page.mouse.click(at.x, at.y); };
+        await counted('#adj-stage');
+        out.adjustPhoto = await press('#adj-stage');
+        out.adjustSwallowed = await downs() === 0;
+        await bare('#adj-stage');
+        out.adjustThrough = await downs() === 1;
+        out.adjustPane = await press('#adj-panel');
+        // ⋯ opens its menu with the mouse, and another press shuts it
+        const more = async (sel) => { const at = await mid(sel); await page.mouse.click(at.x, at.y); await page.waitForTimeout(100); const opened = !(await page.evaluate(() => !document.getElementById('context-menu'))); await page.mouse.click(at.x, at.y + 200 > 700 ? at.y - 50 : at.y + 200); return opened; };
+        out.adjustMore = await more('#adj-more');
+        await page.evaluate(async () => { await Modes.leave(true); await app.enterPaint(); await until(() => PaintEditor.ready); });
+        await counted('#paint-stage');
+        const strokes = () => page.evaluate(() => PaintEditor.history.length);
+        const before = await strokes();
+        out.paintCanvas = await press('#paint-stage');
+        out.paintSwallowed = await downs() === 0 && await strokes() === before;
+        await bare('#paint-stage');
+        out.paintThrough = await downs() === 1;
+        out.paintPane = await press('#paint-panel');
+        out.paintMore = await more('#paint-more');
+        await page.evaluate(() => Modes.leave(true));
+        check('menus: a press on the grid closes the right-click menu, left or right button', setup && out.grid === true && out.gridRight === true, JSON.stringify(out));
+        check('menus: a press in the menu or its row\'s own menu keeps it', out.keptMenu && out.keptFly, JSON.stringify(out));
+        check('menus: leaving the window closes it', out.blur, JSON.stringify(out));
+        check('menus: a press on the photo, in Photos, closes it', out.single === true, JSON.stringify(out));
+        check('menus: a press on Adjust\'s photo or its pane closes it', out.adjustPhoto === true && out.adjustPane === true, JSON.stringify(out));
+        check('menus: a press on Paint\'s canvas or its pane closes it', out.paintCanvas === true && out.paintPane === true, JSON.stringify(out));
+        check('menus: ⋯ in Adjust and in Paint opens its menu with the mouse', out.adjustMore && out.paintMore, JSON.stringify(out));
+        check('menus: the press that closes it, on Adjust\'s or Paint\'s photo, only closes it (no pin moved, nothing painted); with none open a press goes through', out.adjustSwallowed && out.paintSwallowed && out.adjustThrough && out.paintThrough, JSON.stringify(out));
+        check('menus: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
