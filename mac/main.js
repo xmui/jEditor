@@ -28,11 +28,11 @@ const photos = require('./photos'); // the Photos library (photos.library: null 
 const fsHost = require('./fs-host'); // the files behind the page's own handles (handles.js)
 
 // macOS 26's own toolbar, in Liquid Glass, for the window's top row (the
-// page's pills mirror into it). Off for now (the owner, 21 November: the
-// page's own top row, in jEditor's glass, on the Mac too, until the native
-// one can hold the sidebar's own row beside the lights): only with
-// JEDITOR_NATIVE_TOOLBAR=1, on 26 with the module (the tests turn it on)
-const NATIVE_TOOLBAR = process.platform === 'darwin' && !!toolbar && toolbar.supported() && process.env.JEDITOR_NATIVE_TOOLBAR === '1';
+// page's pills mirror into it, and with the sidebar open its own buttons,
+// beside the lights: the owner's pick A, 21 November); before 26, or
+// without the module, the page keeps its own row. JEDITOR_NATIVE_TOOLBAR=0:
+// the page's own row anyway
+const NATIVE_TOOLBAR = process.platform === 'darwin' && !!toolbar && toolbar.supported() && process.env.JEDITOR_NATIVE_TOOLBAR !== '0';
 global.jeditorToolbar = NATIVE_TOOLBAR ? toolbar : null; // for the tests (test/mac.test.js)
 
 // The Linux app is this one with Linux's words (app/host.js), drives
@@ -664,7 +664,10 @@ async function handle(rec, type, data) {
             return { ok: true };
         case 'toolbar':
             // What the native toolbar shows: the page's top row (bridge.js)
-            if (NATIVE_TOOLBAR) toolbar.update(rec.win.getNativeWindowHandle(), data);
+            if (NATIVE_TOOLBAR) {
+                toolbar.update(rec.win.getNativeWindowHandle(), data);
+                centreLights(rec);
+            }
             return { ok: NATIVE_TOOLBAR };
         case 'titleBar': {
             // A theme draws the title bar: its own buttons work the window,
@@ -863,7 +866,7 @@ async function handle(rec, type, data) {
             const steps = { ...data.steps, ...smokeSteps };
             // On macOS 26 (Darwin 25) the built app must have its native
             // toolbar: a module that didn't load would fall back silently
-            if (process.platform === 'darwin' && parseInt(os.release(), 10) >= 25 && process.env.JEDITOR_NATIVE_TOOLBAR === '1') {
+            if (process.platform === 'darwin' && parseInt(os.release(), 10) >= 25 && process.env.JEDITOR_NATIVE_TOOLBAR !== '0') {
                 steps.nativeToolbar = NATIVE_TOOLBAR || `no native toolbar (${toolbar ? 'the module says it isn\'t supported' : 'the module didn\'t load'})`;
             }
             const failed = Object.entries(steps).filter(([, v]) => v !== true);
@@ -1108,6 +1111,22 @@ function ownMenus(send) {
     ];
 }
 
+// The traffic lights on the toolbar's row, centred on its items, as in the
+// Mac's own windows: Electron's hidden title bar kept them where its own
+// 28px bar would have them, a line above the toolbar's items (the owner,
+// 21 November). Without the toolbar (the home page) they go back to where
+// Electron puts them. (Not rec.lights: that's the page's row's, from
+// bridge.js, for the lights' checks without this toolbar)
+function centreLights(rec) {
+    const d = toolbar.describe(rec.win.getNativeWindowHandle()) || {};
+    const band = d.visible ? (d.toolbarHeight || 52) : 0;
+    const at = band ? { x: 20, y: Math.round((band - 14) / 2) } : null;
+    const key = at ? at.x + ',' + at.y : '';
+    if (key === (rec.toolbarLights || '')) return;
+    rec.toolbarLights = key;
+    rec.win.setWindowButtonPosition(at);
+}
+
 // macOS 26's toolbar on a window: its items click the page's own controls
 function attachToolbar(win) {
     toolbar.attach(win.getNativeWindowHandle(), (id, value) => {
@@ -1146,7 +1165,7 @@ function createWindow(at = null) {
         // moves the window (style.css), and the Mac's own window material
         // shows through the start screen (the rest of the page is solid)
         ...(mac ? {
-            // With the native toolbar, the traffic lights sit in it, as AppKit puts them
+            // With the native toolbar, the traffic lights sit in it, centred on its row (centreLights)
             ...(NATIVE_TOOLBAR ? { titleBarStyle: 'hidden' } : { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 20, y: 34 } }),
             vibrancy: 'under-window',
             visualEffectState: 'followWindow',

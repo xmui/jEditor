@@ -10135,6 +10135,17 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     display: none !important;
 }
 
+/* The sidebar open, its own row's buttons are the toolbar's, beside the
+   lights (bridge.js; the owner's pick A, 21 November): its own row doesn't
+   show, and its list starts right under the toolbar */
+:root.native-toolbar:not([data-skin]) .folder-rail #mode-row {
+    display: none !important;
+}
+
+:root[data-platform="mac"].native-toolbar:not([data-skin]) .folder-rail {
+    padding-top: calc(var(--top-row) + var(--sp-1));
+}
+
 :root.native-toolbar :is(.adjust-editor, .paint-editor) {
     padding-top: var(--top-row);
 }

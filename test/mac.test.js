@@ -949,8 +949,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
 
     console.log('mac: the native toolbar (macOS 26)');
     {
-        // (off unless asked for, for now: main.js)
-        const { app, page, errors } = await launch(profile, [path.join(tmp, 'Glass')], { JEDITOR_NATIVE_TOOLBAR: '1' });
+        const { app, page, errors } = await launch(profile, [path.join(tmp, 'Glass')]);
         const native = await page.evaluate(() => !!window.jeditorMac.nativeToolbar);
         if (!native) {
             console.log('        (skipped: needs macOS 26 and the native module, native/build.js)');
@@ -959,6 +958,43 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             const describe = () => app.evaluate(({ BrowserWindow }) => global.jeditorToolbar.describe(BrowserWindow.getAllWindows()[0].getNativeWindowHandle()));
             const click = (id, value) => app.evaluate(({ BrowserWindow }, [id, value]) => global.jeditorToolbar.click(BrowserWindow.getAllWindows()[0].getNativeWindowHandle(), id, value), [id, value]);
             const settle = () => page.waitForTimeout(400);
+
+            // One row, as the Mac's own windows (the owner's pick A, 21 November):
+            // the sidebar open, its own buttons (Photos · Adjust · Paint as icons,
+            // its button, Find anything) beside the lights, the title from its
+            // edge, its list right under the toolbar and its own row not there;
+            // the lights centred on the toolbar's row, open or closed
+            await page.evaluate(() => { app.setView('single'); if (!Folders.railOpen()) app.keyHandlers()['folders.rail'](); });
+            await settle();
+            await settle();
+            {
+                const d = await describe();
+                const p = await page.evaluate(() => {
+                    const r = (e) => { const x = document.querySelector(e); return x && x.getClientRects().length ? x.getBoundingClientRect().toJSON() : null; };
+                    return { rail: r('.folder-rail'), row: r('.folder-rail #mode-row'), first: r('.folder-rail .sb-card') };
+                });
+                const ids = d.items.map(i => i.id);
+                const modes = d.items.find(i => i.id === 'modes');
+                const lights = d.lights || {};
+                const centred = Math.abs((lights.top + lights.bottom) / 2 - d.toolbarHeight / 2) <= 2;
+                const titleAt = d.titleBox && p.rail ? Math.abs(d.titleBox.left - (p.rail.right + 12)) <= 6 : false;
+                check('one row, the sidebar open: its buttons beside the lights (the modes, its button, Find anything), the title from its edge, the lights centred, its own row gone and its list right under the toolbar', ids[0] === 'modes' && ids[1] === 'rail' && ids[2] === 'find' && !!modes && modes.selected === 0 && !ids.includes('mode') && centred && titleAt && !p.row && !!p.first && p.first.top < d.toolbarHeight + 12, JSON.stringify([ids, modes, lights, d.toolbarHeight, d.titleBox, p]));
+                await click('modes', 1);
+                await page.waitForFunction(() => Modes.current() === 'adjust', null, { timeout: 15000 }).catch(() => null);
+                await settle();
+                const inAdjust = await describe();
+                const am = inAdjust.items.find(i => i.id === 'modes');
+                check('... its Adjust there opens Adjust, the same buttons in the same places', await page.evaluate(() => Modes.current()) === 'adjust' && inAdjust.items[0] && inAdjust.items[0].id === 'modes' && !!am && am.selected === 1, JSON.stringify(inAdjust.items));
+                await page.evaluate(() => Modes.go('photos'));
+                await page.waitForFunction(() => Modes.current() === 'photos', null, { timeout: 15000 }).catch(() => null);
+                await page.evaluate(() => { if (Folders.railOpen()) app.keyHandlers()['folders.rail'](); });
+                await settle();
+                const shut = await describe();
+                const sl = shut.lights || {};
+                check('... the sidebar closed: the lights still centred on the row, and no space before the title', Math.abs((sl.top + sl.bottom) / 2 - shut.toolbarHeight / 2) <= 2 && !shut.items.some(i => i.id === 'space'), JSON.stringify([shut.items.map(i => i.id), sl, shut.toolbarHeight]));
+            }
+
+            // (the checks below as before: the sidebar closed)
             // The view switch is in More in 2.0's pill: on the pill for this
             await page.evaluate(() => { app.uiPrefs.placement.view = 'main'; app.applyUiPrefs(); app.setView('single'); app.loadIndex(0); });
             await settle();
@@ -1042,8 +1078,11 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                             }, [scale, rail, where]);
                             d = await describe();
                             const name = `${where} at ${scale * 100}%${rail ? ', sidebar open' : ''}${fs_ ? ', full screen' : ''}`;
+                            // (the sidebar open: Photos · Adjust · Paint as its icons, the mode's chosen)
                             const item = d.items[0];
-                            if (!d.visible || !item || item.id !== 'mode' || !item.menu.includes('✓' + where[0].toUpperCase() + where.slice(1))) modeMiss.push(`${name}: no mode button in the toolbar ${JSON.stringify([d.visible, d.items])}`);
+                            const label = where[0].toUpperCase() + where.slice(1);
+                            const ok = !!item && (item.id === 'mode' ? item.menu.includes('✓' + label) : item.id === 'modes' && item.selected === (where === 'adjust' ? 1 : 2));
+                            if (!d.visible || !ok) modeMiss.push(`${name}: no mode button in the toolbar ${JSON.stringify([d.visible, d.items])}`);
                             if (c.float) modeMiss.push(`${name}: the page's own chip shows too`);
                             if (c.firstControl !== null && c.firstControl < d.toolbarHeight) modeMiss.push(`${name}: the head's buttons (${Math.round(c.firstControl)}) under the toolbar (${d.toolbarHeight}px)`);
                         }
@@ -1059,7 +1098,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             d = await describe();
             // (its mode button, or, with the sidebar open, the sidebar's own row of modes under it)
             const railRow = await page.evaluate(() => { const r = document.querySelector('.folder-rail:not(.hidden) #mode-row'); return !!r && !!r.getClientRects().length && r.getBoundingClientRect().top >= 52; });
-            check('... and back in Photos, the toolbar is back', d.visible && (d.items.some(i => i.id === 'mode') || railRow), JSON.stringify([railRow, d]).slice(0, 300));
+            check('... and back in Photos, the toolbar is back', d.visible && (d.items.some(i => i.id === 'mode' || i.id === 'modes') || railRow), JSON.stringify([railRow, d]).slice(0, 300));
 
             // The toolbar's empty space moves the window: pressed there, it's the
             // window's (the drag view), not the page's under it
@@ -1178,11 +1217,10 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
 
     console.log('mac: the window\'s top bar, kept clear');
     {
-        // The page's own top row (macOS 26's toolbar is off for now), and on a
-        // Mac again with that toolbar on: the traffic lights, for real
+        // On a Mac, again without macOS 26's toolbar (as before macOS 26, or
+        // when it's off): the traffic lights in the page's top row, for real
         const passes = [{ env: {}, themes: ['', 'snow/finder', 'mac84/finder'], tag: '' }];
-        // (macOS 26's toolbar is off unless asked for, for now: main.js)
-        if (process.platform === 'darwin') passes.push({ env: { JEDITOR_NATIVE_TOOLBAR: '1' }, themes: [''], tag: ', with macOS 26\'s toolbar' });
+        if (process.platform === 'darwin') passes.push({ env: { JEDITOR_NATIVE_TOOLBAR: '0' }, themes: [''], tag: ', without macOS 26\'s toolbar' });
         for (const pass of passes) {
             const { app, page, errors } = await launch(profile, [path.join(tmp, 'Glass')], pass.env);
             await loaded(page, 2);
