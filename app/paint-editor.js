@@ -500,12 +500,16 @@ const PaintEditor = {
             if (this.fitted) this.fit(); else this.render();
         });
         this._resize.observe(st);
+        // The panel floats over the stage: shown, hidden or made wider, the
+        // room the picture fits in changes though the stage's doesn't
+        this._resize.observe(this.el('paint-panel'));
         // The top: placed again when the options change or the window does
         const box = this.el('paint-options');
         this._optsSeen = new MutationObserver(() => this.layoutTopSoon());
         this._optsSeen.observe(box, { childList: true });
         this._resizeTop = new ResizeObserver(() => this.layoutTopSoon());
         this._resizeTop.observe(this.root);
+        this._resizeTop.observe(this.el('paint-panel'));
         new MutationObserver(() => this.layoutTopSoon()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-skin'] });
         // Zoom's pill: its clicks aren't strokes
         const zoom = this.el('paint-zoom');
@@ -683,7 +687,9 @@ const PaintEditor = {
             const toolsOver = tools.width && getComputedStyle(this.el('paint-tools')).position === 'absolute';
             const g = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gutter')) || 20;
             const zoom = parseFloat(getComputedStyle(box).zoom) || 1;
-            const x0 = (toolsOver ? tools.right : st.left) - ed.left + gap, x1 = st.right - ed.left - gap;
+            const x0 = (toolsOver ? tools.right : st.left) - ed.left + gap, x1 = st.right - this.paneRoom() - ed.left - gap;
+            const pane = `${Math.round(this.paneRoom())}px`;
+            if (this.el('paint-stage').style.getPropertyValue('--pane-room') !== pane) this.el('paint-stage').style.setProperty('--pane-room', pane);
             const room = Math.max(0, x1 - x0);
             box.style.maxWidth = `${room / zoom}px`;
             this.fold(box, room);
@@ -1489,10 +1495,31 @@ const PaintEditor = {
             if (pills.length) box.t = Math.max(pad, Math.max(...pills.map(r => r.bottom)) - st.top + g);
             const tools = over(this.el('paint-tools'));
             if (tools) box.l = Math.max(pad, tools.right - st.left + g);
+            // The panel floats over the stage at the right: zoomed in, the
+            // picture runs on under it
+            const pane = this.paneRoom();
+            if (pane) box.r = pad + pane;
             const opts = this.el('paint-options');
             if (opts && opts.children.length && opts.getClientRects().length) box.b = Math.max(pad, opts.getBoundingClientRect().height + 2 * g);
         }
         return { x: box.l, y: box.t, w: Math.max(1, this.cssW - box.l - box.r), h: Math.max(1, this.cssH - box.t - box.b) };
+    },
+
+    // How much of the stage's right the panel covers (0 beside it, as in a
+    // theme or a narrow window, or hidden)
+    paneRoom() {
+        const p = this.el('paint-panel'), st = this.el('paint-stage');
+        if (!p || !st || !p.getClientRects().length) return 0;
+        const r = p.getBoundingClientRect(), b = st.getBoundingClientRect();
+        if (!r.width || r.top >= b.bottom || r.left <= b.left + b.width / 2) return 0;
+        return Math.max(0, b.right - r.left);
+    },
+
+    // The middle of the room the picture fits in (clear of the pills, the
+    // tools, the options and the panel), in css px on the stage
+    mid() {
+        const f = this.fitBox();
+        return { x: f.x + f.w / 2, y: f.y + f.h / 2 };
     },
 
     fit() {
@@ -1511,7 +1538,8 @@ const PaintEditor = {
     },
 
     zoomTo(z) {
-        this.zoomAt(z, this.cssW / 2, this.cssH / 2);
+        const m = this.mid();
+        this.zoomAt(z, m.x, m.y);
     },
 
     zoomAt(z, cx, cy) {
@@ -1537,8 +1565,9 @@ const PaintEditor = {
     // Shift-drag with the Hand. Straight again with Put the view straight
     // or a click on the angle in the zoom pill ----
 
-    rotateViewTo(deg, cx = this.cssW / 2, cy = this.cssH / 2) {
+    rotateViewTo(deg, cx = null, cy = null) {
         if (!this.ready) return;
+        if (cx === null) ({ x: cx, y: cy } = this.mid());
         // Within a degree of straight (or a quarter turn) it's that
         let a = ((deg % 360) + 540) % 360 - 180;
         for (const q of [-180, -90, 0, 90, 180]) if (Math.abs(a - q) < 1) a = q;
@@ -1859,7 +1888,7 @@ const PaintEditor = {
         if (d.kind === 'pick') { this.pick(p, d.toBg); this.renderSoon(); return; }
         if (d.kind === 'pan' && (e.shiftKey || d.turnAlways)) {
             // Shift-drag with the Hand: the view turns about the middle
-            const cx = this.cssW / 2, cy = this.cssH / 2;
+            const { x: cx, y: cy } = this.mid();
             const ang = (q) => Math.atan2(q.sy - cy, q.sx - cx) * 180 / Math.PI;
             if (!d.turn) d.turn = { a0: ang(d), r0: this.viewAngle() };
             let deg = d.turn.r0 + ang(p) - d.turn.a0;
@@ -5104,7 +5133,7 @@ const PaintEditor = {
         const fc = this.newCanvas(c.width, c.height);
         fc.getContext('2d').drawImage(c, 0, 0);
         // In the middle of what's on screen (as shown), or in place (in the layer)
-        const mid = this.V().inverse().transformPoint({ x: this.cssW / 2, y: this.cssH / 2 });
+        const mid = this.V().inverse().transformPoint(this.mid());
         const here = inPlace && this._clipAt;
         const at = here ? this.C.transformPoint({ x: this._clipAt.x + c.width / 2, y: this._clipAt.y + c.height / 2 }) : mid;
         // In place, turned and flipped as the photo is shown, so it lands
@@ -5187,7 +5216,7 @@ const PaintEditor = {
         this.beginPixels(l);
         // Fitted in the picture (never made bigger), in the middle of what's on screen
         const fit = Math.min(1, 0.9 * this.OW / w, 0.9 * this.OH / h);
-        const mid = this.V().inverse().transformPoint({ x: this.cssW / 2, y: this.cssH / 2 });
+        const mid = this.V().inverse().transformPoint(this.mid());
         mid.x = Math.max(0, Math.min(this.OW, mid.x));
         mid.y = Math.max(0, Math.min(this.OH, mid.y));
         this.float = { canvas: fc, x0: mid.x - w / 2, y0: mid.y - h / 2, w, h, t: { tx: 0, ty: 0, sx: fit, sy: fit, rot: 0 }, layer: l, sel: null };
@@ -5320,7 +5349,7 @@ const PaintEditor = {
         // and the size (in the middle when it's changed along the top)
         const sizing = performance.now() < (this._sizeUntil || 0);
         const brush = this.isBrush() && !this.space && !(d && d.kind === 'pan') && !this.picking();
-        const at = this.hover || (sizing ? this.V().inverse().transformPoint({ x: this.cssW / 2, y: this.cssH / 2 }) : null);
+        const at = this.hover || (sizing ? this.V().inverse().transformPoint(this.mid()) : null);
         const ox = at && (at.ox !== undefined ? at.ox : at.x), oy = at && (at.oy !== undefined ? at.oy : at.y);
         const r = this.radius();
         // Symmetry: its lines through the picture's middle, faintly

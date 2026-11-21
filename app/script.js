@@ -1690,12 +1690,12 @@ const app = {
     },
 
     // Where the viewer fits the photo: its box less the room left for the
-    // top pills (style.css: padding-top, --head-room). A zoomed photo still
-    // fills the whole box, to the top
+    // top pills and Info's card (style.css: padding, --head-room). A zoomed
+    // photo still fills the whole box, to the top and under the card
     viewBox() {
-        const c = this.elements.imageContainer, r = c.getBoundingClientRect();
-        const pad = parseFloat(getComputedStyle(c).paddingTop) || 0;
-        return { left: r.left, top: r.top + pad, width: r.width, height: Math.max(0, r.height - pad) };
+        const c = this.elements.imageContainer, r = c.getBoundingClientRect(), cs = getComputedStyle(c);
+        const t = parseFloat(cs.paddingTop) || 0, rt = parseFloat(cs.paddingRight) || 0;
+        return { left: r.left, top: r.top + t, width: Math.max(0, r.width - rt), height: Math.max(0, r.height - t) };
     },
 
     // At odd quarter-turns the CSS-rotated image would overflow the

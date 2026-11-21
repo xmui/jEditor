@@ -5688,7 +5688,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             ci.classList.add('follow');
             app.zoomTo(4);
             await sleep(50);
-            out.zoomTop = ic.getBoundingClientRect().top < pillB && ci.getBoundingClientRect().top <= ic.getBoundingClientRect().top + 1;
+            const icR = ic.getBoundingClientRect(), ciR = ci.getBoundingClientRect();
+            out.zoomTop = icR.top < pillB && ciR.top <= icR.top + 1 && ciR.right >= icR.right - 1;
             app.zoomTo(1);
             await sleep(50);
             ci.classList.remove('follow');
@@ -5704,7 +5705,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('folder details: total under the folder list; single view still shows the photo', r.railTotal && r.single && r.gb, JSON.stringify(r));
         check('Info is a glass card: the photo moves over beside it; its flags change the photo\'s', r.card && r.cardFlag && r.cardShut, JSON.stringify([r.card, r.cardFlag, r.cardShut]));
         check('... it stops above the film strip with room round it; the photo fits under the top pills', r.cardRoom && r.underPills, JSON.stringify([r.cardRoom, r.underPills]));
-        check('... zoomed in, the photo fills the window to the top, under the pills; back at Fit, under them again', r.zoomTop && r.fitAgain, JSON.stringify([r.zoomTop, r.fitAgain]));
+        check('... zoomed in, the photo fills the window to the top and under Info, under the pills; back at Fit, clear of them again', r.zoomTop && r.fitAgain, JSON.stringify([r.zoomTop, r.fitAgain]));
         check('folder details suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
