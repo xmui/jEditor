@@ -409,7 +409,6 @@ const waitForPost = (page, type) => page.waitForFunction(
                     for await (const h of dir.values()) if (h.kind === 'file' && app.isImage(h.name)) n++; // as the app counts: RAW too
                     reply({ counts: m.paths.map(() => n), limit: 1000 });
                 }
-                else if (m.type === 'quickAccess') reply({ folders: [] });
                 else if (m.type === 'makeFolder') {
                     const path = m.parent + '\\' + m.name;
                     (window.__folders = window.__folders || new Set()).add(path.toLowerCase());
@@ -526,7 +525,7 @@ const waitForPost = (page, type) => page.waitForFunction(
         check('opens the folder and reports the photo count', opened.name === 'Jones' && opened.count === 4, JSON.stringify(opened));
         const smoke = await waitForPost(page, 'smoke');
         check('smoke test: reports success', smoke.ok && smoke.count === 4 && smoke.rotated && smoke.errors.length === 0, JSON.stringify(smoke));
-        check('smoke test: runs the further steps through the app', smoke.steps && smoke.steps.stored === true && smoke.steps.deleted === true && smoke.steps.restored === true && smoke.steps.scanned === true && smoke.steps.fed === true && smoke.steps.cropped === true && smoke.steps.tethered === true && smoke.steps.logged === true && smoke.steps.places === true && smoke.steps.browsed === true && smoke.steps.projects === true && smoke.steps.counted === true && smoke.steps.pins === true && smoke.steps.renamed === true && smoke.steps.windows === true && smoke.steps.moved === true && smoke.steps.unmoved === true && smoke.steps.back === true && /v1\.0\.0/.test(smoke.steps.update), JSON.stringify(smoke.steps));
+        check('smoke test: runs the further steps through the app', smoke.steps && smoke.steps.stored === true && smoke.steps.deleted === true && smoke.steps.restored === true && smoke.steps.scanned === true && smoke.steps.fed === true && smoke.steps.cropped === true && smoke.steps.tethered === true && smoke.steps.logged === true && smoke.steps.places === true && smoke.steps.browsed === true && smoke.steps.projects === true && smoke.steps.counted === true && smoke.steps.renamed === true && smoke.steps.windows === true && smoke.steps.moved === true && smoke.steps.unmoved === true && smoke.steps.back === true && /v1\.0\.0/.test(smoke.steps.update), JSON.stringify(smoke.steps));
         // A folder copied onto a drive: progress as it goes, then where it went; Stop is passed on
         const copy = await page.evaluate(async () => {
             const seen = [];

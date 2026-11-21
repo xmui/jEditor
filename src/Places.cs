@@ -155,34 +155,6 @@ static class Projects
         return n;
     }
 
-    // Explorer's Quick Access folders that are pinned (Shell.Application on
-    // an STA thread)
-    public static Task<List<(string Name, string Path)>> QuickAccessAsync() => Sta(() =>
-    {
-        var list = new List<(string, string)>();
-        var type = Type.GetTypeFromProgID("Shell.Application");
-        if (type is null) return list;
-        dynamic shell = Activator.CreateInstance(type)!;
-        dynamic? folder = shell.NameSpace("shell:::{679f85cb-0220-4080-b29b-5540cc05aab6}");
-        if (folder is null) return list;
-        foreach (dynamic item in folder.Items())
-        {
-            try
-            {
-                if (!(bool)item.IsFolder) continue;
-                string path = item.Path;
-                if (string.IsNullOrEmpty(path) || !System.IO.Path.IsPathFullyQualified(path) || !Directory.Exists(path)) continue;
-                // Pinned ones only, not Explorer's "frequent" folders
-                object? pinned = null;
-                try { pinned = item.ExtendedProperty("System.Home.IsPinned"); } catch { }
-                if (pinned is bool b && !b) continue;
-                list.Add(((string)item.Name, path));
-            }
-            catch { /* skip it */ }
-        }
-        return list;
-    });
-
     static Task<T> Sta<T>(Func<T> work)
     {
         var done = new TaskCompletionSource<T>();
