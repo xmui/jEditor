@@ -313,6 +313,19 @@ function run(cmd, args) {
     }));
 }
 
+// The font families installed here, for Paint's Text tool: the Mac's from
+// AppKit (through osascript), Linux's from fontconfig. Asked once, then kept.
+let fontList = null;
+function systemFonts() {
+    if (!fontList) {
+        const jxa = "ObjC.import('AppKit'); $.NSFontManager.sharedFontManager.availableFontFamilies.js.map(f => f.js).join('\\n')";
+        fontList = (process.platform === 'darwin' ? run('/usr/bin/osascript', ['-l', 'JavaScript', '-e', jxa]) : run('fc-list', [':', 'family']))
+            .then(out => [...new Set(String(out).split('\n').map(l => l.split(',')[0].trim()).filter(Boolean))])
+            .catch((e) => { fontList = null; log('warn', 'Fonts: ' + e.message); return []; });
+    }
+    return fontList;
+}
+
 // The app in the .dmg, copied in beside this one, checked, then swapped in
 async function replaceBundle(dmg, bundle) {
     const mnt = fs.mkdtempSync(path.join(os.tmpdir(), 'jeditor-update-'));
@@ -698,6 +711,9 @@ async function handle(rec, type, data) {
             const drives = await places.drives();
             return { drives, home: places.home(app) };
         }
+        // Paint's Text tool: the font families installed here
+        case 'fonts':
+            return { fonts: await systemFonts() };
         case 'listDir': {
             if (!isDir(data.path)) return { error: 'Not a folder' };
             const drive = (await places.drives()).find(d => d.path === data.path);

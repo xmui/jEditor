@@ -383,7 +383,7 @@
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
         platform: mac.platform,
-        features: ['reveal', 'windows', 'places', 'folderMove', 'menuBar'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions'] : [], ['themes'], mac.platform === 'mac' && mac.photos ? ['photosLibrary', 'photosAdd'] : []),
+        features: ['reveal', 'windows', 'places', 'folderMove', 'menuBar', 'systemFonts'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions'] : [], ['themes'], mac.platform === 'mac' && mac.photos ? ['photosLibrary', 'photosAdd'] : []),
         // jEditor's storage on this Mac: one folder per project (see
         // app/folder-cache.js), in the app's own private storage
         async dataDir() {
@@ -439,6 +439,10 @@
         // A 'jeditor-drives' event on window says a drive came or went.
         async places() {
             return answer('places');
+        },
+        // The font families installed on this computer → ['Avenir', 'Helvetica', …]
+        async fonts() {
+            return (await answer('fonts')).fonts || [];
         },
         // A folder's folders → { path, name, parent, folders: [{ name, path }], photos, more }
         async listDir(path) {

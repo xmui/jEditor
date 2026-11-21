@@ -1015,6 +1015,7 @@ const PaintEditor = {
     },
 
     close() {
+        this.closeFonts();
         if (this.text) this.endText(false);
         this.isOpen = false;
         this.ready = false;
@@ -1175,6 +1176,7 @@ const PaintEditor = {
     buildOptions() {
         const box = this.el('paint-options');
         box.textContent = '';
+        this.closeFonts();
         if (this.crop) { this.cropOptions(box); return; }
         if (this.float) { this.transformOptions(box); return; }
         const o = this.opts;
@@ -1327,7 +1329,7 @@ const PaintEditor = {
             if (k === 'corner') num('Corners', 'corner', 0, 200, 1);
             if (k === 'gradient') choose('Shape', 'gradient', [['linear', 'Linear'], ['radial', 'Radial']]);
             if (k === 'gradTo') choose('To', 'gradTo', [['bg', 'Background colour'], ['clear', 'Nothing']]);
-            if (k === 'font') choose('Font', 'font', this.FONTS);
+            if (k === 'font') this.fontChoice(add, save);
             if (k === 'stamp') choose('Stamp', 'stamp', Object.entries(this.STAMP_NAMES));
             if (k === 'tip') {
                 const own = this.ownBrushes();
@@ -3967,9 +3969,169 @@ const PaintEditor = {
 
     // ---- Text ----
 
+    // ---- Fonts: our five, then the ones on this computer ----
+    // The apps list the computer's fonts (systemFonts: JEditorNative.fonts);
+    // on the web, the browser's queryLocalFonts where it has it (Chrome,
+    // Edge, after asking), else just our five. A font is kept as a CSS
+    // font-family with a fallback after it, so a file opened on a computer
+    // without that font shows the text in Sans rather than nothing.
+    FONT_FALLBACK: 'system-ui, sans-serif',
+    fontName(f) {
+        const own = this.FONTS.find(([v]) => v === f);
+        if (own) return own[1];
+        return String(f || '').split(',')[0].trim().replace(/^["']|["']$/g, '') || 'Sans';
+    },
+    fontValue(family) {
+        return `"${String(family).replace(/["\\]/g, '')}", ${this.FONT_FALLBACK}`;
+    },
+    withFallback(f) {
+        f = String(f || '').trim();
+        if (!f) return this.FONT_FALLBACK;
+        return /(^|,)\s*(serif|sans-serif|monospace|cursive|fantasy|system-ui)\s*$/i.test(f) ? f : `${f}, ${this.FONT_FALLBACK}`;
+    },
+    // Not on this computer (known only once its fonts are listed)
+    fontMissing(f) {
+        if (!this._fonts || this.FONTS.some(([v]) => v === f)) return false;
+        const name = this.fontName(f).toLowerCase();
+        return !this._fonts.some(n => n.toLowerCase() === name);
+    },
+    // → the computer's font families, sorted, or null where they can't be
+    // listed (ask: the web may ask for permission, so only from a click)
+    loadFonts(ask) {
+        if (this._fonts) return Promise.resolve(this._fonts);
+        if (this._fontsLoading) return this._fontsLoading;
+        let got = null;
+        try {
+            if (Host.has('systemFonts')) got = Host.get().fonts();
+            else if (ask && typeof window.queryLocalFonts === 'function') got = window.queryLocalFonts().then(l => l.map(f => f.family));
+        } catch (e) { got = null; }
+        if (!got) return Promise.resolve(null);
+        this._fontsLoading = Promise.resolve(got).then((list) => {
+            if (!Array.isArray(list)) return null;
+            const seen = new Map();
+            for (const n of list) {
+                if (typeof n !== 'string') continue;
+                const t = n.trim();
+                if (t && !t.startsWith('.') && !t.startsWith('@') && !seen.has(t.toLowerCase())) seen.set(t.toLowerCase(), t);
+            }
+            this._fonts = [...seen.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+            return this._fonts;
+        }).catch(() => null).finally(() => { this._fontsLoading = null; });
+        return this._fontsLoading;
+    },
+    recentFonts() {
+        try {
+            const r = JSON.parse(localStorage.getItem('jeditor.paint.fonts') || '[]');
+            return Array.isArray(r) ? r.filter(f => typeof f === 'string').slice(0, 5) : [];
+        } catch (e) { return []; }
+    },
+    useFont(f) {
+        const r = [f, ...this.recentFonts().filter(x => x !== f)].slice(0, 5);
+        try { localStorage.setItem('jeditor.paint.fonts', JSON.stringify(r)); } catch (e) { /* private mode */ }
+    },
+    // The Font choice in the Text tool's options: a button showing the font
+    // in its own typeface, opening the picker
+    fontChoice(add, save) {
+        const o = this.opts;
+        const l = document.createElement('div');
+        l.className = 'paint-opt';
+        l.innerHTML = '<span>Font</span><button type="button" class="field paint-font-btn" aria-haspopup="listbox"></button>';
+        const b = l.querySelector('button');
+        const show = () => {
+            b.textContent = this.fontName(o.font);
+            b.style.fontFamily = this.withFallback(o.font);
+            const missing = this.fontMissing(o.font);
+            b.classList.toggle('missing', missing);
+            b.title = missing ? `${this.fontName(o.font)} isn't on this computer, so it's shown in Sans` : 'Font';
+        };
+        show();
+        if (!this._fonts) this.loadFonts(false).then(() => { if (b.isConnected) show(); });
+        b.addEventListener('click', () => {
+            if (this._fontPop) { this.closeFonts(); return; }
+            this.openFonts(b, (f) => { o.font = f; this.useFont(f); show(); save(); });
+        });
+        return add(l);
+    },
+    closeFonts() {
+        const p = this._fontPop;
+        if (!p) return;
+        this._fontPop = null;
+        p.remove();
+        document.removeEventListener('pointerdown', p._off, true);
+    },
+    openFonts(btn, pick) {
+        this.closeFonts();
+        const pop = document.createElement('div');
+        pop.className = 'paint-fonts';
+        pop.innerHTML = '<input type="search" class="field" placeholder="Search fonts" aria-label="Search fonts" spellcheck="false"><div class="paint-fonts-list" role="listbox" aria-label="Fonts"></div>';
+        const q = pop.querySelector('input'), list = pop.querySelector('.paint-fonts-list');
+        const r = btn.getBoundingClientRect();
+        pop.style.left = `${Math.max(8, Math.min(r.left, innerWidth - 268))}px`;
+        pop.style.top = `${r.bottom + 6}px`;
+        pop.style.maxHeight = `${Math.max(160, innerHeight - r.bottom - 20)}px`;
+        document.body.appendChild(pop);
+        this._fontPop = pop;
+        pop._off = (e) => { if (!pop.contains(e.target) && e.target !== btn) this.closeFonts(); };
+        document.addEventListener('pointerdown', pop._off, true);
+        const heading = (t) => {
+            const h = document.createElement('div');
+            h.className = 'paint-fonts-heading';
+            h.textContent = t;
+            list.appendChild(h);
+        };
+        const row = (f) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'paint-font';
+            b.setAttribute('role', 'option');
+            b.dataset.font = f;
+            b.textContent = this.fontName(f);
+            b.style.fontFamily = this.withFallback(f);
+            b.setAttribute('aria-selected', String(f === this.opts.font));
+            if (this.fontMissing(f)) { b.classList.add('missing'); b.title = 'Not on this computer: shown in Sans'; }
+            b.addEventListener('click', () => { this.closeFonts(); pick(f); });
+            list.appendChild(b);
+        };
+        const fill = () => {
+            list.textContent = '';
+            const s = q.value.trim().toLowerCase();
+            const own = this.FONTS.map(([v]) => v);
+            const theirs = (this._fonts || []).map(n => this.fontValue(n));
+            if (s) {
+                const hits = [...own, ...theirs].filter(f => this.fontName(f).toLowerCase().includes(s));
+                if (!hits.length) heading('No fonts match');
+                hits.forEach(row);
+                return;
+            }
+            const recent = this.recentFonts();
+            if (recent.length) { heading('Recent'); recent.forEach(row); }
+            heading('jEditor');
+            own.forEach(row);
+            if (theirs.length) { heading('On this computer'); theirs.forEach(row); }
+        };
+        const rows = () => [...list.querySelectorAll('.paint-font')];
+        q.addEventListener('input', fill);
+        pop.addEventListener('keydown', (e) => {
+            const all = rows(), i = all.indexOf(document.activeElement);
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.closeFonts(); btn.focus(); }
+            else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                const n = e.key === 'ArrowDown' ? (i < 0 ? 0 : Math.min(all.length - 1, i + 1)) : i - 1;
+                if (n < 0) q.focus(); else if (all[n]) all[n].focus();
+            } else if (e.key === 'Enter' && document.activeElement === q && all[0]) { e.preventDefault(); all[0].click(); }
+            e.stopPropagation();
+        });
+        // Asked from the click, so the web's permission prompt can show
+        this.loadFonts(true).then(() => { if (this._fontPop === pop) fill(); });
+        fill();
+        q.focus();
+        const cur = list.querySelector('[aria-selected="true"]');
+        if (cur) cur.scrollIntoView({ block: 'nearest' });
+    },
+
     font(scale = 1) {
         const o = this.opts;
-        return `${o.italic ? 'italic ' : ''}${o.bold ? 'bold ' : ''}${Math.max(1, o.fontSize * scale)}px ${o.font}`;
+        return `${o.italic ? 'italic ' : ''}${o.bold ? 'bold ' : ''}${Math.max(1, o.fontSize * scale)}px ${this.withFallback(o.font)}`;
     },
 
     // Text goes on a layer of its own that keeps its words, font, colour
@@ -4127,7 +4289,7 @@ const PaintEditor = {
     },
 
     textFont(t) {
-        return `${t.italic ? 'italic ' : ''}${t.bold ? 'bold ' : ''}${Math.max(1, t.size)}px ${t.font}`;
+        return `${t.italic ? 'italic ' : ''}${t.bold ? 'bold ' : ''}${Math.max(1, t.size)}px ${this.withFallback(t.font)}`;
     },
 
     // Its box in its own space
