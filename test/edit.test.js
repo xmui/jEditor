@@ -3891,6 +3891,84 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('paintlag')) {
+        console.log('paint: Undo\'s puff and the Blur tool read nothing back (paint-editor.js: frame, puff, blurTile)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 600; c.height = 400;
+                const cg = c.getContext('2d'); cg.fillStyle = '#808080'; cg.fillRect(0, 0, 600, 400); cg.fillStyle = '#000'; cg.fillRect(300, 0, 300, 400);
+                await openProject('lag', { 'l.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                delete document.documentElement.dataset.motion;
+                const st = document.getElementById('paint-stage');
+                const sc = (q) => { const sp = P.V().transformPoint(q); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                const stroke = (pts) => {
+                    st.dispatchEvent(new PointerEvent('pointerdown', { ...sc(pts[0]), pointerId: 1, bubbles: true, button: 0, buttons: 1 }));
+                    for (const q of pts.slice(1)) st.dispatchEvent(new PointerEvent('pointermove', { ...sc(q), pointerId: 1, bubbles: true, buttons: 1 }));
+                    st.dispatchEvent(new PointerEvent('pointerup', { ...sc(pts[pts.length - 1]), pointerId: 1, bubbles: true }));
+                };
+                // Reads of pixels, by canvas
+                const reads = new Map(), real = CanvasRenderingContext2D.prototype.getImageData;
+                CanvasRenderingContext2D.prototype.getImageData = function (...a) { reads.set(this.canvas, (reads.get(this.canvas) || 0) + 1); return real.apply(this, a); };
+                // A stroke, undone: its puff is the stroke's part of the picture only
+                step = 'puff';
+                P.addLayer();
+                P.setTool('brush'); P.opts.size = 20; P.opts.hardness = 100; P.opts.opacity = 100; P.fg = '#ff0000';
+                stroke([{ x: 100, y: 100 }, { x: 140, y: 100 }, { x: 180, y: 100 }]);
+                reads.clear();
+                P.undo();
+                const pf = document.querySelector('#paint-stage .paint-puff');
+                out.readScreen = reads.get(P.canvas) || 0;
+                const sr = P.canvas.getBoundingClientRect(), br = pf && pf.getBoundingClientRect();
+                out.small = !!br && br.width < sr.width / 2 && br.height < sr.height / 2;
+                if (pf) {
+                    const g = pf.getContext('2d'), k = pf.width / br.width;
+                    const at = (q) => { const s2 = sc(q); return real.call(g, Math.round((s2.clientX - br.left) * k), Math.round((s2.clientY - br.top) * k), 1, 1).data[3]; };
+                    out.masked = [at({ x: 140, y: 100 }) > 0, at({ x: 140, y: 106 + 9 })];
+                }
+                out.anim = pf && pf.getAnimations().length === 1;
+                await new Promise(res => setTimeout(res, 400));
+                out.gone = !document.querySelector('#paint-stage .paint-puff');
+                // Animations off: a plain undo
+                step = 'off';
+                P.redo();
+                await new Promise(res => setTimeout(res, 400));
+                document.documentElement.dataset.motion = 'off';
+                P.undo();
+                out.off = !document.querySelector('#paint-stage .paint-puff');
+                delete document.documentElement.dataset.motion;
+                // Blur: softer across the edge (on the layer, painted from the
+                // picture; outside the brush the layer stays empty), with
+                // nothing read back as it paints
+                step = 'blur';
+                out.gpu = P.canFilter();
+                P.cur = 0;
+                P.setTool('blur'); P.opts.size = 60; P.opts.strength = 100; P.opts.sampleAll = true;
+                reads.clear();
+                stroke([{ x: 300, y: 150 }, { x: 300, y: 200 }, { x: 300, y: 250 }]);
+                out.blurReads = [...reads.entries()].filter(([cv]) => cv.width === P.W && cv.height === P.H).reduce((n, [, v]) => n + v, 0);
+                const lg = P.layers[0].canvas.getContext('2d');
+                const v = (x) => real.call(lg, P.ext.l + x, P.ext.t + 200, 1, 1).data[0];
+                out.soft = [v(295), v(305), v(250), v(350)];
+                CanvasRenderingContext2D.prototype.getImageData = real;
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint lag: Undo\'s puff reads nothing back from the screen, and is only the stroke\'s part of it', r.readScreen === 0 && r.small && r.anim, JSON.stringify(r));
+        check('paint lag: the puff is cut to what changed, and goes once it has puffed', r.masked && r.masked[0] && r.masked[1] === 0 && r.gone, JSON.stringify(r));
+        check('paint lag: none with Animations off', r.off, JSON.stringify(r));
+        check('paint lag: Blur softens the edge on the canvas\'s own blur; nothing is read back but the step kept when it ends (its before and after)', r.gpu && r.blurReads <= 2 && r.soft[0] < 128 && r.soft[0] > 10 && r.soft[1] > 10 && r.soft[1] < 128 && r.soft[2] === 0 && r.soft[3] === 0, JSON.stringify(r));
+        check('paint lag: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Restore colour (develop.js: restoreAuto; script.js: restoreColour) ----
     if (wanted('restore')) {
         console.log('restore colour (develop.js, script.js, adjust.js)');
