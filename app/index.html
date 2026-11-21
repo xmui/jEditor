@@ -312,11 +312,15 @@
 
             <!-- Grid size (bottom right) -->
             <div id="grid-controls" class="grid-controls toolbar hidden">
-                <label class="slider-group">
-                    <svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><rect width="7" height="7" x="3" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="14" rx="1.5"/><rect width="7" height="7" x="3" y="14" rx="1.5"/></svg>
+                <div class="slider-group">
+                    <button id="btn-grid-smaller" class="tb-btn" type="button" title="Smaller thumbnails (or Ctrl+wheel on the grid)" aria-label="Smaller thumbnails">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="7" height="7" x="3" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="14" rx="1.5"/><rect width="7" height="7" x="3" y="14" rx="1.5"/></svg>
+                    </button>
                     <input type="range" id="grid-size-slider" min="80" max="400" value="150" step="10" aria-label="Thumbnail size">
-                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
-                </label>
+                    <button id="btn-grid-bigger" class="tb-btn" type="button" title="Bigger thumbnails (or Ctrl+wheel on the grid)" aria-label="Bigger thumbnails">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
+                    </button>
+                </div>
             </div>
 
             <!-- Selection actions (shown when photos are selected in the grid) -->
@@ -485,6 +489,8 @@
                 <button id="adj-copy" class="btn ghost sm" title="Copy these adjustments, to paste onto other photos (Ctrl+Shift+C)">Copy</button>
                 <button id="adj-paste" class="btn ghost sm" title="Paste the adjustments copied last (Ctrl+Shift+V)">Paste</button>
                 <!-- jEditor's own look: Before and this; Reset, Copy and Paste are in it (style.css) -->
+                <!-- Settings, at the pill's end before ⋯, as in Photos (the owner's ask) -->
+                <button id="adj-settings" class="btn ghost sm icon mode-settings" title="Settings (Ctrl+,)" aria-label="Settings"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button>
                 <button id="adj-more" class="btn ghost sm adj-more" title="More: reset, copy, paste, sync, show clipping" aria-label="More" aria-haspopup="menu"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.25" fill="currentColor"/><circle cx="12" cy="12" r="1.25" fill="currentColor"/><circle cx="19" cy="12" r="1.25" fill="currentColor"/></svg></button>
             </span>
         </div>
@@ -702,6 +708,8 @@
                     <button id="paint-undo" class="btn ghost sm icon" title="Undo (Ctrl+Z)" aria-label="Undo"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
                     <button id="paint-redo" class="btn ghost sm icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
                 </span>
+                <!-- Settings, at the pill's end before ⋯, as in Photos (the owner's ask) -->
+                <button id="paint-settings" class="btn ghost sm icon mode-settings" title="Settings (Ctrl+,)" aria-label="Settings"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button>
                 <button id="paint-more" class="btn ghost sm adj-more" title="More: Image, Select, Layer and the rest" aria-label="More" aria-haspopup="menu"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.25" fill="currentColor"/><circle cx="12" cy="12" r="1.25" fill="currentColor"/><circle cx="19" cy="12" r="1.25" fill="currentColor"/></svg></button>
             </span>
         </div>

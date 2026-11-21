@@ -428,6 +428,20 @@ const PROJECT = `
         // At Fit the head's pills never sit on the photo (the owner's ask)
         const clear = await page.evaluate(() => { const was = { ...Adjust.view }; Adjust.zoomFit(); const h = document.querySelector('.adjust-editor .adj-head').getBoundingClientRect(), c = Adjust.canvas.getBoundingClientRect(); const out = [Math.round(h.bottom), Math.round(c.top)]; Adjust.fitted = false; Adjust.view = was; Adjust.viewChanged(); return out; });
         check('zoom: fitted, the photo starts below the head\'s pills, with room', clear[1] >= clear[0] + 8, JSON.stringify(clear));
+        // ... and clear of the panel, which floats over the stage: zoomed in,
+        // the photo runs under the pills to the top, and under the panel
+        const roomR = await page.evaluate(() => {
+            const was = { ...Adjust.view };
+            Adjust.zoomFit();
+            const p = document.getElementById('adj-panel').getBoundingClientRect(), st = document.getElementById('adj-stage').getBoundingClientRect();
+            const fit = Adjust.canvas.getBoundingClientRect();
+            Adjust.zoomAt(Adjust.fitZoom() * 4);
+            const z = Adjust.canvas.getBoundingClientRect();
+            const out = { panel: Math.round(p.left), stageTop: Math.round(st.top), fit: Math.round(fit.right), zoomed: [Math.round(z.top), Math.round(z.right)] };
+            Adjust.fitted = false; Adjust.view = was; Adjust.viewChanged();
+            return out;
+        });
+        check('zoom: Fit leaves room for the panel; zoomed in, the photo runs under it and up to the top', roomR.fit <= roomR.panel - 8 && roomR.zoomed[0] <= roomR.stageTop && roomR.zoomed[1] > roomR.panel, JSON.stringify(roomR));
         // A plain drag moves about, zoomed in
         await page.mouse.move(st.x + st.w / 2, st.y + st.h / 2);
         await page.mouse.down();
@@ -474,14 +488,15 @@ const PROJECT = `
         // The chip: not there at Fit; zoomed in, it pops up, and its Fit
         // goes back (and it goes); its 100% does as it says
         const shown = () => page.evaluate(() => getComputedStyle(document.getElementById('adj-zoom')).visibility === 'visible');
-        await page.waitForTimeout(300);
+        // (its fade can outlast a fixed wait on a slow machine: wait for it to go)
+        await page.waitForFunction(() => getComputedStyle(document.getElementById('adj-zoom')).visibility !== 'visible', null, { timeout: 3000 }).catch(() => { });
         const atFit = await shown();
         await page.keyboard.press('Control+1');
         await page.waitForTimeout(300);
         const zoomedIn = await shown();
         await page.click('#adj-zoom-fit');
         const c2 = await view();
-        await page.waitForTimeout(300);
+        await page.waitForFunction(() => getComputedStyle(document.getElementById('adj-zoom')).visibility !== 'visible', null, { timeout: 3000 }).catch(() => { });
         const goneAgain = !(await shown());
         await page.keyboard.press('Control+1');
         await page.waitForTimeout(300);
@@ -1913,6 +1928,20 @@ const PROJECT = `
         fit.zoomed = await fitted();
         check('paint: a tall photo fits as it opens, and again when the window changes size', fit.open.inside && fit.smaller.inside && fit.smaller.z < fit.open.z, JSON.stringify(fit));
         check('paint: zoomed in by hand, a new window size leaves the zoom alone', fit.zoomed.z === 1, JSON.stringify(fit.zoomed));
+        // The panel floats over the stage (the owner: zoomed in, it "should
+        // also go behind the right pane", and fill to the top)
+        const pane = await page.evaluate(() => {
+            const P = PaintEditor;
+            P.fit();
+            const st = document.getElementById('paint-stage').getBoundingClientRect(), pn = document.getElementById('paint-panel').getBoundingClientRect();
+            const pic = () => ({ t: st.top + P.view.y, r: st.left + P.view.x + P.OW * P.view.z });
+            const at = pic();
+            P.zoomTo(P.view.z * 6);
+            const z = pic();
+            P.fit();
+            return { panel: Math.round(pn.left), stageTop: Math.round(st.top), fit: Math.round(at.r), zoomed: [Math.round(z.t), Math.round(z.r)] };
+        });
+        check('paint: Fit leaves room for the panel; zoomed in, the picture runs under it and up to the top', pane.fit <= pane.panel - 8 && pane.zoomed[0] <= pane.stageTop && pane.zoomed[1] > pane.panel, JSON.stringify(pane));
         await page.evaluate(() => pressKey('Escape'));
         check('paint: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
@@ -1999,10 +2028,12 @@ const PROJECT = `
                 out.pasted = [!handled, P.layers.length, P.layers[P.cur].name];
                 pressKey('Escape');
                 // Paint's own copy, when it's the newest: Ctrl+V pastes it
+                // (nothing selected: the layer, pasted as a layer, then undone)
+                const nOwn = P.layers.length;
                 P.copy();
                 const own = !window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true, cancelable: true }));
-                out.ownPaste = own && !!P.float;
-                pressKey('Escape');
+                out.ownPaste = own && P.layers.length === nOwn + 1;
+                pressKey('z', { ctrlKey: true });
                 // Not an image: said so
                 await P.importFiles([new File(['hi'], 'notes.txt', { type: 'text/plain' })]);
                 out.notImage = /Only images/.test(document.body.textContent);
@@ -2323,10 +2354,11 @@ const PROJECT = `
                 step = 'hand';
                 P.setTool('hand');
                 const a0 = P.viewAngle();
-                const sx = rr.left + rr.width / 2 + 100, sy = rr.top + rr.height / 2;
+                // (about the middle of the room the picture fits in, beside the panel)
+                const mid = P.mid(), sx = rr.left + mid.x + 100, sy = rr.top + mid.y;
                 st.dispatchEvent(new PointerEvent('pointerdown', { clientX: sx, clientY: sy, pointerId: 1, bubbles: true, button: 0, shiftKey: true }));
-                st.dispatchEvent(new PointerEvent('pointermove', { clientX: rr.left + rr.width / 2, clientY: sy + 100, pointerId: 1, bubbles: true, shiftKey: true }));
-                st.dispatchEvent(new PointerEvent('pointerup', { clientX: rr.left + rr.width / 2, clientY: sy + 100, pointerId: 1, bubbles: true, shiftKey: true }));
+                st.dispatchEvent(new PointerEvent('pointermove', { clientX: rr.left + mid.x, clientY: sy + 100, pointerId: 1, bubbles: true, shiftKey: true }));
+                st.dispatchEvent(new PointerEvent('pointerup', { clientX: rr.left + mid.x, clientY: sy + 100, pointerId: 1, bubbles: true, shiftKey: true }));
                 out.handTurn = P.viewAngle() - a0;
                 document.getElementById('paint-view-angle').click();
                 out.straight = [P.viewAngle(), document.getElementById('paint-view-angle').classList.contains('hidden') || (P.render(), document.getElementById('paint-view-angle').classList.contains('hidden'))];
@@ -2908,7 +2940,7 @@ const PROJECT = `
                 P.setTool('brush');
                 const st = document.getElementById('paint-stage'), rr = P.canvas.getBoundingClientRect();
                 document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', code: 'KeyR', bubbles: true }));
-                const cx = rr.left + P.cssW / 2, cy = rr.top + P.cssH / 2;
+                const cx = rr.left + P.mid().x, cy = rr.top + P.mid().y;
                 st.dispatchEvent(new PointerEvent('pointerdown', { clientX: cx + 100, clientY: cy, pointerId: 1, bubbles: true, button: 0 }));
                 st.dispatchEvent(new PointerEvent('pointermove', { clientX: cx, clientY: cy + 100, pointerId: 1, bubbles: true }));
                 st.dispatchEvent(new PointerEvent('pointerup', { clientX: cx, clientY: cy + 100, pointerId: 1, bubbles: true }));
@@ -3714,8 +3746,9 @@ const PROJECT = `
                 out.importMode = box().querySelector('.paint-tf-mode') && box().querySelector('.paint-tf-mode').value;
                 out.imported = sized();
                 P.commitFloat();
-                // Pasted
+                // Pasted (what's selected: with nothing selected, Ctrl+C copies the layer)
                 step = 'paste';
+                pressKey('a', { ctrlKey: true });
                 P.copy();
                 P.paste();
                 out.pasted = P.float && sized();
@@ -3769,6 +3802,170 @@ const PROJECT = `
         check('paint transform: the lock is on to start with; a corner keeps the shape, Shift frees it, a side stretches; unlocked, a corner is free', r.lockOn === 'true' && r.kept === 1 && r.freed && r.stretched && r.lockOff === 'false' && r.offFree, JSON.stringify(r));
         check('paint transform: resize arrows at the corners and sides, turned with the box; move inside; turn just outside a corner', r.cursors === 'nwse-resize,nesw-resize,ew-resize,ns-resize' && r.inside === 'move' && r.turn && r.turned === 'nesw-resize', JSON.stringify(r));
         check('paint drop: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    if (wanted('paintcopy')) {
+        console.log('paint: a layer copied and pasted as a layer (paint-editor.js: copyLayer, pasteLayer)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, w, h); return canvasBlob(c); };
+                await openProject('cp', { 'a.png': await mk(300, 200), 'b.png': await mk(500, 400) });
+                // The system's clipboard, watched
+                const wrote = [];
+                try { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { write: async (items) => { wrote.push(items[0].types.join()); } } }); } catch (e) { /* none */ }
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                step = 'paint';
+                P.addLayer ? P.addLayer() : P.layers.push(P.makeLayer('L'));
+                const l = P.layer();
+                l.name = 'Square';
+                const g = l.canvas.getContext('2d', { willReadFrequently: true });
+                g.fillStyle = '#ff0000'; g.fillRect(P.ext.l + 20, P.ext.t + 30, 40, 40);
+                l.changed = true;
+                P.addMask('all');
+                const mg = l.mask.getContext('2d'); mg.clearRect(P.ext.l + 20, P.ext.t + 30, 10, 40);
+                l.opacity = 0.5;
+                const n0 = P.layers.length;
+                // Ctrl+C with nothing selected, then Ctrl+V
+                step = 'copy';
+                P.deselect && P.deselect();
+                P.copy();
+                await sleep(30);
+                out.system = wrote.join();
+                P.pasteKey();
+                const nl = P.layer();
+                out.added = P.layers.length - n0;
+                out.name = nl.name;
+                out.float = !!P.float;
+                const a = (k, x, y) => k.canvas.getContext('2d', { willReadFrequently: true }).getImageData(P.ext.l + x, P.ext.t + y, 1, 1).data[0];
+                out.samePlace = a(nl, 25, 35) === 255 && a(nl, 5, 5) === 0;
+                out.kept = !!nl.mask && nl.mask !== l.mask && nl.opacity === 0.5 && nl.canvas !== l.canvas;
+                // One step to undo
+                pressKey('z', { ctrlKey: true });
+                out.undone = P.layers.length === n0;
+                // The layer's right-click menu
+                step = 'menu';
+                const labels = P.layerItems(P.cur).map(it => it[0]);
+                out.menu = labels.includes('Copy the layer') && labels.includes('Paste the layer');
+                // Text, copied from the menu, into another picture of another size
+                step = 'text';
+                P.setTool('text');
+                const st = document.getElementById('paint-stage'), ta = document.getElementById('paint-text');
+                const sc = (q) => { const sp = P.V().transformPoint(q); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                st.dispatchEvent(new PointerEvent('pointerdown', { ...sc({ x: 60, y: 60 }), pointerId: 1, bubbles: true, button: 0 }));
+                st.dispatchEvent(new PointerEvent('pointerup', { ...sc({ x: 60, y: 60 }), pointerId: 1, bubbles: true }));
+                await sleep(20);
+                ta.value = 'Hello'; ta.dispatchEvent(new Event('input'));
+                ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
+                await sleep(20);
+                const ti = P.layers.findIndex(k => k.text);
+                const m0 = P.layers[ti].text.m.slice();
+                P.layerItems(ti).find(it => it[0] === 'Copy the layer')[1]();
+                app.cancelPaint();
+                await sleep(50);
+                step = 'other';
+                app.openSingle(app.files[1]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready && PaintEditor.PW === 500);
+                const n1 = P.layers.length;
+                P.paste();
+                const pl = P.layer();
+                out.otherAdded = P.layers.length - n1;
+                out.otherText = pl.text && pl.text.v === 'Hello' ? [Math.round(pl.text.m[4] - m0[4]), Math.round(pl.text.m[5] - m0[5])].join() : null;
+                out.otherName = pl.name;
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint copy: Ctrl+C with nothing selected copies the layer, onto the system clipboard too', r.system && r.system.includes('image/png'), JSON.stringify(r));
+        check('paint copy: Ctrl+V makes it again as a layer above, in the same place, with its mask and opacity', r.added === 1 && r.name === 'Square copy' && !r.float && r.samePlace && r.kept, JSON.stringify(r));
+        check('paint copy: one step to undo; the layer menu has Copy the layer and Paste the layer', r.undone && r.menu, JSON.stringify(r));
+        check('paint copy: a text layer pasted into another picture stays text, the middles lined up', r.otherAdded === 1 && r.otherText === '100,100' && r.otherName === 'Hello', JSON.stringify(r));
+        check('paint copy: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    if (wanted('paintlag')) {
+        console.log('paint: Undo\'s puff and the Blur tool read nothing back (paint-editor.js: frame, puff, blurTile)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 600; c.height = 400;
+                const cg = c.getContext('2d'); cg.fillStyle = '#808080'; cg.fillRect(0, 0, 600, 400); cg.fillStyle = '#000'; cg.fillRect(300, 0, 300, 400);
+                await openProject('lag', { 'l.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                delete document.documentElement.dataset.motion;
+                const st = document.getElementById('paint-stage');
+                const sc = (q) => { const sp = P.V().transformPoint(q); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                const stroke = (pts) => {
+                    st.dispatchEvent(new PointerEvent('pointerdown', { ...sc(pts[0]), pointerId: 1, bubbles: true, button: 0, buttons: 1 }));
+                    for (const q of pts.slice(1)) st.dispatchEvent(new PointerEvent('pointermove', { ...sc(q), pointerId: 1, bubbles: true, buttons: 1 }));
+                    st.dispatchEvent(new PointerEvent('pointerup', { ...sc(pts[pts.length - 1]), pointerId: 1, bubbles: true }));
+                };
+                // Reads of pixels, by canvas
+                const reads = new Map(), real = CanvasRenderingContext2D.prototype.getImageData;
+                CanvasRenderingContext2D.prototype.getImageData = function (...a) { reads.set(this.canvas, (reads.get(this.canvas) || 0) + 1); return real.apply(this, a); };
+                // A stroke, undone: its puff is the stroke's part of the picture only
+                step = 'puff';
+                P.addLayer();
+                P.setTool('brush'); P.opts.size = 20; P.opts.hardness = 100; P.opts.opacity = 100; P.fg = '#ff0000';
+                stroke([{ x: 100, y: 100 }, { x: 140, y: 100 }, { x: 180, y: 100 }]);
+                reads.clear();
+                P.undo();
+                const pf = document.querySelector('#paint-stage .paint-puff');
+                out.readScreen = reads.get(P.canvas) || 0;
+                const sr = P.canvas.getBoundingClientRect(), br = pf && pf.getBoundingClientRect();
+                out.small = !!br && br.width < sr.width / 2 && br.height < sr.height / 2;
+                if (pf) {
+                    const g = pf.getContext('2d'), k = pf.width / br.width;
+                    const at = (q) => { const s2 = sc(q); return real.call(g, Math.round((s2.clientX - br.left) * k), Math.round((s2.clientY - br.top) * k), 1, 1).data[3]; };
+                    out.masked = [at({ x: 140, y: 100 }) > 0, at({ x: 140, y: 106 + 9 })];
+                }
+                out.anim = pf && pf.getAnimations().length === 1;
+                await new Promise(res => setTimeout(res, 400));
+                out.gone = !document.querySelector('#paint-stage .paint-puff');
+                // Animations off: a plain undo
+                step = 'off';
+                P.redo();
+                await new Promise(res => setTimeout(res, 400));
+                document.documentElement.dataset.motion = 'off';
+                P.undo();
+                out.off = !document.querySelector('#paint-stage .paint-puff');
+                delete document.documentElement.dataset.motion;
+                // Blur: softer across the edge (on the layer, painted from the
+                // picture; outside the brush the layer stays empty), with
+                // nothing read back as it paints
+                step = 'blur';
+                out.gpu = P.canFilter();
+                P.cur = 0;
+                P.setTool('blur'); P.opts.size = 60; P.opts.strength = 100; P.opts.sampleAll = true;
+                reads.clear();
+                stroke([{ x: 300, y: 150 }, { x: 300, y: 200 }, { x: 300, y: 250 }]);
+                out.blurReads = [...reads.entries()].filter(([cv]) => cv.width === P.W && cv.height === P.H).reduce((n, [, v]) => n + v, 0);
+                const lg = P.layers[0].canvas.getContext('2d');
+                const v = (x) => real.call(lg, P.ext.l + x, P.ext.t + 200, 1, 1).data[0];
+                out.soft = [v(295), v(305), v(250), v(350)];
+                CanvasRenderingContext2D.prototype.getImageData = real;
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint lag: Undo\'s puff reads nothing back from the screen, and is only the stroke\'s part of it', r.readScreen === 0 && r.small && r.anim, JSON.stringify(r));
+        check('paint lag: the puff is cut to what changed, and goes once it has puffed', r.masked && r.masked[0] && r.masked[1] === 0 && r.gone, JSON.stringify(r));
+        check('paint lag: none with Animations off', r.off, JSON.stringify(r));
+        check('paint lag: Blur softens the edge on the canvas\'s own blur; nothing is read back but the step kept when it ends (its before and after)', r.gpu && r.blurReads <= 2 && r.soft[0] < 128 && r.soft[0] > 10 && r.soft[1] > 10 && r.soft[1] < 128 && r.soft[2] === 0 && r.soft[3] === 0, JSON.stringify(r));
+        check('paint lag: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
@@ -4224,6 +4421,7 @@ const PROJECT = `
     if (wanted('menus')) {
         console.log('right-click menus close on a press off them (script.js), in every mode');
         const { page, issues } = await open();
+        await page.setViewportSize({ width: 1400, height: 1000 });
         const out = {};
         // The test's menu (marked): a right-click may open another in its place
         const shut = () => page.evaluate(() => !document.querySelector('#context-menu[data-t]'));
@@ -4248,6 +4446,36 @@ const PROJECT = `
             await sleep(200);
             return app.files.length === 1 && app.viewMode === 'grid';
         });
+        // A button that opens a menu: the click, or the tap, that opens it
+        // doesn't close it again (the sort pill opens on the press)
+        const opens = () => page.evaluate(() => !!document.getElementById('context-menu'));
+        const shutAll = () => page.evaluate(() => app.closeContextMenu());
+        const opener = async (sel) => {
+            const at = await page.evaluate((s) => { const e = [...document.querySelectorAll(s)].find(x => x.getClientRects().length && x.getBoundingClientRect().width); if (!e) return null; e.scrollIntoView({ block: 'center' }); const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, sel);
+            if (!at) return 'not shown';
+            await page.mouse.click(at.x, at.y);
+            await page.waitForTimeout(150);
+            const clicked = await opens();
+            await shutAll();
+            await page.waitForTimeout(50);
+            await page.evaluate(({ x, y }) => {
+                const e = document.elementFromPoint(x, y);
+                const o = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, pointerType: 'touch', isPrimary: true, pointerId: 7, button: 0 };
+                e.dispatchEvent(new PointerEvent('pointerdown', o));
+                e.dispatchEvent(new MouseEvent('mousedown', o));
+                e.dispatchEvent(new PointerEvent('pointerup', o));
+                e.dispatchEvent(new MouseEvent('mouseup', o));
+                e.dispatchEvent(new MouseEvent('click', { ...o, detail: 1 }));
+            }, at);
+            await page.waitForTimeout(150);
+            const tapped = await opens();
+            await shutAll();
+            return clicked && tapped ? true : `click ${clicked}, tap ${tapped}`;
+        };
+        out.openers = {};
+        out.openers.sort = await opener('#sort-mode');
+        out.openers.more = await opener('#btn-export');
+
         out.grid = await press('#grid-view');
         out.gridRight = await press('#grid-view', 'right');
         // A press in the menu, or on its row's own menu, keeps it
@@ -4270,6 +4498,7 @@ const PROJECT = `
         out.blur = await shut();
         await page.evaluate(async () => { app.openSingle(app.files[0]); await sleep(200); });
         out.single = await press('#image-container');
+
         await page.evaluate(async () => { await app.enterAdjust(app.files[0]); await until(() => Adjust.ready); });
         // The press that closes it reaches nothing under it (no pin moved,
         // no dot painted); with no menu open, a press goes through
@@ -4282,9 +4511,28 @@ const PROJECT = `
         await bare('#adj-stage');
         out.adjustThrough = await downs() === 1;
         out.adjustPane = await press('#adj-panel');
+        out.openers.adjustMore = await opener('#adj-more');
+        out.openers.look = await opener('#adj-look-pick');
         // ⋯ opens its menu with the mouse, and another press shuts it
         const more = async (sel) => { const at = await mid(sel); await page.mouse.click(at.x, at.y); await page.waitForTimeout(100); const opened = !(await page.evaluate(() => !document.getElementById('context-menu'))); await page.mouse.click(at.x, at.y + 200 > 700 ? at.y - 50 : at.y + 200); return opened; };
         out.adjustMore = await more('#adj-more');
+        // Settings: the gear at the end of the pill, just before ⋯ (as in
+        // Photos), and it opens Settings
+        const gear = async (id, more) => {
+            const at = await page.evaluate(([id, more]) => {
+                const g = document.getElementById(id);
+                if (!g || !g.getClientRects().length || g.nextElementSibling !== document.getElementById(more)) return null;
+                const r = g.getBoundingClientRect();
+                return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+            }, [id, more]);
+            if (!at) return 'not before ⋯';
+            await page.mouse.click(at.x, at.y);
+            await page.waitForTimeout(150);
+            const open = await page.evaluate(() => app.isSettingsOpen());
+            await page.evaluate(() => app.toggleCustomizePanel(false));
+            return open;
+        };
+        out.gearAdjust = await gear('adj-settings', 'adj-more');
         await page.evaluate(async () => { await Modes.leave(true); await app.enterPaint(); await until(() => PaintEditor.ready); });
         await counted('#paint-stage');
         const strokes = () => page.evaluate(() => PaintEditor.history.length);
@@ -4294,16 +4542,20 @@ const PROJECT = `
         await bare('#paint-stage');
         out.paintThrough = await downs() === 1;
         out.paintPane = await press('#paint-panel');
+        out.openers.paintMore = await opener('#paint-more');
         out.paintMore = await more('#paint-more');
+        out.gearPaint = await gear('paint-settings', 'paint-more');
         await page.evaluate(() => Modes.leave(true));
         check('menus: a press on the grid closes the right-click menu, left or right button', setup && out.grid === true && out.gridRight === true, JSON.stringify(out));
         check('menus: a press in the menu or its row\'s own menu keeps it', out.keptMenu && out.keptFly, JSON.stringify(out));
         check('menus: leaving the window closes it', out.blur, JSON.stringify(out));
         check('menus: a press on the photo, in Photos, closes it', out.single === true, JSON.stringify(out));
         check('menus: a press on Adjust\'s photo or its pane closes it', out.adjustPhoto === true && out.adjustPane === true, JSON.stringify(out));
+        check('Settings in Adjust\'s and Paint\'s pill: the gear just before ⋯, and it opens Settings', out.gearAdjust === true && out.gearPaint === true, JSON.stringify([out.gearAdjust, out.gearPaint]));
         check('menus: a press on Paint\'s canvas or its pane closes it', out.paintCanvas === true && out.paintPane === true, JSON.stringify(out));
         check('menus: ⋯ in Adjust and in Paint opens its menu with the mouse', out.adjustMore && out.paintMore, JSON.stringify(out));
         check('menus: the press that closes it, on Adjust\'s or Paint\'s photo, only closes it (no pin moved, nothing painted); with none open a press goes through', out.adjustSwallowed && out.paintSwallowed && out.adjustThrough && out.paintThrough, JSON.stringify(out));
+        check('menus: a button that opens one (sort, ⋯ in Photos, Adjust and Paint, the film look) opens it with a click and with a tap', Object.values(out.openers).every(v => v === true), JSON.stringify(out.openers));
         check('menus: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }

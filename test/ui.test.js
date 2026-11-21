@@ -940,6 +940,39 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             document.getElementById('grid-view').dispatchEvent(
                 new WheelEvent('wheel', { ctrlKey: true, deltaY: -100, cancelable: true }));
             out.zoomChanged = document.getElementById('grid-size-slider').value !== before;
+            // Its icons are buttons: a step smaller, a step bigger; in the
+            // pill's text colour, the size of the selection pill's (the owner)
+            const sl = document.getElementById('grid-size-slider'), v0 = +sl.value;
+            document.getElementById('btn-grid-smaller').click();
+            const v1 = +sl.value;
+            document.getElementById('btn-grid-bigger').click();
+            const big = document.getElementById('btn-grid-bigger'), cs = getComputedStyle(big), pill = getComputedStyle(document.getElementById('grid-controls'));
+            out.sizeButtons = { steps: [v0, v1, +sl.value], grid: getComputedStyle(document.getElementById('grid-view')).getPropertyValue('--grid-item-size').trim(), color: cs.color === getComputedStyle(document.body).color || cs.color === pill.color, w: big.getBoundingClientRect().width, h: pill.height };
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            // The selection pill goes the way it came: at its width, a fade
+            // and slide down, then hidden (the owner: it popped)
+            app.setView('grid');
+            await sleep(100);
+            const bar = document.getElementById('selection-bar');
+            app.selection = new Set([app.files[0]]);
+            app.updateSelectionUI();
+            await sleep(450);
+            const barW = Math.round(bar.getBoundingClientRect().width);
+            app.clearSelection();
+            const going = bar.classList.contains('leaving') && !bar.classList.contains('hidden') && Math.round(bar.getBoundingClientRect().width) === barW;
+            await sleep(500);
+            out.barOut = { motion: Motion.on(), going, gone: bar.classList.contains('hidden') && !bar.classList.contains('leaving') };
+            // Opened from the grid, the viewer's buttons don't grow with the
+            // photo: out of sight while it does, then they fade in
+            app.currentFile = app.files[0];
+            app.updateSelectionUI();
+            app.setView('single');
+            const ctl = document.querySelector('#image-container > .controls'), ic = app.elements.imageContainer;
+            out.ctlZoom = { motion: Motion.on(), during: ic.classList.contains('zooming') && getComputedStyle(ctl).opacity === '0' };
+            await sleep(Motion.ZOOM + 700);
+            out.ctlZoom.after = !ic.classList.contains('zooming') && +getComputedStyle(ctl).opacity > 0.95;
+            app.setView('grid');
+            await sleep(400);
 
             return out;
         });
@@ -961,6 +994,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('... the flag row says what the symbol pointed at does, with its key',
             r.flagSay.idle === 'Flag and label' && /^Reject/.test(r.flagSay.pointed) && r.flagSay.back === 'Flag and label' && /^Red label/.test(r.flagSay.focused) && r.flagSay.labels, JSON.stringify(r.flagSay));
         check('ctrl+wheel zooms the grid', r.zoomChanged);
+        check('the selection pill leaves the way it came (at its width, a fade and slide), then it\'s hidden', (r.barOut.going || !r.barOut.motion) && r.barOut.gone, JSON.stringify(r.barOut));
+        check('opened from the grid, the viewer\'s buttons wait out of sight while the photo grows, then fade in', (r.ctlZoom.during || !r.ctlZoom.motion) && r.ctlZoom.after, JSON.stringify(r.ctlZoom));
+        check('the size pill\'s icons are buttons, a step smaller and bigger, as clear as the other pills\' icons', r.sizeButtons.steps[1] === r.sizeButtons.steps[0] - 20 && r.sizeButtons.steps[2] === r.sizeButtons.steps[0] && r.sizeButtons.grid === `${r.sizeButtons.steps[0]}px` && r.sizeButtons.color, JSON.stringify(r.sizeButtons));
         await page.close();
     }
 
@@ -979,6 +1015,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                 .filter(b => !b.classList.contains('hc-extra') && !b.classList.contains('hidden') && getComputedStyle(b).display !== 'none')
                 .map(b => b.dataset.hc);
             out.defaultMain = visible.join(',');
+            // Settings (the gear) last, just before ⋯
+            const gear = document.getElementById('btn-customize');
+            out.gearLast = gear.nextElementSibling === document.getElementById('btn-more');
             const extras = [...hc.querySelectorAll('.hc-extra')].map(b => b.dataset.hc);
             out.defaultExtras = extras.join(',');
             out.extrasHiddenCollapsed = getComputedStyle(document.getElementById('btn-toggle-fit')).display === 'none';
@@ -1007,6 +1046,17 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const pl = app.uiPrefs.placement;
             out.migrated = pl.view === 'more' && pl.refresh === 'more' && pl.history === 'more' && pl.fullscreen === 'main'
                 && app.uiPrefs.order.indexOf('crop') < app.uiPrefs.order.indexOf('info');
+            localStorage.removeItem('jeditor.ui');
+            // Saved before Settings joined the pill (pill 2): it goes on, at
+            // the end; once that's done (pill 3), taken off it stays off
+            const two = { ...app.defaultUiPrefs(), pill: 2, order: ['scan', 'camera', 'crop', 'customize', 'info'] };
+            two.placement = { ...two.placement, customize: 'more' };
+            localStorage.setItem('jeditor.ui', JSON.stringify(two));
+            app.loadUiPrefs();
+            out.gearMigrated = app.uiPrefs.placement.customize === 'main' && app.uiPrefs.order[app.uiPrefs.order.length - 1] === 'customize';
+            localStorage.setItem('jeditor.ui', JSON.stringify({ ...two, pill: 3 }));
+            app.loadUiPrefs();
+            out.gearStaysOff = app.uiPrefs.placement.customize === 'more';
             localStorage.removeItem('jeditor.ui');
             app.uiPrefs = app.defaultUiPrefs();
             app.applyUiPrefs();
@@ -1064,11 +1114,12 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.pillHidden = pill.classList.contains('hidden');
             return out;
         });
-        check('default pill: Crop and Info (Scan and Camera too in the apps), then More', r.defaultMain === 'crop,info', r.defaultMain);
+        check('default pill: Crop and Info (Scan and Camera too in the apps), then Settings, then More', r.defaultMain === 'crop,info,customize' && r.gearLast, JSON.stringify([r.defaultMain, r.gearLast]));
         check('the pill\'s right-click: what it shows, ticked; one picked goes on it; Customize… goes to Settings', r.pillMenu, JSON.stringify(r.pillMenu));
         check('2.0\'s pill, once: the view switch, Rescan and History move to More, Crop before Info; other choices stay', r.migrated, JSON.stringify(r.migrated));
         // (Adjust and Paint too: the mode switch has them)
-        check('extras live in More (view, rescan, adjust, paint, history, fit, strip, fullscreen, dupes, convert, keys, whatsnew, customize)', r.defaultExtras === 'view,refresh,adjust,paint,history,fit,strip,fullscreen,dupes,convert,keys,whatsnew,customize', r.defaultExtras);
+        check('extras live in More (view, rescan, adjust, paint, history, fit, strip, fullscreen, dupes, convert, keys, whatsnew)', r.defaultExtras === 'view,refresh,adjust,paint,history,fit,strip,fullscreen,dupes,convert,keys,whatsnew', r.defaultExtras);
+        check('Settings on the pill, once (pill 3): moved there and to its end, before More; taken off after, it stays off', r.gearMigrated && r.gearStaysOff, JSON.stringify([r.gearMigrated, r.gearStaysOff]));
         check('More expander shows/hides extras', r.extrasHiddenCollapsed && r.extrasShownExpanded);
         // (Adjust, newer than that saved order, goes after Crop, and Paint after it)
         check('reorder + hide + promote via prefs', r.reordered === 'crop,info,view' && r.refreshHidden && r.fullscreenMain,
@@ -3297,6 +3348,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.chips = [...document.querySelectorAll('#grid-view .grid-item')].filter(t => t.querySelector('.tile-folder'))
                 .map(t => t.querySelector('.tile-folder').textContent).sort().join(',');
             out.railRows = [...document.querySelectorAll('#folder-tree .fr-row')].map(r => r.querySelector('.fr-name').textContent + ':' + r.querySelector('.fr-count').textContent).join('|');
+            // Folded to start with (the owner's ask); its caret opens it out
+            document.querySelector('#folder-tree .fr-row[data-folder-path="Wedding"] .fr-caret').click();
+            out.railOpen = [...document.querySelectorAll('#folder-tree .fr-row')].map(r => r.querySelector('.fr-name').textContent + ':' + r.querySelector('.fr-count').textContent).join('|');
 
             // One folder at a time: its photos, its subfolders as tiles
             Folders.setScope('Wedding');
@@ -3470,7 +3524,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('folders: every folder found, empty ones too', r.folders === '|Wedding|Wedding/Ceremony|Wedding/Reception', r.folders);
         check('folders: All photos first, with the folder list and bar', r.allFirst && r.railShown);
         check('folders: All photos labels each photo with its folder', r.chips === 'Ceremony,Wedding,Wedding', r.chips);
-        check('folders: list shows the tree with photo counts', r.railRows === 'All photos:7|collate:4|Wedding:2|Ceremony:1|Reception:', r.railRows);
+        check('folders: list shows the tree with photo counts, its folders folded to start with; a caret opens one out', r.railRows === 'All photos:7|collate:4|Wedding:2' && r.railOpen === 'All photos:7|collate:4|Wedding:2|Ceremony:1|Reception:', JSON.stringify([r.railRows, r.railOpen]));
         check('folders: a folder shows its own photos and subfolder tiles', r.wedTiles === 'Wedding/b.jpg,Wedding/w1.jpg' && r.wedFolders === 'Wedding/Ceremony,Wedding/Reception', `${r.wedTiles} / ${r.wedFolders}`);
         check('folders: breadcrumb', r.crumbs === 'collate>Wedding', r.crumbs);
         check('folders: arrows stay in the folder (grid and single view)', r.wraps && r.singleStays && r.strip === 2, `strip=${r.strip}`);
@@ -5770,7 +5824,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const extra = document.getElementById('info-extra');
             out.card = !!extra && !extra.hidden && !!extra.querySelector('.info-flags .ctx-flag.fl-star')
                 && document.getElementById('main-interface').classList.contains('info-open')
-                && parseFloat(getComputedStyle(document.getElementById('image-container')).marginRight) >= 300;
+                && parseFloat(getComputedStyle(document.getElementById('image-container')).paddingRight) >= 300;
             extra.querySelector('.ctx-flag.fl-star').click();
             await sleep(50);
             out.cardFlag = Flags.has(app.currentFile, 'star') && !!document.querySelector('#info-extra .ctx-flag.fl-star.on');
@@ -5781,8 +5835,20 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const ib = document.getElementById('info-panel').getBoundingClientRect();
             out.cardRoom = !strip.classList.contains('hidden') && ib.bottom <= strip.getBoundingClientRect().top - 12;
             const pillB = document.querySelector('header .file-info').getBoundingClientRect().bottom;
-            out.underPills = document.getElementById('image-container').getBoundingClientRect().top >= pillB + 8
+            out.underPills = app.viewBox().top >= pillB + 8
                 && document.getElementById('current-image').getBoundingClientRect().top >= pillB + 8;
+            // Zoomed in, it fills the window to the top, under the pills
+            const ic = document.getElementById('image-container'), ci = document.getElementById('current-image');
+            ci.classList.add('follow');
+            const vb = app.viewBox();
+            app.zoomTo(2 * Math.max(vb.width / ci.offsetWidth, vb.height / ci.offsetHeight));
+            await sleep(50);
+            const icR = ic.getBoundingClientRect(), ciR = ci.getBoundingClientRect();
+            out.zoomTop = icR.top < pillB && ciR.top <= icR.top + 1 && ciR.right >= icR.right - 1;
+            app.zoomTo(1);
+            await sleep(50);
+            ci.classList.remove('follow');
+            out.fitAgain = ci.getBoundingClientRect().top >= pillB + 8;
             app.toggleInfoPanel(false);
             out.cardShut = !document.getElementById('main-interface').classList.contains('info-open');
             out.gb = app.formatBytes(3 * 1024 * 1024 * 1024) === '3.00 GB';
@@ -5794,6 +5860,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('folder details: total under the folder list; single view still shows the photo', r.railTotal && r.single && r.gb, JSON.stringify(r));
         check('Info is a glass card: the photo moves over beside it; its flags change the photo\'s', r.card && r.cardFlag && r.cardShut, JSON.stringify([r.card, r.cardFlag, r.cardShut]));
         check('... it stops above the film strip with room round it; the photo fits under the top pills', r.cardRoom && r.underPills, JSON.stringify([r.cardRoom, r.underPills]));
+        check('... zoomed in, the photo fills the window to the top and under Info, under the pills; back at Fit, clear of them again', r.zoomTop && r.fitAgain, JSON.stringify([r.zoomTop, r.fitAgain]));
         check('folder details suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -6156,6 +6223,13 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         out.hidden = await page.evaluate(() => document.getElementById('menu-bar').classList.contains('hidden'));
         await page.keyboard.press('Alt');
         await wait(100);
+        // Made as the name pill is (the same glass, height, corners and
+        // type), sliding in as the name pill's Done does
+        out.likeName = await page.evaluate(() => {
+            const bar = getComputedStyle(document.getElementById('menu-bar')), name = getComputedStyle(document.querySelector('.file-info'));
+            const same = ['height', 'borderTopLeftRadius', 'backgroundColor', 'fontSize', 'fontWeight', 'boxShadow'].filter(k => bar[k] !== name[k]);
+            return { same, anim: bar.animationName };
+        });
         Object.assign(out, await page.evaluate(() => {
             const bar = document.getElementById('menu-bar');
             const names = [...bar.querySelectorAll('.menu-bar-item')].map(b => b.textContent).join();
@@ -6250,6 +6324,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             return { mac: ok && own === true && sent.map(m => m.label).join() === 'File,Edit,View,Photo,Help' && grid.key === 'G' && grid.enabled,
                 macSub: !!label && label.items.length === 5, macRan: document.body.dataset.view === 'grid' };
         }));
+        check('menu bar: the pill Alt shows is made as the name pill is, and slides in', out.likeName && out.likeName.same.length === 0 && out.likeName.anim === 'menu-bar-in', JSON.stringify(out.likeName));
         check('menu bar: hidden until Alt is tapped; File, Edit, View, Photo and Help', out.hidden && out.shown && out.names === 'File,Edit,View,Photo,Help' && out.focused, JSON.stringify(out));
         check('menu bar: with no project, what needs one is there but greyed out; Esc closes the menu, then the bar', out.greyed && out.closed, JSON.stringify(out));
         check('menu bar: F10 too; each command shows its key and runs, then the bar goes; right goes to the next menu', out.keyShown && out.next && out.ran && out.submenu, JSON.stringify(out));

@@ -20,7 +20,7 @@ const Folders = {
     scope: null,
     lastScope: '',
     map: new Map(), // path → { handle } ('' is the opened folder)
-    collapsed: new Set(),
+    opened: new Set(), // folders opened out in the tree; the rest are folded (the owner: folded to start with)
     lastDest: null,
     dragging: null,
     CONCURRENCY: 4,
@@ -55,7 +55,7 @@ const Folders = {
         this.map = new Map();
         this.scope = null;
         this.lastScope = '';
-        this.collapsed = new Set();
+        this.opened = new Set();
         this.lastDest = null;
     },
 
@@ -193,7 +193,7 @@ const Folders = {
         if (path !== null) {
             this.lastScope = path;
             // Opening a folder unfolds the tree down to it
-            for (let p = this.parentOf(path); p; p = this.parentOf(p)) this.collapsed.delete(p);
+            for (let p = this.parentOf(path); p; p = this.parentOf(p)) this.opened.add(p);
         }
         const changed = path !== this.scope;
         this.scope = path;
@@ -332,8 +332,8 @@ const Folders = {
             if (!row) return;
             if (e.target.closest('.fr-caret')) {
                 const p = row.dataset.folderPath;
-                if (this.collapsed.has(p)) this.collapsed.delete(p);
-                else this.collapsed.add(p);
+                if (this.opened.has(p)) this.opened.delete(p);
+                else this.opened.add(p);
                 this.render();
                 return;
             }
@@ -365,7 +365,7 @@ const Folders = {
         const walk = (p, depth) => {
             const kids = this.children(p);
             const n = counts.get(p) || 0;
-            const open = p === '' || !this.collapsed.has(p);
+            const open = p === '' || this.opened.has(p);
             let inside = 0, insideBytes = 0;
             for (const [d, c] of counts) if (d !== p && this.within(d, p)) { inside += c; insideBytes += sizes.get(d) || 0; }
             const bytes = sizes.get(p) || 0;
@@ -569,7 +569,7 @@ const Folders = {
 
     forget(path) {
         for (const k of [...this.map.keys()]) if (k && this.within(k, path)) this.map.delete(k);
-        for (const k of [...this.collapsed]) if (this.within(k, path)) this.collapsed.delete(k);
+        for (const k of [...this.opened]) if (this.within(k, path)) this.opened.delete(k);
         if (this.lastDest !== null && this.within(this.lastDest, path)) this.lastDest = null;
         if (this.within(this.lastScope, path)) this.lastScope = this.parentOf(path);
         if (this.scope !== null && this.within(this.scope, path)) this.scope = this.parentOf(path);
@@ -597,7 +597,7 @@ const Folders = {
         try {
             const { path, created } = await this.createPath(parent, name);
             if (created.length) this.app.pushUndo({ type: 'folder-create', paths: created });
-            this.collapsed.delete(parent);
+            if (parent) this.opened.add(parent);
             this.afterChange();
             this.flash(path);
             this.app.showToast(`Made “${this.baseName(path)}”`, 2000, null, null, { kind: 'move' });
@@ -695,7 +695,7 @@ const Folders = {
         const recs = [...this.map.keys()].filter(k => k && this.within(k, path));
         recs.forEach(k => this.map.delete(k));
         recs.forEach(k => this.map.set(remap(k), { handle: null }));
-        this.collapsed = new Set([...this.collapsed].map(k => this.within(k, path) ? remap(k) : k));
+        this.opened = new Set([...this.opened].map(k => this.within(k, path) ? remap(k) : k));
         if (this.scope !== null && this.within(this.scope, path)) this.scope = remap(this.scope);
         if (this.within(this.lastScope, path) && this.lastScope) this.lastScope = remap(this.lastScope);
         if (this.lastDest !== null && this.within(this.lastDest, path)) this.lastDest = remap(this.lastDest);
@@ -1896,12 +1896,12 @@ const Folders = {
             e.preventDefault();
             e.dataTransfer.dropEffect = ok ? (copy ? 'copy' : 'move') : 'none';
             // Hovering a folded folder unfolds it
-            if (ok && t.classList.contains('fr-row') && this.collapsed.has(t.dataset.folderPath)) {
+            if (ok && t.classList.contains('fr-row') && !this.opened.has(t.dataset.folderPath) && this.children(t.dataset.folderPath).length) {
                 if (this._unfoldFor !== t.dataset.folderPath) {
                     clearTimeout(this._unfoldTimer);
                     this._unfoldFor = t.dataset.folderPath;
                     this._unfoldTimer = setTimeout(() => {
-                        this.collapsed.delete(this._unfoldFor);
+                        this.opened.add(this._unfoldFor);
                         this.render();
                     }, 700);
                 }

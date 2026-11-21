@@ -1045,6 +1045,15 @@ body.slideshow #image-container:has(.slide-ctl.show) {
     pointer-events: none;
 }
 
+/* While the photo grows out of its tile (motion.js zoomOut), its buttons
+   wait out of sight, then fade and slide up into place: opacity and a
+   transform only, nothing laid out again */
+#image-container.zooming > .controls {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+    transition: none;
+}
+
 /* Turned off in Settings */
 .controls.off {
     display: none;
@@ -2079,6 +2088,28 @@ body.slideshow #image-container:has(.slide-ctl.show) {
     from { opacity: 0; transform: translateY(8px); }
 }
 
+/* Going, the way it came (script.js: updateSelectionUI; hidden once it's
+   gone). Not with Animations off or Reduce motion: it just goes */
+@keyframes bar-out {
+    to { opacity: 0; transform: translateY(8px); }
+}
+
+.selection-bar.leaving {
+    animation: bar-out var(--dur-base) var(--ease-in-out) forwards;
+    pointer-events: none;
+}
+
+/* Animations off or Reduce motion: it comes and goes at once */
+:root[data-motion="off"] .selection-bar {
+    animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .selection-bar {
+        animation: none;
+    }
+}
+
 .interface.rail-open .selection-bar {
     /* The bar's offsets are scaled with it by the UI size: right by the list */
     left: calc(var(--rail-room) / var(--ui-scale, 1));
@@ -2115,13 +2146,48 @@ body.slideshow #image-container:has(.slide-ctl.show) {
     right: var(--gutter);
     z-index: var(--z-floating);
     padding: 0 var(--sp-4);
-    color: var(--text-2);
+    color: var(--text-1);
 }
 
 .slider-group {
     display: flex;
     align-items: center;
     gap: var(--sp-3);
+}
+
+/* Like the other pills (the owner: its icons were hard to see, and it
+   didn't match them): its icons are round buttons in the pill's text
+   colour, the size of the selection pill's, with their hover and press;
+   4px round them, as there */
+:root:not([data-skin]) .grid-controls {
+    padding: 4px;
+}
+:root:not([data-skin]) .grid-controls .slider-group {
+    gap: 2px;
+}
+:root:not([data-skin]) .grid-controls .tb-btn {
+    width: var(--ctl-md);
+    min-width: var(--ctl-md);
+    padding: 0;
+    border-radius: 50%;
+}
+:root:not([data-skin]) #grid-size-slider {
+    margin: 0 var(--sp-2);
+}
+/* Its track and knob as clear as its icons, on any glass (the owner:
+   "almost invisible"): the track from the pill's own text colour, the
+   knob ringed in it */
+:root:not([data-skin]) #grid-size-slider::-webkit-slider-runnable-track {
+    background: color-mix(in srgb, var(--text-1) 32%, transparent);
+}
+:root:not([data-skin]) #grid-size-slider::-moz-range-track {
+    background: color-mix(in srgb, var(--text-1) 32%, transparent);
+}
+:root:not([data-skin]) #grid-size-slider::-webkit-slider-thumb {
+    box-shadow: var(--slider-knob-edge), 0 0 0 1px color-mix(in srgb, var(--text-1) 30%, transparent);
+}
+:root:not([data-skin]) #grid-size-slider::-moz-range-thumb {
+    box-shadow: var(--slider-knob-edge), 0 0 0 1px color-mix(in srgb, var(--text-1) 30%, transparent);
 }
 
 #grid-size-slider {
@@ -2335,7 +2401,10 @@ body.slideshow #image-container:has(.slide-ctl.show) {
 #context-menu button:disabled .ctx-key { opacity: 0.6; }
 
 /* The menu bar the page draws (menubar.js; Windows): a glass pill along
-   the top, shown when Alt is tapped, gone once a command is chosen */
+   the top, shown when Alt is tapped, gone once a command is chosen. Made
+   as the name pill above it is (.toolbar, .file-info: the same glass,
+   height, corners and type), and it comes in as that pill's Done does
+   (#306): sliding out from under it as it fades in */
 .menu-bar {
     position: fixed;
     top: calc(var(--safe-top, 0px) + 64px); /* under the top pills */
@@ -2343,26 +2412,36 @@ body.slideshow #image-container:has(.slide-ctl.show) {
     transform: translateX(-50%);
     z-index: var(--z-menu);
     display: flex;
-    gap: 2px;
-    padding: 4px;
+    align-items: center;
+    gap: var(--sp-0);
+    height: var(--ctl-lg);
+    padding: 0 var(--sp-1);
     border-radius: var(--r-pill);
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
-    box-shadow: var(--shadow-3), var(--glass-rim);
+    box-shadow: var(--shadow-2), var(--glass-rim);
     backdrop-filter: var(--glass-filter);
     -webkit-backdrop-filter: var(--glass-filter);
-    animation: popover-in var(--dur-base) var(--ease-out);
+    color: var(--text-1);
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+    zoom: var(--ui-scale, 1);
+    animation: menu-bar-in var(--dur-slow, 240ms) var(--ease-out) both;
+}
+:root[data-motion="off"] .menu-bar { animation: none; }
+@media (prefers-reduced-motion: reduce) { .menu-bar { animation: none; } }
+@keyframes menu-bar-in {
+    from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
 }
 .menu-bar.hidden { display: none; }
 .menu-bar-item {
-    height: 28px;
+    height: calc(var(--ctl-lg) - 8px);
     padding: 0 12px;
     border: 0;
     border-radius: var(--r-pill);
     background: none;
     color: var(--text-1);
     font: inherit;
-    font-size: var(--fs-body, 13px);
     cursor: default;
     text-shadow: var(--glass-halo);
 }
@@ -10257,6 +10336,8 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 }
 /* Only in jEditor's own look: a theme's bar has Export in its More */
 :root[data-skin] #btn-sel-export { display: none; }
+/* Adjust's and Paint's gear: a theme has Settings in its own menus */
+:root[data-skin] .mode-settings { display: none; }
 
 /* Lens, Clear, Crystal and Liquid glass are too light to keep words
    readable on their own over a bright photo: a halo behind them does
@@ -12762,9 +12843,17 @@ body.touring .controls.idle button { pointer-events: auto; }
     font-weight: var(--fw-semibold);
     color: var(--text-1);
 }
-:root:not([data-skin]) .interface.info-open :is(#image-container, #grid-view) {
+:root:not([data-skin]) .interface.info-open #grid-view {
     margin-right: calc(300px + var(--gutter));
     transition: margin-right var(--dur-base) var(--ease-out);
+}
+/* The photo fits beside it, but zoomed in runs on under it (padding, not
+   a margin: the owner, "it should also go behind the right pane") */
+:root:not([data-skin]) #image-container {
+    transition: padding-right var(--dur-base) var(--ease-out);
+}
+:root:not([data-skin]) .interface.info-open #image-container {
+    padding-right: calc(300px + var(--gutter));
 }
 /* In the single view it stops above the film strip, with the same room
    round it as Adjust's card (the owner: "comfortable like adjust"), and
@@ -13036,17 +13125,54 @@ body.touring .controls.idle button { pointer-events: auto; }
 }
 
 /* ---- The photo fits under the pills (the owner's pick 1A, and "the
-   photo needs to fit under the pill by default"). The single view's
-   photo starts below the top pills, with a gutter (--head-room, fit.js:
-   headRoom); zoomed in, it's still clipped there, so the pills never sit
-   on it. Not in a slideshow, which has the whole screen ---- */
+   photo needs to fit under the pill by default"). The single view fits
+   the photo below the top pills, with a gutter (--head-room, fit.js:
+   headRoom). It's padding, not a margin, so only the fit sits there:
+   zoomed in, the photo fills the window to the top, under the pills
+   (the owner: "on zoom in it fills to the top"). Not in a slideshow,
+   which has the whole screen ---- */
 :root:not([data-skin]) body[data-view="single"]:not(.slideshow) #image-container {
-    margin-top: var(--head-room, 0px);
+    padding-top: var(--head-room, 0px);
 }
 
 /* Under macOS 26's toolbar, at least its height, as before */
 :root.native-toolbar:not([data-skin]) body[data-view="single"]:not(.slideshow) #image-container {
-    margin-top: max(var(--top-row), var(--head-room, 0px));
+    padding-top: max(var(--top-row), var(--head-room, 0px));
+}
+
+/* ---- Adjust's and Paint's panel floats over the photo (the owner: "on
+   zoom in it fills to the top" and "it should also go behind the right
+   pane", in every mode). The stage runs the whole width, under the panel
+   (a grid with both in one cell); Fit leaves room for the panel and the
+   pills (adjust.js and paint-editor.js: fitBox, paneRoom), and zoomed in,
+   the photo runs on under them. Not in a narrow window, where the panel
+   is under the photo ---- */
+@media (min-width: 761px) {
+    :root:not([data-skin]) :is(.adj-body, .paint-body) {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        grid-template-rows: minmax(0, 1fr);
+    }
+
+    :root:not([data-skin]) :is(.adj-stage, .paint-stage) {
+        grid-area: 1 / 1 / 2 / -1;
+    }
+
+    :root:not([data-skin]) :is(.adj-body, .paint-body) > .side-grip {
+        grid-area: 1 / 2;
+        z-index: 3;
+    }
+
+    :root:not([data-skin]) :is(.adj-panel, .paint-panel) {
+        grid-area: 1 / 3;
+        position: relative;
+        z-index: 3;
+    }
+
+    /* The zoom pill in the middle of the room beside the panel */
+    :root:not([data-skin]) :is(.adj-stage, .paint-stage) .adj-zoom {
+        left: calc((100% - var(--pane-room, 0px)) / 2);
+    }
 }
 
 /* ---- Paint matches Adjust (the owner: "paint should match adjust", and
