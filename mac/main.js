@@ -662,7 +662,10 @@ async function handle(rec, type, data) {
             return { ok: true };
         case 'toolbar':
             // What the native toolbar shows: the page's top row (bridge.js)
-            if (NATIVE_TOOLBAR) toolbar.update(rec.win.getNativeWindowHandle(), data);
+            if (NATIVE_TOOLBAR) {
+                toolbar.update(rec.win.getNativeWindowHandle(), data);
+                centreLights(rec);
+            }
             return { ok: NATIVE_TOOLBAR };
         case 'titleBar': {
             // A theme draws the title bar: its own buttons work the window,
@@ -1106,6 +1109,22 @@ function ownMenus(send) {
     ];
 }
 
+// The traffic lights on the toolbar's row, centred on its items, as in the
+// Mac's own windows. Electron's hidden title bar keeps them where its own
+// 28px bar would have them, at the very top, a line above the toolbar's
+// items (the owner, 21 November: two rows that don't line up). Without the
+// toolbar (the home page) they go back to where Electron puts them.
+function centreLights(rec) {
+    const d = toolbar.describe(rec.win.getNativeWindowHandle()) || {};
+    const band = d.visible ? (d.toolbarHeight || 52) : 0;
+    const at = band ? { x: 20, y: Math.round((band - 14) / 2) } : null;
+    const key = at ? at.x + ',' + at.y : '';
+    if (key === (rec.lightsKey || '')) return;
+    rec.lightsKey = key;
+    rec.win.setWindowButtonPosition(at);
+    rec.lights = at;
+}
+
 // macOS 26's toolbar on a window: its items click the page's own controls
 function attachToolbar(win) {
     toolbar.attach(win.getNativeWindowHandle(), (id, value) => {
@@ -1144,7 +1163,7 @@ function createWindow(at = null) {
         // moves the window (style.css), and the Mac's own window material
         // shows through the start screen (the rest of the page is solid)
         ...(mac ? {
-            // With the native toolbar, the traffic lights sit in it, as AppKit puts them
+            // With the native toolbar, the traffic lights sit in it, centred on its row (centreLights)
             ...(NATIVE_TOOLBAR ? { titleBarStyle: 'hidden' } : { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 20, y: 34 } }),
             vibrancy: 'under-window',
             visualEffectState: 'followWindow',

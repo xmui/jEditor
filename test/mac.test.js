@@ -904,19 +904,35 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             const wait = (ms) => new Promise(r => setTimeout(r, ms));
             document.documentElement.classList.add('native-toolbar');
             const out = [];
-            for (const view of ['grid', 'single']) {
+            for (const view of ['grid', 'single']) for (const rail of [false, true]) {
                 app.setView(view);
+                if (Folders.railOpen() !== rail) app.keyHandlers()['folders.rail']();
                 await wait(400);
                 const band = parseFloat(getComputedStyle(document.getElementById('main-interface'), '::before').height);
+                const name = `${view}${rail ? ', sidebar open' : ''}`;
                 for (const e of document.querySelectorAll('header, .folder-bar, .mode-float, #mode-chip-bar')) {
                     const b = e.getBoundingClientRect();
-                    if (e.getClientRects().length && b.top < band) out.push(`${view}: ${e.id || e.className}`);
+                    if (e.getClientRects().length && b.top < band) out.push(`${name}: ${e.id || e.className}`);
                 }
+                // One row (the owner, 21 November): the sidebar open, its own row
+                // of modes is on the toolbar's row, centred on it, after the
+                // lights, and what's in the sidebar starts straight under it.
+                // Closed, it's the toolbar's (bridge.js), not the page's
+                const row = document.getElementById('mode-row');
+                const shown = !!row && !!row.getClientRects().length;
+                if (rail) {
+                    const seg = row && row.querySelector('.mode-seg').getBoundingClientRect();
+                    const card = document.querySelector('.folder-rail .sb-card');
+                    if (!shown) out.push(`${name}: the sidebar's row of modes missing`);
+                    else if (Math.abs((seg.top + seg.bottom) / 2 - band / 2) > 1) out.push(`${name}: its row of modes not centred on the toolbar (${Math.round(seg.top)}–${Math.round(seg.bottom)} of ${band})`);
+                    else if (seg.left < 74) out.push(`${name}: its row of modes under the lights (${Math.round(seg.left)})`);
+                    if (card && card.getBoundingClientRect().top > band + 12) out.push(`${name}: a gap between the toolbar and the sidebar (${Math.round(card.getBoundingClientRect().top)})`);
+                } else if (shown) out.push(`${name}: the row of modes floats under the toolbar`);
             }
             document.documentElement.classList.remove('native-toolbar');
             return out;
         });
-        check('... with macOS 26\'s toolbar, nothing of the page\'s own top row under it', under.length === 0, under.join('; '));
+        check('... with macOS 26\'s toolbar, nothing of the page\'s own top row under it; the sidebar open, its own row of modes on the toolbar\'s row, after the lights, and no gap under it', under.length === 0, under.join('; '));
 
         // Reduce transparency (System Settings → Accessibility): solid
         await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }] });
@@ -967,6 +983,34 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await page.keyboard.press('Escape');
             await page.waitForTimeout(300);
 
+            // One row, as the Mac's own windows (the owner, 21 November), the
+            // lights centred on it. The sidebar open (the single view too): it
+            // runs to the top, its own row of modes beside the lights and
+            // pressable (pageLeft), and the title after it, the page's (AppKit's
+            // would be over the sidebar). Closed: the sidebar's button and the
+            // mode first in the toolbar, then AppKit's title, Find anything too
+            const rowAt = async () => {
+                await page.evaluate(() => app.setView('single'));
+                await settle();
+                const d = await describe();
+                const light = (await app.evaluate(() => global.jeditorLights()))[0];
+                const p = await page.evaluate(() => {
+                    const r = (e) => { const x = document.querySelector(e); return x && x.getClientRects().length ? x.getBoundingClientRect().toJSON() : null; };
+                    return { find: r('#mode-row-find'), side: r('#mode-row-side'), rail: r('.folder-rail'), title: r('#mac-title:not([hidden])') };
+                });
+                return { d, light, p };
+            };
+            await page.evaluate(() => { if (!Folders.railOpen()) app.keyHandlers()['folders.rail'](); });
+            const open = await rowAt();
+            const btn = open.p.side || open.p.find;
+            const hit = btn ? await app.evaluate(({ BrowserWindow }, [x, y]) => global.jeditorToolbar.hitAt(BrowserWindow.getAllWindows()[0].getNativeWindowHandle(), x, y), [Math.round((btn.left + btn.right) / 2), Math.round((btn.top + btn.bottom) / 2)]) : null;
+            const centred = (r) => !!r.light && Math.abs(r.light.y + 7 - r.d.toolbarHeight / 2) <= 1;
+            const idsOf = (r) => r.d.items.map(i => i.id);
+            check('one row, the sidebar open: the lights centred, its own row of modes beside them and pressable, the title the page\'s, after the sidebar', centred(open) && !idsOf(open).some(i => ['rail', 'mode', 'find', 'scope'].includes(i)) && !open.d.titleShown && Math.abs(open.d.pageLeft - open.p.rail.right) <= 1 && !!open.p.title && open.p.title.left >= open.p.rail.right && (hit || []).some(c => /RenderWidgetHost|WebContents/.test(c)), JSON.stringify([idsOf(open), open.light, open.d.toolbarHeight, open.d.titleShown, open.d.pageLeft, open.p, hit]));
+            await page.evaluate(() => { if (Folders.railOpen()) app.keyHandlers()['folders.rail'](); });
+            const shut = await rowAt();
+            check('... closed: the sidebar\'s button and the mode first, then the title, Find anything too, the lights centred', centred(shut) && idsOf(shut)[0] === 'rail' && idsOf(shut)[1] === 'mode' && idsOf(shut).includes('find') && shut.d.titleShown && !shut.d.pageLeft && !shut.p.title, JSON.stringify([idsOf(shut), shut.light, shut.d.toolbarHeight, shut.d.titleShown, shut.p]));
+
             // Photos · Adjust · Paint: in the toolbar (as in the folder pill),
             // never the page's own chip under it; over Adjust and Paint the
             // toolbar stays with that same button, and their head is below it
@@ -995,7 +1039,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await settle();
             d = await describe();
             const sent = await app.evaluate(() => global.sentModels.slice(-4));
-            check('... choosing Adjust there opens it; the toolbar stays, with the same mode button first, and no page chip', d.visible === true && d.items[0] && d.items[0].id === 'mode' && d.items[0].menu.includes('✓Adjust') && !!photosMode && d.items[0].menu.length === photosMode.menu.length && !await page.evaluate(() => document.getElementById('mode-float').getClientRects().length), JSON.stringify([d.visible, d.items, photosMode, sent]));
+            check('... choosing Adjust there opens it; the toolbar stays, with the sidebar\'s button and the same mode button first, and no page chip', d.visible === true && d.items[0] && d.items[0].id === 'rail' && d.items[1] && d.items[1].id === 'mode' && d.items[1].menu.includes('✓Adjust') && !!photosMode && d.items[1].menu.length === photosMode.menu.length && !await page.evaluate(() => document.getElementById('mode-float').getClientRects().length), JSON.stringify([d.visible, d.items, photosMode, sent]));
             // Measured at every Toolbar size, sidebar open and closed, in and out
             // of full screen: the toolbar's mode button is there, the page's chip
             // isn't, and the head (its buttons) starts below the toolbar
@@ -1021,8 +1065,11 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                             }, [scale, rail, where]);
                             d = await describe();
                             const name = `${where} at ${scale * 100}%${rail ? ', sidebar open' : ''}${fs_ ? ', full screen' : ''}`;
-                            const item = d.items[0];
-                            if (!d.visible || !item || item.id !== 'mode' || !item.menu.includes('✓' + where[0].toUpperCase() + where.slice(1))) modeMiss.push(`${name}: no mode button in the toolbar ${JSON.stringify([d.visible, d.items])}`);
+                            // (the sidebar shown beside them: its own row of modes, not the toolbar's)
+                            const sideShown = await page.evaluate(() => !!document.querySelector('.folder-rail #mode-row') && !!document.querySelector('.folder-rail #mode-row').getClientRects().length);
+                            const item = sideShown ? { id: 'mode', menu: ['✓' + where[0].toUpperCase() + where.slice(1)] } : d.items[1];
+                            if (sideShown && d.items.some(i => i.id === 'mode')) modeMiss.push(`${name}: the mode in the toolbar and the sidebar both`);
+                            if (!d.visible || (!sideShown && (!d.items[0] || d.items[0].id !== 'rail')) || !item || item.id !== 'mode' || !item.menu.includes('✓' + where[0].toUpperCase() + where.slice(1))) modeMiss.push(`${name}: no mode button in the toolbar ${JSON.stringify([d.visible, d.items])}`);
                             if (c.float) modeMiss.push(`${name}: the page's own chip shows too`);
                             if (c.firstControl !== null && c.firstControl < d.toolbarHeight) modeMiss.push(`${name}: the head's buttons (${Math.round(c.firstControl)}) under the toolbar (${d.toolbarHeight}px)`);
                         }
@@ -1037,7 +1084,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await settle();
             d = await describe();
             // (its mode button, or, with the sidebar open, the sidebar's own row of modes under it)
-            const railRow = await page.evaluate(() => { const r = document.querySelector('.folder-rail:not(.hidden) #mode-row'); return !!r && !!r.getClientRects().length && r.getBoundingClientRect().top >= 52; });
+            const railRow = await page.evaluate(() => { const r = document.querySelector('.folder-rail:not(.hidden) #mode-row'); return !!r && !!r.getClientRects().length; });
             check('... and back in Photos, the toolbar is back', d.visible && (d.items.some(i => i.id === 'mode') || railRow), JSON.stringify([railRow, d]).slice(0, 300));
 
             // The toolbar's empty space moves the window: pressed there, it's the

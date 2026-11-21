@@ -6,7 +6,13 @@
 //   supported()                 → true from macOS 26 (glass), else false
 //   attach(handle, onAction)    → a toolbar for the window (handle: its
 //                                 getNativeWindowHandle()); onAction(id, value)
-//   update(handle, model)       → { title, subtitle, visible, items: [...] }
+//   update(handle, model)       → { title, subtitle, visible, showTitle,
+//                                   pageLeft, items: [...] }: showTitle
+//                                   false, AppKit draws no title (the page
+//                                   does, after its sidebar); pageLeft, the
+//                                   points from the window's left edge where
+//                                   a press in the toolbar is the page's
+//                                   (its sidebar's own row of buttons)
 //   focusSearch(handle)         → the search field takes the keys
 //   describe(handle)            → what the toolbar shows (for the tests)
 //   click(handle, id, value)    → as if clicked (for the tests)
@@ -65,9 +71,18 @@ static NSImage *Symbol(NSString *name, NSString *label) {
 // title bar, and takes it: a drag moves the window, a double-click does
 // what System Settings → Desktop & Dock says (zoom, minimise or nothing).
 @interface JEDragView : NSView
+@property (nonatomic, assign) CGFloat pageLeft;
 @end
 
 @implementation JEDragView
+// Left of pageLeft the press is the page's: the sidebar's own row there
+// (its buttons; its empty space moves the window by the page's own drag
+// region, style.css)
+- (NSView *)hitTest:(NSPoint)point {
+    NSPoint p = [self convertPoint:point fromView:self.superview];
+    if (p.x < self.pageLeft) return nil;
+    return [super hitTest:point];
+}
 - (BOOL)mouseDownCanMoveWindow { return YES; }
 - (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
 - (void)mouseDown:(NSEvent *)event {
@@ -92,6 +107,15 @@ static void EnsureDragView(NSWindow *w) {
     JEDragView *drag = [[JEDragView alloc] initWithFrame:bar.bounds];
     drag.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     [bar addSubview:drag positioned:NSWindowBelow relativeTo:nil];
+}
+
+static JEDragView *DragViewOf(NSWindow *w) {
+    NSView *bar = [w standardWindowButton:NSWindowCloseButton].superview;
+    for (NSView *v = bar; v; v = v.superview) {
+        if ([NSStringFromClass([v class]) isEqualToString:@"NSTitlebarView"]) { bar = v; break; }
+    }
+    for (NSView *v in bar.subviews) if ([v isKindOfClass:[JEDragView class]]) return (JEDragView *)v;
+    return nil;
 }
 
 // Taken off again, with the toolbar (a theme draws its own title bar)
@@ -281,9 +305,14 @@ static void Send(JEToolbar *t, NSString *ident, id value) {
     // title there, after the lights, through the mode chip (Needs fixing,
     // 2026-11-01)
     BOOL visible = B(model, @"visible", YES);
-    w.titleVisibility = visible ? NSWindowTitleVisible : NSWindowTitleHidden;
+    // With the sidebar open the page draws the title after it (bridge.js),
+    // as the Mac's own windows place it: AppKit would put it after the
+    // lights, over the sidebar
+    w.titleVisibility = visible && B(model, @"showTitle", YES) ? NSWindowTitleVisible : NSWindowTitleHidden;
     self.toolbar.visible = visible;
     EnsureDragView(w);
+    id left = model[@"pageLeft"];
+    DragViewOf(w).pageLeft = visible && [left isKindOfClass:[NSNumber class]] ? MAX(0, [left doubleValue]) : 0;
 }
 
 - (NSDictionary *)describe {
@@ -301,7 +330,8 @@ static void Send(JEToolbar *t, NSString *ident, id value) {
     }
     return @{ @"title": self.window.title ?: @"", @"subtitle": self.window.subtitle ?: @"", @"visible": @(self.toolbar.visible),
               @"titleBox": TitleBox(self.window), @"toolbarHeight": @(self.toolbar.visible ? ToolbarHeight(self.window) : 0),
-              @"glass": @(NSProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26), @"items": items };
+              @"glass": @(NSProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26),
+              @"titleShown": @(self.window.titleVisibility == NSWindowTitleVisible), @"pageLeft": @(DragViewOf(self.window).pageLeft), @"items": items };
 }
 @end
 
