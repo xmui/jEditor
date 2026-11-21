@@ -28,9 +28,11 @@ const photos = require('./photos'); // the Photos library (photos.library: null 
 const fsHost = require('./fs-host'); // the files behind the page's own handles (handles.js)
 
 // macOS 26's own toolbar, in Liquid Glass, for the window's top row (the
-// page's pills mirror into it); before 26, or without the module, the
-// page keeps its own pills. JEDITOR_NATIVE_TOOLBAR=0: the pills anyway.
-const NATIVE_TOOLBAR = process.platform === 'darwin' && !!toolbar && toolbar.supported() && process.env.JEDITOR_NATIVE_TOOLBAR !== '0';
+// page's pills mirror into it). Off for now (the owner, 21 November: the
+// page's own top row, in jEditor's glass, on the Mac too, until the native
+// one can hold the sidebar's own row beside the lights): only with
+// JEDITOR_NATIVE_TOOLBAR=1, on 26 with the module (the tests turn it on)
+const NATIVE_TOOLBAR = process.platform === 'darwin' && !!toolbar && toolbar.supported() && process.env.JEDITOR_NATIVE_TOOLBAR === '1';
 global.jeditorToolbar = NATIVE_TOOLBAR ? toolbar : null; // for the tests (test/mac.test.js)
 
 // The Linux app is this one with Linux's words (app/host.js), drives
@@ -861,7 +863,7 @@ async function handle(rec, type, data) {
             const steps = { ...data.steps, ...smokeSteps };
             // On macOS 26 (Darwin 25) the built app must have its native
             // toolbar: a module that didn't load would fall back silently
-            if (process.platform === 'darwin' && parseInt(os.release(), 10) >= 25 && process.env.JEDITOR_NATIVE_TOOLBAR !== '0') {
+            if (process.platform === 'darwin' && parseInt(os.release(), 10) >= 25 && process.env.JEDITOR_NATIVE_TOOLBAR === '1') {
                 steps.nativeToolbar = NATIVE_TOOLBAR || `no native toolbar (${toolbar ? 'the module says it isn\'t supported' : 'the module didn\'t load'})`;
             }
             const failed = Object.entries(steps).filter(([, v]) => v !== true);
