@@ -4044,6 +4044,137 @@ const PROJECT = `
         await page.close();
     }
 
+    // ---- Paint: the review's fixes (undo, history size, compositing) ----
+    if (wanted('paintreview')) {
+        console.log('paint: feathered edges undone, moves and nudges kept small, pastes keep the layer, strokes composite once (paint-editor.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 400; c.height = 300;
+                const cg = c.getContext('2d'); cg.fillStyle = '#808080'; cg.fillRect(0, 0, 400, 300);
+                await openProject('review', { 'r.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                const all = (l) => l.canvas.getContext('2d').getImageData(0, 0, P.W, P.H).data;
+                const same = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+                const rect = (x, y, w, h) => { const p = new Path2D(); p.rect(x, y, w, h); return p; };
+                const at = (l, x, y) => { const q = P.Ci.transformPoint({ x, y }); return [...l.canvas.getContext('2d').getImageData(Math.floor(q.x), Math.floor(q.y), 1, 1).data]; };
+                const fill = (l, colour, x, y, w, h) => { const g = l.canvas.getContext('2d'); g.save(); g.setTransform(P.Ci); g.fillStyle = colour; g.fillRect(x, y, w, h); g.restore(); };
+                const last = () => P.history[P.history.length - 1];
+                // A feathered selection deleted: Undo puts back its faint edge too
+                step = 'feather';
+                P.addLayer();
+                const l = P.layer();
+                fill(l, '#ff0000', 0, 0, 400, 300);
+                const full = all(l);
+                P.setTool('rect-select');
+                P.selectPath(rect(100, 100, 100, 80), 'new');
+                await P.featherSelection(12);
+                const b = P.sel.box;
+                out.boxFringe = b.x < 95 && b.y < 95 && b.x + b.w > 205;
+                P.clearSelected();
+                out.cleared = at(l, 150, 140)[3] === 0 && at(l, 93, 140)[3] < 255 && at(l, 93, 140)[3] > 0;
+                P.undo();
+                out.featherUndone = same(all(l), full);
+                // A locked layer: a nudge moves neither the pixels nor the selection
+                step = 'nudge';
+                P.toggleFixed();
+                const box0 = JSON.stringify(P.sel.box), n0 = P.history.length;
+                P.setTool('move');
+                P.nudge(5, 0);
+                out.lockedStill = JSON.stringify(P.sel.box) === box0 && P.history.length === n0 && same(all(l), full);
+                P.toggleFixed();
+                // Nudges of a selection: one step, its part only, undone exactly
+                const n1 = P.history.length;
+                P.nudge(5, 0); P.nudge(5, 0); P.nudge(0, 3);
+                const e = last();
+                out.nudgeOne = P.history.length === n1 + 1 && e.name === 'Nudge';
+                out.nudgeSmall = e.r.w * e.r.h < P.W * P.H / 2 && e.r.w >= P.sel.box.w + 10;
+                P.undo();
+                out.nudgeUndone = same(all(l), full);
+                // Moved with the Move tool: the step is where it was and where it went
+                step = 'move';
+                P.deselect();
+                P.setTool('rect-select');
+                P.selectPath(rect(20, 20, 40, 40), 'new');
+                P.liftFloat();
+                P.float.t.tx = 60;
+                P.commitFloat();
+                const m = last();
+                out.moveSmall = m.name === 'Move' && m.r.w < 140 && m.r.h < 50;
+                out.moved = at(l, 100, 40)[0] === 255 && at(l, 40, 40)[3] === 0;
+                P.undo();
+                out.moveUndone = same(all(l), full);
+                P.deselect();
+                // Pasted onto a layer that has paint, made bigger: the rest stays
+                step = 'paste';
+                const l2 = P.layer();
+                l2.canvas.getContext('2d').clearRect(0, 0, P.W, P.H);
+                fill(l2, '#0000ff', 300, 200, 40, 40);
+                fill(l2, '#00ff00', 10, 10, 30, 30);
+                const had = all(l2);
+                P.setTool('rect-select');
+                P.selectPath(rect(10, 10, 30, 30), 'new');
+                P.copy();
+                P.deselect();
+                P.paste();
+                P.float.t.sx = P.float.t.sy = 1.5;
+                P.commitFloat();
+                out.pasteKeeps = at(l2, 320, 220)[2] === 255 && at(l2, 20, 20)[1] === 255;
+                out.pasteSmall = last().r.w * last().r.h < P.W * P.H / 4;
+                P.undo();
+                out.pasteUndone = same(all(l2), had);
+                // A layer added, duplicated or deleted counts toward the history's limit
+                step = 'bytes';
+                P.duplicateLayer();
+                out.dupBytes = last().bytes >= P.W * P.H * 4;
+                P.deleteLayer();
+                out.delBytes = last().bytes >= P.W * P.H * 4;
+                P.undo(); P.undo();
+                // A stroke: the layers under it composited once, not every frame
+                step = 'stroke';
+                P.addLayer(); P.addLayer();
+                const under = new Set(P.layers.slice(0, P.cur).map(k => k.canvas));
+                const draws = { under: 0 }, real = CanvasRenderingContext2D.prototype.drawImage;
+                CanvasRenderingContext2D.prototype.drawImage = function (src, ...a) { if (this.canvas === P.canvas && under.has(src)) draws.under++; return real.call(this, src, ...a); };
+                P.setTool('brush'); P.opts.size = 20; P.opts.opacity = 100; P.fg = '#000000';
+                const st = document.getElementById('paint-stage');
+                const sc = (q) => { const sp = P.V().transformPoint(q); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                st.dispatchEvent(new PointerEvent('pointerdown', { ...sc({ x: 50, y: 250 }), pointerId: 1, bubbles: true, button: 0, buttons: 1 }));
+                P.render({ quick: true });
+                draws.under = 0;
+                for (const x of [80, 110, 140]) {
+                    st.dispatchEvent(new PointerEvent('pointermove', { ...sc({ x, y: 250 }), pointerId: 1, bubbles: true, buttons: 1 }));
+                    P.render({ quick: true });
+                }
+                out.underOnce = draws.under === 0;
+                const sg = P.canvas.getContext('2d');
+                const shot = () => sg.getImageData(0, 0, P.canvas.width, P.canvas.height).data;
+                const kept = shot();
+                P._below = null;
+                P.render({ quick: true });
+                out.looksSame = same(kept, shot());
+                CanvasRenderingContext2D.prototype.drawImage = real;
+                st.dispatchEvent(new PointerEvent('pointerup', { ...sc({ x: 140, y: 250 }), pointerId: 1, bubbles: true }));
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint review: a feathered selection\'s box holds its faint edge; Delete then Undo puts all of it back', r.boxFringe && r.cleared && r.featherUndone, JSON.stringify(r));
+        check('paint review: a nudge on a locked layer moves nothing, not even the selection', r.lockedStill, JSON.stringify(r));
+        check('paint review: nudges of a selection are one step, of its part only, undone exactly', r.nudgeOne && r.nudgeSmall && r.nudgeUndone, JSON.stringify(r));
+        check('paint review: a move keeps only where it was and where it went, undone exactly', r.moveSmall && r.moved && r.moveUndone, JSON.stringify(r));
+        check('paint review: a paste made bigger keeps what else the layer has; its step is small, undone exactly', r.pasteKeeps && r.pasteSmall && r.pasteUndone, JSON.stringify(r));
+        check('paint review: a layer duplicated or deleted counts toward the history\'s limit', r.dupBytes && r.delBytes, JSON.stringify(r));
+        check('paint review: while a stroke is made the layers under it are drawn once, and it looks the same', r.underOnce && r.looksSame, JSON.stringify(r));
+        check('paint review: no JS errors', !r.error && issues.errors.length === 0, (r.error || '') + issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Restore colour (develop.js: restoreAuto; script.js: restoreColour) ----
     if (wanted('restore')) {
         console.log('restore colour (develop.js, script.js, adjust.js)');
