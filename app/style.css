@@ -2143,6 +2143,21 @@ body.slideshow #image-container:has(.slide-ctl.show) {
 :root:not([data-skin]) #grid-size-slider {
     margin: 0 var(--sp-2);
 }
+/* Its track and knob as clear as its icons, on any glass (the owner:
+   "almost invisible"): the track from the pill's own text colour, the
+   knob ringed in it */
+:root:not([data-skin]) #grid-size-slider::-webkit-slider-runnable-track {
+    background: color-mix(in srgb, var(--text-1) 32%, transparent);
+}
+:root:not([data-skin]) #grid-size-slider::-moz-range-track {
+    background: color-mix(in srgb, var(--text-1) 32%, transparent);
+}
+:root:not([data-skin]) #grid-size-slider::-webkit-slider-thumb {
+    box-shadow: var(--slider-knob-edge), 0 0 0 1px color-mix(in srgb, var(--text-1) 30%, transparent);
+}
+:root:not([data-skin]) #grid-size-slider::-moz-range-thumb {
+    box-shadow: var(--slider-knob-edge), 0 0 0 1px color-mix(in srgb, var(--text-1) 30%, transparent);
+}
 
 #grid-size-slider {
     width: 120px;
