@@ -65,7 +65,7 @@ const PaintEditor = {
         strength: 50, toneRange: 'mid', sponge: 'less',
         smoothing: 0, pressure: 'size', texture: 'canvas', wet: 50, symmetry: 'off',
         font: 'system-ui, sans-serif', fontSize: 72, bold: false, italic: false, align: 'left', outline: 0,
-        snap: true,
+        snap: true, keepRatio: true,
         sizeFor: 1500   // the long side of the layers the sizes were for
     },
     BRUSHES: ['brush', 'soft-round', 'hard-round', 'pencil', 'ink', 'marker', 'airbrush', 'spray', 'charcoal', 'watercolour', 'texture', 'mixer', 'eraser', 'eraser-block', 'eraser-soft', 'pixel', 'can', 'stamp', 'custom', 'spot-heal', 'heal', 'clone', 'dodge', 'burn', 'sponge', 'blur', 'sharpen', 'smudge'],
@@ -500,12 +500,16 @@ const PaintEditor = {
             if (this.fitted) this.fit(); else this.render();
         });
         this._resize.observe(st);
+        // The panel floats over the stage: shown, hidden or made wider, the
+        // room the picture fits in changes though the stage's doesn't
+        this._resize.observe(this.el('paint-panel'));
         // The top: placed again when the options change or the window does
         const box = this.el('paint-options');
         this._optsSeen = new MutationObserver(() => this.layoutTopSoon());
         this._optsSeen.observe(box, { childList: true });
         this._resizeTop = new ResizeObserver(() => this.layoutTopSoon());
         this._resizeTop.observe(this.root);
+        this._resizeTop.observe(this.el('paint-panel'));
         new MutationObserver(() => this.layoutTopSoon()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-skin'] });
         // Zoom's pill: its clicks aren't strokes
         const zoom = this.el('paint-zoom');
@@ -683,7 +687,9 @@ const PaintEditor = {
             const toolsOver = tools.width && getComputedStyle(this.el('paint-tools')).position === 'absolute';
             const g = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gutter')) || 20;
             const zoom = parseFloat(getComputedStyle(box).zoom) || 1;
-            const x0 = (toolsOver ? tools.right : st.left) - ed.left + gap, x1 = st.right - ed.left - gap;
+            const x0 = (toolsOver ? tools.right : st.left) - ed.left + gap, x1 = st.right - this.paneRoom() - ed.left - gap;
+            const pane = `${Math.round(this.paneRoom())}px`;
+            if (this.el('paint-stage').style.getPropertyValue('--pane-room') !== pane) this.el('paint-stage').style.setProperty('--pane-room', pane);
             const room = Math.max(0, x1 - x0);
             box.style.maxWidth = `${room / zoom}px`;
             this.fold(box, room);
@@ -1165,6 +1171,7 @@ const PaintEditor = {
     cursor() {
         const t = this.space || this.tool === 'hand' ? (this.drag && this.drag.kind === 'pan' ? 'grabbing' : 'grab')
             : this.crop ? (this._cropCursor || 'crosshair')
+            : this.float && this._floatCursor ? this._floatCursor
             : this.tool === 'move' ? 'move'
             : this.picking() ? 'crosshair'
             : this.tool === 'text' ? 'text'
@@ -1489,10 +1496,31 @@ const PaintEditor = {
             if (pills.length) box.t = Math.max(pad, Math.max(...pills.map(r => r.bottom)) - st.top + g);
             const tools = over(this.el('paint-tools'));
             if (tools) box.l = Math.max(pad, tools.right - st.left + g);
+            // The panel floats over the stage at the right: zoomed in, the
+            // picture runs on under it
+            const pane = this.paneRoom();
+            if (pane) box.r = pad + pane;
             const opts = this.el('paint-options');
             if (opts && opts.children.length && opts.getClientRects().length) box.b = Math.max(pad, opts.getBoundingClientRect().height + 2 * g);
         }
         return { x: box.l, y: box.t, w: Math.max(1, this.cssW - box.l - box.r), h: Math.max(1, this.cssH - box.t - box.b) };
+    },
+
+    // How much of the stage's right the panel covers (0 beside it, as in a
+    // theme or a narrow window, or hidden)
+    paneRoom() {
+        const p = this.el('paint-panel'), st = this.el('paint-stage');
+        if (!p || !st || !p.getClientRects().length) return 0;
+        const r = p.getBoundingClientRect(), b = st.getBoundingClientRect();
+        if (!r.width || r.top >= b.bottom || r.left <= b.left + b.width / 2) return 0;
+        return Math.max(0, b.right - r.left);
+    },
+
+    // The middle of the room the picture fits in (clear of the pills, the
+    // tools, the options and the panel), in css px on the stage
+    mid() {
+        const f = this.fitBox();
+        return { x: f.x + f.w / 2, y: f.y + f.h / 2 };
     },
 
     fit() {
@@ -1511,7 +1539,8 @@ const PaintEditor = {
     },
 
     zoomTo(z) {
-        this.zoomAt(z, this.cssW / 2, this.cssH / 2);
+        const m = this.mid();
+        this.zoomAt(z, m.x, m.y);
     },
 
     zoomAt(z, cx, cy) {
@@ -1537,8 +1566,9 @@ const PaintEditor = {
     // Shift-drag with the Hand. Straight again with Put the view straight
     // or a click on the angle in the zoom pill ----
 
-    rotateViewTo(deg, cx = this.cssW / 2, cy = this.cssH / 2) {
+    rotateViewTo(deg, cx = null, cy = null) {
         if (!this.ready) return;
+        if (cx === null) ({ x: cx, y: cy } = this.mid());
         // Within a degree of straight (or a quarter turn) it's that
         let a = ((deg % 360) + 540) % 360 - 180;
         for (const q of [-180, -90, 0, 90, 180]) if (Math.abs(a - q) < 1) a = q;
@@ -1854,12 +1884,12 @@ const PaintEditor = {
         const d = this.drag;
         if (!d && e.altKey !== !!this.alt) { this.alt = e.altKey; this.cursor(); }
         this.hover = d && d.kind === 'size' ? d.at : p;
-        if (!d) { if (this.crop) this.cropCursor(p); this.renderSoon(); return; }
+        if (!d) { if (this.crop) this.cropCursor(p); else if (this.float) this.floatCursor(p); else if (this._floatCursor) { this._floatCursor = null; this.cursor(); } this.renderSoon(); return; }
         if (d.kind === 'size') { this.sizeBy(p.sx - d.sx, p.sy - d.sy); return; }
         if (d.kind === 'pick') { this.pick(p, d.toBg); this.renderSoon(); return; }
         if (d.kind === 'pan' && (e.shiftKey || d.turnAlways)) {
             // Shift-drag with the Hand: the view turns about the middle
-            const cx = this.cssW / 2, cy = this.cssH / 2;
+            const { x: cx, y: cy } = this.mid();
             const ang = (q) => Math.atan2(q.sy - cy, q.sx - cx) * 180 / Math.PI;
             if (!d.turn) d.turn = { a0: ang(d), r0: this.viewAngle() };
             let deg = d.turn.r0 + ang(p) - d.turn.a0;
@@ -2071,12 +2101,12 @@ const PaintEditor = {
         if (this.poly) { this.endPoly(false); return true; }
         const e = this.history.pop();
         if (!e) return false;
-        const was = this.frame();
+        const was = this.frame(e, true);
         this.historyBytes -= e.bytes || 0;
         this.apply(e, true);
         this.future.push(e);
         this.drawLayers();
-        this.puff(was);
+        this.puff(was, e);
         this.renderSoon();
         return true;
     },
@@ -2084,12 +2114,12 @@ const PaintEditor = {
     redo() {
         const e = this.future.pop();
         if (!e) return false;
-        const was = this.frame();
+        const was = this.frame(e, false);
         this.apply(e, false);
         this.history.push(e);
         this.historyBytes += e.bytes || 0;
         this.drawLayers();
-        this.puff(was);
+        this.puff(was, e);
         this.renderSoon();
         return true;
     },
@@ -2100,48 +2130,102 @@ const PaintEditor = {
     // with Settings → Animations off, reduced motion or a theme
     // (Motion.on), nor going along the history
 
-    // The picture as shown, before the step (null when there's no puff)
-    frame() {
+    // The picture as shown, before the step: only where the step changed
+    // it (a step of pixels: its rect, on screen), else all of it. Null
+    // when there's no puff
+    frame(e, undo = true) {
         if (this._batch || !this.ready || typeof Motion === 'undefined' || !Motion.on()) return null;
-        const c = this.canvas;
-        if (!c.width || !c.height || c.width * c.height > 9e6) return null;
-        const f = document.createElement('canvas');
-        f.width = c.width; f.height = c.height;
-        f.getContext('2d').drawImage(c, 0, 0);
-        return f;
-    },
-
-    puff(was) {
-        if (!was) return;
-        this.render();
         const c = this.canvas, w = c.width, h = c.height;
-        if (was.width !== w || was.height !== h) return;
-        const g = was.getContext('2d', { willReadFrequently: true });
-        const a = g.getImageData(0, 0, w, h), b = c.getContext('2d').getImageData(0, 0, w, h).data, d = a.data;
-        // Only what changed is kept on it
-        let x0 = w, y0 = h, x1 = -1, y1 = -1;
-        for (let y = 0, i = 0; y < h; y++) {
-            for (let x = 0; x < w; x++, i += 4) {
-                if (Math.abs(d[i] - b[i]) + Math.abs(d[i + 1] - b[i + 1]) + Math.abs(d[i + 2] - b[i + 2]) + Math.abs(d[i + 3] - b[i + 3]) < 24) { d[i + 3] = 0; continue; }
-                if (x < x0) x0 = x; if (x > x1) x1 = x;
-                if (y < y0) y0 = y; if (y > y1) y1 = y;
+        if (!w || !h) return null;
+        let box = { x: 0, y: 0, w, h };
+        // A step that only takes layers away: those layers alone, drawn as
+        // they're shown (what changed, with no looking at pixels)
+        const to = e && e.kind === 'state' ? (undo ? e.before : e.after) : null;
+        if (to) {
+            const stays = (l) => to.layers.some(k => k.canvas === l.canvas);
+            const going = this.layers.filter(l => !stays(l));
+            if (going.length && this.layers.filter(stays).length === to.layers.length && going.every(l => !l.adj)) {
+                const dpr = this.dpr || 1, f = document.createElement('canvas');
+                f.width = w; f.height = h;
+                const g = f.getContext('2d');
+                g.setTransform(new DOMMatrix([dpr, 0, 0, dpr, 0, 0]).multiply(this.V()).multiply(this.C));
+                for (const l of going) if (this.isShown(l)) { g.save(); this.drawShown(g, l); g.restore(); }
+                return { canvas: f, box, sw: w, sh: h, soft: true };
             }
         }
-        if (x1 < 0) return;
-        g.putImageData(a, 0, 0);
+        if (e && e.kind === 'px') {
+            const dpr = this.dpr || 1, LD = new DOMMatrix([dpr, 0, 0, dpr, 0, 0]).multiply(this.V()).multiply(this.C);
+            const r = e.r, pts = [[r.x, r.y], [r.x + r.w, r.y], [r.x, r.y + r.h], [r.x + r.w, r.y + r.h]].map(([x, y]) => LD.transformPoint({ x, y }));
+            const x0 = Math.max(0, Math.floor(Math.min(...pts.map(q => q.x))) - 1), y0 = Math.max(0, Math.floor(Math.min(...pts.map(q => q.y))) - 1);
+            const x1 = Math.min(w, Math.ceil(Math.max(...pts.map(q => q.x))) + 1), y1 = Math.min(h, Math.ceil(Math.max(...pts.map(q => q.y))) + 1);
+            if (x1 <= x0 || y1 <= y0) return null;
+            box = { x: x0, y: y0, w: x1 - x0, h: y1 - y0, LD };
+        }
+        // A whole-picture step on a very big screen: no puff, a plain undo
+        else if (w * h > 9e6) return null;
+        const f = document.createElement('canvas');
+        f.width = box.w; f.height = box.h;
+        f.getContext('2d').drawImage(c, box.x, box.y, box.w, box.h, 0, 0, box.w, box.h);
+        return { canvas: f, box, sw: w, sh: h, soft: !!e && e.kind === 'px' };
+    },
+
+    // Undo and Redo's puff. Nothing is read back from the screen and the
+    // picture isn't drawn again for it: a step of pixels knows where it
+    // changed (its rect) and what (its before and after), so the puff is
+    // that part of the picture as it was, cut to what changed, then moved
+    // and faded by the compositor over the picture as it's drawn next.
+    // Any other step fades as a whole, without the blur or the lift,
+    // which would show what didn't change
+    puff(was, e) {
+        if (!was) return;
+        const c = this.canvas;
+        if (was.sw !== c.width || was.sh !== c.height) return;
+        const dpr = this.dpr || 1, p = was.canvas, box = was.box;
+        if (e && e.kind === 'px') {
+            const mask = this.changeMask(e);
+            if (mask === false) return;
+            if (mask) {
+                const g = p.getContext('2d');
+                g.globalCompositeOperation = 'destination-in';
+                g.setTransform(new DOMMatrix().translate(-box.x, -box.y).multiply(box.LD).translate(e.r.x, e.r.y).scale(mask._k));
+                g.drawImage(mask, 0, 0);
+            }
+        }
         if (this._puff) this._puff.remove();
-        const dpr = this.dpr || 1;
-        was.className = 'paint-puff';
-        was.setAttribute('aria-hidden', 'true');
-        was.style.transformOrigin = `${(x0 + x1) / 2 / dpr}px ${(y0 + y1) / 2 / dpr}px`;
-        c.after(was);
-        this._puff = was;
-        const done = () => { was.remove(); if (this._puff === was) this._puff = null; };
-        if (!was.animate) { done(); return; }
-        was.animate([
+        p.className = 'paint-puff';
+        p.setAttribute('aria-hidden', 'true');
+        Object.assign(p.style, { inset: 'auto', left: `${box.x / dpr}px`, top: `${box.y / dpr}px`, width: `${box.w / dpr}px`, height: `${box.h / dpr}px` });
+        c.after(p);
+        this._puff = p;
+        const done = () => { p.remove(); if (this._puff === p) this._puff = null; };
+        if (!p.animate) { done(); return; }
+        p.animate(was.soft ? [
             { opacity: 1, filter: 'blur(0)', transform: 'none' },
             { opacity: 0, filter: 'blur(6px)', transform: 'translateY(-6px) scale(1.06)' }
-        ], { duration: 280, easing: 'cubic-bezier(.2, .7, .3, 1)' }).onfinish = done;
+        ] : [{ opacity: 1 }, { opacity: 0 }], { duration: 280, easing: 'cubic-bezier(.2, .7, .3, 1)' }).onfinish = done;
+    },
+
+    // What a step of pixels changed, as a mask the size of its rect (null:
+    // too big to look at quickly, so all of the rect; false: nothing changed)
+    changeMask(e) {
+        const r = e.r;
+        if (!e.before || !e.after || r.w * r.h > 2e6) return null;
+        // (a big one looked at every other pixel, and drawn back up)
+        const k = r.w * r.h > 5e5 ? 2 : 1, mw = Math.ceil(r.w / k), mh = Math.ceil(r.h / k);
+        const a = e.before.data, b = e.after.data, m = new ImageData(mw, mh), d = m.data;
+        let any = false;
+        for (let y = 0; y < mh; y++) {
+            for (let x = 0, i = y * k * r.w * 4; x < mw; x++, i += 4 * k) {
+                if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]) + Math.abs(a[i + 3] - b[i + 3]) < 24) continue;
+                d[(y * mw + x) * 4 + 3] = 255;
+                any = true;
+            }
+        }
+        if (!any) return false;
+        const c = this.newCanvas(mw, mh);
+        c.getContext('2d').putImageData(m, 0, 0);
+        c._k = k;
+        return c;
     },
 
     // A tool's name, as the history lists it
@@ -2316,7 +2400,10 @@ const PaintEditor = {
         g.globalCompositeOperation = 'source-over';
         g.clearRect(0, 0, this.W, this.H);
         this.drag = { kind: 'paint', stroke: true, last: from || p, dirty: null, tool: this.tool, carry: 0, off, tone: this.TONE.includes(this.tool), target: l };
-        if (off || this.drag.tone || this.tool === 'mixer') this.drag.base = this.healBase();
+        // (Blur on the canvas's own blur: a picture kept where it's drawn,
+        // never read back, so it can stay on the GPU)
+        if (this.tool === 'blur' && this.canFilter()) this.drag.base = this.blurBase();
+        else if (off || this.drag.tone || this.tool === 'mixer') this.drag.base = this.healBase();
         if (this.tool === 'mixer') this.drag.mix = this.rgb(this.fg).slice(0, 3);
         if (this.drag.tone) this.drag.rad = PaintHeal.blurOf(this.tool, this.radius());
         // Symmetry (⋯): each dab again, mirrored or turned round the
@@ -3121,6 +3208,13 @@ const PaintEditor = {
 
     // What they copy from: the picture as it was when the stroke began
     // (so a stroke never copies itself), kept for the next stroke's use
+    blurBase() {
+        let c = this._blurBase;
+        if (!c || c.width !== this.W || c.height !== this.H) c = this._blurBase = this.newCanvas();
+        this.compose(c.getContext('2d'), this.layer());
+        return c;
+    },
+
     healBase() {
         let c = this._healBase;
         if (!c || c.width !== this.W || c.height !== this.H) c = this._healBase = this.newCanvas();
@@ -3174,7 +3268,7 @@ const PaintEditor = {
             d.fx = c;
             d.tiles = new Set();
         }
-        const m = 3 * d.rad, bg = d.base.getContext('2d', { willReadFrequently: true });
+        const m = 3 * d.rad, gpu = d.tool === 'blur' && this.canFilter(), bg = gpu ? null : d.base.getContext('2d', { willReadFrequently: true });
         const set = { amount: o.strength / 100, range: o.toneRange, more: o.sponge === 'more', radius: d.rad };
         for (let ty = Math.floor(Math.max(0, y0) / T); ty * T < Math.min(H, y1); ty++) {
             for (let tx = Math.floor(Math.max(0, x0) / T); tx * T < Math.min(W, x1); tx++) {
@@ -3182,11 +3276,53 @@ const PaintEditor = {
                 if (d.tiles.has(key)) continue;
                 d.tiles.add(key);
                 const ax = tx * T, ay = ty * T, tw = Math.min(T, W - ax), th = Math.min(T, H - ay);
+                if (gpu) { this.blurTile(d, ax, ay, tw, th, m); continue; }
                 const src = bg.getImageData(ax - m, ay - m, tw + 2 * m, th + 2 * m);
                 const valid = { x0: Math.max(0, m - ax), y0: Math.max(0, m - ay), x1: Math.min(tw + 2 * m, W - ax + m), y1: Math.min(th + 2 * m, H - ay + m) };
                 d.fx.getContext('2d').putImageData(PaintHeal.tone(d.tool, src, m, tw, th, set, valid), ax, ay);
             }
         }
+    },
+
+    // Can the canvas blur for us (ctx.filter, on the GPU where there is
+    // one)? Then Blur's tiles are blurred there, not pixel by pixel here
+    canFilter() {
+        if (this._canFilter === undefined) {
+            try {
+                const g = document.createElement('canvas').getContext('2d');
+                g.filter = 'blur(2px)';
+                this._canFilter = g.filter === 'blur(2px)';
+            } catch (e) { this._canFilter = false; }
+        }
+        return this._canFilter;
+    },
+
+    // One of Blur's tiles: the picture round it (its edges repeated past
+    // the picture's, as the box blur has them) through the canvas's own
+    // blur, as soft as three box blurs of the stroke's radius
+    blurTile(d, ax, ay, tw, th, m) {
+        const W = this.W, H = this.H, sw = tw + 2 * m, sh = th + 2 * m;
+        let t = this._blurTile;
+        if (!t || t.width < sw || t.height < sh) t = this._blurTile = this.newCanvas(Math.max(sw, t ? t.width : 0), Math.max(sh, t ? t.height : 0));
+        const g = t.getContext('2d');
+        g.imageSmoothingEnabled = false;
+        g.clearRect(0, 0, t.width, t.height);
+        const x0 = Math.max(0, ax - m), y0 = Math.max(0, ay - m), x1 = Math.min(W, ax + tw + m), y1 = Math.min(H, ay + th + m);
+        const dx = x0 - (ax - m), dy = y0 - (ay - m), w = x1 - x0, h = y1 - y0;
+        g.drawImage(d.base, x0, y0, w, h, dx, dy, w, h);
+        // Past the picture's edges: its edge pixels, stretched
+        if (dx > 0) g.drawImage(t, dx, dy, 1, h, 0, dy, dx, h);
+        if (dx + w < sw) g.drawImage(t, dx + w - 1, dy, 1, h, dx + w, dy, sw - dx - w, h);
+        if (dy > 0) g.drawImage(t, 0, dy, sw, 1, 0, 0, sw, dy);
+        if (dy + h < sh) g.drawImage(t, 0, dy + h - 1, sw, 1, 0, dy + h, sw, sh - dy - h);
+        const fg = d.fx.getContext('2d');
+        fg.save();
+        fg.beginPath();
+        fg.rect(ax, ay, tw, th);
+        fg.clip();
+        fg.filter = `blur(${Math.sqrt(d.rad * (d.rad + 1)).toFixed(2)}px)`;
+        fg.drawImage(t, 0, 0, sw, sh, ax - m, ay - m, sw, sh);
+        fg.restore();
     },
 
     // Smudge: what the brush picked up laid down softly (with the
@@ -4438,7 +4574,7 @@ const PaintEditor = {
                 if (f.mesh) { this.drag.mesh = f.mesh.map(q => ({ ...q })); return; }
                 // A corner or side with Ctrl (Ctrl+Alt+Shift: perspective),
                 // or in Skew, Distort or Perspective: the corners go free
-                const how = e.ctrlKey || e.metaKey ? (e.altKey && e.shiftKey ? 'perspective' : 'distort') : f.mode;
+                const how = e.ctrlKey || e.metaKey ? (e.altKey && e.shiftKey ? 'perspective' : 'distort') : (f.mode || 'free');
                 if (hit !== 'rotate' && (f.quad || (how !== 'free' && hit !== 'move'))) {
                     if (!f.quad) f.quad = this.quadOf(f);
                     Object.assign(this.drag, { quad: f.quad.map(q => ({ ...q })), how });
@@ -4536,6 +4672,8 @@ const PaintEditor = {
         if (h.quad) return this.inQuad(h.quad, p.ox, p.oy) ? 'move' : null;
         const l = h.M.inverse().transformPoint({ x: p.ox, y: p.oy });
         if (l.x >= 0 && l.y >= 0 && l.x <= this.float.w && l.y <= this.float.h) return 'move';
+        // Just outside a corner: turn it
+        for (const [, q] of h.corners) if (Math.hypot(p.ox - q.x, p.oy - q.y) <= r * 2.8) return 'rotate';
         return null;
     },
 
@@ -4566,10 +4704,13 @@ const PaintEditor = {
             const c = Math.cos(-o.rot), s = Math.sin(-o.rot);
             const lx = c * (p.ox - cx) - s * (p.oy - cy), ly = s * (p.ox - cx) + c * (p.oy - cy);
             let sx = Math.max(0.02, Math.abs(lx) / (f.w / 2)), sy = Math.max(0.02, Math.abs(ly) / (f.h / 2));
-            // A side: that way only (Shift: both, its shape kept)
-            if (d.part === 'e' || d.part === 'w') sy = keepShape ? sx : Math.abs(o.sy);
-            else if (d.part === 'n' || d.part === 's') sx = keepShape ? sy : Math.abs(o.sx);
-            else if (keepShape) sx = sy = Math.max(sx, sy);
+            // A side: that way only (Shift: both, its shape kept). A corner
+            // keeps its proportions while the lock is on (Shift frees them),
+            // and with it off Shift keeps them
+            const ax = Math.abs(o.sx) || 1, ay = Math.abs(o.sy) || 1;
+            if (d.part === 'e' || d.part === 'w') sy = keepShape ? sx / ax * ay : ay;
+            else if (d.part === 'n' || d.part === 's') sx = keepShape ? sy / ay * ax : ax;
+            else if ((this.opts.keepRatio !== false) !== !!keepShape) { const k = Math.max(sx / ax, sy / ay); sx = ax * k; sy = ay * k; }
             t.sx = sx * Math.sign(o.sx || 1);
             t.sy = sy * Math.sign(o.sy || 1);
         }
@@ -4649,8 +4790,9 @@ const PaintEditor = {
             return;
         }
         this.tfRows = [
-            num('W', () => Math.round(Math.abs(t.sx) * 100), (v) => { t.sx = Math.sign(t.sx || 1) * v / 100; }, '%', 1, 2000),
-            num('H', () => Math.round(Math.abs(t.sy) * 100), (v) => { t.sy = Math.sign(t.sy || 1) * v / 100; }, '%', 1, 2000),
+            num('W', () => Math.round(Math.abs(t.sx) * 100), (v) => { const k = v / 100 / (Math.abs(t.sx) || 1); t.sx = Math.sign(t.sx || 1) * v / 100; if (this.opts.keepRatio !== false) t.sy *= k; }, '%', 1, 2000),
+            this.ratioLock(box),
+            num('H', () => Math.round(Math.abs(t.sy) * 100), (v) => { const k = v / 100 / (Math.abs(t.sy) || 1); t.sy = Math.sign(t.sy || 1) * v / 100; if (this.opts.keepRatio !== false) t.sx *= k; }, '%', 1, 2000),
             num('Angle', () => Math.round(((t.rot * 180 / Math.PI) % 360 + 540) % 360 - 180), (v) => { t.rot = v * Math.PI / 180; }, '°', -180, 180)
         ];
         const button = (label, title, fn, cls = 'btn ghost sm') => {
@@ -4666,12 +4808,49 @@ const PaintEditor = {
         button('Flip ↕', 'Flip upside down', () => { t.sy = -t.sy; this.renderSoon(); });
         const hint = document.createElement('span');
         hint.className = 'paint-opt paint-hint';
-        hint.textContent = 'Drag a corner to size it, a side to stretch it (Shift keeps its shape), the knob to turn it; Ctrl-drag a corner to distort it';
+        hint.textContent = 'Drag a corner to size it (Shift frees its shape), a side to stretch it, the knob or just outside a corner to turn it; Ctrl-drag a corner to distort it';
         hint.title = hint.textContent;
         box.appendChild(hint);
         button('Cancel', 'Put it back as it was (Esc)', () => this.cancelFloat(), 'btn secondary paint-tf-cancel');
         button('Done', 'Put it down (Enter)', () => this.commitFloat(), 'btn primary paint-tf-ok');
     },
+
+    // The lock between W and H: on, a corner and W or H keep the proportions
+    ratioLock(box) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'paint-toggle paint-tf-lock';
+        const draw = () => {
+            const on = this.opts.keepRatio !== false;
+            b.setAttribute('aria-pressed', String(on));
+            b.title = on ? 'Proportions kept (Shift-drag a corner to stretch it). Click to unlock' : 'Proportions free (Shift-drag a corner to keep them). Click to lock';
+            b.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="${on ? 'M8 11V8a4 4 0 0 1 8 0v3' : 'M8 11V8a4 4 0 0 1 7.5-2'}"/></svg>`;
+        };
+        b.setAttribute('aria-label', 'Keep proportions');
+        draw();
+        b.addEventListener('click', () => { this.opts.keepRatio = this.opts.keepRatio === false; draw(); this.remember(); b.blur(); });
+        box.appendChild(b);
+        return { isConnected: false, _sync() {} };
+    },
+
+    // Over Free transform's box: the cursor says what a drag does there,
+    // the resize arrows turned as the box is
+    floatCursor(p) {
+        const f = this.float, hit = f ? this.floatHit(p) : null;
+        let c = null;
+        if (hit === 'move') c = 'move';
+        else if (hit === 'rotate') c = this.ROTATE_CURSOR;
+        else if (hit && hit[0] === 'm') c = 'crosshair';
+        else if (hit) {
+            const h = this.floatHandles(), q = [...h.corners, ...h.edges].find(([id]) => id === hit)[1];
+            const pts = h.corners.map(([, v]) => v), mid = { x: pts.reduce((a, v) => a + v.x, 0) / 4, y: pts.reduce((a, v) => a + v.y, 0) / 4 };
+            const V = this.V(), a = V.transformPoint(q), m = V.transformPoint(mid);
+            const deg = ((Math.atan2(a.y - m.y, a.x - m.x) * 180 / Math.PI) % 180 + 180) % 180;
+            c = ['ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize'][Math.round(deg / 45) % 4];
+        }
+        if (c !== this._floatCursor) { this._floatCursor = c; this.cursor(); }
+    },
+    ROTATE_CURSOR: `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a7 7 0 1 0 1 6" stroke="#fff" stroke-width="4"/><path d="M19 4v4h-4" stroke="#fff" stroke-width="4"/><path d="M18 8a7 7 0 1 0 1 6" stroke="#000" stroke-width="1.6"/><path d="M19 4v4h-4" stroke="#000" stroke-width="1.6"/></g></svg>')}") 12 12, grab`,
 
     syncTransform() {
         for (const r of this.tfRows || []) if (r.isConnected) r._sync();
@@ -5068,6 +5247,10 @@ const PaintEditor = {
     copy({ merged = false } = {}) {
         const l = this.layer();
         if (!l) return;
+        if (this.float) this.commitFloat();
+        // Nothing selected: the layer itself, to paste as a layer
+        if (!this.sel && !merged) { this.copyLayer(); return; }
+        this._clipLayer = null;
         const b = this.sel ? this.sel.box : { x: 0, y: 0, w: this.W, h: this.H };
         const c = this.newCanvas(b.w, b.h);
         const g = c.getContext('2d');
@@ -5088,7 +5271,94 @@ const PaintEditor = {
         this._clip = c;
         this._clipAt = { x: b.x, y: b.y };
         this._clipStale = false;
+        this.toSystemClipboard(c);
         this.app.showToast(merged ? 'Copied, merged' : 'Copied', 1000);
+    },
+
+    // A layer copied whole: everything it keeps (its mask, text, shape,
+    // filter settings, opacity and blend), so Paste makes it again as a
+    // layer, here or in another picture. The system's clipboard gets it as
+    // it looks, for other apps
+    copyLayer(i = this.cur) {
+        const l = this.layers[i];
+        if (!l) return;
+        if (this.float) this.commitFloat();
+        const dup = (c) => { if (!c) return null; const n = this.newCanvas(c.width, c.height); n.getContext('2d').drawImage(c, 0, 0); return n; };
+        if (this._clipLayer) for (const c of [this._clipLayer.canvas, this._clipLayer.mask]) if (c) c.width = c.height = 0;
+        this._clipLayer = {
+            name: l.name, opacity: l.opacity, blend: l.blend, lock: l.lock, clip: !!l.clip, group: l.group || null,
+            text: l.text ? JSON.parse(JSON.stringify(l.text)) : null, shape: l.shape ? JSON.parse(JSON.stringify(l.shape)) : null,
+            adj: l.adj ? JSON.parse(JSON.stringify(l.adj)) : null, src: l.src || null,
+            canvas: dup(l.canvas), mask: dup(l.mask),
+            W: this.W, H: this.H, PW: this.PW, PH: this.PH, ext: { ...this.ext }, from: this.layers
+        };
+        // As it looks, cut to what's on it
+        const b = this.contentBox(l.canvas);
+        if (this._clip) this._clip.width = this._clip.height = 0;
+        this._clip = null;
+        if (b) {
+            const c = this.newCanvas(b.w, b.h);
+            this.drawShown(c.getContext('2d'), l, -b.x, -b.y);
+            this._clip = c;
+            this._clipAt = { x: b.x, y: b.y };
+            this.toSystemClipboard(c);
+        }
+        this._clipStale = false;
+        this.app.showToast(`Copied the layer ${l.name}`, 1200);
+    },
+
+    // For other apps: a PNG on the system's clipboard (where it allows it)
+    toSystemClipboard(c) {
+        try {
+            if (!navigator.clipboard || !navigator.clipboard.write || typeof ClipboardItem === 'undefined') return;
+            const png = new Promise((resolve, reject) => c.toBlob(b => (b ? resolve(b) : reject(new Error('no PNG'))), 'image/png'));
+            navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]).catch(() => { /* not allowed here */ });
+        } catch (e) { /* not allowed here */ }
+    },
+
+    // The layer copied, made again above this one: in the same place in
+    // the same picture; in another, the photo's middles lined up
+    pasteLayer() {
+        const s = this._clipLayer;
+        if (!s || !this.ready) return;
+        if (this.layers.length >= Paint.MAX_LAYERS) {
+            this.app.showToast(`Up to ${Paint.MAX_LAYERS} layers: merge some (Ctrl+E) to paste more`, 2500);
+            return;
+        }
+        if (this.float) this.commitFloat();
+        const same = s.W === this.W && s.H === this.H && s.ext.l === this.ext.l && s.ext.t === this.ext.t;
+        // In the photo's space, then in the layers'
+        const px = same ? 0 : Math.round((this.PW - s.PW) / 2), py = same ? 0 : Math.round((this.PH - s.PH) / 2);
+        const dx = px + this.ext.l - s.ext.l, dy = py + this.ext.t - s.ext.t;
+        // A text's or shape's place (m: from its own space to the photo's), moved too
+        const move = (o) => {
+            if (o && o.m && (px || py)) { const M = new DOMMatrix().translate(px, py).multiply(new DOMMatrix(o.m)); o.m = [M.a, M.b, M.c, M.d, M.e, M.f].map(v => +v.toFixed(5)); }
+            return o;
+        };
+        this.pushState('Paste layer');
+        const l = this.makeLayer(s.name);
+        const inHere = s.from === this.layers;
+        Object.assign(l, {
+            opacity: s.opacity, blend: s.blend, lock: s.lock, clip: s.clip,
+            group: s.group && this.layers.some(k => k.group === s.group) ? s.group : null,
+            text: s.text ? move(JSON.parse(JSON.stringify(s.text))) : null,
+            shape: s.shape ? move(JSON.parse(JSON.stringify(s.shape))) : null,
+            adj: s.adj ? JSON.parse(JSON.stringify(s.adj)) : null,
+            src: same ? s.src : null
+        });
+        if (inHere) l.name = `${s.name} copy`;
+        l.canvas.getContext('2d').drawImage(s.canvas, dx, dy);
+        if (s.mask) {
+            l.mask = this.newCanvas();
+            const g = l.mask.getContext('2d');
+            if (!same) { g.fillStyle = '#fff'; g.fillRect(0, 0, this.W, this.H); g.clearRect(dx, dy, s.mask.width, s.mask.height); }
+            g.drawImage(s.mask, dx, dy);
+            l.maskChanged = true;
+        }
+        this.layers.splice(this.cur + 1, 0, l);
+        this.cur++;
+        this.afterState();
+        this.app.showToast(`Pasted the layer ${l.name}`, 1200);
     },
 
     // Ctrl+V: in the middle of what's on screen. Paste in place
@@ -5096,6 +5366,7 @@ const PaintEditor = {
     paste({ inPlace = false } = {}) {
         // By the key: the paste event the key also sends isn't a second paste
         if (inPlace) this._pastedAt = performance.now();
+        if (this._clipLayer) { this.pasteLayer(); return; }
         const c = this._clip;
         if (!c) { this.app.showToast('Nothing copied yet: select something and copy it (Ctrl+C)', 2000); return; }
         if (this.float) this.commitFloat();
@@ -5104,14 +5375,14 @@ const PaintEditor = {
         const fc = this.newCanvas(c.width, c.height);
         fc.getContext('2d').drawImage(c, 0, 0);
         // In the middle of what's on screen (as shown), or in place (in the layer)
-        const mid = this.V().inverse().transformPoint({ x: this.cssW / 2, y: this.cssH / 2 });
+        const mid = this.V().inverse().transformPoint(this.mid());
         const here = inPlace && this._clipAt;
         const at = here ? this.C.transformPoint({ x: this._clipAt.x + c.width / 2, y: this._clipAt.y + c.height / 2 }) : mid;
         // In place, turned and flipped as the photo is shown, so it lands
         // on the very pixels it came from
         const C = this.C, flip = C.a * C.d - C.b * C.c < 0;
         const t = here ? { tx: 0, ty: 0, sx: 1, sy: flip ? -1 : 1, rot: Math.atan2(C.b, C.a) } : { tx: 0, ty: 0, sx: 1, sy: 1, rot: 0 };
-        this.float = { canvas: fc, x0: at.x - c.width / 2, y0: at.y - c.height / 2, w: c.width, h: c.height, t, layer: l, sel: null };
+        this.float = { canvas: fc, x0: at.x - c.width / 2, y0: at.y - c.height / 2, w: c.width, h: c.height, t, layer: l, sel: null, mode: 'free', quad: null };
         this.dropSelection();
         this.setTool('move');
         this.renderSoon();
@@ -5187,14 +5458,14 @@ const PaintEditor = {
         this.beginPixels(l);
         // Fitted in the picture (never made bigger), in the middle of what's on screen
         const fit = Math.min(1, 0.9 * this.OW / w, 0.9 * this.OH / h);
-        const mid = this.V().inverse().transformPoint({ x: this.cssW / 2, y: this.cssH / 2 });
+        const mid = this.V().inverse().transformPoint(this.mid());
         mid.x = Math.max(0, Math.min(this.OW, mid.x));
         mid.y = Math.max(0, Math.min(this.OH, mid.y));
-        this.float = { canvas: fc, x0: mid.x - w / 2, y0: mid.y - h / 2, w, h, t: { tx: 0, ty: 0, sx: fit, sy: fit, rot: 0 }, layer: l, sel: null };
+        this.float = { canvas: fc, x0: mid.x - w / 2, y0: mid.y - h / 2, w, h, t: { tx: 0, ty: 0, sx: fit, sy: fit, rot: 0 }, layer: l, sel: null, mode: 'free', quad: null };
         this.dropSelection();
         this.setTool('move');
         this.renderSoon();
-        this.app.showToast('Drag it to move it, a corner to size it (Shift keeps its shape); Enter puts it down', 3500);
+        this.app.showToast('Drag it to move it, a corner to size it (Shift frees its shape); Enter puts it down', 3500);
         return true;
     },
 
@@ -5229,13 +5500,13 @@ const PaintEditor = {
             else this.paste();
         });
         // Away to another app: what's copied there may be newer than Paint's own copy
-        window.addEventListener('blur', () => { if (this._clip) this._clipStale = true; });
+        window.addEventListener('blur', () => { if (this._clip || this._clipLayer) this._clipStale = true; });
     },
 
     // Ctrl+V: Paint's own copy if it's the newest thing copied; else the
     // system's clipboard, through the paste event (false: let it come)
     pasteKey() {
-        if (this._clip && !this._clipStale) { this._pastedAt = performance.now(); this.paste(); return true; }
+        if ((this._clip || this._clipLayer) && !this._clipStale) { this._pastedAt = performance.now(); this.paste(); return true; }
         return false;
     },
 
@@ -5320,7 +5591,7 @@ const PaintEditor = {
         // and the size (in the middle when it's changed along the top)
         const sizing = performance.now() < (this._sizeUntil || 0);
         const brush = this.isBrush() && !this.space && !(d && d.kind === 'pan') && !this.picking();
-        const at = this.hover || (sizing ? this.V().inverse().transformPoint({ x: this.cssW / 2, y: this.cssH / 2 }) : null);
+        const at = this.hover || (sizing ? this.V().inverse().transformPoint(this.mid()) : null);
         const ox = at && (at.ox !== undefined ? at.ox : at.x), oy = at && (at.oy !== undefined ? at.oy : at.y);
         const r = this.radius();
         // Symmetry: its lines through the picture's middle, faintly
@@ -5721,6 +5992,8 @@ const PaintEditor = {
             ...(l.shape || l.src ? [['—'], ['Make it pixels', () => this.rasterize(i)]] : []),
             ['—'],
             ...(room ? [['Duplicate', () => this.duplicateLayer(), false, undefined, 'paint.duplicate']] : []),
+            ['Copy the layer', () => this.copyLayer(i), false, undefined, this.sel ? undefined : 'paint.copy'],
+            ...(this._clipLayer && room ? [['Paste the layer', () => this.pasteLayer(), false, undefined, 'paint.paste']] : []),
             ...(i > 0 ? [['Merge down', () => this.mergeDown(), false, undefined, 'paint.merge']] : []),
             ['Mask', this.maskItems()],
             ['Rename…', () => this.renameLayer(i)],

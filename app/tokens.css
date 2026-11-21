@@ -87,6 +87,7 @@
     --z-toast: 45;       /* toasts and the task pill: over the crop and duplicates screens, under dialogs */
     --z-modal: 50;       /* dialogs */
     --z-menu: 60;        /* right-click menu */
+    --z-tip: 70;         /* tooltips (tips.js) */
     --z-debug: 100;
 
     /* ---- Accent (set by Settings; blue by default) ---- */

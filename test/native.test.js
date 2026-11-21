@@ -78,7 +78,7 @@ const FAKE_NATIVE = `
     const tokens = new Map();
     window.JEditorNative = {
         platform: 'windows',
-        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn'],
+        features: ['recycle', 'reveal', 'places', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn'],
         async dataDir() { window.__calls.push('dataDir'); return sub('appdata'); },
         async folderPath(handle) {
             if (window.__unknownPath) return null;
@@ -288,7 +288,6 @@ const FAKE_NATIVE = `
             return out.sort((a, b) => b.modified - a.modified);
         },
         async countPhotos(paths) { return { counts: paths.map(p => (window.__counts || {})[p] ?? 3), limit: 1000 }; },
-        async quickAccess() { return window.__quick || []; },
         async eject(p) { window.__ejected = p; window.__drives = window.__drives.filter(d => d.path !== p); return { ok: true }; },
         async reveal(p) { window.__revealed = p; return true; },
         // A folder copied into another: progress, then where it went (__copyError fails it)
@@ -1764,7 +1763,6 @@ async function newPage(context, baseUrl, host = null) {
             const $ = (id) => document.getElementById(id);
             const names = (el) => [...el.querySelectorAll('.sb-row .fr-name')].map(n => n.textContent);
             const rowOf = (el, name) => [...el.querySelectorAll('.sb-row')].find(r => r.querySelector('.fr-name').textContent === name);
-            window.__quick = [{ name: 'Archive Scan Jobs', path: 'D:' + String.fromCharCode(92) + 'Archive Scan Jobs' }];
             await makeOrder('Alpha', 2);
             await makeOrder('Beta', 3);
             window.__modified = { Alpha: Date.now() - 86400000, Beta: Date.now() };
@@ -1773,7 +1771,6 @@ async function newPage(context, baseUrl, host = null) {
             // The start screen: no projects folder yet, so it asks for one
             out.choose = !!start.querySelector('.sb-choose');
             out.drives = names(start).filter(n => /\(/.test(n)).join();
-            out.quick = names(start).includes('Archive Scan Jobs');
             window.__pick = window.__orderRoot;
             start.querySelector('.sb-choose').click();
             await wait(() => names(start).includes('Beta'));
@@ -2048,7 +2045,7 @@ async function newPage(context, baseUrl, host = null) {
             out.ejectToast = /Backup \(F:\) can be taken out/.test(toasts());
             return out;
         });
-        check('start screen: asks for the projects folder, lists drives and Explorer\'s pins', r.choose && /USB drive \(E:\)/.test(r.drives) && /Local disk \(C:\)/.test(r.drives) && r.quick, JSON.stringify(r));
+        check('start screen: asks for the projects folder, lists drives', r.choose && /USB drive \(E:\)/.test(r.drives) && /Local disk \(C:\)/.test(r.drives), JSON.stringify(r));
         check('the projects folder\'s projects are listed, newest first, with photo counts', r.projects === 'Beta,Alpha' && r.counts && r.folderName === 'Orders', JSON.stringify([r.projects, r.counts, r.folderName]));
         check('search finds a project', r.search === 'Beta', r.search);
         check('clicking a project opens it', r.opened === 'D:\\Orders\\Beta', r.opened);
