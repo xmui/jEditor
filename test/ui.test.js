@@ -840,6 +840,39 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             document.getElementById('grid-view').dispatchEvent(
                 new WheelEvent('wheel', { ctrlKey: true, deltaY: -100, cancelable: true }));
             out.zoomChanged = document.getElementById('grid-size-slider').value !== before;
+            // Its icons are buttons: a step smaller, a step bigger; in the
+            // pill's text colour, the size of the selection pill's (the owner)
+            const sl = document.getElementById('grid-size-slider'), v0 = +sl.value;
+            document.getElementById('btn-grid-smaller').click();
+            const v1 = +sl.value;
+            document.getElementById('btn-grid-bigger').click();
+            const big = document.getElementById('btn-grid-bigger'), cs = getComputedStyle(big), pill = getComputedStyle(document.getElementById('grid-controls'));
+            out.sizeButtons = { steps: [v0, v1, +sl.value], grid: getComputedStyle(document.getElementById('grid-view')).getPropertyValue('--grid-item-size').trim(), color: cs.color === getComputedStyle(document.body).color || cs.color === pill.color, w: big.getBoundingClientRect().width, h: pill.height };
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            // The selection pill goes the way it came: at its width, a fade
+            // and slide down, then hidden (the owner: it popped)
+            app.setView('grid');
+            await sleep(100);
+            const bar = document.getElementById('selection-bar');
+            app.selection = new Set([app.files[0]]);
+            app.updateSelectionUI();
+            await sleep(450);
+            const barW = Math.round(bar.getBoundingClientRect().width);
+            app.clearSelection();
+            const going = bar.classList.contains('leaving') && !bar.classList.contains('hidden') && Math.round(bar.getBoundingClientRect().width) === barW;
+            await sleep(500);
+            out.barOut = { motion: Motion.on(), going, gone: bar.classList.contains('hidden') && !bar.classList.contains('leaving') };
+            // Opened from the grid, the viewer's buttons don't grow with the
+            // photo: out of sight while it does, then they fade in
+            app.currentFile = app.files[0];
+            app.updateSelectionUI();
+            app.setView('single');
+            const ctl = document.querySelector('#image-container > .controls'), ic = app.elements.imageContainer;
+            out.ctlZoom = { motion: Motion.on(), during: ic.classList.contains('zooming') && getComputedStyle(ctl).opacity === '0' };
+            await sleep(Motion.ZOOM + 700);
+            out.ctlZoom.after = !ic.classList.contains('zooming') && +getComputedStyle(ctl).opacity > 0.95;
+            app.setView('grid');
+            await sleep(400);
 
             return out;
         });
@@ -861,6 +894,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('... the flag row says what the symbol pointed at does, with its key',
             r.flagSay.idle === 'Flag and label' && /^Reject/.test(r.flagSay.pointed) && r.flagSay.back === 'Flag and label' && /^Red label/.test(r.flagSay.focused) && r.flagSay.labels, JSON.stringify(r.flagSay));
         check('ctrl+wheel zooms the grid', r.zoomChanged);
+        check('the selection pill leaves the way it came (at its width, a fade and slide), then it\'s hidden', (r.barOut.going || !r.barOut.motion) && r.barOut.gone, JSON.stringify(r.barOut));
+        check('opened from the grid, the viewer\'s buttons wait out of sight while the photo grows, then fade in', (r.ctlZoom.during || !r.ctlZoom.motion) && r.ctlZoom.after, JSON.stringify(r.ctlZoom));
+        check('the size pill\'s icons are buttons, a step smaller and bigger, as clear as the other pills\' icons', r.sizeButtons.steps[1] === r.sizeButtons.steps[0] - 20 && r.sizeButtons.steps[2] === r.sizeButtons.steps[0] && r.sizeButtons.grid === `${r.sizeButtons.steps[0]}px` && r.sizeButtons.color, JSON.stringify(r.sizeButtons));
         await page.close();
     }
 

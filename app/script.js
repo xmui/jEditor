@@ -197,6 +197,16 @@ const app = {
 
         // Grid Size Slider
         this.elements.gridSizeSlider.addEventListener('input', (e) => this.setGridSize(parseInt(e.target.value, 10)));
+        // Its icons are buttons: a step smaller or bigger, as a notch of Ctrl+wheel
+        for (const [id, by] of [['btn-grid-smaller', -20], ['btn-grid-bigger', 20]]) {
+            const btn = document.getElementById(id);
+            if (btn) btn.addEventListener('click', () => {
+                const slider = this.elements.gridSizeSlider;
+                const next = Math.max(80, Math.min(400, parseInt(slider.value, 10) + by));
+                slider.value = next;
+                this.setGridSize(next);
+            });
+        }
         // Off-screen tiles stand in at the real tile size (see syncGridTile)
         // (and a huge folder's grid builds the tiles the new size needs)
         // Narrower or wider (the window, the folder list): other columns,
@@ -4238,8 +4248,11 @@ const app = {
         this._activeGridEl = active || null;
 
         this.refreshInfoSoon();
+        const bar = this.elements.selectionBar;
         if (this.selection.size > 0) {
-            this.elements.selectionBar.classList.remove('hidden');
+            // Back before it had gone: it stays, as it was
+            if (bar._leaving) { bar._leaving.cancel(); bar._leaving = null; }
+            bar.classList.remove('leaving');
             const count = this.elements.selectionCount;
             count.textContent = this.selection.size.toLocaleString();
             const word = document.createElement('span');
@@ -4249,8 +4262,23 @@ const app = {
             document.getElementById('btn-clear-selection').title = `${this.selection.size.toLocaleString()} selected: clear the selection (Esc)`;
             // Sync needs a photo to sync from and one to sync onto
             document.getElementById('btn-sync').classList.toggle('hidden', this.selection.size < 2);
-        } else {
-            this.elements.selectionBar.classList.add('hidden');
+            // Shown once what's in it is in place, so it never shows at its
+            // last width first
+            bar.classList.remove('hidden');
+        } else if (!bar.classList.contains('hidden') && !bar.classList.contains('leaving') && typeof Motion !== 'undefined' && Motion.on() && this.viewMode === 'grid') {
+            // Goes the way it came: a short fade and slide down, then hidden
+            bar.classList.add('leaving');
+            const anim = bar.getAnimations().find(a => a.animationName === 'bar-out');
+            if (!anim) { bar.classList.remove('leaving'); bar.classList.add('hidden'); return; }
+            bar._leaving = anim;
+            anim.finished.then(() => {
+                if (bar._leaving !== anim) return;
+                bar._leaving = null;
+                bar.classList.add('hidden');
+                bar.classList.remove('leaving');
+            }, () => { });
+        } else if (!bar.classList.contains('leaving')) {
+            bar.classList.add('hidden');
         }
     },
 
