@@ -1552,7 +1552,7 @@ const app = {
     zoomTo(target, x = null, y = null) {
         if (this.viewMode !== 'single' || this.cropState.active || !this.currentFile) return;
         const img = this.elements.currentImage;
-        const box = this.elements.imageContainer.getBoundingClientRect();
+        const box = this.viewBox();
         if (x === null) { x = box.left + box.width / 2; y = box.top + box.height / 2; }
         target = Math.max(0.1, Math.min(this.maxZoom(), target));
         if (target <= 1) {
@@ -1699,13 +1699,21 @@ const app = {
         return box;
     },
 
+    // Where the viewer fits the photo: its box less the room left for the
+    // top pills and Info's card (style.css: padding, --head-room). A zoomed
+    // photo still fills the whole box, to the top and under the card
+    viewBox() {
+        const c = this.elements.imageContainer, r = c.getBoundingClientRect(), cs = getComputedStyle(c);
+        const t = parseFloat(cs.paddingTop) || 0, rt = parseFloat(cs.paddingRight) || 0;
+        return { left: r.left, top: r.top + t, width: Math.max(0, r.width - rt), height: Math.max(0, r.height - t) };
+    },
+
     // At odd quarter-turns the CSS-rotated image would overflow the
     // container (layout still sees the unrotated box): the scale that fits it
     currentFitScale(r = this.currentCssRotation()) {
         const img = this.elements.currentImage;
         if (((r % 180) + 180) % 180 !== 90) return 1;
-        const cw = this.elements.imageContainer.clientWidth;
-        const ch = this.elements.imageContainer.clientHeight;
+        const { width: cw, height: ch } = this.viewBox();
         const w = img.offsetWidth, h = img.offsetHeight;
         return cw && ch && w && h ? Math.min(cw / h, ch / w) : 1;
     },

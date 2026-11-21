@@ -5709,7 +5709,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const extra = document.getElementById('info-extra');
             out.card = !!extra && !extra.hidden && !!extra.querySelector('.info-flags .ctx-flag.fl-star')
                 && document.getElementById('main-interface').classList.contains('info-open')
-                && parseFloat(getComputedStyle(document.getElementById('image-container')).marginRight) >= 300;
+                && parseFloat(getComputedStyle(document.getElementById('image-container')).paddingRight) >= 300;
             extra.querySelector('.ctx-flag.fl-star').click();
             await sleep(50);
             out.cardFlag = Flags.has(app.currentFile, 'star') && !!document.querySelector('#info-extra .ctx-flag.fl-star.on');
@@ -5720,8 +5720,20 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const ib = document.getElementById('info-panel').getBoundingClientRect();
             out.cardRoom = !strip.classList.contains('hidden') && ib.bottom <= strip.getBoundingClientRect().top - 12;
             const pillB = document.querySelector('header .file-info').getBoundingClientRect().bottom;
-            out.underPills = document.getElementById('image-container').getBoundingClientRect().top >= pillB + 8
+            out.underPills = app.viewBox().top >= pillB + 8
                 && document.getElementById('current-image').getBoundingClientRect().top >= pillB + 8;
+            // Zoomed in, it fills the window to the top, under the pills
+            const ic = document.getElementById('image-container'), ci = document.getElementById('current-image');
+            ci.classList.add('follow');
+            const vb = app.viewBox();
+            app.zoomTo(2 * Math.max(vb.width / ci.offsetWidth, vb.height / ci.offsetHeight));
+            await sleep(50);
+            const icR = ic.getBoundingClientRect(), ciR = ci.getBoundingClientRect();
+            out.zoomTop = icR.top < pillB && ciR.top <= icR.top + 1 && ciR.right >= icR.right - 1;
+            app.zoomTo(1);
+            await sleep(50);
+            ci.classList.remove('follow');
+            out.fitAgain = ci.getBoundingClientRect().top >= pillB + 8;
             app.toggleInfoPanel(false);
             out.cardShut = !document.getElementById('main-interface').classList.contains('info-open');
             out.gb = app.formatBytes(3 * 1024 * 1024 * 1024) === '3.00 GB';
@@ -5733,6 +5745,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('folder details: total under the folder list; single view still shows the photo', r.railTotal && r.single && r.gb, JSON.stringify(r));
         check('Info is a glass card: the photo moves over beside it; its flags change the photo\'s', r.card && r.cardFlag && r.cardShut, JSON.stringify([r.card, r.cardFlag, r.cardShut]));
         check('... it stops above the film strip with room round it; the photo fits under the top pills', r.cardRoom && r.underPills, JSON.stringify([r.cardRoom, r.underPills]));
+        check('... zoomed in, the photo fills the window to the top and under Info, under the pills; back at Fit, clear of them again', r.zoomTop && r.fitAgain, JSON.stringify([r.zoomTop, r.fitAgain]));
         check('folder details suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
