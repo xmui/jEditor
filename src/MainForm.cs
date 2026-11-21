@@ -463,6 +463,7 @@ sealed class MainForm : Form
             case "cameras":
             case "tether":
             case "places":
+            case "fonts":
             case "listDir":
             case "listProjects":
             case "makeFolder":
@@ -675,6 +676,17 @@ sealed class MainForm : Form
                         drives = drives.Select(d => new { path = d.Path, name = d.Name, kind = d.Kind, label = d.Label, total = d.Total, free = d.Free }),
                         home = Places.Home().Select(h => new { name = h.Name, path = h.Path })
                     });
+                    break;
+                }
+                case "fonts":
+                {
+                    // The installed families, as Paint's Text tool lists them
+                    var fonts = await Task.Run(() =>
+                    {
+                        using var installed = new System.Drawing.Text.InstalledFontCollection();
+                        return installed.Families.Select(f => f.Name).ToArray();
+                    });
+                    Reply(id, new { fonts });
                     break;
                 }
                 case "listDir":
