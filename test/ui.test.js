@@ -5681,8 +5681,18 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const ib = document.getElementById('info-panel').getBoundingClientRect();
             out.cardRoom = !strip.classList.contains('hidden') && ib.bottom <= strip.getBoundingClientRect().top - 12;
             const pillB = document.querySelector('header .file-info').getBoundingClientRect().bottom;
-            out.underPills = document.getElementById('image-container').getBoundingClientRect().top >= pillB + 8
+            out.underPills = app.viewBox().top >= pillB + 8
                 && document.getElementById('current-image').getBoundingClientRect().top >= pillB + 8;
+            // Zoomed in, it fills the window to the top, under the pills
+            const ic = document.getElementById('image-container'), ci = document.getElementById('current-image');
+            ci.classList.add('follow');
+            app.zoomTo(4);
+            await sleep(50);
+            out.zoomTop = ic.getBoundingClientRect().top < pillB && ci.getBoundingClientRect().top <= ic.getBoundingClientRect().top + 1;
+            app.zoomTo(1);
+            await sleep(50);
+            ci.classList.remove('follow');
+            out.fitAgain = ci.getBoundingClientRect().top >= pillB + 8;
             app.toggleInfoPanel(false);
             out.cardShut = !document.getElementById('main-interface').classList.contains('info-open');
             out.gb = app.formatBytes(3 * 1024 * 1024 * 1024) === '3.00 GB';
@@ -5694,6 +5704,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('folder details: total under the folder list; single view still shows the photo', r.railTotal && r.single && r.gb, JSON.stringify(r));
         check('Info is a glass card: the photo moves over beside it; its flags change the photo\'s', r.card && r.cardFlag && r.cardShut, JSON.stringify([r.card, r.cardFlag, r.cardShut]));
         check('... it stops above the film strip with room round it; the photo fits under the top pills', r.cardRoom && r.underPills, JSON.stringify([r.cardRoom, r.underPills]));
+        check('... zoomed in, the photo fills the window to the top, under the pills; back at Fit, under them again', r.zoomTop && r.fitAgain, JSON.stringify([r.zoomTop, r.fitAgain]));
         check('folder details suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }

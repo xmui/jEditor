@@ -13036,17 +13036,19 @@ body.touring .controls.idle button { pointer-events: auto; }
 }
 
 /* ---- The photo fits under the pills (the owner's pick 1A, and "the
-   photo needs to fit under the pill by default"). The single view's
-   photo starts below the top pills, with a gutter (--head-room, fit.js:
-   headRoom); zoomed in, it's still clipped there, so the pills never sit
-   on it. Not in a slideshow, which has the whole screen ---- */
+   photo needs to fit under the pill by default"). The single view fits
+   the photo below the top pills, with a gutter (--head-room, fit.js:
+   headRoom). It's padding, not a margin, so only the fit sits there:
+   zoomed in, the photo fills the window to the top, under the pills
+   (the owner: "on zoom in it fills to the top"). Not in a slideshow,
+   which has the whole screen ---- */
 :root:not([data-skin]) body[data-view="single"]:not(.slideshow) #image-container {
-    margin-top: var(--head-room, 0px);
+    padding-top: var(--head-room, 0px);
 }
 
 /* Under macOS 26's toolbar, at least its height, as before */
 :root.native-toolbar:not([data-skin]) body[data-view="single"]:not(.slideshow) #image-container {
-    margin-top: max(var(--top-row), var(--head-room, 0px));
+    padding-top: max(var(--top-row), var(--head-room, 0px));
 }
 
 /* ---- Paint matches Adjust (the owner: "paint should match adjust", and
