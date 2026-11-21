@@ -311,11 +311,15 @@
 
             <!-- Grid size (bottom right) -->
             <div id="grid-controls" class="grid-controls toolbar hidden">
-                <label class="slider-group">
-                    <svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><rect width="7" height="7" x="3" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="14" rx="1.5"/><rect width="7" height="7" x="3" y="14" rx="1.5"/></svg>
+                <div class="slider-group">
+                    <button id="btn-grid-smaller" class="tb-btn" type="button" title="Smaller thumbnails (or Ctrl+wheel on the grid)" aria-label="Smaller thumbnails">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="7" height="7" x="3" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="14" rx="1.5"/><rect width="7" height="7" x="3" y="14" rx="1.5"/></svg>
+                    </button>
                     <input type="range" id="grid-size-slider" min="80" max="400" value="150" step="10" aria-label="Thumbnail size">
-                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
-                </label>
+                    <button id="btn-grid-bigger" class="tb-btn" type="button" title="Bigger thumbnails (or Ctrl+wheel on the grid)" aria-label="Bigger thumbnails">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
+                    </button>
+                </div>
             </div>
 
             <!-- Selection actions (shown when photos are selected in the grid) -->
