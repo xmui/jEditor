@@ -211,7 +211,7 @@
         // (app/host.js says what each feature covers)
         platform: 'windows',
         // (engine: when jeditor_engine.dll loaded; the app says so, Engine.cs)
-        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn', 'themes', 'folderMove', 'cacheFolder', 'menuBar', 'systemFonts'].concat(window.__jeditorEngine ? ['engine'] : [], window.__jeditorEngine && window.__jeditorEngine.heic ? ['engineHeic'] : []),
+        features: ['recycle', 'reveal', 'places', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn', 'themes', 'folderMove', 'cacheFolder', 'menuBar', 'systemFonts'].concat(window.__jeditorEngine ? ['engine'] : [], window.__jeditorEngine && window.__jeditorEngine.heic ? ['engineHeic'] : []),
         // jEditor's storage on this PC: a folder handle, one subfolder per
         // order (see app/folder-cache.js)
         async dataDir() {
@@ -296,10 +296,6 @@
         // (counting stops at `limit`)
         async countPhotos(paths) {
             return (await answer('countPhotos', { paths })).msg;
-        },
-        // Explorer's pinned Quick Access folders → [{ name, path }]
-        async quickAccess() {
-            return (await answer('quickAccess')).msg.folders;
         },
         // Ejects a USB drive → { ok, error? }
         async eject(path) {
@@ -751,7 +747,6 @@
                     const { counts } = await window.JEditorNative.countPhotos([here]);
                     steps.counted = counts[0] === a.files.length ? true : `counted ${counts[0]} photos, jEditor shows ${a.files.length}`;
                 }
-                steps.pins = Array.isArray(await window.JEditorNative.quickAccess()) || 'no answer';
                 // New project and Rename: a folder made beside this one, with
                 // stored data, renamed; the data must follow it
                 if (here) {
