@@ -8341,11 +8341,16 @@ const app = {
             e.preventDefault();
             this.openContextMenu(this.buildContextItems(tile, inSingle), e.clientX, e.clientY);
         });
-        // A click off the menu closes it; a menu's opener (its name in the
-        // menu bar, a ⋯) is left to its own click, which opens or shuts it
-        // (the press before it closed any other menu)
+        // A click off the menu closes it, but not the click (or the end of
+        // the press) that opened it: whatever opened it, on a press (the sort
+        // pill), a click (⋯, a menu's name) or a tap. openContextMenu notes
+        // the press and the click it came in on
+        this._press = 0;
+        window.addEventListener('pointerdown', () => { this._press++; }, true);
+        window.addEventListener('click', (e) => { this._click = e; }, true);
         window.addEventListener('click', (e) => {
-            if (e.target && e.target.closest && e.target.closest('[aria-haspopup]')) return;
+            const menu = document.getElementById('context-menu');
+            if (menu && (menu._click === e || (e.detail > 0 && menu._press === this._press))) return;
             this.closeContextMenu();
         });
         // A press anywhere off the menu closes it, even where the press is
@@ -8727,6 +8732,9 @@ const app = {
         const menu = document.createElement('div');
         menu.id = 'context-menu';
         menu.setAttribute('role', 'menu');
+        // The press and the click it opened on, which don't close it again
+        menu._press = this._press;
+        menu._click = this._click;
         if (document.documentElement.dataset.skin) items = items.flatMap(it => Array.isArray(it[1]) ? it[1] : [it]);
         this.fillMenu(menu, items);
         if (menu.lastChild && menu.lastChild.className === 'ctx-divider') menu.lastChild.remove();

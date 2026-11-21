@@ -4421,6 +4421,7 @@ const PROJECT = `
     if (wanted('menus')) {
         console.log('right-click menus close on a press off them (script.js), in every mode');
         const { page, issues } = await open();
+        await page.setViewportSize({ width: 1400, height: 1000 });
         const out = {};
         // The test's menu (marked): a right-click may open another in its place
         const shut = () => page.evaluate(() => !document.querySelector('#context-menu[data-t]'));
@@ -4445,6 +4446,36 @@ const PROJECT = `
             await sleep(200);
             return app.files.length === 1 && app.viewMode === 'grid';
         });
+        // A button that opens a menu: the click, or the tap, that opens it
+        // doesn't close it again (the sort pill opens on the press)
+        const opens = () => page.evaluate(() => !!document.getElementById('context-menu'));
+        const shutAll = () => page.evaluate(() => app.closeContextMenu());
+        const opener = async (sel) => {
+            const at = await page.evaluate((s) => { const e = [...document.querySelectorAll(s)].find(x => x.getClientRects().length && x.getBoundingClientRect().width); if (!e) return null; e.scrollIntoView({ block: 'center' }); const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, sel);
+            if (!at) return 'not shown';
+            await page.mouse.click(at.x, at.y);
+            await page.waitForTimeout(150);
+            const clicked = await opens();
+            await shutAll();
+            await page.waitForTimeout(50);
+            await page.evaluate(({ x, y }) => {
+                const e = document.elementFromPoint(x, y);
+                const o = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, pointerType: 'touch', isPrimary: true, pointerId: 7, button: 0 };
+                e.dispatchEvent(new PointerEvent('pointerdown', o));
+                e.dispatchEvent(new MouseEvent('mousedown', o));
+                e.dispatchEvent(new PointerEvent('pointerup', o));
+                e.dispatchEvent(new MouseEvent('mouseup', o));
+                e.dispatchEvent(new MouseEvent('click', { ...o, detail: 1 }));
+            }, at);
+            await page.waitForTimeout(150);
+            const tapped = await opens();
+            await shutAll();
+            return clicked && tapped ? true : `click ${clicked}, tap ${tapped}`;
+        };
+        out.openers = {};
+        out.openers.sort = await opener('#sort-mode');
+        out.openers.more = await opener('#btn-export');
+
         out.grid = await press('#grid-view');
         out.gridRight = await press('#grid-view', 'right');
         // A press in the menu, or on its row's own menu, keeps it
@@ -4467,6 +4498,7 @@ const PROJECT = `
         out.blur = await shut();
         await page.evaluate(async () => { app.openSingle(app.files[0]); await sleep(200); });
         out.single = await press('#image-container');
+
         await page.evaluate(async () => { await app.enterAdjust(app.files[0]); await until(() => Adjust.ready); });
         // The press that closes it reaches nothing under it (no pin moved,
         // no dot painted); with no menu open, a press goes through
@@ -4479,6 +4511,8 @@ const PROJECT = `
         await bare('#adj-stage');
         out.adjustThrough = await downs() === 1;
         out.adjustPane = await press('#adj-panel');
+        out.openers.adjustMore = await opener('#adj-more');
+        out.openers.look = await opener('#adj-look-pick');
         // ⋯ opens its menu with the mouse, and another press shuts it
         const more = async (sel) => { const at = await mid(sel); await page.mouse.click(at.x, at.y); await page.waitForTimeout(100); const opened = !(await page.evaluate(() => !document.getElementById('context-menu'))); await page.mouse.click(at.x, at.y + 200 > 700 ? at.y - 50 : at.y + 200); return opened; };
         out.adjustMore = await more('#adj-more');
@@ -4508,6 +4542,7 @@ const PROJECT = `
         await bare('#paint-stage');
         out.paintThrough = await downs() === 1;
         out.paintPane = await press('#paint-panel');
+        out.openers.paintMore = await opener('#paint-more');
         out.paintMore = await more('#paint-more');
         out.gearPaint = await gear('paint-settings', 'paint-more');
         await page.evaluate(() => Modes.leave(true));
@@ -4520,6 +4555,7 @@ const PROJECT = `
         check('menus: a press on Paint\'s canvas or its pane closes it', out.paintCanvas === true && out.paintPane === true, JSON.stringify(out));
         check('menus: ⋯ in Adjust and in Paint opens its menu with the mouse', out.adjustMore && out.paintMore, JSON.stringify(out));
         check('menus: the press that closes it, on Adjust\'s or Paint\'s photo, only closes it (no pin moved, nothing painted); with none open a press goes through', out.adjustSwallowed && out.paintSwallowed && out.adjustThrough && out.paintThrough, JSON.stringify(out));
+        check('menus: a button that opens one (sort, ⋯ in Photos, Adjust and Paint, the film look) opens it with a click and with a tap', Object.values(out.openers).every(v => v === true), JSON.stringify(out.openers));
         check('menus: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
