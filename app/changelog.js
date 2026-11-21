@@ -8,6 +8,7 @@ const CHANGELOG = [
     {
         version: '1.51.0', date: '2026-11-08',
         items: [
+            'Hints have jEditor\'s own look: point at a button and, after a moment, its hint comes up in a small glass card, with its key quietly at the right, as the menus show theirs. Once one has shown, the next comes at once as you move along. It sits under the button, above it near the bottom of the window, or beside it in Paint\'s tools, and never off the window; it goes while a button is held, a menu is open or you type or scroll. The keyboard\'s focus shows it too.',
             'One top in every mode: Photos, Adjust and Paint have the same pills along the top, the modes at the left, the photo\'s name in the middle and the mode\'s own buttons at the right. In Adjust and Paint, Done is a blue button at the end of the name\'s pill and does what `Enter` does: back to Photos, with what you did kept. It slides in as the mode opens, and the pill stays in the middle.',
             'Switching between Photos, Adjust and Paint, the mode arriving fades in. There\'s no fade with Settings → Animations off or with reduced motion.',
             'A new shape in jEditor\'s own look: buttons, text fields, pop-up menus and switches are pills, and a button with only a picture on it is round.',
