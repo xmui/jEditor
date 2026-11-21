@@ -2401,7 +2401,10 @@ body.slideshow #image-container:has(.slide-ctl.show) {
 #context-menu button:disabled .ctx-key { opacity: 0.6; }
 
 /* The menu bar the page draws (menubar.js; Windows): a glass pill along
-   the top, shown when Alt is tapped, gone once a command is chosen */
+   the top, shown when Alt is tapped, gone once a command is chosen. Made
+   as the name pill above it is (.toolbar, .file-info: the same glass,
+   height, corners and type), and it comes in as that pill's Done does
+   (#306): sliding out from under it as it fades in */
 .menu-bar {
     position: fixed;
     top: calc(var(--safe-top, 0px) + 64px); /* under the top pills */
@@ -2409,26 +2412,36 @@ body.slideshow #image-container:has(.slide-ctl.show) {
     transform: translateX(-50%);
     z-index: var(--z-menu);
     display: flex;
-    gap: 2px;
-    padding: 4px;
+    align-items: center;
+    gap: var(--sp-0);
+    height: var(--ctl-lg);
+    padding: 0 var(--sp-1);
     border-radius: var(--r-pill);
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
-    box-shadow: var(--shadow-3), var(--glass-rim);
+    box-shadow: var(--shadow-2), var(--glass-rim);
     backdrop-filter: var(--glass-filter);
     -webkit-backdrop-filter: var(--glass-filter);
-    animation: popover-in var(--dur-base) var(--ease-out);
+    color: var(--text-1);
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+    zoom: var(--ui-scale, 1);
+    animation: menu-bar-in var(--dur-slow, 240ms) var(--ease-out) both;
+}
+:root[data-motion="off"] .menu-bar { animation: none; }
+@media (prefers-reduced-motion: reduce) { .menu-bar { animation: none; } }
+@keyframes menu-bar-in {
+    from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
 }
 .menu-bar.hidden { display: none; }
 .menu-bar-item {
-    height: 28px;
+    height: calc(var(--ctl-lg) - 8px);
     padding: 0 12px;
     border: 0;
     border-radius: var(--r-pill);
     background: none;
     color: var(--text-1);
     font: inherit;
-    font-size: var(--fs-body, 13px);
     cursor: default;
     text-shadow: var(--glass-halo);
 }
@@ -10323,6 +10336,8 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 }
 /* Only in jEditor's own look: a theme's bar has Export in its More */
 :root[data-skin] #btn-sel-export { display: none; }
+/* Adjust's and Paint's gear: a theme has Settings in its own menus */
+:root[data-skin] .mode-settings { display: none; }
 
 /* Lens, Clear, Crystal and Liquid glass are too light to keep words
    readable on their own over a bright photo: a halo behind them does

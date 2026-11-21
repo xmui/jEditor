@@ -915,6 +915,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                 .filter(b => !b.classList.contains('hc-extra') && !b.classList.contains('hidden') && getComputedStyle(b).display !== 'none')
                 .map(b => b.dataset.hc);
             out.defaultMain = visible.join(',');
+            // Settings (the gear) last, just before ⋯
+            const gear = document.getElementById('btn-customize');
+            out.gearLast = gear.nextElementSibling === document.getElementById('btn-more');
             const extras = [...hc.querySelectorAll('.hc-extra')].map(b => b.dataset.hc);
             out.defaultExtras = extras.join(',');
             out.extrasHiddenCollapsed = getComputedStyle(document.getElementById('btn-toggle-fit')).display === 'none';
@@ -943,6 +946,17 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const pl = app.uiPrefs.placement;
             out.migrated = pl.view === 'more' && pl.refresh === 'more' && pl.history === 'more' && pl.fullscreen === 'main'
                 && app.uiPrefs.order.indexOf('crop') < app.uiPrefs.order.indexOf('info');
+            localStorage.removeItem('jeditor.ui');
+            // Saved before Settings joined the pill (pill 2): it goes on, at
+            // the end; once that's done (pill 3), taken off it stays off
+            const two = { ...app.defaultUiPrefs(), pill: 2, order: ['scan', 'camera', 'crop', 'customize', 'info'] };
+            two.placement = { ...two.placement, customize: 'more' };
+            localStorage.setItem('jeditor.ui', JSON.stringify(two));
+            app.loadUiPrefs();
+            out.gearMigrated = app.uiPrefs.placement.customize === 'main' && app.uiPrefs.order[app.uiPrefs.order.length - 1] === 'customize';
+            localStorage.setItem('jeditor.ui', JSON.stringify({ ...two, pill: 3 }));
+            app.loadUiPrefs();
+            out.gearStaysOff = app.uiPrefs.placement.customize === 'more';
             localStorage.removeItem('jeditor.ui');
             app.uiPrefs = app.defaultUiPrefs();
             app.applyUiPrefs();
@@ -1000,11 +1014,12 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.pillHidden = pill.classList.contains('hidden');
             return out;
         });
-        check('default pill: Crop and Info (Scan and Camera too in the apps), then More', r.defaultMain === 'crop,info', r.defaultMain);
+        check('default pill: Crop and Info (Scan and Camera too in the apps), then Settings, then More', r.defaultMain === 'crop,info,customize' && r.gearLast, JSON.stringify([r.defaultMain, r.gearLast]));
         check('the pill\'s right-click: what it shows, ticked; one picked goes on it; Customize… goes to Settings', r.pillMenu, JSON.stringify(r.pillMenu));
         check('2.0\'s pill, once: the view switch, Rescan and History move to More, Crop before Info; other choices stay', r.migrated, JSON.stringify(r.migrated));
         // (Adjust and Paint too: the mode switch has them)
-        check('extras live in More (view, rescan, adjust, paint, history, fit, strip, fullscreen, dupes, convert, keys, whatsnew, customize)', r.defaultExtras === 'view,refresh,adjust,paint,history,fit,strip,fullscreen,dupes,convert,keys,whatsnew,customize', r.defaultExtras);
+        check('extras live in More (view, rescan, adjust, paint, history, fit, strip, fullscreen, dupes, convert, keys, whatsnew)', r.defaultExtras === 'view,refresh,adjust,paint,history,fit,strip,fullscreen,dupes,convert,keys,whatsnew', r.defaultExtras);
+        check('Settings on the pill, once (pill 3): moved there and to its end, before More; taken off after, it stays off', r.gearMigrated && r.gearStaysOff, JSON.stringify([r.gearMigrated, r.gearStaysOff]));
         check('More expander shows/hides extras', r.extrasHiddenCollapsed && r.extrasShownExpanded);
         // (Adjust, newer than that saved order, goes after Crop, and Paint after it)
         check('reorder + hide + promote via prefs', r.reordered === 'crop,info,view' && r.refreshHidden && r.fullscreenMain,
@@ -6108,6 +6123,13 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         out.hidden = await page.evaluate(() => document.getElementById('menu-bar').classList.contains('hidden'));
         await page.keyboard.press('Alt');
         await wait(100);
+        // Made as the name pill is (the same glass, height, corners and
+        // type), sliding in as the name pill's Done does
+        out.likeName = await page.evaluate(() => {
+            const bar = getComputedStyle(document.getElementById('menu-bar')), name = getComputedStyle(document.querySelector('.file-info'));
+            const same = ['height', 'borderTopLeftRadius', 'backgroundColor', 'fontSize', 'fontWeight', 'boxShadow'].filter(k => bar[k] !== name[k]);
+            return { same, anim: bar.animationName };
+        });
         Object.assign(out, await page.evaluate(() => {
             const bar = document.getElementById('menu-bar');
             const names = [...bar.querySelectorAll('.menu-bar-item')].map(b => b.textContent).join();
@@ -6202,6 +6224,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             return { mac: ok && own === true && sent.map(m => m.label).join() === 'File,Edit,View,Photo,Help' && grid.key === 'G' && grid.enabled,
                 macSub: !!label && label.items.length === 5, macRan: document.body.dataset.view === 'grid' };
         }));
+        check('menu bar: the pill Alt shows is made as the name pill is, and slides in', out.likeName && out.likeName.same.length === 0 && out.likeName.anim === 'menu-bar-in', JSON.stringify(out.likeName));
         check('menu bar: hidden until Alt is tapped; File, Edit, View, Photo and Help', out.hidden && out.shown && out.names === 'File,Edit,View,Photo,Help' && out.focused, JSON.stringify(out));
         check('menu bar: with no project, what needs one is there but greyed out; Esc closes the menu, then the bar', out.greyed && out.closed, JSON.stringify(out));
         check('menu bar: F10 too; each command shows its key and runs, then the bar goes; right goes to the next menu', out.keyShown && out.next && out.ran && out.submenu, JSON.stringify(out));

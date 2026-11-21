@@ -11,6 +11,7 @@ const CHANGELOG = [
             'One top in every mode: Photos, Adjust and Paint have the same pills along the top, the modes at the left, the photo\'s name in the middle and the mode\'s own buttons at the right. In Adjust and Paint, Done is a blue button at the end of the name\'s pill and does what `Enter` does: back to Photos, with what you did kept. It slides in as the mode opens, and the pill stays in the middle.',
             'Switching between Photos, Adjust and Paint, the mode arriving fades in. There\'s no fade with Settings → Animations off or with reduced motion.',
             'A new shape in jEditor\'s own look: buttons, text fields, pop-up menus and switches are pills, and a button with only a picture on it is round.',
+            'Settings is on the top-right pill in every mode, at its end just before ⋯ (the gear), in Photos, Adjust and Paint. The menu bar that Alt shows is made as the name pill above it is, the same glass, height and type, and slides in from under it.',
             'The photo is never under the pills: in Photos\' viewer and in Adjust it\'s fitted below the pills at the top, with a margin round it, and zoomed in it stays clipped there.',
             'Full screen (`F`) is just the photo and its pills: the sidebar and the film strip step aside, and come back as they were when you leave. `Ctrl+B` and the strip\'s button still bring them in.',
             'Menus are rounder and simpler: big glass cards with tall rows and a small picture beside each command.',
@@ -133,7 +134,8 @@ const CHANGELOG = [
             'Fixed: a right-click menu stayed open when you clicked off it onto a photo being adjusted or painted, a pane, or right-clicked somewhere else. A press anywhere off the menu closes it now, in every mode, and so does switching to another window.',
             'Fixed: in Paint, an image dragged in or pasted bent out of shape when you dragged a corner. It now opens in plain Size and turn, so a corner sizes it; Warp, Skew and the other modes are only there when you choose them.',
             'Paint: Free transform keeps the shape. Dragging a corner sizes it in proportion while the lock between W and H is closed, as it is to start with; hold `Shift` to stretch it, or click the lock to open it. The pointer shows what a drag does: resize arrows on the corners and sides (turned with the box), a turning arrow just outside a corner, which turns it too, and the move arrows inside.',
-            'Fixed: in Paint, copying and pasting a layer did nothing you could see. With nothing selected, `Ctrl+C` (or Copy the layer in its right-click menu) copies the whole layer, and `Ctrl+V` makes it again as a new layer, with its mask, text and filter settings, in the same picture or another one. It goes on the system clipboard too, to paste into other apps.'
+            'Fixed: in Paint, copying and pasting a layer did nothing you could see. With nothing selected, `Ctrl+C` (or Copy the layer in its right-click menu) copies the whole layer, and `Ctrl+V` makes it again as a new layer, with its mask, text and filter settings, in the same picture or another one. It goes on the system clipboard too, to paste into other apps.',
+            'Fixed: in Paint, Undo and Redo stalled the whole app for a moment on a big picture, and the Blur tool lagged far behind the pointer with a big brush. Undo\'s puff now looks the same but costs next to nothing, and Blur keeps up with the pointer.'
         ]
     },
     {
