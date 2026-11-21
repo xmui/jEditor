@@ -37,13 +37,17 @@ const Raw = {
         const key = `${data.name}|${data.size}|${data.lastModified}`;
         this._cache = this._cache || new Map();
         if (this._cache.has(key)) return this._cache.get(key);
-        let out = null;
-        try {
-            const jpeg = await this.find(data);
-            if (jpeg) out = new File([jpeg], data.name, { type: 'image/jpeg', lastModified: data.lastModified });
-        } catch (e) {
-            console.warn('RAW: no preview in', data.name, e);
-        }
+        // The search itself is kept, so the grid and the viewer asking at
+        // once read the file once
+        const out = (async () => {
+            try {
+                const jpeg = await this.find(data);
+                return jpeg ? new File([jpeg], data.name, { type: 'image/jpeg', lastModified: data.lastModified }) : null;
+            } catch (e) {
+                console.warn('RAW: no preview in', data.name, e);
+                return null;
+            }
+        })();
         this._cache.set(key, out);
         if (this._cache.size > 24) this._cache.delete(this._cache.keys().next().value);
         return out;

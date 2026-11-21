@@ -509,6 +509,81 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('adjustfix')) {
+        console.log('Adjust: opening one photo over another, 1:1 after a failed read, the RAW preview read once (adjust.js, raw.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const photo = async (w, h, color) => {
+                const c = document.createElement('canvas'); c.width = w; c.height = h;
+                const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, w, h);
+                return canvasBlob(c);
+            };
+            await openProject('adjfix', { 'a.png': await photo(300, 200, '#c33'), 'b.png': await photo(160, 240, '#33c') });
+            const [A, B] = ['a.png', 'b.png'].map(n => app.files.find(f => f.name === n));
+            // A opens slowly; Adjust is closed and B opened before A loads
+            const real = app.getDisplaySource.bind(app);
+            let freeA;
+            const heldA = new Promise(res => { freeA = res; });
+            app.getDisplaySource = async (file, o) => {
+                const src = await real(file, o);
+                if (file === A) await heldA;
+                return src;
+            };
+            const first = Adjust.open(app, A);
+            await sleep(50);
+            Adjust.close();
+            await Adjust.open(app, B);
+            const before = [Adjust.file === B, Adjust.base && Adjust.base.width, Adjust.PW, Adjust.PH];
+            freeA();
+            await first;
+            await sleep(50);
+            app.getDisplaySource = real;
+            Adjust.draw();
+            out.race = [...before, Adjust.file === B, Adjust.base && Adjust.base.width, Adjust.base && Adjust.base.height, Adjust.PW, Adjust.PH, Adjust.w, Adjust.h];
+            // The full-size photo for 1:1: a failed read is tried again
+            const read = app.readImage.bind(app);
+            let fails = 1;
+            app.readImage = async (f) => { if (fails-- > 0) throw new Error('not yet'); return read(f); };
+            const c1 = await Adjust.loadFull();
+            const c2 = await Adjust.loadFull();
+            app.readImage = read;
+            out.full = [c1 === null, !!c2 && c2.width, !!c2 && c2.height];
+            // Redrawn with nothing changed: the histogram isn't made again
+            Adjust.draw();
+            const h1 = Adjust.hist;
+            Adjust.draw();
+            const same = Adjust.hist === h1;
+            Adjust.a.exposure = 1;
+            Adjust.draw();
+            out.hist = [same, Adjust.hist !== h1];
+            // Halation's glow: made once per change
+            Adjust.a.halation = 50;
+            Adjust.draw();
+            const g1 = Adjust.glow;
+            Adjust.draw();
+            out.glow = [!!g1, Adjust.glow === g1];
+            Adjust.close();
+            // A RAW's preview asked for twice at once: the file searched once
+            const findReal = Raw.find.bind(Raw);
+            let finds = 0;
+            Raw.find = async (b) => { finds++; await sleep(20); return findReal(b); };
+            const raw = new File([new Uint8Array(64)], 'x.dng', { lastModified: 1 });
+            const [p1, p2] = await Promise.all([Raw.preview(raw), Raw.preview(raw)]);
+            Raw.find = findReal;
+            out.raw = [finds, p1 === p2];
+            return out;
+        });
+        check('adjust: a photo that loads after another was opened leaves the other\'s picture and size alone',
+            JSON.stringify(r.race) === JSON.stringify([true, 160, 160, 240, true, 160, 240, 160, 240, 160, 240]), JSON.stringify(r.race));
+        check('adjust: 1:1\'s full-size photo is read again after a failed read', r.full[0] && r.full[1] === 160 && r.full[2] === 240, JSON.stringify(r.full));
+        check('adjust: the histogram is made again only when the settings change', r.hist[0] && r.hist[1], JSON.stringify(r.hist));
+        check('adjust: halation\'s glow is made once per change, not on every redraw', r.glow[0] && r.glow[1], JSON.stringify(r.glow));
+        check('raw: a preview asked for twice at once reads the file once', r.raw[0] === 1 && r.raw[1], JSON.stringify(r.raw));
+        check('adjustfix: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     if (wanted('sync')) {
         console.log('sync (adjust-sync.js)');
         const { page, issues } = await open();
