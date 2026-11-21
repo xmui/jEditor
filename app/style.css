@@ -10427,6 +10427,12 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
    vibrancy), tinted so its words read as anywhere else; never under the
    photos or the grid. */
 :root[data-platform="mac"]:not([data-skin]) .folder-rail {
+    padding-top: calc(var(--top-row) + var(--sp-2));
+}
+
+/* (jEditor's own top row; under macOS 26's toolbar, when it's on, what's
+   in the sidebar starts below the toolbar, as above) */
+:root[data-platform="mac"]:not([data-skin]):not(.native-toolbar) .folder-rail {
     padding-top: 0;
 }
 
@@ -10434,7 +10440,7 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
    lights' line, after them, as the Mac's own sidebars have their buttons
    there (the owner, 21 November: the sidebar to the top, no gap row): in
    line with the top row's pills, its rows straight under it */
-:root[data-platform="mac"]:not([data-skin]) .folder-rail #mode-row {
+:root[data-platform="mac"]:not([data-skin]):not(.native-toolbar) .folder-rail #mode-row {
     height: calc(var(--ctl-lg) * var(--ui-scale, 1));
     margin: calc(var(--gutter) + var(--mac-drag)) 0 var(--sp-2);
     /* The lights: from max(12px, the gutter), 54px wide, then 4px (the
@@ -10443,22 +10449,22 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
     overflow: hidden;
 }
 
-:root[data-platform="mac"].fullscreen:not([data-skin]) .folder-rail #mode-row {
+:root[data-platform="mac"].fullscreen:not([data-skin]):not(.native-toolbar) .folder-rail #mode-row {
     padding-left: var(--sp-1);
 }
 
-:root[data-platform="mac"]:not([data-skin]) .folder-rail #mode-row .mode-seg {
+:root[data-platform="mac"]:not([data-skin]):not(.native-toolbar) .folder-rail #mode-row .mode-seg {
     --seg-cell: 24px;
 }
 
-:root[data-platform="mac"]:not([data-skin]) .folder-rail #mode-row .mode-row-btn {
+:root[data-platform="mac"]:not([data-skin]):not(.native-toolbar) .folder-rail #mode-row .mode-row-btn {
     width: 28px;
     min-width: 28px;
     height: 28px;
     padding: 0;
 }
 
-:root[data-platform="mac"]:not([data-skin]) .folder-rail #mode-row .mode-row-gap {
+:root[data-platform="mac"]:not([data-skin]):not(.native-toolbar) .folder-rail #mode-row .mode-row-gap {
     min-width: 0;
 }
 
@@ -10466,13 +10472,13 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
    narrower one: Find anything goes first (⌘F), then its own button (⌘B,
    or its edge) */
 @container rail (max-width: 213px) {
-    :root[data-platform="mac"]:not([data-skin]):not(.fullscreen) #mode-row-find {
+    :root[data-platform="mac"]:not([data-skin]):not(.fullscreen):not(.native-toolbar) #mode-row-find {
         display: none;
     }
 }
 
 @container rail (max-width: 183px) {
-    :root[data-platform="mac"]:not([data-skin]):not(.fullscreen) #mode-row-side {
+    :root[data-platform="mac"]:not([data-skin]):not(.fullscreen):not(.native-toolbar) #mode-row-side {
         display: none;
     }
 }
@@ -13252,7 +13258,10 @@ body.touring .controls.idle button { pointer-events: auto; }
         top: calc(var(--gutter) + var(--ctl-lg) * var(--ui-scale, 1) + var(--gutter));
         bottom: calc(var(--gutter) + var(--ctl-lg) + var(--gutter));
         height: fit-content;
-        max-height: none;
+        /* No taller than that room: a short window at a big Toolbar size
+           put its top tools up in the top row and off the window (it
+           scrolls instead) */
+        max-height: calc(100% - 4 * var(--gutter) - var(--ctl-lg) * var(--ui-scale, 1) - var(--ctl-lg));
         margin: auto 0;
         transform: none;
         overflow-y: auto;
