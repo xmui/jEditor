@@ -3600,6 +3600,55 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('paintdrop')) {
+        console.log('paint: an image brought in or pasted is in plain Free transform (paint-editor.js: importImage, paste)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 400; c.height = 300;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 400, 300);
+                await openProject('drop', { 'd.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                P.opts.snap = false;
+                const st = document.getElementById('paint-stage');
+                const sc = (q) => { const sp = P.V().transformPoint(q); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                const drag = (from, to) => {
+                    st.dispatchEvent(new PointerEvent('pointerdown', { ...sc(from), pointerId: 1, bubbles: true, button: 0 }));
+                    st.dispatchEvent(new PointerEvent('pointermove', { ...sc(to), pointerId: 1, bubbles: true }));
+                    st.dispatchEvent(new PointerEvent('pointerup', { ...sc(to), pointerId: 1, bubbles: true }));
+                };
+                const corner = () => P.floatHandles().corners.find(([id]) => id === 'se')[1];
+                const sized = () => { const q = corner(); drag(q, { x: q.x + 20, y: q.y + 20 }); const f = P.float; return { mode: f.mode, bent: !!f.quad || !!f.mesh, grew: f.t.sx > 1.05 || f.t.sy > 1.05, square: Math.abs(f.t.sx - f.t.sy) < 0.2 }; };
+                // Brought in (dropped, or Bring in an image)
+                step = 'import';
+                const img = document.createElement('canvas'); img.width = 100; img.height = 100;
+                img.getContext('2d').fillStyle = '#ff0000'; img.getContext('2d').fillRect(0, 0, 100, 100);
+                await P.importImage(await canvasBlob(img), 'red.png');
+                out.importMode = box().querySelector('.paint-tf-mode') && box().querySelector('.paint-tf-mode').value;
+                out.imported = sized();
+                P.commitFloat();
+                // Pasted
+                step = 'paste';
+                P.copy();
+                P.paste();
+                out.pasted = P.float && sized();
+                if (P.float) P.commitFloat();
+                app.cancelPaint();
+                return out;
+                function box() { return document.getElementById('paint-options'); }
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint drop: an image brought in opens in Size and turn, and a corner sizes it without bending it', r.importMode === 'free' && r.imported && r.imported.mode === 'free' && !r.imported.bent && r.imported.grew, JSON.stringify(r));
+        check('paint drop: pasted, the same', r.pasted && r.pasted.mode === 'free' && !r.pasted.bent && r.pasted.grew, JSON.stringify(r));
+        check('paint drop: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Restore colour (develop.js: restoreAuto; script.js: restoreColour) ----
     if (wanted('restore')) {
         console.log('restore colour (develop.js, script.js, adjust.js)');

@@ -4276,7 +4276,7 @@ const PaintEditor = {
                 if (f.mesh) { this.drag.mesh = f.mesh.map(q => ({ ...q })); return; }
                 // A corner or side with Ctrl (Ctrl+Alt+Shift: perspective),
                 // or in Skew, Distort or Perspective: the corners go free
-                const how = e.ctrlKey || e.metaKey ? (e.altKey && e.shiftKey ? 'perspective' : 'distort') : f.mode;
+                const how = e.ctrlKey || e.metaKey ? (e.altKey && e.shiftKey ? 'perspective' : 'distort') : (f.mode || 'free');
                 if (hit !== 'rotate' && (f.quad || (how !== 'free' && hit !== 'move'))) {
                     if (!f.quad) f.quad = this.quadOf(f);
                     Object.assign(this.drag, { quad: f.quad.map(q => ({ ...q })), how });
@@ -4949,7 +4949,7 @@ const PaintEditor = {
         // on the very pixels it came from
         const C = this.C, flip = C.a * C.d - C.b * C.c < 0;
         const t = here ? { tx: 0, ty: 0, sx: 1, sy: flip ? -1 : 1, rot: Math.atan2(C.b, C.a) } : { tx: 0, ty: 0, sx: 1, sy: 1, rot: 0 };
-        this.float = { canvas: fc, x0: at.x - c.width / 2, y0: at.y - c.height / 2, w: c.width, h: c.height, t, layer: l, sel: null };
+        this.float = { canvas: fc, x0: at.x - c.width / 2, y0: at.y - c.height / 2, w: c.width, h: c.height, t, layer: l, sel: null, mode: 'free', quad: null };
         this.dropSelection();
         this.setTool('move');
         this.renderSoon();
@@ -5028,7 +5028,7 @@ const PaintEditor = {
         const mid = this.V().inverse().transformPoint({ x: this.cssW / 2, y: this.cssH / 2 });
         mid.x = Math.max(0, Math.min(this.OW, mid.x));
         mid.y = Math.max(0, Math.min(this.OH, mid.y));
-        this.float = { canvas: fc, x0: mid.x - w / 2, y0: mid.y - h / 2, w, h, t: { tx: 0, ty: 0, sx: fit, sy: fit, rot: 0 }, layer: l, sel: null };
+        this.float = { canvas: fc, x0: mid.x - w / 2, y0: mid.y - h / 2, w, h, t: { tx: 0, ty: 0, sx: fit, sy: fit, rot: 0 }, layer: l, sel: null, mode: 'free', quad: null };
         this.dropSelection();
         this.setTool('move');
         this.renderSoon();
