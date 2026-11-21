@@ -1045,6 +1045,15 @@ body.slideshow #image-container:has(.slide-ctl.show) {
     pointer-events: none;
 }
 
+/* While the photo grows out of its tile (motion.js zoomOut), its buttons
+   wait out of sight, then fade and slide up into place: opacity and a
+   transform only, nothing laid out again */
+#image-container.zooming > .controls {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+    transition: none;
+}
+
 /* Turned off in Settings */
 .controls.off {
     display: none;
@@ -2079,6 +2088,28 @@ body.slideshow #image-container:has(.slide-ctl.show) {
     from { opacity: 0; transform: translateY(8px); }
 }
 
+/* Going, the way it came (script.js: updateSelectionUI; hidden once it's
+   gone). Not with Animations off or Reduce motion: it just goes */
+@keyframes bar-out {
+    to { opacity: 0; transform: translateY(8px); }
+}
+
+.selection-bar.leaving {
+    animation: bar-out var(--dur-base) var(--ease-in-out) forwards;
+    pointer-events: none;
+}
+
+/* Animations off or Reduce motion: it comes and goes at once */
+:root[data-motion="off"] .selection-bar {
+    animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .selection-bar {
+        animation: none;
+    }
+}
+
 .interface.rail-open .selection-bar {
     /* The bar's offsets are scaled with it by the UI size: right by the list */
     left: calc(var(--rail-room) / var(--ui-scale, 1));
@@ -2115,13 +2146,48 @@ body.slideshow #image-container:has(.slide-ctl.show) {
     right: var(--gutter);
     z-index: var(--z-floating);
     padding: 0 var(--sp-4);
-    color: var(--text-2);
+    color: var(--text-1);
 }
 
 .slider-group {
     display: flex;
     align-items: center;
     gap: var(--sp-3);
+}
+
+/* Like the other pills (the owner: its icons were hard to see, and it
+   didn't match them): its icons are round buttons in the pill's text
+   colour, the size of the selection pill's, with their hover and press;
+   4px round them, as there */
+:root:not([data-skin]) .grid-controls {
+    padding: 4px;
+}
+:root:not([data-skin]) .grid-controls .slider-group {
+    gap: 2px;
+}
+:root:not([data-skin]) .grid-controls .tb-btn {
+    width: var(--ctl-md);
+    min-width: var(--ctl-md);
+    padding: 0;
+    border-radius: 50%;
+}
+:root:not([data-skin]) #grid-size-slider {
+    margin: 0 var(--sp-2);
+}
+/* Its track and knob as clear as its icons, on any glass (the owner:
+   "almost invisible"): the track from the pill's own text colour, the
+   knob ringed in it */
+:root:not([data-skin]) #grid-size-slider::-webkit-slider-runnable-track {
+    background: color-mix(in srgb, var(--text-1) 32%, transparent);
+}
+:root:not([data-skin]) #grid-size-slider::-moz-range-track {
+    background: color-mix(in srgb, var(--text-1) 32%, transparent);
+}
+:root:not([data-skin]) #grid-size-slider::-webkit-slider-thumb {
+    box-shadow: var(--slider-knob-edge), 0 0 0 1px color-mix(in srgb, var(--text-1) 30%, transparent);
+}
+:root:not([data-skin]) #grid-size-slider::-moz-range-thumb {
+    box-shadow: var(--slider-knob-edge), 0 0 0 1px color-mix(in srgb, var(--text-1) 30%, transparent);
 }
 
 #grid-size-slider {
