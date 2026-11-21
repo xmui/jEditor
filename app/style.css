@@ -6167,6 +6167,66 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     height: var(--ctl-sm, 26px);
 }
 
+/* Text's Font: a button in the font's own typeface, and its picker
+   (paint-editor.js: fontChoice, openFonts) */
+.paint-font-btn {
+    height: var(--ctl-sm, 26px);
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+}
+.paint-font-btn.missing,
+.paint-font.missing { color: var(--text-3); }
+.paint-fonts {
+    position: fixed;
+    z-index: var(--z-menu);
+    width: 260px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    padding: var(--sp-1);
+    border-radius: var(--r-lg);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-3), var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    color: var(--text-1);
+    animation: popover-in var(--dur-base) var(--ease-out);
+}
+.paint-fonts input { height: var(--ctl-md); }
+.paint-fonts-list {
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+.paint-fonts-heading {
+    padding: var(--sp-1) var(--sp-3) 2px;
+    color: var(--text-3);
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+}
+.paint-font {
+    flex: none;
+    min-height: var(--ctl-md);
+    padding: 0 var(--sp-3);
+    border: none;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-1);
+    font-size: 15px;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.paint-font:hover,
+.paint-font:focus-visible { background: var(--tb-hover); outline: none; }
+.paint-font[aria-selected="true"] { background: var(--accent-soft, var(--tb-hover)); }
+
 .paint-body {
     flex: 1;
     min-height: 0;
