@@ -5068,6 +5068,10 @@ const PaintEditor = {
     copy({ merged = false } = {}) {
         const l = this.layer();
         if (!l) return;
+        if (this.float) this.commitFloat();
+        // Nothing selected: the layer itself, to paste as a layer
+        if (!this.sel && !merged) { this.copyLayer(); return; }
+        this._clipLayer = null;
         const b = this.sel ? this.sel.box : { x: 0, y: 0, w: this.W, h: this.H };
         const c = this.newCanvas(b.w, b.h);
         const g = c.getContext('2d');
@@ -5088,7 +5092,94 @@ const PaintEditor = {
         this._clip = c;
         this._clipAt = { x: b.x, y: b.y };
         this._clipStale = false;
+        this.toSystemClipboard(c);
         this.app.showToast(merged ? 'Copied, merged' : 'Copied', 1000);
+    },
+
+    // A layer copied whole: everything it keeps (its mask, text, shape,
+    // filter settings, opacity and blend), so Paste makes it again as a
+    // layer, here or in another picture. The system's clipboard gets it as
+    // it looks, for other apps
+    copyLayer(i = this.cur) {
+        const l = this.layers[i];
+        if (!l) return;
+        if (this.float) this.commitFloat();
+        const dup = (c) => { if (!c) return null; const n = this.newCanvas(c.width, c.height); n.getContext('2d').drawImage(c, 0, 0); return n; };
+        if (this._clipLayer) for (const c of [this._clipLayer.canvas, this._clipLayer.mask]) if (c) c.width = c.height = 0;
+        this._clipLayer = {
+            name: l.name, opacity: l.opacity, blend: l.blend, lock: l.lock, clip: !!l.clip, group: l.group || null,
+            text: l.text ? JSON.parse(JSON.stringify(l.text)) : null, shape: l.shape ? JSON.parse(JSON.stringify(l.shape)) : null,
+            adj: l.adj ? JSON.parse(JSON.stringify(l.adj)) : null, src: l.src || null,
+            canvas: dup(l.canvas), mask: dup(l.mask),
+            W: this.W, H: this.H, PW: this.PW, PH: this.PH, ext: { ...this.ext }, from: this.layers
+        };
+        // As it looks, cut to what's on it
+        const b = this.contentBox(l.canvas);
+        if (this._clip) this._clip.width = this._clip.height = 0;
+        this._clip = null;
+        if (b) {
+            const c = this.newCanvas(b.w, b.h);
+            this.drawShown(c.getContext('2d'), l, -b.x, -b.y);
+            this._clip = c;
+            this._clipAt = { x: b.x, y: b.y };
+            this.toSystemClipboard(c);
+        }
+        this._clipStale = false;
+        this.app.showToast(`Copied the layer ${l.name}`, 1200);
+    },
+
+    // For other apps: a PNG on the system's clipboard (where it allows it)
+    toSystemClipboard(c) {
+        try {
+            if (!navigator.clipboard || !navigator.clipboard.write || typeof ClipboardItem === 'undefined') return;
+            const png = new Promise((resolve, reject) => c.toBlob(b => (b ? resolve(b) : reject(new Error('no PNG'))), 'image/png'));
+            navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]).catch(() => { /* not allowed here */ });
+        } catch (e) { /* not allowed here */ }
+    },
+
+    // The layer copied, made again above this one: in the same place in
+    // the same picture; in another, the photo's middles lined up
+    pasteLayer() {
+        const s = this._clipLayer;
+        if (!s || !this.ready) return;
+        if (this.layers.length >= Paint.MAX_LAYERS) {
+            this.app.showToast(`Up to ${Paint.MAX_LAYERS} layers: merge some (Ctrl+E) to paste more`, 2500);
+            return;
+        }
+        if (this.float) this.commitFloat();
+        const same = s.W === this.W && s.H === this.H && s.ext.l === this.ext.l && s.ext.t === this.ext.t;
+        // In the photo's space, then in the layers'
+        const px = same ? 0 : Math.round((this.PW - s.PW) / 2), py = same ? 0 : Math.round((this.PH - s.PH) / 2);
+        const dx = px + this.ext.l - s.ext.l, dy = py + this.ext.t - s.ext.t;
+        // A text's or shape's place (m: from its own space to the photo's), moved too
+        const move = (o) => {
+            if (o && o.m && (px || py)) { const M = new DOMMatrix().translate(px, py).multiply(new DOMMatrix(o.m)); o.m = [M.a, M.b, M.c, M.d, M.e, M.f].map(v => +v.toFixed(5)); }
+            return o;
+        };
+        this.pushState('Paste layer');
+        const l = this.makeLayer(s.name);
+        const inHere = s.from === this.layers;
+        Object.assign(l, {
+            opacity: s.opacity, blend: s.blend, lock: s.lock, clip: s.clip,
+            group: s.group && this.layers.some(k => k.group === s.group) ? s.group : null,
+            text: s.text ? move(JSON.parse(JSON.stringify(s.text))) : null,
+            shape: s.shape ? move(JSON.parse(JSON.stringify(s.shape))) : null,
+            adj: s.adj ? JSON.parse(JSON.stringify(s.adj)) : null,
+            src: same ? s.src : null
+        });
+        if (inHere) l.name = `${s.name} copy`;
+        l.canvas.getContext('2d').drawImage(s.canvas, dx, dy);
+        if (s.mask) {
+            l.mask = this.newCanvas();
+            const g = l.mask.getContext('2d');
+            if (!same) { g.fillStyle = '#fff'; g.fillRect(0, 0, this.W, this.H); g.clearRect(dx, dy, s.mask.width, s.mask.height); }
+            g.drawImage(s.mask, dx, dy);
+            l.maskChanged = true;
+        }
+        this.layers.splice(this.cur + 1, 0, l);
+        this.cur++;
+        this.afterState();
+        this.app.showToast(`Pasted the layer ${l.name}`, 1200);
     },
 
     // Ctrl+V: in the middle of what's on screen. Paste in place
@@ -5096,6 +5187,7 @@ const PaintEditor = {
     paste({ inPlace = false } = {}) {
         // By the key: the paste event the key also sends isn't a second paste
         if (inPlace) this._pastedAt = performance.now();
+        if (this._clipLayer) { this.pasteLayer(); return; }
         const c = this._clip;
         if (!c) { this.app.showToast('Nothing copied yet: select something and copy it (Ctrl+C)', 2000); return; }
         if (this.float) this.commitFloat();
@@ -5229,13 +5321,13 @@ const PaintEditor = {
             else this.paste();
         });
         // Away to another app: what's copied there may be newer than Paint's own copy
-        window.addEventListener('blur', () => { if (this._clip) this._clipStale = true; });
+        window.addEventListener('blur', () => { if (this._clip || this._clipLayer) this._clipStale = true; });
     },
 
     // Ctrl+V: Paint's own copy if it's the newest thing copied; else the
     // system's clipboard, through the paste event (false: let it come)
     pasteKey() {
-        if (this._clip && !this._clipStale) { this._pastedAt = performance.now(); this.paste(); return true; }
+        if ((this._clip || this._clipLayer) && !this._clipStale) { this._pastedAt = performance.now(); this.paste(); return true; }
         return false;
     },
 
@@ -5721,6 +5813,8 @@ const PaintEditor = {
             ...(l.shape || l.src ? [['—'], ['Make it pixels', () => this.rasterize(i)]] : []),
             ['—'],
             ...(room ? [['Duplicate', () => this.duplicateLayer(), false, undefined, 'paint.duplicate']] : []),
+            ['Copy the layer', () => this.copyLayer(i), false, undefined, this.sel ? undefined : 'paint.copy'],
+            ...(this._clipLayer && room ? [['Paste the layer', () => this.pasteLayer(), false, undefined, 'paint.paste']] : []),
             ...(i > 0 ? [['Merge down', () => this.mergeDown(), false, undefined, 'paint.merge']] : []),
             ['Mask', this.maskItems()],
             ['Rename…', () => this.renameLayer(i)],
