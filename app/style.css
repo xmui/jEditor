@@ -10019,9 +10019,12 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 
 :root[data-platform="mac"]:not([data-skin]) {
     --lights-w: 72px;
-    /* More title bar to take hold of: the top row sits this much lower,
-       and what's above it moves the window too */
-    --mac-drag: 14px;
+    /* (Room over the top row to take hold of the window by. None: the top
+       row sits where it does on Windows, the lights on its line, as in
+       Adjust and Paint, whose heads never had it, so their row and the
+       lights were 14px apart, the owner's "two rows that don't line up",
+       21 November. What's over the row moves the window as before) */
+    --mac-drag: 0px;
     --top-row: calc(var(--gutter) + var(--mac-drag) + var(--ctl-lg) * var(--ui-scale, 1));
 }
 
@@ -10122,105 +10125,14 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 /* (As particular as the Mac's own --top-row, above, to win over it: AppKit's
    toolbar doesn't grow with Toolbar size) */
 :root[data-platform="mac"].native-toolbar {
-    /* The toolbar, and nothing under it: one row, as the Mac's own
-       windows (a strip under it moving the window left an empty band
-       between the toolbar and the sidebar's first row) */
-    --top-row: 52px;
+    /* The toolbar, and a strip under it that moves the window too */
+    --top-row: calc(52px + var(--mac-drag));
 }
 
 :root.native-toolbar header,
 :root.native-toolbar .folder-bar,
 :root.native-toolbar .mode-float {
     display: none !important;
-}
-
-/* The sidebar open, it runs to the window's top, as the Mac's own (the
-   owner, 21 November): the lights and its own row (the modes, its button,
-   Find anything) on the toolbar's row, its rows straight under that, and
-   the title after it (.mac-title). A press there is the page's
-   (bridge.js: pageLeft); its empty space moves the window (.folder-rail
-   ::before). Closed, the toolbar has its button and the mode (bridge.js) */
-:root[data-platform="mac"].native-toolbar:not([data-skin]) .folder-rail {
-    padding-top: 0;
-}
-
-:root.native-toolbar:not([data-skin]) .folder-rail #mode-row {
-    height: var(--top-row);
-    margin: 0 0 var(--sp-1);
-    /* From the lights' right edge (the sidebar's own 8px in already) */
-    padding: 0 0 0 calc(var(--lights-w) - 2px);
-    overflow: hidden;
-}
-
-:root.native-toolbar:not([data-skin]) .folder-rail #mode-row .mode-seg {
-    --seg-cell: 24px;
-}
-
-:root.native-toolbar:not([data-skin]) .folder-rail #mode-row .mode-row-btn {
-    width: 28px;
-    min-width: 28px;
-    height: 28px;
-    padding: 0;
-}
-
-/* Lights, modes and both buttons need 214px inside the sidebar (the
-   Mac's 232px wide). A narrower one: Find
-   anything goes first (⌘F), then its own button (⌘B, and the sidebar's
-   edge) */
-:root.native-toolbar:not([data-skin]) .folder-rail #mode-row .mode-row-gap {
-    min-width: 0;
-}
-
-@container rail (max-width: 213px) {
-    :root.native-toolbar:not([data-skin]) #mode-row-find {
-        display: none;
-    }
-}
-
-@container rail (max-width: 183px) {
-    :root.native-toolbar:not([data-skin]) #mode-row-side {
-        display: none;
-    }
-}
-
-/* The title, after the sidebar: AppKit's would sit after the lights,
-   over it. Centred on the toolbar's row; the subtitle under it, quieter */
-.mac-title {
-    display: none;
-}
-
-:root.native-toolbar:not([data-skin]) .mac-title:not([hidden]) {
-    position: fixed;
-    top: 0;
-    left: calc(var(--rail-now) + var(--sp-4));
-    right: 40%;
-    height: var(--top-row);
-    z-index: var(--z-floating);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 1px;
-    pointer-events: none;
-    user-select: none;
-    color: var(--text-1);
-    font: var(--fw-semibold) 13px/16px var(--font-ui);
-}
-
-.mac-title > span {
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-}
-
-.mac-title-s {
-    color: var(--text-2);
-    font-size: 11px;
-    line-height: 14px;
-    font-weight: var(--fw-regular, 400);
-}
-
-.mac-title-s[hidden] {
-    display: none;
 }
 
 :root.native-toolbar :is(.adjust-editor, .paint-editor) {
@@ -10515,7 +10427,54 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
    vibrancy), tinted so its words read as anywhere else; never under the
    photos or the grid. */
 :root[data-platform="mac"]:not([data-skin]) .folder-rail {
-    padding-top: calc(var(--top-row) + var(--sp-2));
+    padding-top: 0;
+}
+
+/* The sidebar's own row (the modes, its button, Find anything) on the
+   lights' line, after them, as the Mac's own sidebars have their buttons
+   there (the owner, 21 November: the sidebar to the top, no gap row): in
+   line with the top row's pills, its rows straight under it */
+:root[data-platform="mac"]:not([data-skin]) .folder-rail #mode-row {
+    height: calc(var(--ctl-lg) * var(--ui-scale, 1));
+    margin: calc(var(--gutter) + var(--mac-drag)) 0 var(--sp-2);
+    /* The lights: from max(12px, the gutter), 54px wide, then 4px (the
+       sidebar's own 8px in already) */
+    padding: 0 0 0 calc(max(12px, var(--gutter)) + 50px);
+    overflow: hidden;
+}
+
+:root[data-platform="mac"].fullscreen:not([data-skin]) .folder-rail #mode-row {
+    padding-left: var(--sp-1);
+}
+
+:root[data-platform="mac"]:not([data-skin]) .folder-rail #mode-row .mode-seg {
+    --seg-cell: 24px;
+}
+
+:root[data-platform="mac"]:not([data-skin]) .folder-rail #mode-row .mode-row-btn {
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    padding: 0;
+}
+
+:root[data-platform="mac"]:not([data-skin]) .folder-rail #mode-row .mode-row-gap {
+    min-width: 0;
+}
+
+/* They need 214px inside the sidebar (the Mac's is 232px wide). A
+   narrower one: Find anything goes first (⌘F), then its own button (⌘B,
+   or its edge) */
+@container rail (max-width: 213px) {
+    :root[data-platform="mac"]:not([data-skin]):not(.fullscreen) #mode-row-find {
+        display: none;
+    }
+}
+
+@container rail (max-width: 183px) {
+    :root[data-platform="mac"]:not([data-skin]):not(.fullscreen) #mode-row-side {
+        display: none;
+    }
 }
 
 :root[data-platform="mac"]:not([data-skin]) .folder-rail::before {

@@ -703,25 +703,19 @@
         // button as in Photos, and their head starts below it (style.css).
         // (Stepped aside, the toolbar's title bar still took the press on
         // the page's own chip there: hard to press, Needs fixing 2026-11-05)
-        // One row, as the Mac's own windows (the owner, 21 November).
-        // The sidebar open, it runs to the window's top: the lights and its
-        // own row (the modes, its button, Find anything) on this row, and
-        // the title starts at its right edge, drawn by the page (AppKit's
-        // would sit after the lights, over the sidebar), with the rest at
-        // the right. A press over the sidebar there is the page's
-        // (pageLeft). The sidebar closed: the lights, then its button and
-        // the mode (AppKit puts navigational items before the title), the
-        // title, and the rest at the right.
-        const railEl = document.querySelector('.folder-rail');
-        const side = typeof Folders !== 'undefined' && Folders.railOpen() && !!railEl && !!railEl.getClientRects().length;
-        const pageLeft = side ? Math.round(railEl.getBoundingClientRect().right) : 0;
-        const rail = { id: 'rail', kind: 'button', symbol: 'sidebar.left', label: 'Sidebar', tooltip: said($('fb-rail').title), navigational: true };
-        const lead = side ? [] : [rail, modeItem()];
-        const title = $('file-name-text').textContent || a.dirHandle.name;
-        if (typeof Modes !== 'undefined' && Modes.current() !== 'photos') return { visible: true, title, subtitle: '', showTitle: !side, pageLeft, items: [...lead, { kind: 'flexible' }] };
-        const items = [...lead];
+        if (typeof Modes !== 'undefined' && Modes.current() !== 'photos') return { visible: true, title: $('file-name-text').textContent || a.dirHandle.name, subtitle: '', items: [modeItem(), { kind: 'flexible' }] };
+        const items = [];
         const bar = $('folder-bar');
-        const browsing = shown(bar) && !side;
+        const browsing = shown(bar);
+        if (browsing) items.push({ id: 'rail', kind: 'button', symbol: 'sidebar.left', label: 'Folder list', tooltip: said($('fb-rail').title), navigational: true });
+        // The mode chip, as in the folder pill (or on its own in the single
+        // view): not while the sidebar shows its own switch
+        // (In jEditor's own look it's the row of modes, floating while the
+        // sidebar's closed: under this toolbar it doesn't show, so it's here)
+        const row = $('mode-row');
+        const rowFloats = !!row && row.classList.contains('float') && !row.classList.contains('hidden');
+        const modeChip = [$('mode-chip-bar'), $('mode-float')].find(shown) || rowFloats;
+        if (modeChip && typeof Modes !== 'undefined') items.push(modeItem());
         if (browsing) items.push({ id: 'scope', kind: 'segment', segments: ['All photos', 'Folders'], selected: $('fb-all').classList.contains('active') ? 0 : 1, navigational: true });
         items.push({ kind: 'flexible' });
         const chip = $('fb-filter-chip');
@@ -744,34 +738,15 @@
         items.push({ id: 'more', kind: 'menu', symbol: 'ellipsis.circle', label: 'More', menu: more });
         // Finding a photo or folder by name is Find anything's, as on the
         // page (⌘F and / open it there too): the folder pill has no search box
-        if (!side && typeof Palette !== 'undefined') items.push({ id: 'find', kind: 'button', symbol: 'magnifyingglass', label: 'Find anything', tooltip: 'Find a photo or folder (⌘F)' });
+        if (browsing && typeof Palette !== 'undefined') items.push({ id: 'find', kind: 'button', symbol: 'magnifyingglass', label: 'Find anything', tooltip: 'Find a photo or folder (⌘F)' });
         const crumbs = $('fb-crumbs');
         const where = browsing && crumbs ? crumbs.textContent.replace(/\s+/g, ' ').trim() : '';
         return {
             visible: true,
-            title,
+            title: $('file-name-text').textContent || a.dirHandle.name,
             subtitle: [a.dirHandle.name, where, $('file-count').textContent].filter(Boolean).join(' · '),
-            showTitle: !side,
-            pageLeft,
             items
         };
-    }
-
-    // The title the page draws after the open sidebar (style.css: .mac-title)
-    function drawTitle(model) {
-        let el = $('mac-title');
-        if (!el) {
-            el = document.createElement('div');
-            el.id = 'mac-title';
-            el.className = 'mac-title';
-            el.setAttribute('aria-hidden', 'true'); // the window's own title says it
-            el.innerHTML = '<span class="mac-title-t"></span><span class="mac-title-s"></span>';
-            document.body.appendChild(el);
-        }
-        el.hidden = !model.visible || model.showTitle !== false;
-        el.firstChild.textContent = model.title || '';
-        el.lastChild.textContent = model.subtitle || '';
-        el.lastChild.hidden = !model.subtitle;
     }
 
     let lastToolbar = '';
@@ -787,14 +762,13 @@
             const json = JSON.stringify(model);
             if (json === lastToolbar) return;
             lastToolbar = json;
-            drawTitle(model);
             mac.request('toolbar', model);
         }, 30);
     };
 
     function onToolbar(id, value) {
         const click = (el) => el && el.click();
-        if (id === 'rail') Folders.toggleRail();
+        if (id === 'rail') click($('fb-rail'));
         else if (id === 'mode') Modes.go(String(value));
         else if (id === 'scope') click(Number(value) === 0 ? $('fb-all') : $('fb-folders'));
         else if (id === 'filter') click($('fb-filter-chip'));
@@ -823,8 +797,6 @@
             // comes back then, not when something else on the page changes
             for (const el of [$('adjust-editor'), $('paint-editor')].filter(Boolean)) watch.observe(el, { attributes: true, attributeFilter: ['class'] });
             $('sort-mode').addEventListener('change', sendToolbar);
-            const railEl = document.querySelector('.folder-rail');
-            if (railEl && typeof ResizeObserver === 'function') new ResizeObserver(sendToolbar).observe(railEl);
             sendToolbar();
         });
     }
