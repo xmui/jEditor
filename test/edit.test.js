@@ -488,14 +488,15 @@ const PROJECT = `
         // The chip: not there at Fit; zoomed in, it pops up, and its Fit
         // goes back (and it goes); its 100% does as it says
         const shown = () => page.evaluate(() => getComputedStyle(document.getElementById('adj-zoom')).visibility === 'visible');
-        await page.waitForTimeout(300);
+        // (its fade can outlast a fixed wait on a slow machine: wait for it to go)
+        await page.waitForFunction(() => getComputedStyle(document.getElementById('adj-zoom')).visibility !== 'visible', null, { timeout: 3000 }).catch(() => { });
         const atFit = await shown();
         await page.keyboard.press('Control+1');
         await page.waitForTimeout(300);
         const zoomedIn = await shown();
         await page.click('#adj-zoom-fit');
         const c2 = await view();
-        await page.waitForTimeout(300);
+        await page.waitForFunction(() => getComputedStyle(document.getElementById('adj-zoom')).visibility !== 'visible', null, { timeout: 3000 }).catch(() => { });
         const goneAgain = !(await shown());
         await page.keyboard.press('Control+1');
         await page.waitForTimeout(300);
