@@ -1999,10 +1999,12 @@ const PROJECT = `
                 out.pasted = [!handled, P.layers.length, P.layers[P.cur].name];
                 pressKey('Escape');
                 // Paint's own copy, when it's the newest: Ctrl+V pastes it
+                // (nothing selected: the layer, pasted as a layer, then undone)
+                const nOwn = P.layers.length;
                 P.copy();
                 const own = !window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true, cancelable: true }));
-                out.ownPaste = own && !!P.float;
-                pressKey('Escape');
+                out.ownPaste = own && P.layers.length === nOwn + 1;
+                pressKey('z', { ctrlKey: true });
                 // Not an image: said so
                 await P.importFiles([new File(['hi'], 'notes.txt', { type: 'text/plain' })]);
                 out.notImage = /Only images/.test(document.body.textContent);
@@ -3714,8 +3716,9 @@ const PROJECT = `
                 out.importMode = box().querySelector('.paint-tf-mode') && box().querySelector('.paint-tf-mode').value;
                 out.imported = sized();
                 P.commitFloat();
-                // Pasted
+                // Pasted (what's selected: with nothing selected, Ctrl+C copies the layer)
                 step = 'paste';
+                pressKey('a', { ctrlKey: true });
                 P.copy();
                 P.paste();
                 out.pasted = P.float && sized();
@@ -3769,6 +3772,92 @@ const PROJECT = `
         check('paint transform: the lock is on to start with; a corner keeps the shape, Shift frees it, a side stretches; unlocked, a corner is free', r.lockOn === 'true' && r.kept === 1 && r.freed && r.stretched && r.lockOff === 'false' && r.offFree, JSON.stringify(r));
         check('paint transform: resize arrows at the corners and sides, turned with the box; move inside; turn just outside a corner', r.cursors === 'nwse-resize,nesw-resize,ew-resize,ns-resize' && r.inside === 'move' && r.turn && r.turned === 'nesw-resize', JSON.stringify(r));
         check('paint drop: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    if (wanted('paintcopy')) {
+        console.log('paint: a layer copied and pasted as a layer (paint-editor.js: copyLayer, pasteLayer)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, w, h); return canvasBlob(c); };
+                await openProject('cp', { 'a.png': await mk(300, 200), 'b.png': await mk(500, 400) });
+                // The system's clipboard, watched
+                const wrote = [];
+                try { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { write: async (items) => { wrote.push(items[0].types.join()); } } }); } catch (e) { /* none */ }
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                step = 'paint';
+                P.addLayer ? P.addLayer() : P.layers.push(P.makeLayer('L'));
+                const l = P.layer();
+                l.name = 'Square';
+                const g = l.canvas.getContext('2d', { willReadFrequently: true });
+                g.fillStyle = '#ff0000'; g.fillRect(P.ext.l + 20, P.ext.t + 30, 40, 40);
+                l.changed = true;
+                P.addMask('all');
+                const mg = l.mask.getContext('2d'); mg.clearRect(P.ext.l + 20, P.ext.t + 30, 10, 40);
+                l.opacity = 0.5;
+                const n0 = P.layers.length;
+                // Ctrl+C with nothing selected, then Ctrl+V
+                step = 'copy';
+                P.deselect && P.deselect();
+                P.copy();
+                await sleep(30);
+                out.system = wrote.join();
+                P.pasteKey();
+                const nl = P.layer();
+                out.added = P.layers.length - n0;
+                out.name = nl.name;
+                out.float = !!P.float;
+                const a = (k, x, y) => k.canvas.getContext('2d', { willReadFrequently: true }).getImageData(P.ext.l + x, P.ext.t + y, 1, 1).data[0];
+                out.samePlace = a(nl, 25, 35) === 255 && a(nl, 5, 5) === 0;
+                out.kept = !!nl.mask && nl.mask !== l.mask && nl.opacity === 0.5 && nl.canvas !== l.canvas;
+                // One step to undo
+                pressKey('z', { ctrlKey: true });
+                out.undone = P.layers.length === n0;
+                // The layer's right-click menu
+                step = 'menu';
+                const labels = P.layerItems(P.cur).map(it => it[0]);
+                out.menu = labels.includes('Copy the layer') && labels.includes('Paste the layer');
+                // Text, copied from the menu, into another picture of another size
+                step = 'text';
+                P.setTool('text');
+                const st = document.getElementById('paint-stage'), ta = document.getElementById('paint-text');
+                const sc = (q) => { const sp = P.V().transformPoint(q); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                st.dispatchEvent(new PointerEvent('pointerdown', { ...sc({ x: 60, y: 60 }), pointerId: 1, bubbles: true, button: 0 }));
+                st.dispatchEvent(new PointerEvent('pointerup', { ...sc({ x: 60, y: 60 }), pointerId: 1, bubbles: true }));
+                await sleep(20);
+                ta.value = 'Hello'; ta.dispatchEvent(new Event('input'));
+                ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
+                await sleep(20);
+                const ti = P.layers.findIndex(k => k.text);
+                const m0 = P.layers[ti].text.m.slice();
+                P.layerItems(ti).find(it => it[0] === 'Copy the layer')[1]();
+                app.cancelPaint();
+                await sleep(50);
+                step = 'other';
+                app.openSingle(app.files[1]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready && PaintEditor.PW === 500);
+                const n1 = P.layers.length;
+                P.paste();
+                const pl = P.layer();
+                out.otherAdded = P.layers.length - n1;
+                out.otherText = pl.text && pl.text.v === 'Hello' ? [Math.round(pl.text.m[4] - m0[4]), Math.round(pl.text.m[5] - m0[5])].join() : null;
+                out.otherName = pl.name;
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint copy: Ctrl+C with nothing selected copies the layer, onto the system clipboard too', r.system && r.system.includes('image/png'), JSON.stringify(r));
+        check('paint copy: Ctrl+V makes it again as a layer above, in the same place, with its mask and opacity', r.added === 1 && r.name === 'Square copy' && !r.float && r.samePlace && r.kept, JSON.stringify(r));
+        check('paint copy: one step to undo; the layer menu has Copy the layer and Paste the layer', r.undone && r.menu, JSON.stringify(r));
+        check('paint copy: a text layer pasted into another picture stays text, the middles lined up', r.otherAdded === 1 && r.otherText === '100,100' && r.otherName === 'Hello', JSON.stringify(r));
+        check('paint copy: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
