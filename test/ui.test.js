@@ -840,6 +840,14 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             document.getElementById('grid-view').dispatchEvent(
                 new WheelEvent('wheel', { ctrlKey: true, deltaY: -100, cancelable: true }));
             out.zoomChanged = document.getElementById('grid-size-slider').value !== before;
+            // Its icons are buttons: a step smaller, a step bigger; in the
+            // pill's text colour, the size of the selection pill's (the owner)
+            const sl = document.getElementById('grid-size-slider'), v0 = +sl.value;
+            document.getElementById('btn-grid-smaller').click();
+            const v1 = +sl.value;
+            document.getElementById('btn-grid-bigger').click();
+            const big = document.getElementById('btn-grid-bigger'), cs = getComputedStyle(big), pill = getComputedStyle(document.getElementById('grid-controls'));
+            out.sizeButtons = { steps: [v0, v1, +sl.value], grid: getComputedStyle(document.getElementById('grid-view')).getPropertyValue('--grid-item-size').trim(), color: cs.color === getComputedStyle(document.body).color || cs.color === pill.color, w: big.getBoundingClientRect().width, h: pill.height };
 
             return out;
         });
@@ -861,6 +869,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('... the flag row says what the symbol pointed at does, with its key',
             r.flagSay.idle === 'Flag and label' && /^Reject/.test(r.flagSay.pointed) && r.flagSay.back === 'Flag and label' && /^Red label/.test(r.flagSay.focused) && r.flagSay.labels, JSON.stringify(r.flagSay));
         check('ctrl+wheel zooms the grid', r.zoomChanged);
+        check('the size pill\'s icons are buttons, a step smaller and bigger, as clear as the other pills\' icons', r.sizeButtons.steps[1] === r.sizeButtons.steps[0] - 20 && r.sizeButtons.steps[2] === r.sizeButtons.steps[0] && r.sizeButtons.grid === `${r.sizeButtons.steps[0]}px` && r.sizeButtons.color, JSON.stringify(r.sizeButtons));
         await page.close();
     }
 

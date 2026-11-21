@@ -2115,13 +2115,33 @@ body.slideshow #image-container:has(.slide-ctl.show) {
     right: var(--gutter);
     z-index: var(--z-floating);
     padding: 0 var(--sp-4);
-    color: var(--text-2);
+    color: var(--text-1);
 }
 
 .slider-group {
     display: flex;
     align-items: center;
     gap: var(--sp-3);
+}
+
+/* Like the other pills (the owner: its icons were hard to see, and it
+   didn't match them): its icons are round buttons in the pill's text
+   colour, the size of the selection pill's, with their hover and press;
+   4px round them, as there */
+:root:not([data-skin]) .grid-controls {
+    padding: 4px;
+}
+:root:not([data-skin]) .grid-controls .slider-group {
+    gap: 2px;
+}
+:root:not([data-skin]) .grid-controls .tb-btn {
+    width: var(--ctl-md);
+    min-width: var(--ctl-md);
+    padding: 0;
+    border-radius: 50%;
+}
+:root:not([data-skin]) #grid-size-slider {
+    margin: 0 var(--sp-2);
 }
 
 #grid-size-slider {

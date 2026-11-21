@@ -197,6 +197,16 @@ const app = {
 
         // Grid Size Slider
         this.elements.gridSizeSlider.addEventListener('input', (e) => this.setGridSize(parseInt(e.target.value, 10)));
+        // Its icons are buttons: a step smaller or bigger, as a notch of Ctrl+wheel
+        for (const [id, by] of [['btn-grid-smaller', -20], ['btn-grid-bigger', 20]]) {
+            const btn = document.getElementById(id);
+            if (btn) btn.addEventListener('click', () => {
+                const slider = this.elements.gridSizeSlider;
+                const next = Math.max(80, Math.min(400, parseInt(slider.value, 10) + by));
+                slider.value = next;
+                this.setGridSize(next);
+            });
+        }
         // Off-screen tiles stand in at the real tile size (see syncGridTile)
         // (and a huge folder's grid builds the tiles the new size needs)
         // Narrower or wider (the window, the folder list): other columns,
