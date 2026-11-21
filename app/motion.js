@@ -331,12 +331,17 @@ const Motion = {
         const px = P.left + P.width / 2, py = P.top + P.height / 2;
         const tx = tile.r.left + tile.r.width / 2 - cx - s * (px - cx);
         const ty = tile.r.top + tile.r.height / 2 - cy - s * (py - cy);
+        // The buttons over the photo would grow with it, from the tile's
+        // size (the owner: they "pop in a weird way"): out of sight while it
+        // grows, then they fade and slide up into place (style.css: zooming)
+        box.classList.add('zooming');
         const a = box.animate([
             { translate: `${tx}px ${ty}px`, scale: String(s), opacity: 0.4 },
             { translate: '0 0', scale: '1', opacity: 1 }
         ], { duration: this.ZOOM, easing: 'cubic-bezier(0.2, 0, 0, 1)' });
-        this._zoom = () => a.cancel();
-        a.finished.then(() => { if (this._zoom) this._zoom = null; }, () => { });
+        const landed = () => box.classList.remove('zooming');
+        this._zoom = () => { a.cancel(); landed(); };
+        a.finished.then(() => { landed(); if (this._zoom) this._zoom = null; }, landed);
     },
 
     // Back to the grid: the photo's tile starts where the photo was and

@@ -1045,6 +1045,15 @@ body.slideshow #image-container:has(.slide-ctl.show) {
     pointer-events: none;
 }
 
+/* While the photo grows out of its tile (motion.js zoomOut), its buttons
+   wait out of sight, then fade and slide up into place: opacity and a
+   transform only, nothing laid out again */
+#image-container.zooming > .controls {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+    transition: none;
+}
+
 /* Turned off in Settings */
 .controls.off {
     display: none;
@@ -2077,6 +2086,28 @@ body.slideshow #image-container:has(.slide-ctl.show) {
 
 @keyframes bar-in {
     from { opacity: 0; transform: translateY(8px); }
+}
+
+/* Going, the way it came (script.js: updateSelectionUI; hidden once it's
+   gone). Not with Animations off or Reduce motion: it just goes */
+@keyframes bar-out {
+    to { opacity: 0; transform: translateY(8px); }
+}
+
+.selection-bar.leaving {
+    animation: bar-out var(--dur-base) var(--ease-in-out) forwards;
+    pointer-events: none;
+}
+
+/* Animations off or Reduce motion: it comes and goes at once */
+:root[data-motion="off"] .selection-bar {
+    animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .selection-bar {
+        animation: none;
+    }
 }
 
 .interface.rail-open .selection-bar {
