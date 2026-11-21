@@ -405,6 +405,14 @@
     }
 }
 
+/* Settings → Animations off: nothing moves, including the transitions
+   no rule turns off one by one (the toasts, the tour, Info's photo) */
+:root[data-motion="off"] {
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+    --dur-slow: 0ms;
+}
+
 /* ==========================================================================
    The 2.0 refinement, in jEditor's own look (the themes keep the values
    above until they're dressed to match). Three surfaces, by what they're
