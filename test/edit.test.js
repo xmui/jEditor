@@ -2351,10 +2351,11 @@ const PROJECT = `
                 step = 'hand';
                 P.setTool('hand');
                 const a0 = P.viewAngle();
-                const sx = rr.left + rr.width / 2 + 100, sy = rr.top + rr.height / 2;
+                // (about the middle of the room the picture fits in, beside the panel)
+                const mid = P.mid(), sx = rr.left + mid.x + 100, sy = rr.top + mid.y;
                 st.dispatchEvent(new PointerEvent('pointerdown', { clientX: sx, clientY: sy, pointerId: 1, bubbles: true, button: 0, shiftKey: true }));
-                st.dispatchEvent(new PointerEvent('pointermove', { clientX: rr.left + rr.width / 2, clientY: sy + 100, pointerId: 1, bubbles: true, shiftKey: true }));
-                st.dispatchEvent(new PointerEvent('pointerup', { clientX: rr.left + rr.width / 2, clientY: sy + 100, pointerId: 1, bubbles: true, shiftKey: true }));
+                st.dispatchEvent(new PointerEvent('pointermove', { clientX: rr.left + mid.x, clientY: sy + 100, pointerId: 1, bubbles: true, shiftKey: true }));
+                st.dispatchEvent(new PointerEvent('pointerup', { clientX: rr.left + mid.x, clientY: sy + 100, pointerId: 1, bubbles: true, shiftKey: true }));
                 out.handTurn = P.viewAngle() - a0;
                 document.getElementById('paint-view-angle').click();
                 out.straight = [P.viewAngle(), document.getElementById('paint-view-angle').classList.contains('hidden') || (P.render(), document.getElementById('paint-view-angle').classList.contains('hidden'))];
@@ -2936,7 +2937,7 @@ const PROJECT = `
                 P.setTool('brush');
                 const st = document.getElementById('paint-stage'), rr = P.canvas.getBoundingClientRect();
                 document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', code: 'KeyR', bubbles: true }));
-                const cx = rr.left + P.cssW / 2, cy = rr.top + P.cssH / 2;
+                const cx = rr.left + P.mid().x, cy = rr.top + P.mid().y;
                 st.dispatchEvent(new PointerEvent('pointerdown', { clientX: cx + 100, clientY: cy, pointerId: 1, bubbles: true, button: 0 }));
                 st.dispatchEvent(new PointerEvent('pointermove', { clientX: cx, clientY: cy + 100, pointerId: 1, bubbles: true }));
                 st.dispatchEvent(new PointerEvent('pointerup', { clientX: cx, clientY: cy + 100, pointerId: 1, bubbles: true }));

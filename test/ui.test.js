@@ -5670,7 +5670,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const extra = document.getElementById('info-extra');
             out.card = !!extra && !extra.hidden && !!extra.querySelector('.info-flags .ctx-flag.fl-star')
                 && document.getElementById('main-interface').classList.contains('info-open')
-                && parseFloat(getComputedStyle(document.getElementById('image-container')).marginRight) >= 300;
+                && parseFloat(getComputedStyle(document.getElementById('image-container')).paddingRight) >= 300;
             extra.querySelector('.ctx-flag.fl-star').click();
             await sleep(50);
             out.cardFlag = Flags.has(app.currentFile, 'star') && !!document.querySelector('#info-extra .ctx-flag.fl-star.on');
@@ -5686,7 +5686,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             // Zoomed in, it fills the window to the top, under the pills
             const ic = document.getElementById('image-container'), ci = document.getElementById('current-image');
             ci.classList.add('follow');
-            app.zoomTo(4);
+            const vb = app.viewBox();
+            app.zoomTo(2 * Math.max(vb.width / ci.offsetWidth, vb.height / ci.offsetHeight));
             await sleep(50);
             const icR = ic.getBoundingClientRect(), ciR = ci.getBoundingClientRect();
             out.zoomTop = icR.top < pillB && ciR.top <= icR.top + 1 && ciR.right >= icR.right - 1;
