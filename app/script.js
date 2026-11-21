@@ -8293,7 +8293,33 @@ const app = {
             e.preventDefault();
             this.openContextMenu(this.buildContextItems(tile, inSingle), e.clientX, e.clientY);
         });
-        window.addEventListener('click', () => this.closeContextMenu());
+        // A click off the menu closes it; a menu's opener (its name in the
+        // menu bar, a ⋯) is left to its own click, which opens or shuts it
+        // (the press before it closed any other menu)
+        window.addEventListener('click', (e) => {
+            if (e.target && e.target.closest && e.target.closest('[aria-haspopup]')) return;
+            this.closeContextMenu();
+        });
+        // A press anywhere off the menu closes it, even where the press is
+        // stopped or never makes a click (a canvas, a right-click elsewhere).
+        // The name of the menu that's open (the menu bar's, a theme's) is
+        // left to its own click, so it can toggle its menu shut. On a photo
+        // being cropped, adjusted or painted, the press only closes the
+        // menu, as on a Mac: it paints no dot and moves no pin
+        const off = (e) => {
+            if (!document.getElementById('context-menu')) return;
+            const t = e.target && e.target.closest ? e.target : null;
+            if (t && t.closest('#context-menu, .ctx-fly')) return;
+            if (e.type === 'pointerdown' && e.button === 0 && t && t.closest('[aria-haspopup][aria-expanded="true"], .th-menu.open')) return;
+            this.closeContextMenu();
+            if (e.type === 'pointerdown' && t && t.closest('.crop-stage, #adj-stage, #paint-stage')) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        };
+        window.addEventListener('pointerdown', off, true);
+        window.addEventListener('contextmenu', off, true);
+        window.addEventListener('blur', () => this.closeContextMenu());
         window.addEventListener('scroll', () => this.closeContextMenu(), true);
         window.addEventListener('resize', () => this.closeContextMenu());
     },
