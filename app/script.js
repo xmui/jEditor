@@ -5310,7 +5310,7 @@ const app = {
         ['paint.invert', 'paint', 'Paint', 'Invert the selection', ['Ctrl+Shift+I']],
         ['paint.clear', 'paint', 'Paint', 'Delete what\'s selected', ['Delete', 'Backspace']],
         ['paint.saveOver', 'paint', 'Paint', 'Write edits to file: the original file is untouched until this writes your edits into it', ['Ctrl+S']],
-        ['paint.copy', 'paint', 'Paint', 'Copy what\'s selected', ['Ctrl+C']],
+        ['paint.copy', 'paint', 'Paint', 'Copy what\'s selected, or the layer when nothing is', ['Ctrl+C']],
         ['paint.copyMerged', 'paint', 'Paint', 'Copy merged: the photo and the layers shown, as they look', ['Ctrl+Shift+C']],
         ['paint.paste', 'paint', 'Paint', 'Paste (an image copied in another app comes in as a layer)', ['Ctrl+V']],
         ['paint.pasteInPlace', 'paint', 'Paint', 'Paste in place: where it was copied from', ['Ctrl+Shift+V']],

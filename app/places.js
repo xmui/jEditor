@@ -18,8 +18,8 @@
 //              last changed. Three show; Show more lists the rest. Search
 //              and New project are icons in the heading. Then recent
 //              projects opened from elsewhere.
-//   Pinned     folders pinned here that aren't projects, and those pinned
-//              in Explorer's Quick Access. They open out like Explorer's.
+//   Pinned     folders pinned here that aren't projects. They open out
+//              like Explorer's.
 //   This PC    the drives. A USB drive plugged in while jEditor is open is
 //              marked New, and can be ejected from here. On a Mac (Locations)
 //              the Photos library too (photosLibrary): it opens out like a
@@ -47,7 +47,6 @@ const Places = {
     showAll: false,
     searching: false, // the search box shown (the icon in the heading)
     drives: null,
-    quick: [],
     projects: null,      // the projects folder's folders
 
     icons: {
@@ -185,14 +184,12 @@ const Places = {
     async refresh() {
         const native = this.native();
         const dir = this.projectsDir();
-        const [places, quick, projects] = await Promise.all([
+        const [places, projects] = await Promise.all([
             native.places().catch(() => ({ drives: [], home: [] })),
-            Host.has('quickAccess') ? native.quickAccess().catch(() => []) : [],
             dir ? native.listProjects(dir).catch(() => null) : Promise.resolve(null)
         ]);
         if (this.drives === null) this.known = new Set(places.drives.map(d => this.key(d.path)));
         this.drives = places.drives;
-        this.quick = quick;
         this.projects = projects;
         await this.draw();
     },
@@ -408,11 +405,6 @@ const Places = {
             seen.add(this.key(p.path));
             if (projects.has(this.key(p.path))) continue;
             html += await this.tree(p.path, p.name, 0, { icon: this.icons.pin, row: { pin: true, cls: 'sb-pinned' } });
-        }
-        for (const q of this.quick) {
-            if (seen.has(this.key(q.path))) continue;
-            seen.add(this.key(q.path));
-            html += await this.tree(q.path, q.name, 0, { icon: this.icons.pin, row: { title: `${q.path} (pinned in Explorer)` } });
         }
         return html;
     },

@@ -3233,6 +3233,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.chips = [...document.querySelectorAll('#grid-view .grid-item')].filter(t => t.querySelector('.tile-folder'))
                 .map(t => t.querySelector('.tile-folder').textContent).sort().join(',');
             out.railRows = [...document.querySelectorAll('#folder-tree .fr-row')].map(r => r.querySelector('.fr-name').textContent + ':' + r.querySelector('.fr-count').textContent).join('|');
+            // Folded to start with (the owner's ask); its caret opens it out
+            document.querySelector('#folder-tree .fr-row[data-folder-path="Wedding"] .fr-caret').click();
+            out.railOpen = [...document.querySelectorAll('#folder-tree .fr-row')].map(r => r.querySelector('.fr-name').textContent + ':' + r.querySelector('.fr-count').textContent).join('|');
 
             // One folder at a time: its photos, its subfolders as tiles
             Folders.setScope('Wedding');
@@ -3406,7 +3409,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('folders: every folder found, empty ones too', r.folders === '|Wedding|Wedding/Ceremony|Wedding/Reception', r.folders);
         check('folders: All photos first, with the folder list and bar', r.allFirst && r.railShown);
         check('folders: All photos labels each photo with its folder', r.chips === 'Ceremony,Wedding,Wedding', r.chips);
-        check('folders: list shows the tree with photo counts', r.railRows === 'All photos:7|collate:4|Wedding:2|Ceremony:1|Reception:', r.railRows);
+        check('folders: list shows the tree with photo counts, its folders folded to start with; a caret opens one out', r.railRows === 'All photos:7|collate:4|Wedding:2' && r.railOpen === 'All photos:7|collate:4|Wedding:2|Ceremony:1|Reception:', JSON.stringify([r.railRows, r.railOpen]));
         check('folders: a folder shows its own photos and subfolder tiles', r.wedTiles === 'Wedding/b.jpg,Wedding/w1.jpg' && r.wedFolders === 'Wedding/Ceremony,Wedding/Reception', `${r.wedTiles} / ${r.wedFolders}`);
         check('folders: breadcrumb', r.crumbs === 'collate>Wedding', r.crumbs);
         check('folders: arrows stay in the folder (grid and single view)', r.wraps && r.singleStays && r.strip === 2, `strip=${r.strip}`);

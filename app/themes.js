@@ -32,16 +32,18 @@ const Themes = {
             // No menu bar in the window, as a Mac app has none: in the Mac's
             // own menu bar (systemMenus below), iPhoto's and Aperture's way
             systemMenus: ['File', 'Edit', 'View', 'Photos', 'Help'],
+            // Each variant's name in plain words (the owner's branding rule);
+            // its id stays, so a theme chosen before is still found
             variants: [
-                { id: 'finder', name: 'Finder', mode: 'light', swatch: '#c9ced6', css: ['snow/finder.css', 'snow/controls.css', 'snow/modes.css'] },
-                { id: 'aperture', name: 'Aperture', mode: 'dark', swatch: '#3a3a3a', css: ['snow/finder.css', 'snow/controls.css', 'snow/modes.css', 'snow/aperture.css'] }
+                { id: 'finder', name: 'Light', mode: 'light', swatch: '#c9ced6', css: ['snow/finder.css', 'snow/controls.css', 'snow/modes.css'] },
+                { id: 'aperture', name: 'Dark', mode: 'dark', swatch: '#3a3a3a', css: ['snow/finder.css', 'snow/controls.css', 'snow/modes.css', 'snow/aperture.css'] }
             ]
         },
         {
             id: 'mac84', name: '1984', year: 1984, skin: 'mac84', layout: 'docked', title: 'mac',
             menus: ['File', 'Edit', 'View', 'Photo', 'Special'],
             variants: [
-                { id: 'finder', name: 'Finder', mode: 'light', swatch: '#000000', css: ['mac84/finder.css', 'mac84/controls.css', 'mac84/modes.css'] }
+                { id: 'finder', name: 'Classic', mode: 'light', swatch: '#000000', css: ['mac84/finder.css', 'mac84/controls.css', 'mac84/modes.css'] }
             ],
             settings: [
                 {
