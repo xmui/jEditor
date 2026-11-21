@@ -10128,14 +10128,99 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     --top-row: 52px;
 }
 
-/* The sidebar's row of modes, its button and Find anything are the
-   toolbar's here (bridge.js), on the lights' row: not a second row
-   under it */
 :root.native-toolbar header,
 :root.native-toolbar .folder-bar,
-:root.native-toolbar .mode-float,
-:root.native-toolbar #mode-row {
+:root.native-toolbar .mode-float {
     display: none !important;
+}
+
+/* The sidebar open, it runs to the window's top, as the Mac's own (the
+   owner, 21 November): the lights and its own row (the modes, its button,
+   Find anything) on the toolbar's row, its rows straight under that, and
+   the title after it (.mac-title). A press there is the page's
+   (bridge.js: pageLeft); its empty space moves the window (.folder-rail
+   ::before). Closed, the toolbar has its button and the mode (bridge.js) */
+:root[data-platform="mac"].native-toolbar:not([data-skin]) .folder-rail {
+    padding-top: 0;
+}
+
+:root.native-toolbar:not([data-skin]) .folder-rail #mode-row {
+    height: var(--top-row);
+    margin: 0 0 var(--sp-1);
+    /* From the lights' right edge (the sidebar's own 8px in already) */
+    padding: 0 0 0 calc(var(--lights-w) - 2px);
+    overflow: hidden;
+}
+
+:root.native-toolbar:not([data-skin]) .folder-rail #mode-row .mode-seg {
+    --seg-cell: 24px;
+}
+
+:root.native-toolbar:not([data-skin]) .folder-rail #mode-row .mode-row-btn {
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    padding: 0;
+}
+
+/* Lights, modes and both buttons need 214px inside the sidebar (the
+   Mac's 232px wide). A narrower one: Find
+   anything goes first (⌘F), then its own button (⌘B, and the sidebar's
+   edge) */
+:root.native-toolbar:not([data-skin]) .folder-rail #mode-row .mode-row-gap {
+    min-width: 0;
+}
+
+@container rail (max-width: 213px) {
+    :root.native-toolbar:not([data-skin]) #mode-row-find {
+        display: none;
+    }
+}
+
+@container rail (max-width: 183px) {
+    :root.native-toolbar:not([data-skin]) #mode-row-side {
+        display: none;
+    }
+}
+
+/* The title, after the sidebar: AppKit's would sit after the lights,
+   over it. Centred on the toolbar's row; the subtitle under it, quieter */
+.mac-title {
+    display: none;
+}
+
+:root.native-toolbar:not([data-skin]) .mac-title:not([hidden]) {
+    position: fixed;
+    top: 0;
+    left: calc(var(--rail-now) + var(--sp-4));
+    right: 40%;
+    height: var(--top-row);
+    z-index: var(--z-floating);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1px;
+    pointer-events: none;
+    user-select: none;
+    color: var(--text-1);
+    font: var(--fw-semibold) 13px/16px var(--font-ui);
+}
+
+.mac-title > span {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.mac-title-s {
+    color: var(--text-2);
+    font-size: 11px;
+    line-height: 14px;
+    font-weight: var(--fw-regular, 400);
+}
+
+.mac-title-s[hidden] {
+    display: none;
 }
 
 :root.native-toolbar :is(.adjust-editor, .paint-editor) {
