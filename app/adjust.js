@@ -1019,7 +1019,20 @@ const Adjust = {
             const gutter = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gutter')) || 20;
             top = Math.max(top, head.getBoundingClientRect().bottom - box.top + gutter);
         }
-        return { x: this.PAD, y: top, w: Math.max(1, box.width - 2 * this.PAD), h: Math.max(1, box.height - top - this.PAD) };
+        // At the right, clear of the panel, which floats over the stage in
+        // jEditor's own look: zoomed in, the photo runs on under it
+        const right = this.PAD + this.paneRoom();
+        return { x: this.PAD, y: top, w: Math.max(1, box.width - this.PAD - right), h: Math.max(1, box.height - top - this.PAD) };
+    },
+
+    // How much of the stage's right the panel covers (0 beside it, as in a
+    // theme or a narrow window, or hidden)
+    paneRoom() {
+        const p = this.el('adj-panel'), st = this.el('adj-stage');
+        if (!p || !st || !p.getClientRects().length) return 0;
+        const r = p.getBoundingClientRect(), b = st.getBoundingClientRect();
+        if (!r.width || r.top >= b.bottom || r.left <= b.left + b.width / 2) return 0;
+        return Math.max(0, b.right - r.left);
     },
 
     // The zoom that fits the photo (at most 4× the working copy, as before)
@@ -1033,12 +1046,19 @@ const Adjust = {
     clampView() {
         const box = this.el('adj-stage').getBoundingClientRect(), v = this.view;
         const cw = this.PW * v.z, ch = this.PH * v.z;
-        v.x = cw <= box.width ? (box.width - cw) / 2 : Math.min(0, Math.max(box.width - cw, v.x));
+        // Across: centred in the room beside the panel (fitBox) while it fits
+        // there; bigger, its left edge as far as the stage's, its right as
+        // far as the room's, so it can be seen clear of the panel
+        const f = this.fitBox();
+        if (cw <= f.w) v.x = f.x + (f.w - cw) / 2;
+        else {
+            const lo = Math.min(f.x + f.w - cw, box.width - cw), hi = Math.max(lo, 0);
+            v.x = Math.min(hi, Math.max(lo, v.x));
+        }
         // Up and down: centred in the room under the pills (fitBox) while it
         // fits there; bigger, its top can come down as far as that room's
         // top, so it can be seen clear of the pills, and its bottom up to
         // the stage's
-        const f = this.fitBox();
         if (ch <= f.h) v.y = f.y + (f.h - ch) / 2;
         else {
             const lo = box.height - ch, hi = Math.max(lo, f.y);
@@ -1054,11 +1074,14 @@ const Adjust = {
             const z = this.fitZoom();
             const cw = Math.max(1, Math.floor(this.PW * z)), ch = Math.max(1, Math.floor(this.PH * z));
             const f = this.fitBox();
-            this.view = { z: cw / this.PW, x: Math.round((box.width - cw) / 2), y: Math.round(f.y + (f.h - ch) / 2) };
+            this.view = { z: cw / this.PW, x: Math.round(f.x + (f.w - cw) / 2), y: Math.round(f.y + (f.h - ch) / 2) };
         } else {
             this.clampView();
         }
         const v = this.view;
+        // The zoom pill in the middle of the room beside the panel (style.css)
+        const pane = `${Math.round(this.paneRoom())}px`, st = this.el('adj-stage');
+        if (st.style.getPropertyValue('--pane-room') !== pane) st.style.setProperty('--pane-room', pane);
         Object.assign(this.canvas.style, { width: `${Math.max(1, this.PW * v.z)}px`, height: `${Math.max(1, this.PH * v.z)}px`, left: `${v.x}px`, top: `${v.y}px` });
         this.root.classList.toggle('adj-zoomed', !this.fitted);
         // Past 100% (a pixel of the photo bigger than one of the screen's):
@@ -1092,7 +1115,7 @@ const Adjust = {
     zoomAt(z, cx = null, cy = null) {
         if (!this.ready) return;
         const box = this.el('adj-stage').getBoundingClientRect();
-        if (cx === null) { cx = box.width / 2; cy = box.height / 2; }
+        if (cx === null) { const f = this.fitBox(); cx = f.x + f.w / 2; cy = f.y + f.h / 2; }
         const fit = this.fitZoom();
         z = Math.max(Math.min(fit, 1), Math.min(this.MAX_ZOOM, z));
         const v = this.view;

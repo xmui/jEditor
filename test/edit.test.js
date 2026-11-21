@@ -428,6 +428,20 @@ const PROJECT = `
         // At Fit the head's pills never sit on the photo (the owner's ask)
         const clear = await page.evaluate(() => { const was = { ...Adjust.view }; Adjust.zoomFit(); const h = document.querySelector('.adjust-editor .adj-head').getBoundingClientRect(), c = Adjust.canvas.getBoundingClientRect(); const out = [Math.round(h.bottom), Math.round(c.top)]; Adjust.fitted = false; Adjust.view = was; Adjust.viewChanged(); return out; });
         check('zoom: fitted, the photo starts below the head\'s pills, with room', clear[1] >= clear[0] + 8, JSON.stringify(clear));
+        // ... and clear of the panel, which floats over the stage: zoomed in,
+        // the photo runs under the pills to the top, and under the panel
+        const roomR = await page.evaluate(() => {
+            const was = { ...Adjust.view };
+            Adjust.zoomFit();
+            const p = document.getElementById('adj-panel').getBoundingClientRect(), st = document.getElementById('adj-stage').getBoundingClientRect();
+            const fit = Adjust.canvas.getBoundingClientRect();
+            Adjust.zoomAt(Adjust.fitZoom() * 4);
+            const z = Adjust.canvas.getBoundingClientRect();
+            const out = { panel: Math.round(p.left), stageTop: Math.round(st.top), fit: Math.round(fit.right), zoomed: [Math.round(z.top), Math.round(z.right)] };
+            Adjust.fitted = false; Adjust.view = was; Adjust.viewChanged();
+            return out;
+        });
+        check('zoom: Fit leaves room for the panel; zoomed in, the photo runs under it and up to the top', roomR.fit <= roomR.panel - 8 && roomR.zoomed[0] <= roomR.stageTop && roomR.zoomed[1] > roomR.panel, JSON.stringify(roomR));
         // A plain drag moves about, zoomed in
         await page.mouse.move(st.x + st.w / 2, st.y + st.h / 2);
         await page.mouse.down();
@@ -1914,6 +1928,20 @@ const PROJECT = `
         fit.zoomed = await fitted();
         check('paint: a tall photo fits as it opens, and again when the window changes size', fit.open.inside && fit.smaller.inside && fit.smaller.z < fit.open.z, JSON.stringify(fit));
         check('paint: zoomed in by hand, a new window size leaves the zoom alone', fit.zoomed.z === 1, JSON.stringify(fit.zoomed));
+        // The panel floats over the stage (the owner: zoomed in, it "should
+        // also go behind the right pane", and fill to the top)
+        const pane = await page.evaluate(() => {
+            const P = PaintEditor;
+            P.fit();
+            const st = document.getElementById('paint-stage').getBoundingClientRect(), pn = document.getElementById('paint-panel').getBoundingClientRect();
+            const pic = () => ({ t: st.top + P.view.y, r: st.left + P.view.x + P.OW * P.view.z });
+            const at = pic();
+            P.zoomTo(P.view.z * 6);
+            const z = pic();
+            P.fit();
+            return { panel: Math.round(pn.left), stageTop: Math.round(st.top), fit: Math.round(at.r), zoomed: [Math.round(z.t), Math.round(z.r)] };
+        });
+        check('paint: Fit leaves room for the panel; zoomed in, the picture runs under it and up to the top', pane.fit <= pane.panel - 8 && pane.zoomed[0] <= pane.stageTop && pane.zoomed[1] > pane.panel, JSON.stringify(pane));
         await page.evaluate(() => pressKey('Escape'));
         check('paint: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
@@ -2326,10 +2354,11 @@ const PROJECT = `
                 step = 'hand';
                 P.setTool('hand');
                 const a0 = P.viewAngle();
-                const sx = rr.left + rr.width / 2 + 100, sy = rr.top + rr.height / 2;
+                // (about the middle of the room the picture fits in, beside the panel)
+                const mid = P.mid(), sx = rr.left + mid.x + 100, sy = rr.top + mid.y;
                 st.dispatchEvent(new PointerEvent('pointerdown', { clientX: sx, clientY: sy, pointerId: 1, bubbles: true, button: 0, shiftKey: true }));
-                st.dispatchEvent(new PointerEvent('pointermove', { clientX: rr.left + rr.width / 2, clientY: sy + 100, pointerId: 1, bubbles: true, shiftKey: true }));
-                st.dispatchEvent(new PointerEvent('pointerup', { clientX: rr.left + rr.width / 2, clientY: sy + 100, pointerId: 1, bubbles: true, shiftKey: true }));
+                st.dispatchEvent(new PointerEvent('pointermove', { clientX: rr.left + mid.x, clientY: sy + 100, pointerId: 1, bubbles: true, shiftKey: true }));
+                st.dispatchEvent(new PointerEvent('pointerup', { clientX: rr.left + mid.x, clientY: sy + 100, pointerId: 1, bubbles: true, shiftKey: true }));
                 out.handTurn = P.viewAngle() - a0;
                 document.getElementById('paint-view-angle').click();
                 out.straight = [P.viewAngle(), document.getElementById('paint-view-angle').classList.contains('hidden') || (P.render(), document.getElementById('paint-view-angle').classList.contains('hidden'))];
@@ -2911,7 +2940,7 @@ const PROJECT = `
                 P.setTool('brush');
                 const st = document.getElementById('paint-stage'), rr = P.canvas.getBoundingClientRect();
                 document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', code: 'KeyR', bubbles: true }));
-                const cx = rr.left + P.cssW / 2, cy = rr.top + P.cssH / 2;
+                const cx = rr.left + P.mid().x, cy = rr.top + P.mid().y;
                 st.dispatchEvent(new PointerEvent('pointerdown', { clientX: cx + 100, clientY: cy, pointerId: 1, bubbles: true, button: 0 }));
                 st.dispatchEvent(new PointerEvent('pointermove', { clientX: cx, clientY: cy + 100, pointerId: 1, bubbles: true }));
                 st.dispatchEvent(new PointerEvent('pointerup', { clientX: cx, clientY: cy + 100, pointerId: 1, bubbles: true }));
