@@ -10122,13 +10122,19 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 /* (As particular as the Mac's own --top-row, above, to win over it: AppKit's
    toolbar doesn't grow with Toolbar size) */
 :root[data-platform="mac"].native-toolbar {
-    /* The toolbar, and a strip under it that moves the window too */
-    --top-row: calc(52px + var(--mac-drag));
+    /* The toolbar, and nothing under it: one row, as the Mac's own
+       windows (a strip under it moving the window left an empty band
+       between the toolbar and the sidebar's first row) */
+    --top-row: 52px;
 }
 
+/* The sidebar's row of modes, its button and Find anything are the
+   toolbar's here (bridge.js), on the lights' row: not a second row
+   under it */
 :root.native-toolbar header,
 :root.native-toolbar .folder-bar,
-:root.native-toolbar .mode-float {
+:root.native-toolbar .mode-float,
+:root.native-toolbar #mode-row {
     display: none !important;
 }
 

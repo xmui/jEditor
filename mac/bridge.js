@@ -703,19 +703,17 @@
         // button as in Photos, and their head starts below it (style.css).
         // (Stepped aside, the toolbar's title bar still took the press on
         // the page's own chip there: hard to press, Needs fixing 2026-11-05)
-        if (typeof Modes !== 'undefined' && Modes.current() !== 'photos') return { visible: true, title: $('file-name-text').textContent || a.dirHandle.name, subtitle: '', items: [modeItem(), { kind: 'flexible' }] };
-        const items = [];
+        // One row, as the Mac's own windows: the lights, the sidebar's
+        // button and the mode, then the title (AppKit puts navigational
+        // items before it), and the rest at the right. The sidebar's own row
+        // of modes and Find anything doesn't show under this toolbar
+        // (style.css), so they're here, in every mode, in the same places
+        const rail = { id: 'rail', kind: 'button', symbol: 'sidebar.left', label: 'Sidebar', tooltip: said($('fb-rail').title), navigational: true };
+        if (typeof Modes !== 'undefined' && Modes.current() !== 'photos') return { visible: true, title: $('file-name-text').textContent || a.dirHandle.name, subtitle: '', items: [rail, modeItem(), { kind: 'flexible' }] };
+        const items = [rail];
         const bar = $('folder-bar');
         const browsing = shown(bar);
-        if (browsing) items.push({ id: 'rail', kind: 'button', symbol: 'sidebar.left', label: 'Folder list', tooltip: said($('fb-rail').title), navigational: true });
-        // The mode chip, as in the folder pill (or on its own in the single
-        // view): not while the sidebar shows its own switch
-        // (In jEditor's own look it's the row of modes, floating while the
-        // sidebar's closed: under this toolbar it doesn't show, so it's here)
-        const row = $('mode-row');
-        const rowFloats = !!row && row.classList.contains('float') && !row.classList.contains('hidden');
-        const modeChip = [$('mode-chip-bar'), $('mode-float')].find(shown) || rowFloats;
-        if (modeChip && typeof Modes !== 'undefined') items.push(modeItem());
+        if (typeof Modes !== 'undefined') items.push(modeItem());
         if (browsing) items.push({ id: 'scope', kind: 'segment', segments: ['All photos', 'Folders'], selected: $('fb-all').classList.contains('active') ? 0 : 1, navigational: true });
         items.push({ kind: 'flexible' });
         const chip = $('fb-filter-chip');
@@ -738,7 +736,7 @@
         items.push({ id: 'more', kind: 'menu', symbol: 'ellipsis.circle', label: 'More', menu: more });
         // Finding a photo or folder by name is Find anything's, as on the
         // page (⌘F and / open it there too): the folder pill has no search box
-        if (browsing && typeof Palette !== 'undefined') items.push({ id: 'find', kind: 'button', symbol: 'magnifyingglass', label: 'Find anything', tooltip: 'Find a photo or folder (⌘F)' });
+        if (typeof Palette !== 'undefined') items.push({ id: 'find', kind: 'button', symbol: 'magnifyingglass', label: 'Find anything', tooltip: 'Find a photo or folder (⌘F)' });
         const crumbs = $('fb-crumbs');
         const where = browsing && crumbs ? crumbs.textContent.replace(/\s+/g, ' ').trim() : '';
         return {
@@ -768,7 +766,7 @@
 
     function onToolbar(id, value) {
         const click = (el) => el && el.click();
-        if (id === 'rail') click($('fb-rail'));
+        if (id === 'rail') Folders.toggleRail();
         else if (id === 'mode') Modes.go(String(value));
         else if (id === 'scope') click(Number(value) === 0 ? $('fb-all') : $('fb-folders'));
         else if (id === 'filter') click($('fb-filter-chip'));

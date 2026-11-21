@@ -904,13 +904,15 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             const wait = (ms) => new Promise(r => setTimeout(r, ms));
             document.documentElement.classList.add('native-toolbar');
             const out = [];
-            for (const view of ['grid', 'single']) {
+            for (const view of ['grid', 'single']) for (const rail of [false, true]) {
                 app.setView(view);
+                if (Folders.railOpen() !== rail) app.keyHandlers()['folders.rail']();
                 await wait(400);
                 const band = parseFloat(getComputedStyle(document.getElementById('main-interface'), '::before').height);
-                for (const e of document.querySelectorAll('header, .folder-bar, .mode-float, #mode-chip-bar')) {
+                // (the sidebar's own row of modes too: the toolbar has them, on its one row)
+                for (const e of document.querySelectorAll('header, .folder-bar, .mode-float, #mode-chip-bar, #mode-row')) {
                     const b = e.getBoundingClientRect();
-                    if (e.getClientRects().length && b.top < band) out.push(`${view}: ${e.id || e.className}`);
+                    if (e.getClientRects().length && (b.top < band || e.id === 'mode-row')) out.push(`${view}${rail ? ', sidebar open' : ''}: ${e.id || e.className}`);
                 }
             }
             document.documentElement.classList.remove('native-toolbar');
@@ -967,6 +969,23 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await page.keyboard.press('Escape');
             await page.waitForTimeout(300);
 
+            // One row, as the Mac's own windows (the owner, 21 November): with
+            // the sidebar open, in the single view too, the lights, the sidebar's
+            // button, the mode and the title on the toolbar's row, the lights
+            // centred on it, and no second row of the sidebar's own under it
+            await page.evaluate(() => { if (!Folders.railOpen()) app.keyHandlers()['folders.rail'](); app.setView('single'); });
+            await settle();
+            d = await describe();
+            const light = (await app.evaluate(() => global.jeditorLights()))[0];
+            const below = await page.evaluate(() => {
+                const row = document.getElementById('mode-row');
+                const first = document.querySelector('.folder-rail:not(.hidden) .sb-card, .folder-rail:not(.hidden) .fr-list');
+                return { row: !!row && !!row.getClientRects().length, first: first ? Math.round(first.getBoundingClientRect().top) : null };
+            });
+            const oneRow = d.items[0] && d.items[0].id === 'rail' && d.items[1] && d.items[1].id === 'mode' && d.items.some(i => i.id === 'find');
+            const centred = !!light && Math.abs(light.y + 7 - d.toolbarHeight / 2) <= 1;
+            check('one row: the sidebar\'s button, the mode and Find anything in the toolbar, the lights centred on it, and the sidebar\'s own row not under it', oneRow && centred && !below.row && below.first !== null && below.first < d.toolbarHeight + 24, JSON.stringify([d.items.map(i => i.id), light, d.toolbarHeight, below]));
+
             // Photos · Adjust · Paint: in the toolbar (as in the folder pill),
             // never the page's own chip under it; over Adjust and Paint the
             // toolbar stays with that same button, and their head is below it
@@ -995,7 +1014,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await settle();
             d = await describe();
             const sent = await app.evaluate(() => global.sentModels.slice(-4));
-            check('... choosing Adjust there opens it; the toolbar stays, with the same mode button first, and no page chip', d.visible === true && d.items[0] && d.items[0].id === 'mode' && d.items[0].menu.includes('✓Adjust') && !!photosMode && d.items[0].menu.length === photosMode.menu.length && !await page.evaluate(() => document.getElementById('mode-float').getClientRects().length), JSON.stringify([d.visible, d.items, photosMode, sent]));
+            check('... choosing Adjust there opens it; the toolbar stays, with the sidebar\'s button and the same mode button first, and no page chip', d.visible === true && d.items[0] && d.items[0].id === 'rail' && d.items[1] && d.items[1].id === 'mode' && d.items[1].menu.includes('✓Adjust') && !!photosMode && d.items[1].menu.length === photosMode.menu.length && !await page.evaluate(() => document.getElementById('mode-float').getClientRects().length), JSON.stringify([d.visible, d.items, photosMode, sent]));
             // Measured at every Toolbar size, sidebar open and closed, in and out
             // of full screen: the toolbar's mode button is there, the page's chip
             // isn't, and the head (its buttons) starts below the toolbar
@@ -1021,8 +1040,8 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                             }, [scale, rail, where]);
                             d = await describe();
                             const name = `${where} at ${scale * 100}%${rail ? ', sidebar open' : ''}${fs_ ? ', full screen' : ''}`;
-                            const item = d.items[0];
-                            if (!d.visible || !item || item.id !== 'mode' || !item.menu.includes('✓' + where[0].toUpperCase() + where.slice(1))) modeMiss.push(`${name}: no mode button in the toolbar ${JSON.stringify([d.visible, d.items])}`);
+                            const item = d.items[1];
+                            if (!d.visible || !d.items[0] || d.items[0].id !== 'rail' || !item || item.id !== 'mode' || !item.menu.includes('✓' + where[0].toUpperCase() + where.slice(1))) modeMiss.push(`${name}: no mode button in the toolbar ${JSON.stringify([d.visible, d.items])}`);
                             if (c.float) modeMiss.push(`${name}: the page's own chip shows too`);
                             if (c.firstControl !== null && c.firstControl < d.toolbarHeight) modeMiss.push(`${name}: the head's buttons (${Math.round(c.firstControl)}) under the toolbar (${d.toolbarHeight}px)`);
                         }
