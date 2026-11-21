@@ -1772,12 +1772,6 @@ const app = {
         this.elements.imageContainer.style.cursor = this.zoom > 1 ? 'grab' : 'default';
     },
 
-    resetPan() {
-        this.panX = 0;
-        this.panY = 0;
-        this.zoom = 1;
-    },
-
     async handleDrop(e) {
         document.body.classList.remove('drag-over');
         e.preventDefault();
@@ -3111,12 +3105,12 @@ const app = {
                 valB = b.dateTaken ?? b.lastModified ?? 0;
             }
 
-            if (typeof valA === 'string') {
-                const cmp = this.NAME_ORDER.compare(valA, valB);
-                return mode.endsWith('asc') ? cmp : -cmp;
-            } else {
-                return mode.endsWith('asc') ? valA - valB : valB - valA;
-            }
+            const cmp = typeof valA === 'string' ? this.NAME_ORDER.compare(valA, valB) : valA - valB;
+            if (cmp) return mode.endsWith('asc') ? cmp : -cmp;
+            // A tie (a batch of scans saved in the same second, the same
+            // name in two folders): by name, then folder, always the same
+            // way, rather than in whatever order the last sort left them
+            return this.NAME_ORDER.compare(a.name, b.name) || this.NAME_ORDER.compare(a.relPath || '', b.relPath || '');
         });
 
         // Selection and currentFile hold file objects, so nothing to remap —
@@ -3951,6 +3945,10 @@ const app = {
         // lands while we decode shows up in the lag delta below.
         const savedAtRead = fileEntry._savedRotationTotal || 0;
         const editGen = fileEntry._editGen || 0;
+        // The folder it's from: one opened meanwhile isn't asked for it,
+        // nor given it to cache (the same name there is another photo)
+        const folder = this.dirHandle;
+        const left = () => this.dirHandle !== folder;
         // The Photos library has its own thumbnails: nothing to read or make
         if (fileEntry.handle && typeof fileEntry.handle.getThumbnail === 'function' && !fileEntry._edit) {
             const blob = await fileEntry.handle.getThumbnail(this.THUMB_WIDTH * (window.devicePixelRatio || 1));
@@ -3986,13 +3984,17 @@ const app = {
             // on any computer that opened the folder — then generate
             blob = await this.idbGetThumb(cacheKey);
             if (!blob) {
+                if (left()) return;
                 blob = await FolderCache.getThumb(this, cacheKey);
                 if (blob) this.idbPutThumb(cacheKey, blob);
                 else {
-                    blob = await this.engineThumbnail(fileEntry) || await this.convertedThumbnail(fileEntry, disk);
+                    if (left()) return;
+                    blob = await this.engineThumbnail(fileEntry, folder) || await this.convertedThumbnail(fileEntry, disk);
+                    if (left()) return;
                     if (blob) this.idbPutThumb(cacheKey, blob);
                 }
             }
+            if (left()) return;
             // Keep the folder's copy in step (skipped when it's there)
             if (blob) FolderCache.putThumb(this, cacheKey, blob);
         }
@@ -4014,10 +4016,9 @@ const app = {
     // inside it (engine/src/raw.rs, as raw.js finds it), and a HEIC when the
     // engine reads them (Host.has('engineHeic')). Null: the page makes it
     // (another kind of file, no path for the folder, or the engine couldn't)
-    async engineThumbnail(fileEntry) {
-        if (!Host.has('engine') || !this.dirHandle) return null;
+    async engineThumbnail(fileEntry, handle = this.dirHandle) {
+        if (!Host.has('engine') || !handle) return null;
         if (!/\.jpe?g$/i.test(fileEntry.name) && !Raw.is(fileEntry.name) && !(Host.has('engineHeic') && /\.hei[cf]$/i.test(fileEntry.name))) return null;
-        const handle = this.dirHandle;
         if (!this._engineDir || this._engineDir.handle !== handle) {
             this._engineDir = { handle, path: Host.get().folderPath(handle).catch(() => null) };
         }
@@ -4903,7 +4904,10 @@ const app = {
         this.files.forEach((f, i) => {
             if (f === this.currentFile) return;
             const at = pos ? pos.get(f) : i;
-            const dist = at === undefined ? Infinity : Math.abs(at - cur);
+            // Around the ends, as navigation (and preloadNeighbours) goes:
+            // the last photo is the first one's neighbour, not 1,000 away
+            const d = at === undefined || cur < 0 ? Infinity : Math.abs(at - cur);
+            const dist = d === Infinity ? d : Math.min(d, view.length - d);
             if (dist > windowSizeFull && f.fullImageUrl && !f._decodePromise) {
                 URL.revokeObjectURL(f.fullImageUrl);
                 delete f.fullImageUrl;
@@ -7200,16 +7204,23 @@ const app = {
         }
     },
 
+    // Those of these photos still open (one Set: a redo of thousands, one
+    // by one through this.files, took seconds)
+    stillHere(files) {
+        const here = new Set(this.files);
+        return files.filter(f => here.has(f));
+    },
+
     // Redo's steps done again by the action itself, which adds its own undo step
     REDONE: {
         async 'retrash'(e) {
             // Only those put back (one deleted meanwhile is already gone)
-            const files = e.files.filter(f => this.files.includes(f));
+            const files = this.stillHere(e.files);
             if (!files.length) throw new Error('those photos aren\'t here any more');
             await this.moveToTrash(files);
         },
         async 'relocate-again'(e) {
-            const files = e.files.filter(f => this.files.includes(f));
+            const files = this.stillHere(e.files);
             if (!files.length) throw new Error('those photos aren\'t here any more');
             const created = [];
             for (const p of e.created) {
@@ -7218,7 +7229,8 @@ const app = {
             await Folders.relocate(files, e.dest, { copy: e.copy, created });
         },
         async 'out-again'(e) {
-            const files = e.items.map(it => this.files.find(f => f.name === it.fromName && Folders.dirOf(f) === it.fromRel)).filter(Boolean);
+            const at = new Map(this.files.map(f => [Folders.dirOf(f) + '\n' + f.name, f]));
+            const files = e.items.map(it => at.get(it.fromRel + '\n' + it.fromName)).filter(Boolean);
             if (!files.length) throw new Error('those photos aren\'t here any more');
             await Folders.sendFiles(e.dir, files, e.copy);
         },
@@ -7226,7 +7238,7 @@ const app = {
             await Windows.again(e);
         },
         async 'convert-again'(e) {
-            const files = e.files.filter(f => this.files.includes(f));
+            const files = this.stillHere(e.files);
             if (!files.length) throw new Error('those photos aren\'t here any more');
             await Convert.again(e, files);
         }
@@ -7459,10 +7471,6 @@ const app = {
         await w.write(data);
         await w.close();
         await (f.parentDir || this.dirHandle).removeEntry(f.name);
-    },
-
-    removeFileFromApp(f) {
-        this.removeFilesFromApp([f]);
     },
 
     // Take photos out of the folder view in one pass
