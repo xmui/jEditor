@@ -268,6 +268,106 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- 1c. Tooltips (tips.js): one tip in jEditor's look for every hint ----
+    console.log('tooltips');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.waitForTimeout(400);
+        // Two buttons with hints on the home page (one with no words on it,
+        // the other with words of its own), and a spot with no hint
+        const at = await page.evaluate(() => {
+            const vis = (el) => { const r = el.getBoundingClientRect(); return r.width > 4 && r.height > 4 && r.top >= 0 && r.bottom <= innerHeight && document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest('[title]') === el; };
+            const all = [...document.querySelectorAll('button[title]')].filter(b => !b.disabled && vis(b));
+            // a: a button with only a picture on it, its hint its only name
+            const a = all.find(x => !x.textContent.trim());
+            const b = all.find(x => x !== a && x.textContent.trim());
+            if (a) a.removeAttribute('aria-label');
+            const mid = (el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+            let none = null;
+            for (let y = 20; y < innerHeight && !none; y += 37) for (let x = 20; x < innerWidth && !none; x += 41) {
+                const el = document.elementFromPoint(x, y);
+                if (el && !el.closest('[title], button, a, input')) none = { x, y };
+            }
+            if (!a || !b || !none) return null;
+            a.dataset.tt = 'a'; b.dataset.tt = 'b';
+            return { a: mid(a), b: mid(b), none, aTitle: a.title, bTitle: b.title };
+        });
+        check('tooltips: the home page has hinted buttons to point at', !!at, JSON.stringify(at));
+        if (at) {
+            const state = () => page.evaluate(() => {
+                const t = document.getElementById('tip'), a = document.querySelector('[data-tt="a"]'), b = document.querySelector('[data-tt="b"]');
+                const r = t && t.getBoundingClientRect();
+                return { on: !!t && t.classList.contains('on'), text: t ? t.querySelector('.tip-t')?.textContent : '', key: t ? (t.querySelector('.tip-k')?.textContent || '') : '',
+                    inside: !!r && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
+                    aTitle: a.getAttribute('title'), aLabel: a.getAttribute('aria-label'), bTitle: b.getAttribute('title'), bDesc: b.getAttribute('aria-describedby') };
+            });
+            const [aName] = await page.evaluate((t) => Tips.split(t), at.aTitle);
+            const [bName] = await page.evaluate((t) => Tips.split(t), at.bTitle);
+            await page.mouse.move(at.none.x, at.none.y);
+            await page.mouse.move(at.a.x, at.a.y, { steps: 3 });
+            await page.waitForTimeout(200);
+            const early = await state();
+            await page.waitForTimeout(700);
+            const a1 = await state();
+            check('tooltips: a moment after pointing, the tip shows the hint, inside the window', !early.on && a1.on && a1.text === aName && a1.inside, JSON.stringify({ early, a1 }));
+            check('tooltips: no system tip meanwhile (the title is lifted); the button keeps its name as its aria-label', a1.aTitle === null && a1.aLabel === at.aTitle, JSON.stringify(a1));
+            await page.mouse.move(at.b.x, at.b.y, { steps: 3 });
+            await page.waitForTimeout(150);
+            const b1 = await state();
+            check('tooltips: the next one comes at once; the first gets its title back and loses the borrowed name', b1.on && b1.text === bName && b1.aTitle === at.aTitle && b1.aLabel === null, JSON.stringify(b1));
+            check('tooltips: a button with its own name gets the tip as its description', b1.bDesc === 'tip', JSON.stringify(b1));
+            // A hint that changes while it shows; its key goes quietly at the right
+            await page.evaluate(() => { document.querySelector('[data-tt="b"]').title = 'Changed (Ctrl+Shift+Q)'; });
+            await page.waitForTimeout(80);
+            const b2 = await state();
+            check('tooltips: a hint changed while it shows is followed, its key at the right', b2.on && b2.text === 'Changed' && b2.key === 'Ctrl+Shift+Q' && b2.bTitle === null, JSON.stringify(b2));
+            // A press hides it, and it stays hidden on that button
+            await page.mouse.down();
+            const down = await state();
+            await page.mouse.up();
+            await page.waitForTimeout(700);
+            const up = await state();
+            check('tooltips: gone while a button is held, and not back on the same control', !down.on && !up.on, JSON.stringify({ down, up }));
+            await page.mouse.move(at.none.x, at.none.y, { steps: 3 });
+            await page.waitForTimeout(100);
+            const off = await state();
+            check('tooltips: pointing away puts each hint back', !off.on && off.bTitle === 'Changed (Ctrl+Shift+Q)' && off.aTitle === at.aTitle, JSON.stringify(off));
+            // Not while a menu is open
+            await page.evaluate(() => app.openContextMenu([['Test', () => {}]], 2, 2));
+            await page.waitForTimeout(800);
+            await page.mouse.move(at.a.x, at.a.y, { steps: 3 });
+            await page.waitForTimeout(800);
+            const menu = await state();
+            await page.evaluate(() => app.closeContextMenu());
+            await page.mouse.move(at.none.x, at.none.y, { steps: 3 });
+            check('tooltips: none while a menu is open', !menu.on, JSON.stringify(menu));
+            // The keyboard's focus shows it too; leaving puts the hint back
+            await page.waitForTimeout(800);
+            await page.evaluate(() => { UI._pointer = false; document.querySelector('[data-tt="a"]').focus(); });
+            await page.waitForTimeout(800);
+            const kb = await state();
+            await page.evaluate(() => document.querySelector('[data-tt="a"]').blur());
+            const kbOff = await state();
+            check('tooltips: keyboard focus shows the tip; moving on puts the hint back', kb.on && kb.text === aName && !kbOff.on && kbOff.aTitle === at.aTitle, JSON.stringify({ kb, kbOff }));
+            // In a theme, the system's own tips
+            await page.evaluate(() => { document.documentElement.dataset.skin = 'test'; });
+            await page.mouse.move(at.a.x, at.a.y, { steps: 3 });
+            await page.waitForTimeout(900);
+            const skin = await state();
+            await page.mouse.move(at.none.x, at.none.y);
+            await page.evaluate(() => { delete document.documentElement.dataset.skin; });
+            check('tooltips: in a theme, the system\'s tips (titles left alone)', !skin.on && skin.aTitle === at.aTitle, JSON.stringify(skin));
+        }
+        // Keys at the end of a hint, and words in brackets that aren't keys
+        const split = await page.evaluate(() => [
+            'Rotate left ([)', 'Settings (Ctrl+,)', 'Redo (Ctrl+Shift+Z or Ctrl+Y)', 'Undo (⌘Z)', 'Take a photo (F12)', 'Zoom out (−)',
+            'Swap width and height (portrait ⇄ landscape)', 'Scan again (after changing the prints)', 'Close'].map(t => Tips.split(t).join('|')));
+        check('tooltips: a key in brackets at the end goes at the right; other brackets stay in the words', split.join(';') ===
+            'Rotate left|[;Settings|Ctrl+,;Redo|Ctrl+Shift+Z or Ctrl+Y;Undo|⌘Z;Take a photo|F12;Zoom out|−;Swap width and height (portrait ⇄ landscape)|;Scan again (after changing the prints)|;Close|', split.join(';'));
+        check('tooltips suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 2. Sort + selection identity ----
     console.log('sort & selection identity');
     {

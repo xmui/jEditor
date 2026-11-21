@@ -383,6 +383,7 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `places.js`: the sidebar's places in the apps: the project's name and its picker (find a project), Recents, pinned folders and drives with the room on each, renaming a project in place (and its Undo), and All projects… on the home page
 - `recents.js`: the home page's stacks of prints (recent folders, with small pictures kept for each) and its Recent print (a photo opened on its own), and spotting a folder that's part of an order
 - `ui.js`: the app's own alert / confirm / prompt dialogs, and focus handling for every dialog
+- `tips.js`: the tooltips: one tip in the menus' glass for every control's hint (its title), with the key quietly at the right; shown on pointing or keyboard focus, gone on a press, a key, a scroll or an open menu
 - `guide.js`: the guide (`F1`): cards with clips by topic, the shortcuts as they're set, and a search
 - `tour.js`: the welcome tour: a walk through the real app, offered once on the home page
 - `tokens.css`: the design tokens (colours, type, spacing, radii, shadows, motion, layers) and the theme, density, glass, surround and window background switches; `style.css` builds every component from them

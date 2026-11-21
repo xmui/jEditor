@@ -13304,3 +13304,31 @@ body.touring .controls.idle button { pointer-events: auto; }
     }
 }
 
+
+/* ---- Tooltips (tips.js): one tip for every control's hint, in the
+   menus' glass, the key quiet at the right as the menus show it ---- */
+.tip {
+    position: fixed; left: 0; top: 0; z-index: var(--z-tip);
+    display: flex; align-items: baseline; gap: var(--sp-4);
+    max-width: min(320px, calc(100vw - 16px)); padding: 5px 10px;
+    border-radius: var(--r-md);
+    font: var(--fs-small) / var(--lh-small) var(--font-ui); color: var(--text-1);
+    /* A thicker glass than a pill's, with a hairline edge: small words
+       over a photo or a sidebar of the same grey stay clear */
+    background: color-mix(in srgb, var(--bg-raised) 90%, transparent);
+    border: 1px solid var(--border-subtle);
+    box-shadow: var(--shadow-2), var(--glass-rim);
+    backdrop-filter: blur(20px) saturate(160%); -webkit-backdrop-filter: blur(20px) saturate(160%);
+    pointer-events: none; user-select: none;
+    opacity: 0; visibility: hidden;
+    transition: opacity var(--dur-fast) var(--ease-out), visibility 0s linear var(--dur-fast);
+}
+:root[data-theme="light"] .tip { background: color-mix(in srgb, var(--bg-surface) 92%, transparent); }
+.tip.on { opacity: 1; visibility: visible; transition: opacity var(--dur-fast) var(--ease-out); }
+/* The next tip, straight after one: no fade */
+.tip.quick { transition: none; }
+.tip-t { min-width: 0; overflow-wrap: break-word; text-wrap: pretty; }
+.tip-k { flex: none; margin-left: auto; color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tip.long { padding-block: 7px; }
+:root[data-motion="off"] .tip { transition: none; }
+@media (prefers-reduced-motion: reduce) { .tip { transition: none; } }
