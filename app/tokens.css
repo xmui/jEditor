@@ -74,6 +74,10 @@
     --ease-out: cubic-bezier(0.2, 0, 0, 1);
     --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
     --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+    /* What you press or select gives a little and comes back just past its
+       place (style.css: the 2.0 refinement, motion). Never for things that
+       only appear */
+    --ease-press: cubic-bezier(0.34, 1.4, 0.64, 1);
 
     /* ---- Layers ---- */
     --z-chrome: 10;      /* folder list, grid chrome */
@@ -83,6 +87,7 @@
     --z-toast: 45;       /* toasts and the task pill: over the crop and duplicates screens, under dialogs */
     --z-modal: 50;       /* dialogs */
     --z-menu: 60;        /* right-click menu */
+    --z-tip: 70;         /* tooltips (tips.js) */
     --z-debug: 100;
 
     /* ---- Accent (set by Settings; blue by default) ---- */
@@ -111,14 +116,22 @@
     --text-3: #8f8f8f;
     --text-disabled: #5c5c5c;
     --tile-bg: #1c1c1c;
-    /* The film strip is black in every theme, whatever the photo above it */
+    /* The film strip: black in dark; light in light (below) */
     --strip-bg: #000;
+    --hist-bg: #141414; /* Adjust's histogram well */
     --strip-text: rgb(255 255 255 / 0.62);
     --tb-hover: rgb(255 255 255 / 0.10);     /* buttons on glass toolbars */
     --tb-pressed: rgb(255 255 255 / 0.16);
     --seg-bg: rgb(255 255 255 / 0.06);       /* segmented control track */
     --seg-active: rgb(255 255 255 / 0.16);   /* its chosen segment */
     --switch-off: rgb(255 255 255 / 0.24);
+    /* The docked sidebar (style.css): a quiet tint against the window's
+       edge, a hairline down it, and one soft highlight on the chosen row */
+    --sidebar-solid: #121214;
+    --sidebar-bg: var(--sidebar-solid);
+    --sidebar-line: rgb(255 255 255 / 0.08);
+    --sidebar-hover: rgb(255 255 255 / 0.05);
+    --sidebar-sel: rgb(255 255 255 / 0.10);
     /* Labels and badges drawn on top of photos: always dark, any theme */
     --on-photo-bg: rgb(0 0 0 / 0.62);
     --on-photo-shade: rgb(0 0 0 / 0.8);      /* gradient under folder names */
@@ -184,10 +197,16 @@
 :root.backdrop {
     --bg-window: color-mix(in srgb, var(--bg-canvas) var(--backdrop-tint), transparent);
     --bg-window-glow: color-mix(in srgb, var(--bg-surface) var(--backdrop-tint), transparent);
+    /* Mica or Acrylic through the sidebar too, a little more than the grid */
+    --sidebar-bg: color-mix(in srgb, var(--sidebar-solid) calc(var(--backdrop-tint) * 0.85), transparent);
 }
 
 /* ---- Light theme ---- */
 :root[data-theme="light"] {
+    /* Light, finished (2.0, audit H4): the film strip and the histogram
+       well are light too, as in the pro tools' light look */
+    --strip-bg: #e4e4e7;
+    --hist-bg: #ececef;
     color-scheme: light;
     --accent-text: color-mix(in oklab, var(--accent) 80%, #000);
     --accent-hover: color-mix(in oklab, var(--accent) 88%, #000);
@@ -215,6 +234,10 @@
     --seg-bg: rgb(0 0 0 / 0.06);
     --seg-active: #ffffff;
     --switch-off: rgb(0 0 0 / 0.24);
+    --sidebar-solid: #efeff1;
+    --sidebar-line: rgb(0 0 0 / 0.09);
+    --sidebar-hover: rgb(0 0 0 / 0.04);
+    --sidebar-sel: rgb(0 0 0 / 0.075);
 
     --danger-text: #b91c1c;
     --danger-soft: rgb(220 38 38 / 0.10);
@@ -349,6 +372,7 @@
         --glass-border: var(--border);
         --glass-rim: var(--highlight);
         --backdrop-tint: 100%;
+        --sidebar-bg: var(--sidebar-solid);
     }
 }
 
@@ -377,5 +401,76 @@
         --dur-base: 120ms;
         --dur-slow: 120ms;
         --ease-spring: var(--ease-out);
+        --ease-press: var(--ease-out);
     }
+}
+
+/* ==========================================================================
+   The 2.0 refinement, in jEditor's own look (the themes keep the values
+   above until they're dressed to match). Three surfaces, by what they're
+   for: the canvas behind photos (--bg-canvas, unchanged), the docked
+   chrome (--chrome: the sidebar's tint, shared by panels and bars) and
+   what's raised over the page (--bg-surface: dialogs and menus), with
+   --bg-raised for the controls on them. Greys beside a photo stay pure.
+   ========================================================================== */
+:root:not([data-skin]) {
+    /* Calm: what appears never overshoots; only a press or a selection
+       does, with --ease-press (style.css: the 2.0 refinement, motion) */
+    --ease-spring: var(--ease-out);
+    --chrome: var(--sidebar-bg);
+    --chrome-line: var(--sidebar-line);
+    --bg-surface: #1b1b1d;
+    --bg-raised: #252528;
+    --border-subtle: rgb(255 255 255 / 0.07);
+    --border: rgb(255 255 255 / 0.11);
+    --scrim: rgb(0 0 0 / 0.45);
+
+    /* Corners: a photo, a control, a menu or card, a dialog */
+    --r-photo: 3px;
+    --r-md: 7px;
+    --r-lg: 10px;
+    --r-xl: 12px;
+
+    --row: 28px;         /* a row in a list or a menu */
+    --ctl-lg: 40px;      /* floating toolbars */
+
+    /* The one slider: a thin track and a white knob */
+    --slider-track: rgb(255 255 255 / 0.22);
+    --slider-knob: #fff;
+    --slider-knob-edge: 0 0 0 1px rgb(0 0 0 / 0.28), 0 1px 3px rgb(0 0 0 / 0.4);
+    /* The light along the top of a filled button */
+    --btn-sheen: inset 0 1px 0 rgb(255 255 255 / 0.14);
+
+    /* Shape, jEditor's own (the owner's rule at the 2.0 sign-off): round
+       and pill. A control is a pill and an icon button a circle, as the
+       pills' own; only what holds them (a menu, a card, a dialog) keeps a
+       corner */
+    --r-ctl: var(--r-pill);
+    /* Menus: frosted glass, thick enough to read a list over any photo,
+       whichever glass Settings has */
+    --menu-bg: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+    --menu-filter: blur(40px) saturate(180%);
+}
+
+/* Opaque glass (Settings), Reduce transparency or Increase contrast: the
+   menus are solid too */
+:root:not([data-skin])[data-glass="opaque"] {
+    --menu-bg: var(--bg-surface);
+    --menu-filter: none;
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+    :root:not([data-skin]) {
+        --menu-bg: var(--bg-surface);
+        --menu-filter: none;
+    }
+}
+
+:root:not([data-skin])[data-theme="light"] {
+    --bg-surface: #ffffff;
+    --bg-raised: #f1f1f3;
+    --border-subtle: rgb(0 0 0 / 0.07);
+    --border: rgb(0 0 0 / 0.12);
+    --scrim: rgb(0 0 0 / 0.30);
+    --slider-track: rgb(0 0 0 / 0.2);
 }

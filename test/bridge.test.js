@@ -18,20 +18,7 @@ const ORIGIN = 'https://jeditor.example';
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
 
-function launchOptions() {
-    const candidates = [
-        process.env.CHROME_PATH,
-        '/opt/pw-browsers/chromium',
-        '/usr/bin/chromium',
-        '/usr/bin/chromium-browser',
-        '/usr/bin/google-chrome',
-        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
-    ].filter(Boolean);
-    for (const p of candidates) {
-        if (fs.existsSync(p)) return { executablePath: p, args: ['--no-sandbox'] };
-    }
-    return { channel: 'chrome', args: ['--no-sandbox'] };
-}
+const { launchOptions, QUIET_FIRST_OPEN } = require('./page-helpers.js');
 
 let passed = 0, failed = 0;
 function check(name, ok, detail = '') {
@@ -93,7 +80,7 @@ async function serveUi(context, origin = ORIGIN) {
 
 // A page as the Windows app shows it: fake webview, then the bridge, then
 // jEditor
-async function openPage(browser, { origin = ORIGIN, webview = true, dev = false } = {}) {
+async function openPage(browser, { origin = ORIGIN, webview = true, dev = false, engine = false } = {}) {
     const context = await browser.newContext();
     await serveUi(context, origin);
     const page = await context.newPage();
@@ -102,7 +89,9 @@ async function openPage(browser, { origin = ORIGIN, webview = true, dev = false 
     page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
     if (webview) await page.addInitScript(FAKE_WEBVIEW);
     if (dev) await page.addInitScript('window.__jeditorDev = true;');
+    if (engine) await page.addInitScript(engine === 'heic' ? 'window.__jeditorEngine = { heic: true };' : 'window.__jeditorEngine = true;');
     await page.addInitScript(BRIDGE);
+    await page.addInitScript(QUIET_FIRST_OPEN);
     await page.goto(origin + '/index.html');
     await page.waitForFunction(() => typeof app !== 'undefined' && app.elements);
     return { context, page, errors };
@@ -133,10 +122,16 @@ const waitForPost = (page, type) => page.waitForFunction(
         check('no service worker is registered', r.sw === null || r.sw === undefined ? r.regs === 0 : false, JSON.stringify(r));
         check('recent orders stay available', r.recents);
 
-        // A theme change is reported once
-        await page.evaluate(() => { window.__posted.length = 0; document.documentElement.dataset.theme = 'light'; });
-        const light = await waitForPost(page, 'theme');
-        check('reports a theme change', light.dark === false, JSON.stringify(light));
+        // A theme change is reported once (to the other one: jEditor follows
+        // the system to start with, so it may already be light)
+        const to = await page.evaluate(() => {
+            window.__posted.length = 0;
+            const to = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+            document.documentElement.dataset.theme = to;
+            return to;
+        });
+        const changed = await waitForPost(page, 'theme');
+        check('reports a theme change', changed.dark === (to === 'dark'), JSON.stringify([to, changed]));
         check('start-up: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
@@ -154,7 +149,10 @@ const waitForPost = (page, type) => page.waitForFunction(
                 else if (m.type === 'dataDir') window.__deliver({ replyTo: m.id, path: 'C:\\data' }, [await (await navigator.storage.getDirectory()).getDirectoryHandle('appdata', { create: true })]);
             };
         }, MAKE_FOLDER.toString());
+        // Open a folder opens the card (open-card.js); Browse… asks the app
         await page.click('#btn-browse-folder');
+        await page.waitForSelector('#open-card:not(.hidden)');
+        await page.click('#oc-browse');
         await page.waitForFunction(() => app.files.length === 3 && !app.isLoading, null, { timeout: 15000 });
         const r = await page.evaluate(() => ({
             picks: window.__posted.filter(m => m.type === 'pickFolder').length,
@@ -173,6 +171,192 @@ const waitForPost = (page, type) => page.waitForFunction(
         await context.close();
     }
 
+    console.log('bridge: the engine (grid thumbnails from the app)');
+    {
+        const { context, page, errors } = await openPage(browser, { engine: true });
+        await waitForPost(page, 'ready');
+        // What the app's engine answers: a magenta picture, so it shows which
+        // thumbnails came from it; photo4 it can't make (204, no content)
+        const magenta = Buffer.from(await page.evaluate(async () => {
+            const c = document.createElement('canvas');
+            c.width = 320; c.height = 240;
+            const g = c.getContext('2d');
+            g.fillStyle = '#ff00ff';
+            g.fillRect(0, 0, 320, 240);
+            const b = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+            return [...new Uint8Array(await b.arrayBuffer())];
+        }));
+        const asked = [];
+        await page.route('https://engine.jeditor.example/**', (route) => {
+            const u = new URL(route.request().url());
+            asked.push({ w: u.searchParams.get('w'), path: u.searchParams.get('path') });
+            if (/photo4\.jpg$/.test(u.searchParams.get('path'))) return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': ORIGIN }, body: '' });
+            route.fulfill({ status: 200, contentType: 'image/jpeg', headers: { 'Access-Control-Allow-Origin': ORIGIN }, body: magenta });
+        });
+        // Four photos big enough to need a thumbnail (past the size that
+        // serves as its own), in green
+        await page.evaluate(async () => {
+            const root = await navigator.storage.getDirectory();
+            try { await root.removeEntry('Engine Order', { recursive: true }); } catch (e) { }
+            const dir = await root.getDirectoryHandle('Engine Order', { create: true });
+            for (let i = 1; i <= 4; i++) {
+                const c = document.createElement('canvas');
+                c.width = 1200; c.height = 900;
+                const g = c.getContext('2d');
+                g.fillStyle = '#00c000';
+                g.fillRect(0, 0, 1200, 900);
+                // Noise, so the JPEG is big
+                const img = g.getImageData(0, 0, 1200, 900);
+                for (let k = 0; k < img.data.length; k += 4) img.data[k + 2] = (Math.random() * 60) | 0;
+                g.putImageData(img, 0, 0);
+                const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.95));
+                const w = await (await dir.getFileHandle(`photo${i}.jpg`, { create: true })).createWritable();
+                await w.write(blob);
+                await w.close();
+            }
+            // And a RAW (only its name matters here: the engine answers)
+            const w = await (await dir.getFileHandle('photo5.dng', { create: true })).createWritable();
+            await w.write(new Uint8Array([0x49, 0x49, 0x2A, 0, 8, 0, 0, 0, 0, 0]));
+            await w.close();
+            window.__onPost = async (m) => {
+                if (m.type === 'pickFolder') setTimeout(() => window.__deliver({ replyTo: m.id, path: 'D:\\Orders\\Engine Order' }, [dir]), 10);
+                else if (m.type === 'dataDir') window.__deliver({ replyTo: m.id, path: 'C:\\data' }, [await (await navigator.storage.getDirectory()).getDirectoryHandle('appdata', { create: true })]);
+            };
+        });
+        await page.click('#btn-browse-folder');
+        await page.waitForSelector('#open-card:not(.hidden)');
+        await page.click('#oc-browse');
+        await page.waitForFunction(() => app.files.length === 5 && !app.isLoading, null, { timeout: 15000 });
+        await page.waitForFunction(() => app.files.every(f => f.thumbnailUrl), null, { timeout: 20000 });
+        const r = await page.evaluate(async () => {
+            const out = { has: Host.has('engine'), colour: {} };
+            for (const f of app.files) {
+                const bmp = await createImageBitmap(await (await fetch(f.thumbnailUrl)).blob());
+                const c = new OffscreenCanvas(bmp.width, bmp.height);
+                c.getContext('2d').drawImage(bmp, 0, 0);
+                const [R, G, B] = c.getContext('2d').getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data;
+                out.colour[f.name] = R > 200 && B > 200 && G < 60 ? 'engine' : G > 150 && R < 60 ? 'page' : `${R},${G},${B}`;
+            }
+            return out;
+        });
+        check('lists the engine when the app has it', r.has, JSON.stringify(r));
+        check('JPEG thumbnails come from the engine', ['photo1.jpg', 'photo2.jpg', 'photo3.jpg'].every(n => r.colour[n] === 'engine'), JSON.stringify(r.colour));
+        check('a RAW\'s thumbnail comes from the engine too', r.colour['photo5.dng'] === 'engine', JSON.stringify(r.colour));
+        check('one the engine can\'t make, the page makes itself', r.colour['photo4.jpg'] === 'page', JSON.stringify(r.colour));
+        const one = asked.find(q => /photo1\.jpg$/.test(q.path));
+        check('asks by the photo\'s path on disk, 320 wide', one && one.w === '320' && one.path === 'D:\\Orders\\Engine Order\\photo1.jpg', JSON.stringify(asked));
+        check('engine: no JS errors', errors.length === 0, errors.join('; '));
+        check('an engine without libheif: HEICs not listed', await page.evaluate(() => !Host.has('engineHeic')));
+        await context.close();
+
+        // With libheif: a HEIC's thumbnail from the engine too
+        {
+            const h = await openPage(browser, { engine: 'heic' });
+            await waitForPost(h.page, 'ready');
+            const heicAsked = [], previews = [];
+            await h.page.route('https://engine.jeditor.example/**', (route) => {
+                const u = new URL(route.request().url());
+                heicAsked.push(u.searchParams.get('path'));
+                const headers = { 'Access-Control-Allow-Origin': ORIGIN };
+                // The viewer's picture: the photo's own size in the headers
+                if (u.pathname === '/preview') {
+                    previews.push({ path: u.searchParams.get('path'), edge: u.searchParams.get('edge') });
+                    Object.assign(headers, { 'X-Width': '4000', 'X-Height': '3000', 'Access-Control-Expose-Headers': 'X-Width, X-Height' });
+                }
+                route.fulfill({ status: 200, contentType: 'image/jpeg', headers, body: magenta });
+            });
+            const heic = [...fs.readFileSync(path.join(__dirname, '..', 'engine', 'tests', 'fixtures', 'halves.heic'))];
+            await h.page.evaluate(async (bytes) => {
+                const root = await navigator.storage.getDirectory();
+                try { await root.removeEntry('Heic Order', { recursive: true }); } catch (e) { }
+                const dir = await root.getDirectoryHandle('Heic Order', { create: true });
+                const w = await (await dir.getFileHandle('IMG_0001.HEIC', { create: true })).createWritable();
+                await w.write(new Uint8Array(bytes));
+                await w.close();
+                // And a JPEG bigger than the screen, in green
+                const c = document.createElement('canvas');
+                c.width = 4000; c.height = 3000;
+                const g = c.getContext('2d');
+                g.fillStyle = '#00c000';
+                g.fillRect(0, 0, 4000, 3000);
+                const big = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+                const wj = await (await dir.getFileHandle('IMG_0002.jpg', { create: true })).createWritable();
+                await wj.write(big);
+                await wj.close();
+                window.__onPost = async (m) => {
+                    if (m.type === 'pickFolder') setTimeout(() => window.__deliver({ replyTo: m.id, path: 'D:\\Orders\\Heic Order' }, [dir]), 10);
+                    else if (m.type === 'dataDir') window.__deliver({ replyTo: m.id, path: 'C:\\data' }, [await (await navigator.storage.getDirectory()).getDirectoryHandle('appdata', { create: true })]);
+                };
+            }, heic);
+            await h.page.click('#btn-browse-folder');
+            await h.page.waitForSelector('#open-card:not(.hidden)');
+            await h.page.click('#oc-browse');
+            await h.page.waitForFunction(() => app.files.length === 2 && app.files.every(f => f.thumbnailUrl), null, { timeout: 20000 });
+            const hr = await h.page.evaluate(async () => {
+                const heicFile = app.files.find(f => /heic$/i.test(f.name));
+                const bmp = await createImageBitmap(await (await fetch(heicFile.thumbnailUrl)).blob());
+                const c = new OffscreenCanvas(bmp.width, bmp.height);
+                c.getContext('2d').drawImage(bmp, 0, 0);
+                const [R, G, B] = c.getContext('2d').getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data;
+                return { has: Host.has('engineHeic'), engine: R > 200 && B > 200 && G < 60 };
+            });
+            check('an engine with libheif: HEICs listed', hr.has);
+            check('a HEIC\'s thumbnail comes from the engine', hr.engine && heicAsked.includes('D:\\Orders\\Heic Order\\IMG_0001.HEIC'), JSON.stringify({ hr, heicAsked }));
+            // Opened in the viewer: a HEIC's picture from the engine, at the
+            // screen's size, shown as the photo's own size (for zoom and Info)
+            for (const name of ['IMG_0001.HEIC', 'IMG_0002.jpg']) {
+                const v = await h.page.evaluate(async (name) => {
+                    const f = app.files.find(x => x.name === name);
+                    app.openSingle(f);
+                    const t0 = Date.now();
+                    let el;
+                    while (Date.now() - t0 < 15000) {
+                        el = app.elements.currentImage;
+                        if (el && el._decoded && app._displayFile === f && app._displayKind === 'full') break;
+                        await new Promise(r => setTimeout(r, 50));
+                    }
+                    if (!el || !el._decoded || app._displayKind !== 'full') return { shown: false, kind: app._displayKind };
+                    const c = new OffscreenCanvas(el.naturalWidth, el.naturalHeight);
+                    c.getContext('2d').drawImage(el, 0, 0);
+                    const [R, G, B] = c.getContext('2d').getImageData(el.naturalWidth >> 1, el.naturalHeight >> 1, 1, 1).data;
+                    const out = { shown: true, engine: R > 200 && B > 200 && G < 60, w: el._origW, h: el._origH, preview: el._isPreview, edge: app.previewEdge() };
+                    app.setView('grid');
+                    return out;
+                }, name);
+                const asked = previews.find(p => p.path === 'D:\\Orders\\Heic Order\\' + name);
+                if (/heic$/i.test(name)) {
+                    check('the viewer shows a HEIC from the engine', v.shown && v.engine && v.preview && v.w === 4000 && v.h === 3000, JSON.stringify(v));
+                    check('  asked at the screen\'s size', asked && +asked.edge === v.edge, JSON.stringify({ previews, v }));
+                } else {
+                    // A JPEG: the page's own scaled decode, as quick
+                    check('the viewer makes a JPEG\'s picture itself', v.shown && !v.engine && !asked && v.w === 4000 && v.h === 3000, JSON.stringify({ previews, v }));
+                }
+            }
+            check('engine HEIC: no JS errors', h.errors.length === 0, h.errors.join('; '));
+            await h.context.close();
+        }
+
+        // A folder the app hands over by path (Import, Places, the Speed
+        // run) is known by its path, as a picked one is: the engine asks by it
+        {
+            const f = await openPage(browser, { engine: true });
+            await waitForPost(f.page, 'ready');
+            const got = await f.page.evaluate(async () => {
+                const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('By Path', { create: true });
+                window.__onPost = (m) => { if (m.type === 'folderHandle') setTimeout(() => window.__deliver({ replyTo: m.id, path: m.path }, [dir]), 10); };
+                const h = await JEditorNative.folderHandle('E:\\Cards\\By Path');
+                return await JEditorNative.folderPath(h);
+            });
+            check('a folder handed over by path: its path is known (folderPath)', got === 'E:\\Cards\\By Path', String(got));
+            await f.context.close();
+        }
+
+        // Without it (no DLL), the feature isn't listed and nothing is asked
+        const plain = await openPage(browser);
+        check('no engine: not listed', await plain.page.evaluate(() => !Host.has('engine')));
+        await plain.context.close();
+    }
+
     console.log('bridge: picker canceled');
     {
         const { context, page, errors } = await openPage(browser);
@@ -181,6 +365,7 @@ const waitForPost = (page, type) => page.waitForFunction(
             window.__onPost = (m) => { if (m.type === 'pickFolder') setTimeout(() => window.__deliver({ replyTo: m.id, cancelled: true }), 10); };
         });
         await page.click('#btn-browse-folder');
+        await page.click('#oc-browse');
         await page.waitForFunction(() => window.__posted.some(m => m.type === 'pickFolder'));
         await page.waitForTimeout(300);
         const r = await page.evaluate(() => ({
@@ -224,7 +409,6 @@ const waitForPost = (page, type) => page.waitForFunction(
                     for await (const h of dir.values()) if (h.kind === 'file' && app.isImage(h.name)) n++; // as the app counts: RAW too
                     reply({ counts: m.paths.map(() => n), limit: 1000 });
                 }
-                else if (m.type === 'quickAccess') reply({ folders: [] });
                 else if (m.type === 'makeFolder') {
                     const path = m.parent + '\\' + m.name;
                     (window.__folders = window.__folders || new Set()).add(path.toLowerCase());
@@ -341,7 +525,7 @@ const waitForPost = (page, type) => page.waitForFunction(
         check('opens the folder and reports the photo count', opened.name === 'Jones' && opened.count === 4, JSON.stringify(opened));
         const smoke = await waitForPost(page, 'smoke');
         check('smoke test: reports success', smoke.ok && smoke.count === 4 && smoke.rotated && smoke.errors.length === 0, JSON.stringify(smoke));
-        check('smoke test: runs the further steps through the app', smoke.steps && smoke.steps.stored === true && smoke.steps.deleted === true && smoke.steps.restored === true && smoke.steps.scanned === true && smoke.steps.fed === true && smoke.steps.cropped === true && smoke.steps.tethered === true && smoke.steps.logged === true && smoke.steps.places === true && smoke.steps.browsed === true && smoke.steps.projects === true && smoke.steps.counted === true && smoke.steps.pins === true && smoke.steps.renamed === true && smoke.steps.windows === true && smoke.steps.moved === true && smoke.steps.unmoved === true && smoke.steps.back === true && /v1\.0\.0/.test(smoke.steps.update), JSON.stringify(smoke.steps));
+        check('smoke test: runs the further steps through the app', smoke.steps && smoke.steps.stored === true && smoke.steps.deleted === true && smoke.steps.restored === true && smoke.steps.scanned === true && smoke.steps.fed === true && smoke.steps.cropped === true && smoke.steps.tethered === true && smoke.steps.logged === true && smoke.steps.places === true && smoke.steps.browsed === true && smoke.steps.projects === true && smoke.steps.counted === true && smoke.steps.renamed === true && smoke.steps.windows === true && smoke.steps.moved === true && smoke.steps.unmoved === true && smoke.steps.back === true && /v1\.0\.0/.test(smoke.steps.update), JSON.stringify(smoke.steps));
         // A folder copied onto a drive: progress as it goes, then where it went; Stop is passed on
         const copy = await page.evaluate(async () => {
             const seen = [];
@@ -506,7 +690,7 @@ const waitForPost = (page, type) => page.waitForFunction(
         check('before Windows 11 22H2: the choice is disabled and says why',
             /Windows 11/.test(r.old[0]) && r.old[1] && r.old[2], JSON.stringify(r.old));
         check('Solid again asks the app and clears the backdrop',
-            r.solidAgain === 'none' && /Start menu/.test(r.solidHelp), JSON.stringify(r));
+            r.solidAgain === 'none' && /desktop shows softly/.test(r.solidHelp), JSON.stringify(r));
         check('window background: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
@@ -539,6 +723,23 @@ const waitForPost = (page, type) => page.waitForFunction(
         check('holdClose tells the app; closing asks the page and says whether to close',
             r.held === 'true' && r.no && r.yes && r.released === 'true,false', JSON.stringify(r));
         check('closing: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('bridge: Ctrl+R reloads, asking first if something isn\'t kept');
+    {
+        const { context, page, errors } = await openPage(browser);
+        await waitForPost(page, 'ready');
+        await page.evaluate(() => { window.__mark = 1; window.__unkept = Modes.unkept; Modes.unkept = () => true; window.__asked = 0; UI.choose = async () => { window.__asked++; return null; }; });
+        await page.keyboard.press('Control+r');
+        await page.waitForTimeout(500);
+        const kept = await page.evaluate(() => window.__mark === 1 && window.__asked === 1);
+        await page.evaluate(() => { Modes.unkept = window.__unkept; });
+        const loaded = page.waitForEvent('load', { timeout: 8000 }).then(() => true, () => false);
+        await page.keyboard.press('Control+r');
+        const reloaded = await loaded && await page.evaluate(() => window.__mark === undefined);
+        check('Ctrl+R (WebView2\'s own keys are off): asks with something not kept, Cancel stays; with nothing, reloads', kept && reloaded, JSON.stringify({ kept, reloaded }));
+        check('reload: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
 

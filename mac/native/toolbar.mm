@@ -114,6 +114,35 @@ static void RemoveDragView(NSWindow *w) {
 @property (nonatomic, strong) NSArray *observers;
 @end
 
+// Where AppKit draws the window's title, in the page's points from its
+// top left ({} when it draws none): for the tests, which keep the page's
+// top row (the mode chip) clear of it
+static NSTextField *TitleField(NSView *v, NSString *title) {
+    for (NSView *sub in v.subviews) {
+        if ([sub isKindOfClass:[NSTextField class]] && !sub.hiddenOrHasHiddenAncestor && sub.alphaValue > 0
+            && [((NSTextField *)sub).stringValue isEqualToString:title]) return (NSTextField *)sub;
+        NSTextField *f = TitleField(sub, title);
+        if (f) return f;
+    }
+    return nil;
+}
+
+static NSDictionary *TitleBox(NSWindow *w) {
+    NSView *bar = [w standardWindowButton:NSWindowCloseButton].superview;
+    while (bar.superview && bar.superview != w.contentView.superview) bar = bar.superview;
+    if (!bar || !w.title.length || w.titleVisibility == NSWindowTitleHidden) return @{};
+    NSTextField *f = TitleField(bar, w.title);
+    if (!f) return @{};
+    NSRect r = [f convertRect:f.bounds toView:nil];
+    CGFloat h = w.contentView.frame.size.height;
+    return @{ @"left": @(r.origin.x), @"top": @(h - NSMaxY(r)), @"right": @(NSMaxX(r)), @"bottom": @(h - r.origin.y) };
+}
+
+// The toolbar's band, from the window's top (the title bar with it)
+static CGFloat ToolbarHeight(NSWindow *w) {
+    return w.frame.size.height - w.contentLayoutRect.size.height;
+}
+
 static NSMapTable<NSWindow *, JEToolbar *> *controllers;
 
 static void Send(JEToolbar *t, NSString *ident, id value) {
@@ -247,8 +276,13 @@ static void Send(JEToolbar *t, NSString *ident, id value) {
         w.toolbar = t;
     }
     w.toolbarStyle = NSWindowToolbarStyleUnified;
-    w.titleVisibility = NSWindowTitleVisible;
-    self.toolbar.visible = B(model, @"visible", YES);
+    // The title only with the toolbar: over Adjust and Paint the toolbar
+    // steps aside and their head is the top row, and AppKit still drew the
+    // title there, after the lights, through the mode chip (Needs fixing,
+    // 2026-11-01)
+    BOOL visible = B(model, @"visible", YES);
+    w.titleVisibility = visible ? NSWindowTitleVisible : NSWindowTitleHidden;
+    self.toolbar.visible = visible;
     EnsureDragView(w);
 }
 
@@ -266,6 +300,7 @@ static void Send(JEToolbar *t, NSString *ident, id value) {
         [items addObject:d];
     }
     return @{ @"title": self.window.title ?: @"", @"subtitle": self.window.subtitle ?: @"", @"visible": @(self.toolbar.visible),
+              @"titleBox": TitleBox(self.window), @"toolbarHeight": @(self.toolbar.visible ? ToolbarHeight(self.window) : 0),
               @"glass": @(NSProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26), @"items": items };
 }
 @end

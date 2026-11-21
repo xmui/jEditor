@@ -135,9 +135,14 @@ async function measure(page, count) {
             await until(allVisibleShown);
             firstThumbs = performance.now() - t0;
         })();
+        app.uiPrefs.hugeFolder = 0; // (timing the opening, not the question before it)
         await app.openDirectory(dir);
         const opened = performance.now() - t0;
         out['open (until usable)'] = ms(opened) + `, ${app.files.length} photos`;
+        const o = app.openTimes || {};
+        out['  listing the folder (names)'] = ms(o.list || 0);
+        out['  sizes and dates (getFile)'] = ms(o.stat || 0);
+        out['  showing it (finalizeLoad)'] = ms(o.finalize || 0);
         await watchPaint;
         out['first grid tiles on screen'] = ms(firstTile);
         out['first screen of thumbnails'] = ms(firstThumbs);

@@ -22,7 +22,10 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const places = require('./places');
+const move = require('./move');
 const toolbar = require('./native'); // null without the native module
+const photos = require('./photos'); // the Photos library (photos.library: null without one)
+const fsHost = require('./fs-host'); // the files behind the page's own handles (handles.js)
 
 // macOS 26's own toolbar, in Liquid Glass, for the window's top row (the
 // page's pills mirror into it); before 26, or without the module, the
@@ -75,6 +78,10 @@ function parseArgs(argv) {
 }
 
 const opts = parseArgs(process.argv);
+// The page's folder handles made by the app (handles.js, fs-host.js), in
+// place of Chromium's own: the file layer WebKit will need, proven here
+// first. Off unless asked for (docs/plans/lighter-desktop.md, step 1)
+const HOST_HANDLES = process.env.JEDITOR_HOST_HANDLES === '1' || process.argv.includes('--host-handles');
 if (opts.userData) app.setPath('userData', path.resolve(opts.userData));
 
 const UI = opts.ui ? path.resolve(opts.ui)
@@ -190,14 +197,19 @@ function serve() {
         if (url.host !== HOST) return new Response('Not found', { status: 404 });
         let rel = decodeURIComponent(url.pathname);
         if (rel === '/__host/bridge.js') return fileResponse(path.join(__dirname, 'bridge.js'));
+        if (HOST_HANDLES && rel === '/__host/handles.js') return fileResponse(path.join(__dirname, 'handles.js'));
+        // A file's bytes, for a handle's getFile()
+        if (HOST_HANDLES && rel === '/__fs') return fsHost.respond(url.searchParams.get('p') || '', req.headers.get('range'));
+        if (rel.startsWith('/__photos/')) return (await photos.respond(url)) || new Response('Not found', { status: 404 });
         if (rel === '/') rel = '/index.html';
         const file = path.join(UI, rel);
         if (!file.startsWith(UI + path.sep)) return new Response('Not found', { status: 404 });
         if (rel === '/index.html') {
-            // bridge.js runs before jEditor's own scripts
+            // bridge.js (and with the switch, handles.js) runs before jEditor's own scripts
             let html;
             try { html = await fs.promises.readFile(file, 'utf8'); } catch (e) { return fileResponse(file); }
-            return fileResponse(file, html.replace(/<script\b/, '<script src="/__host/bridge.js"></script>\n    <script'));
+            const ours = (HOST_HANDLES ? '<script src="/__host/handles.js"></script>\n    ' : '') + '<script src="/__host/bridge.js"></script>';
+            return fileResponse(file, html.replace(/<script\b/, ours + '\n    <script'));
         }
         return fileResponse(file);
     });
@@ -299,6 +311,19 @@ function run(cmd, args) {
         if (err) reject(new Error(`${path.basename(cmd)}: ${String(errOut || err.message).trim().split('\n').pop()}`));
         else resolve(out);
     }));
+}
+
+// The font families installed here, for Paint's Text tool: the Mac's from
+// AppKit (through osascript), Linux's from fontconfig. Asked once, then kept.
+let fontList = null;
+function systemFonts() {
+    if (!fontList) {
+        const jxa = "ObjC.import('AppKit'); $.NSFontManager.sharedFontManager.availableFontFamilies.js.map(f => f.js).join('\\n')";
+        fontList = (process.platform === 'darwin' ? run('/usr/bin/osascript', ['-l', 'JavaScript', '-e', jxa]) : run('fc-list', [':', 'family']))
+            .then(out => [...new Set(String(out).split('\n').map(l => l.split(',')[0].trim()).filter(Boolean))])
+            .catch((e) => { fontList = null; log('warn', 'Fonts: ' + e.message); return []; });
+    }
+    return fontList;
 }
 
 // The app in the .dmg, copied in beside this one, checked, then swapped in
@@ -478,7 +503,8 @@ async function openDmg(file, got, total, why) {
 // doesn't open on its own (the tests).
 const PRIVACY = {
     files: 'x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders',
-    full: 'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles'
+    full: 'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles',
+    photos: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Photos'
 };
 const readable = (p) => fs.promises.readdir(p).then(() => true, () => false);
 
@@ -505,19 +531,36 @@ async function permissionRows() {
         return (await Promise.all(paths.map(readable))).every(Boolean) ? 'granted' : 'denied';
     };
     const drives = await removableDrives();
+    // The Photos library has its own question, Full Disk Access or not
+    const library = photos.permissionState();
     return [
         { id: 'folders', state: await check('folders', homeFolders()) },
         { id: 'volumes', state: !drives.length && !full ? 'later' : await check('volumes', drives) },
+        ...(library ? [{ id: 'photos', state: library }] : []),
         { id: 'full', state: full ? 'granted' : 'off' }
     ];
 }
 
 // The system's own question comes up as each is first read
 async function askPermission(id) {
+    if (id === 'photos') return askPhotos();
     const paths = id === 'folders' ? homeFolders() : id === 'volumes' ? await removableDrives() : [];
     for (const p of paths) await readable(p);
     settings.asked = { ...(settings.asked || {}), [id]: true };
     saveSettings();
+}
+
+// macOS's question for the Photos library → its answer ('granted', 'limited', 'denied', …)
+async function askPhotos() {
+    const lib = photos.library;
+    if (!lib) return 'denied';
+    const now = lib.authStatus();
+    if (now !== 'ask') return now;
+    if (!photos.mayAsk(app.isPackaged)) {
+        log('warn', 'Photos library: only the built app can ask for access (it has NSPhotoLibraryUsageDescription)');
+        return now;
+    }
+    return lib.requestAuth();
 }
 
 // ---- What the page asks for (bridge.js) ----
@@ -552,8 +595,33 @@ async function handle(rec, type, data) {
             await askPermission(data.id);
             return { ok: true };
         case 'openPermissionSettings':
-            await shell.openExternal(data.id === 'full' ? PRIVACY.full : PRIVACY.files);
+            await shell.openExternal(data.id === 'full' ? PRIVACY.full : data.id === 'photos' ? PRIVACY.photos : PRIVACY.files);
             return { ok: true };
+        // The Photos library (photos.js): whether jEditor may see it (ask:
+        // macOS asks now), what's in it, and an album's photos
+        case 'photosAccess':
+            return { status: data.ask ? await askPhotos() : (photos.library ? photos.library.authStatus() : 'denied') };
+        case 'photosLibrary':
+            if (!photos.library) throw new Error('No Photos library here');
+            return { collections: await photos.library.collections() };
+        case 'photosAssets':
+            if (!photos.library) throw new Error('No Photos library here');
+            return { assets: await photos.library.assets(String(data.id || '')) };
+        // An edit saved back: the photo as jEditor made it, a Photos edit on
+        // the current version (photos.mm: save)
+        case 'photosSave': {
+            if (!photos.library) throw new Error('No Photos library here');
+            const bytes = data.bytes instanceof Uint8Array ? data.bytes : new Uint8Array(data.bytes || []);
+            if (!bytes.length) throw new Error('Nothing to save');
+            return await photos.library.save(String(data.id || ''), bytes);
+        }
+        // Photos on disk put into the library, in an album of that name
+        case 'photosAdd': {
+            if (!photos.library) throw new Error('No Photos library here');
+            const paths = (Array.isArray(data.paths) ? data.paths : []).map(String).filter(p => path.isAbsolute(p) && fs.existsSync(p));
+            if (!paths.length) throw new Error('Those photos aren\'t on this Mac');
+            return await photos.library.add(paths, String(data.album || ''));
+        }
         case 'permissionsSeen':
             settings.permissionsSeen = true;
             saveSettings();
@@ -596,9 +664,6 @@ async function handle(rec, type, data) {
             // What the native toolbar shows: the page's top row (bridge.js)
             if (NATIVE_TOOLBAR) toolbar.update(rec.win.getNativeWindowHandle(), data);
             return { ok: NATIVE_TOOLBAR };
-        case 'toolbarSearch':
-            if (NATIVE_TOOLBAR) toolbar.focusSearch(rec.win.getNativeWindowHandle());
-            return { ok: NATIVE_TOOLBAR };
         case 'titleBar': {
             // A theme draws the title bar: its own buttons work the window,
             // so the traffic lights hide, and macOS 26's toolbar comes off
@@ -624,6 +689,7 @@ async function handle(rec, type, data) {
         case 'menus':
             // A theme's menus for the menu bar (null: the app's own)
             rec.menus = Array.isArray(data.menus) ? data.menus : null;
+            rec.menusOwn = !!data.own; // jEditor's own (menubar.js), not a theme's
             if (rec === lastFocused()) menu();
             return { ok: true };
         case 'windowAction':
@@ -645,10 +711,13 @@ async function handle(rec, type, data) {
             const drives = await places.drives();
             return { drives, home: places.home(app) };
         }
+        // Paint's Text tool: the font families installed here
+        case 'fonts':
+            return { fonts: await systemFonts() };
         case 'listDir': {
             if (!isDir(data.path)) return { error: 'Not a folder' };
             const drive = (await places.drives()).find(d => d.path === data.path);
-            return places.listDir(data.path, drive && drive.name);
+            return places.listDir(data.path, drive && drive.name, !!data.libraries);
         }
         case 'listProjects':
             return { projects: await places.listProjects(data.path) };
@@ -657,7 +726,7 @@ async function handle(rec, type, data) {
         case 'renameFolder':
             return { path: await places.renameFolder(data.path, data.name) };
         case 'countPhotos': {
-            const counts = await Promise.all((data.paths || []).map(p => (path.isAbsolute(p) ? places.count(p) : -1)));
+            const counts = await Promise.all((data.paths || []).map(p => (path.isAbsolute(p) ? places.count(p, !!data.libraries) : -1)));
             return { counts, limit: places.LIMIT };
         }
         case 'eject': {
@@ -665,6 +734,28 @@ async function handle(rec, type, data) {
             log('info', `Eject ${data.path}: ${why || 'done'}`);
             drivesChanged();
             return why ? { ok: false, error: why } : { ok: true };
+        }
+        // ---- The page's own handles (HOST_HANDLES; handles.js) ----
+        case 'fs':
+            if (!HOST_HANDLES) throw new Error('Unknown request: fs');
+            return fsHost.request(data.op, data.data);
+        case 'pickFiles': {
+            const r = await dialog.showOpenDialog(rec.win, {
+                defaultPath: settings.lastPicked || app.getPath('pictures'),
+                properties: ['openFile', ...(data.multiple ? ['multiSelections'] : [])],
+                filters: dialogFilters(data.types, !data.excludeAcceptAllOption)
+            });
+            if (r.canceled || !r.filePaths.length) return { cancelled: true };
+            settings.lastPicked = path.dirname(r.filePaths[0]);
+            saveSettings();
+            return { paths: r.filePaths };
+        }
+        case 'pickSave': {
+            const r = await dialog.showSaveDialog(rec.win, {
+                defaultPath: path.join(settings.lastPicked || app.getPath('pictures'), data.suggestedName || ''),
+                filters: dialogFilters(data.types, true)
+            });
+            return r.canceled || !r.filePath ? { cancelled: true } : { path: r.filePath };
         }
         case 'pickPath': {
             const r = await dialog.showOpenDialog(rec.win, {
@@ -692,6 +783,29 @@ async function handle(rec, type, data) {
             } catch (e) {
                 if (e.stopped) return { cancelled: true };
                 throw e;
+            } finally {
+                copies.delete(data.copy);
+            }
+        }
+        case 'folderSize': {
+            // What a move would take, and the room where it'd go (folderMove)
+            const out = await move.size(data.path);
+            if (!data.dest) return out;
+            return { ...out, ...(await move.space(data.dest, data.path)), refused: move.refuse(data.path, data.dest) };
+        }
+        case 'moveFolder': {
+            const stop = { stopped: false };
+            copies.set(data.copy, stop);
+            try {
+                const r = await move.run(data.path, data.dest, (done, total, moved) => {
+                    wc.send('jeditor', { type: 'copyProgress', copy: data.copy, done, total, moved });
+                }, stop);
+                log('info', `Moved ${r.moved} from ${data.path} to ${data.dest}${r.error ? ': ' + r.error : ''}`);
+                drivesChanged();
+                return r;
+            } catch (e) {
+                log('error', `Couldn't move ${data.path} to ${data.dest}: ${e.message}`);
+                return { moved: 0, left: [], error: e.message };
             } finally {
                 copies.delete(data.copy);
             }
@@ -769,6 +883,16 @@ ipcMain.handle('jeditor', async (e, type, data) => {
         return { error: err.message || String(err) };
     }
 });
+
+// The pickers' types ([{ description, accept: { mime: ['.ext'] } }]) as the dialogs' filters
+function dialogFilters(types, all) {
+    const out = (types || []).map(t => ({
+        name: t.description || 'Files',
+        extensions: Object.values(t.accept || {}).flat().map(e => String(e).replace(/^\./, '')).filter(Boolean)
+    })).filter(f => f.extensions.length);
+    if (all || !out.length) out.push({ name: 'All files', extensions: ['*'] });
+    return out;
+}
 
 function isDir(p) {
     try { return path.isAbsolute(p) && fs.statSync(p).isDirectory(); } catch (e) { return false; }
@@ -885,17 +1009,30 @@ function menu() {
         else if (action === 'open') createWindow();
     };
     const front = lastFocused();
-    const themed = !LINUX && front && front.menus;
+    // (Linux: only jEditor's own; a theme draws its menus in the window)
+    const themed = front && front.menus && (!LINUX || front.menusOwn) ? front.menus : null;
     const build = (keys) => Menu.buildFromTemplate([
         appMenu(),
         ...(themed ? themed.map(m => ({
             label: m.label,
             submenu: [
                 ...(m.label === 'File' ? [{ label: 'New Window', accelerator: 'CmdOrCtrl+Shift+N', click: () => show(createWindow()) }, { type: 'separator' }] : []),
-                ...m.items.map(it => it === '—' ? { type: 'separator' } : {
-                    label: it.label, enabled: it.enabled !== false, click: send('theme:' + it.id),
-                    ...(keys && accelerator(it.key) ? { accelerator: accelerator(it.key), registerAccelerator: false } : {})
+                ...m.items.map(function item(it) {
+                    if (it === '—') return { type: 'separator' };
+                    // A menu of its own (menubar.js: Colour label, Flip)
+                    if (Array.isArray(it.items)) return { label: it.label, enabled: it.enabled !== false, submenu: it.items.map(item) };
+                    // One the app runs itself (Open folder, ⌘O): its key is the app's
+                    if (it.native) return { label: it.label, enabled: it.enabled !== false, click: send(it.native), ...(accelerator(it.key) ? { accelerator: accelerator(it.key) } : {}) };
+                    return {
+                        label: it.label, enabled: it.enabled !== false, click: send('theme:' + it.id),
+                        ...(typeof it.checked === 'boolean' ? { type: 'checkbox', checked: it.checked } : {}),
+                        ...(keys && accelerator(it.key) ? { accelerator: accelerator(it.key), registerAccelerator: false } : {})
+                    };
                 }),
+                // jEditor's own (menubar.js): Close Window, and Reload (it asks
+                // first if something isn't kept: the page's Modes.reload)
+                ...(front.menusOwn && m.label === 'File' ? [{ type: 'separator' }, { role: 'close' }] : []),
+                ...(front.menusOwn && m.label === 'View' ? [{ type: 'separator' }, { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: send('reload') }, ...(DEV ? [{ role: 'toggleDevTools' }] : [])] : []),
                 // Cut, copy and paste in text fields go by these on a Mac
                 ...(m.label === 'Edit' ? [{ type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }] : [])
             ]
@@ -959,7 +1096,10 @@ function ownMenus(send) {
         {
             label: 'View',
             submenu: [
-                ...(DEV ? [{ role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' }] : []),
+                // Reload asks first if something isn't kept (the page's Modes.reload)
+                { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: send('reload') },
+                ...(DEV ? [{ role: 'toggleDevTools' }] : []),
+                { type: 'separator' },
                 { role: 'togglefullscreen' }
             ]
         }
@@ -1024,6 +1164,8 @@ function createWindow(at = null) {
             additionalArguments: [
                 ...(NATIVE_TOOLBAR ? ['--jeditor-native-toolbar'] : []),
                 ...(LINUX ? ['--jeditor-linux'] : []),
+                ...(photos.library && !LINUX ? ['--jeditor-photos'] : []),
+                ...(HOST_HANDLES ? ['--jeditor-host-handles'] : []),
                 ...(LINUX && !APPIMAGE && !PACKAGE && !process.env.JEDITOR_RELEASES ? ['--jeditor-no-updates'] : [])
             ]
         }

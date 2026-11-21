@@ -55,6 +55,7 @@ Checked 2026-10-23.
 | Move to… | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | New blank image | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Keyboard shortcuts | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Find anything (Ctrl+K) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | What's new | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Scan window | ✓ | — | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
@@ -118,6 +119,7 @@ What the script can't see. Tick each on the real app.
 | Windows: the title bar drags the window, double-click maximises, the top edge resizes, Snap still works | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
 | Windows: minimise, maximise and close in the title bar; the maximised window keeps its edges on screen | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
 | Menus from the keyboard (Alt, arrows, Enter, Esc) | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
+| Find anything (Ctrl+K, ⌘K on a Mac): opens in Photos, Adjust and Paint; the arrows move the highlight, Enter runs it, Esc closes | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
 | Tooltips (drawn by Windows, not the theme) | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
 | Import from a camera or card | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
 | Let jEditor open your photos (permissions) | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |

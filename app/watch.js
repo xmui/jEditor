@@ -54,7 +54,7 @@ const Watch = {
 
     enabled() {
         const app = this.app;
-        return !!(app && app.dirHandle && !app.readOnlyMode && app.uiPrefs && app.uiPrefs.autoCheck !== false);
+        return !!(app && app.dirHandle && !app.fixedFiles && app.uiPrefs && app.uiPrefs.autoCheck !== false);
     },
 
     // While one of these runs, the folder on disk and what's loaded can
@@ -275,8 +275,20 @@ const Watch = {
     // ---- Listing ----
 
     skipDir(name) {
-        // (Export's copies and Convert's are copies, not the project's photos)
-        return name === FolderCache.DIR || name === FolderCache.LEGACY_TRASH || name === 'jEditor Export' || name === 'jEditor Converted';
+        // (Export's copies and Convert's are copies, not the project's photos;
+        // Copies' folders named after the project, when left out: export.js)
+        return name === FolderCache.DIR || name === FolderCache.LEGACY_TRASH || name === 'jEditor Export' || name === 'jEditor Converted'
+            || (typeof Export !== 'undefined' && Export.isLeftOut(name))
+            || (this.isLibrary(name) && !(this.app && this.app.uiPrefs && this.app.uiPrefs.openLibraries));
+    },
+
+    // A photo app's library: one item in Finder (a package), its own
+    // thumbnails and previews inside, not photos of yours to list. Not gone
+    // into unless Settings → Projects says to (on every platform: a library
+    // copied to a Windows or Linux drive is a folder there)
+    LIBRARIES: /\.(photoslibrary|photolibrary|aplibrary|lrdata|lrlibrary)$/i,
+    isLibrary(name) {
+        return this.LIBRARIES.test(name);
     },
 
     // own: jEditor's folders found here (.jeditor, the old .jeditor-trash)
@@ -333,7 +345,7 @@ const Watch = {
         const out = new Array(handles.length);
         for (let i = 0; i < handles.length; i += this.STAT_BATCH) {
             const part = handles.slice(i, i + this.STAT_BATCH);
-            const datas = await Promise.all(part.map(h => h.getFile().catch(() => null)));
+            const datas = await Promise.all(part.map(h => Host.stat(h).catch(() => null)));
             datas.forEach((d, j) => { out[i + j] = d; });
         }
         return out;
@@ -367,6 +379,16 @@ const Watch = {
             return false; // can't be read yet: still being written
         }
         return true;
+    },
+
+    // complete() for a size and date (Host.stat, a handle's peek): a file
+    // changed just now is read for it; a Photos library photo (a peek, no
+    // stat) is always whole
+    async whole(d, handle, name) {
+        if (!d) return false;
+        if (!(d instanceof Blob) && typeof handle.stat !== 'function') return true;
+        if (d instanceof Blob || Date.now() - d.lastModified >= this.SETTLED_MS) return this.complete(d, name);
+        try { return this.complete(await handle.getFile(), name); } catch (e) { return false; }
     },
 
     // ---- One scan ----
@@ -442,7 +464,7 @@ const Watch = {
                 continue;
             }
             if (this._unreadable) this._unreadable.delete(p.relPath);
-            if (!(await this.complete(d, p.name))) {
+            if (!(await this.whole(d, p.handle, p.name))) {
                 unfinished.add(Folders.parentOf(p.relPath));
                 continue;
             }
@@ -574,6 +596,7 @@ const Watch = {
             }
         });
         grid.classList.remove('grid-empty', 'grid-empty-project');
+        app.syncNoPhotos();
         Folders.render();
         if (!Folders.inView(app.currentFile) && view.length) app.setCurrent(view[0]);
         else if (app.currentFile) app.updateFileCount();

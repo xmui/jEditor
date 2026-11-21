@@ -1,7 +1,7 @@
 // Develop: Lightroom-style adjustments, non-destructive. An adjustment is
 // a small set of settings kept with the photo's edit (edits.js, `adj`),
 // never in the photo: it's applied whenever the photo is shown, and Export
-// (or Save edits) writes the finished file.
+// (or Write edits to file) writes the finished file.
 //
 // Every adjustment here works on each pixel's colour alone, so the whole
 // look is two lookup tables, made in JavaScript from the settings:
@@ -30,6 +30,14 @@
 //   sharpen (0–150), sharpRadius (px), sharpMask; noise, colorNoise
 //           (Detail: they look at the pixels round each one, so they're
 //           done first, on the photo itself, on the CPU: see applyDetail)
+//   texture, clarity, dehaze (±100): Presence, as in Lightroom; they look
+//           at what's round each pixel (sizes a share of the picture, so
+//           every size of it gets the same), so they're done with Detail,
+//           on the CPU, after descreen: see localPx
+//   descreen (0–100), screen (the printed dots' spacing, in the photo's
+//           pixels: findScreen measures it): the dot pattern of a printed
+//           photo (a magazine, a newspaper) taken off; the first step of
+//           Detail
 //   masks:  [{ type: 'linear'|'radial'|'brush'|'sky'|'subject', invert,
 //           adj: {exposure, contrast, … MASK_SLIDERS}, linear: [x0, y0, x1,
 //           y1], radial: [cx, cy, rx, ry, angle, feather], brush: [{ size,
@@ -41,8 +49,12 @@
 //           doesn't move them; sizes are in heights of the photo)
 //   look:   a film look (LOOKS), with lookAmount (0–200%): applied over
 //           everything else, inside the colour table
-//   spots:  spot and dust removal (retouch.js): done on the photo itself,
+//   spots:  spot, dust and scratch removal (retouch.js): done on the photo itself,
 //           before it's cropped, so not part of the tables at all
+//   persp:  perspective (keystone, retouch.js): the photo warped before
+//           its spots and crop, so not part of the tables either
+//   lens:   lens fixes (distortion, fringes, dark corners, retouch.js):
+//           done in the same warp, before the perspective
 
 const Develop = {
     SLIDERS: {
@@ -56,6 +68,9 @@ const Develop = {
         tint: { min: -100, max: 100, step: 1 },
         vibrance: { min: -100, max: 100, step: 1 },
         saturation: { min: -100, max: 100, step: 1 },
+        texture: { min: -100, max: 100, step: 1 },
+        clarity: { min: -100, max: 100, step: 1 },
+        dehaze: { min: -100, max: 100, step: 1 },
         gradeBlend: { min: 0, max: 100, step: 1, def: 50 },
         gradeBalance: { min: -100, max: 100, step: 1 },
         vignette: { min: -100, max: 100, step: 1 },
@@ -70,6 +85,8 @@ const Develop = {
         sharpMask: { min: 0, max: 100, step: 1 },
         noise: { min: 0, max: 100, step: 1 },
         colorNoise: { min: 0, max: 100, step: 1 },
+        descreen: { min: 0, max: 100, step: 1 },
+        screen: { min: 2, max: 24, step: 0.1, def: 5 },
         halation: { min: 0, max: 100, step: 1 },
         lookAmount: { min: 0, max: 200, step: 1, def: 100 }
     },
@@ -195,12 +212,181 @@ const Develop = {
         for (const k of ['hue', 'sat', 'lum']) out.hsl[k] = (a.hsl && a.hsl[k]) ? a.hsl[k].slice() : new Array(8).fill(0);
         out.grade = {};
         for (const [z] of this.ZONES) out.grade[z] = (a.grade && a.grade[z]) ? a.grade[z].slice() : [0, 0, 0];
-        out.look = this.look(a.look) ? a.look : null;
+        const lk = this.lookOf(a);
+        out.look = lk ? a.look : null;
+        out.lookAdj = lk && a.lookAdj ? this.cleanLookAdj(a.lookAdj) : null;
+        out.lookName = lk && lk.own ? lk.name : null;
         out.mono = this.monoOf(a.mono);
         out.masks = (this.cleanMasks(a.masks) || []).map(m => JSON.parse(JSON.stringify(m)));
         out.spots = ((typeof Retouch !== 'undefined' && Retouch.cleanSpots(a.spots)) || []).map(s => ({ ...s }));
+        out.restore = this.cleanRestore(a.restore);
+        out.persp = (typeof Retouch !== 'undefined' && Retouch.cleanPersp(a.persp)) || null;
+        out.lens = (typeof Retouch !== 'undefined' && Retouch.cleanLens(a.lens)) || null;
         return out;
     },
+
+    // Restore colour: worked out from the photo once (restoreAuto) and kept,
+    // with how much of it is used (amount, 0–100). It's the first step, on
+    // the scan as it is, before everything else.
+    //   d: 1 (v2, density): each channel's dye density stretched from the
+    //     paper's white: { d: 1, r, g, b: [white, scale, base], amount },
+    //     density' = base + scale × (density − white)
+    //   v1 (kept for edits made with it): { r, g, b: [black, gamma, white], amount }
+    // → the settings, checked, or null
+    cleanRestore(r) {
+        if (!r || typeof r !== 'object') return null;
+        const num = (x) => typeof x === 'number' && isFinite(x);
+        const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
+        const amount = Math.round(clamp(num(r.amount) ? r.amount : 100, 0, 100));
+        if (!amount) return null;
+        const out = r.d === 1 ? { d: 1, amount } : { amount };
+        if (out.d && typeof r.type === 'string' && this.RESTORE_TYPES[r.type]) { out.type = r.type; if (r.auto) out.auto = true; if (r.grey) out.grey = true; }
+        if (out.d && Number.isInteger(r.roll) && r.roll > 1) out.roll = r.roll;
+        for (const c of ['r', 'g', 'b']) {
+            const l = r[c];
+            if (!Array.isArray(l) || l.length !== 3 || !l.every(num)) return null;
+            if (out.d) {
+                out[c] = [+clamp(l[0], 0, 1.5).toFixed(4), +clamp(l[1], 0.3, 4).toFixed(4), +clamp(l[2], 0, 0.5).toFixed(4)];
+                continue;
+            }
+            const i0 = clamp(l[0], 0, 0.9);
+            out[c] = [+i0.toFixed(4), +clamp(l[1], 0.3, 3).toFixed(4), +clamp(l[2], i0 + 0.05, 1).toFixed(4)];
+        }
+        return out;
+    },
+
+    // Density of a value (0–1): how much dye there is. Fading takes some of
+    // each dye layer away, which scales that layer's density down.
+    density(v) {
+        return -Math.log10(Math.max(0.001, this.toLinear(v)));
+    },
+
+    // One channel's value (0–1) through Restore colour
+    restoreValue(rs, d, v) {
+        if (!d) return this.levels([rs[0], rs[1], rs[2], 0, 1], v);
+        const D = Math.max(0, rs[2] + rs[1] * (this.density(v) - rs[0]));
+        return this.toGamma(Math.pow(10, -D));
+    },
+
+    // Restore colour from the photo (RGBA pixels of a small copy, as it is),
+    // in density, the way the dyes fade (after Kodak's density-difference
+    // method). A photo's black is nearly always neutral, so each dye's
+    // density range, from the paper's white to the darkest shadow, is
+    // brought up to the strongest one's, which gives back what each layer
+    // lost without assuming the scene is grey on average (a field of grass
+    // stays green). The whites go to the cleanest one, which takes off a
+    // stain, and if every dye has faded, all are stretched together.
+    // → the settings with it on
+    // roll: what a roll of photos shares (restoreRoll), used in place of
+    // what this photo alone shows: how much each dye faded, and its stain
+    restoreAuto(px, adj, amount = 100, type = 'auto', roll = null) {
+        const base = this.clean(adj) || {};
+        const m = this.restoreMeasure(px);
+        if (!m) return base;
+        const picked = this.RESTORE_TYPES[type] ? type : roll ? roll.type : this.restoreType(m);
+        const t = this.RESTORE_TYPES[picked];
+        const { ch } = m;
+        const paper = Math.min(...ch.map(x => x.white));
+        // Each dye's own stretch (to the strongest one's range), from this
+        // photo or the roll's; none for the dyes this kind leaves alone
+        const own = ch.map((x, k) => !t.dyes.includes(x.c) ? 1 : roll ? roll.own[k] : m.top / x.range);
+        const top = Math.max(...ch.map((x, k) => x.range * own[k]));
+        const all = Math.min(3, Math.max(1, this.RESTORE_RANGE / top));
+        const r = { d: 1, amount, type: picked, auto: type === 'auto' };
+        if (roll) r.roll = roll.n;
+        ch.forEach((x, k) => {
+            // The whites go to the cleanest one, which takes off a stain; in
+            // a roll only the stain they share, so a frame's own colour (a
+            // sunset's sky) stays
+            const tint = x.white - paper;
+            const white = !t.stain ? x.white : roll ? paper + tint - Math.min(tint, roll.stain[k]) : paper;
+            r[x.c] = [x.white, own[k] * all, white];
+        });
+        return this.clean({ ...base, restore: r }) || {};
+    },
+
+    // What a roll of photos faded together shares (RGBA pixels of each,
+    // as it is): the kind of fade most of them show, how much each dye
+    // faded and the stain, each the middle of the photos' own, so a frame
+    // with no black or a strong colour of its own (a sunset) is restored
+    // as the others are. → for restoreAuto, or null for fewer than two
+    restoreRoll(pxs) {
+        const ms = pxs.map(px => this.restoreMeasure(px)).filter(Boolean);
+        if (ms.length < 2) return null;
+        const mid = (a) => { const s = [...a].sort((x, y) => x - y), n = s.length; return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2; };
+        const votes = {};
+        for (const m of ms) { const t = this.restoreType(m); votes[t] = (votes[t] || 0) + 1; }
+        const type = Object.keys(votes).sort((a, b) => votes[b] - votes[a])[0];
+        return {
+            n: ms.length,
+            type,
+            own: [0, 1, 2].map(k => Math.exp(mid(ms.map(m => Math.log(m.top / m.ch[k].range))))),
+            stain: [0, 1, 2].map(k => mid(ms.map(m => m.ch[k].white - Math.min(...m.ch.map(x => x.white)))))
+        };
+    },
+
+    // Restore colour made neutral at a grey (RGBA pixels round a click):
+    // each dye's stretch changed so that, there, all three come out the
+    // same. → the restore settings, or null if it's too light or too dark
+    // to tell
+    restoreNeutral(rs, px) {
+        if (!rs || !rs.d) return null;
+        const D = [0, 0, 0];
+        let n = 0;
+        for (let i = 0; i < px.length; i += 4, n++) for (let c = 0; c < 3; c++) D[c] += this.density(px[i + c] / 255);
+        if (!n) return null;
+        const ch = ['r', 'g', 'b'].map((c, k) => ({ c, l: rs[c], d: D[k] / n - rs[c][0] }));
+        if (ch.some(x => x.d < 0.04) || ch.some(x => x.d > 1.6)) return null;
+        const now = ch.map(x => x.l[2] + x.l[1] * x.d);
+        const want = (now[0] + now[1] + now[2]) / 3;
+        const out = { ...rs, type: rs.type, auto: false, grey: true };
+        for (const x of ch) out[x.c] = [x.l[0], Math.min(4, Math.max(0.3, (want - x.l[2]) / x.d)), x.l[2]];
+        return this.cleanRestore(out);
+    },
+
+    // What Restore colour sees in a photo: for each dye, the paper's white
+    // and its density range (white to the darkest shadow)
+    restoreMeasure(px) {
+        const h = this.histogram(px);
+        if (!h.n) return null;
+        const ch = ['r', 'g', 'b'].map(c => {
+            const white = this.density(this.percentile(h[c], h.n, 0.995));
+            const dark = this.density(this.percentile(h[c], h.n, 0.005));
+            return { c, white, range: Math.max(0.05, dark - white) };
+        });
+        return { ch, top: Math.max(...ch.map(x => x.range)) };
+    },
+
+    // Which way a photo has faded, from its dyes' ranges and whites
+    restoreType(m) {
+        const [r, g, b] = m.ch;
+        const lo = Math.min(r.range, g.range, b.range);
+        const stain = b.white - Math.min(r.white, g.white);
+        // A yellow stain darkens only blue's white (a cast tints them all)
+        if (stain > 0.08 && Math.abs(r.white - g.white) < 0.5 * stain && b.range > 0.75 * m.top) return 'yellow';
+        if (r.range < 0.8 * g.range && b.range < 0.8 * g.range) return 'slide';
+        if (r.range === lo && r.range < 0.8 * Math.min(g.range, b.range)) return 'cyan';
+        if (m.top < this.RESTORE_RANGE * 0.85 && lo > 0.8 * m.top) return 'print';
+        return 'keep';
+    },
+
+    // The kinds of fade Auto tells apart (restoreType), and what it does for
+    // each. dyes: the channels each stretched by itself up to the strongest
+    // one's range; stain: the whites brought to the cleanest one. Measured
+    // on test/restore-kit, every kind of fade does best with all three dyes
+    // (fading spills a little into the other layers), so the kinds differ in
+    // what Auto says it found. When it finds none, the colours are kept as
+    // they are and only the light and any stain are fixed, so a scene with
+    // one strong colour (grass, a sunset) isn't spoilt; you can choose that.
+    RESTORE_TYPES: {
+        keep: { name: 'Keep the colours', dyes: '', stain: true },
+        print: { name: 'Faded print', dyes: 'rgb', stain: true },
+        slide: { name: 'Red or magenta slide', dyes: 'rgb', stain: true },
+        cyan: { name: 'Red or orange cast', dyes: 'rgb', stain: true },
+        yellow: { name: 'Yellowed print', dyes: 'rgb', stain: true }
+    },
+    // The density range a print's dyes should reach, black to white
+    RESTORE_RANGE: 2.0,
 
     // Black-and-white weights, adding up to 1, or null
     monoOf(m) {
@@ -211,6 +397,33 @@ const Develop = {
 
     look(id) {
         return (typeof id === 'string' && this.LOOKS.find(l => l.id === id)) || null;
+    },
+
+    // The look a photo's settings use, with its settings as dialled in:
+    // a film look as made (adj), changed (lookAdj, "modified"), or one of
+    // your own ("own:…", whose settings always come with it, so they go
+    // wherever the photo's settings go). → { id, name, adj, own, modified }
+    // or null
+    lookOf(a) {
+        if (!a || typeof a.look !== 'string') return null;
+        const own = a.look.startsWith('own:');
+        if (own) {
+            if (!a.lookAdj || typeof a.lookAdj !== 'object') return null;
+            const name = typeof a.lookName === 'string' && a.lookName.trim() ? a.lookName.trim().slice(0, 60) : 'Your look';
+            return { id: a.look, name, adj: a.lookAdj, own: true, modified: false };
+        }
+        const l = this.look(a.look);
+        if (!l) return null;
+        const mine = a.lookAdj && typeof a.lookAdj === 'object';
+        return { id: l.id, name: [l.maker, l.name].filter(Boolean).join(' '), adj: mine ? a.lookAdj : l.adj, own: false, modified: !!mine };
+    },
+
+    // A look's own settings, checked: what a look can hold (not another
+    // look, masks, spots or Restore colour, which belong to one photo)
+    cleanLookAdj(x) {
+        if (!x || typeof x !== 'object') return {};
+        const { look, lookAmount, lookAdj, lookName, masks, spots, restore, ...rest } = x;
+        return this.clean(rest) || {};
     },
 
     // Checked and made compact (only what's changed), or null for none.
@@ -265,8 +478,18 @@ const Develop = {
         if (masks) out.masks = masks;
         const spots = typeof Retouch !== 'undefined' ? Retouch.cleanSpots(v.spots) : null;
         if (spots) out.spots = spots;
-        if (this.look(v.look)) out.look = v.look;
-        else delete out.lookAmount;
+        const persp = typeof Retouch !== 'undefined' ? Retouch.cleanPersp(v.persp) : null;
+        if (persp) out.persp = persp;
+        const lens = typeof Retouch !== 'undefined' ? Retouch.cleanLens(v.lens) : null;
+        if (lens) out.lens = lens;
+        const restore = this.cleanRestore(v.restore);
+        if (restore) out.restore = restore;
+        const lk = this.lookOf(v);
+        if (lk) {
+            out.look = v.look;
+            if (v.lookAdj) out.lookAdj = this.cleanLookAdj(v.lookAdj);
+            if (lk.own) out.lookName = lk.name;
+        } else delete out.lookAmount;
         return Object.keys(out).length ? out : null;
     },
 
@@ -274,12 +497,14 @@ const Develop = {
         return !!this.clean(adj);
     },
 
-    // Anything for the tables to do (spots aside: they're done before
-    // the crop, by retouch.js), as settings without the spots, or null
+    // Anything for the tables to do (spots, perspective and lens aside: they're
+    // done before the crop, by retouch.js), as settings without the spots, or null
     tonal(adj) {
         const c = this.clean(adj);
         if (!c) return null;
         delete c.spots;
+        delete c.persp;
+        delete c.lens;
         return Object.keys(c).length ? c : null;
     },
 
@@ -292,15 +517,18 @@ const Develop = {
         { id: 'look', name: 'Look', keys: ['look', 'lookAmount', 'mono'] },
         { id: 'wb', name: 'White balance', keys: ['temp', 'tint'] },
         { id: 'light', name: 'Light', keys: ['exposure', 'contrast', 'highlights', 'shadows', 'whites', 'blacks'] },
-        { id: 'presence', name: 'Presence', keys: ['vibrance', 'saturation'] },
+        { id: 'presence', name: 'Presence', keys: ['texture', 'clarity', 'dehaze', 'vibrance', 'saturation'] },
         { id: 'levels', name: 'Levels', keys: ['levels'] },
         { id: 'curve', name: 'Tone curve', keys: ['curve'] },
         { id: 'mixer', name: 'Color mixer', keys: ['hsl'] },
         { id: 'grading', name: 'Color grading', keys: ['grade', 'gradeBlend', 'gradeBalance'] },
         { id: 'detail', name: 'Detail', keys: ['sharpen', 'sharpRadius', 'sharpMask', 'noise', 'colorNoise'] },
+        { id: 'descreen', name: 'Descreen', keys: ['descreen', 'screen'] },
+        { id: 'lens', name: 'Lens fixes', keys: ['lens'] },
         { id: 'effects', name: 'Effects', keys: ['vignette', 'vigMid', 'vigFeather', 'vigRound', 'grain', 'grainSize', 'grainColor', 'halation'] },
         { id: 'masks', name: 'Masks', keys: ['masks'], off: true, note: 'Sky and subject masks are found in each photo, so each keeps its own' },
-        { id: 'spots', name: 'Spot removal', keys: ['spots'], off: true }
+        { id: 'spots', name: 'Spot removal', keys: ['spots'], off: true },
+        { id: 'restore', name: 'Color restoration', keys: ['restore'], off: true, note: 'Worked out from each photo: Restore colour on the others finds their own' }
     ],
 
     // target's settings with source's for these groups (ids from SYNC): a
@@ -329,12 +557,13 @@ const Develop = {
     },
 
     // Auto Sync's: target's settings with source's for these settings
-    // (top-level keys, as in clean) only, masks and spots never
+    // (top-level keys, as in clean) only, masks, spots and perspective
+    // never (each photo's is its own)
     syncedKeys(target, source, keys) {
         const out = this.clean(target) || {};
         const src = this.clean(source) || {};
         for (const k of keys) {
-            if (k === 'masks' || k === 'spots') continue;
+            if (k === 'masks' || k === 'spots' || k === 'persp') continue;
             if (k in src) out[k] = JSON.parse(JSON.stringify(src[k]));
             else delete out[k];
         }
@@ -410,8 +639,9 @@ const Develop = {
         if (!ed) return { m: [1, 0, 0, 0, 1, 0], asp: W / H };
         const o = ed.outputRect();
         const [c, s] = ed.cs();
+        const k = ed.mx ? ed.mx() : 1; // flipped: across the photo the other way
         return {
-            m: [c * o.w / W, s * o.h / W, (c * o.x0 + s * o.y0) / W + 0.5,
+            m: [k * c * o.w / W, k * s * o.h / W, k * (c * o.x0 + s * o.y0) / W + 0.5,
                 -s * o.w / H, c * o.h / H, (-s * o.x0 + c * o.y0) / H + 0.5],
             asp: W / H
         };
@@ -634,8 +864,15 @@ const Develop = {
         for (let i = 0; i < 256; i++) lin[i] = this.toLinear(i / 255);
         ['r', 'g', 'b'].forEach((ch, c) => {
             const curve = this.spline(a.curve[ch]);
+            const rs = a.restore && a.restore[ch], k = a.restore ? a.restore.amount / 100 : 0;
             for (let i = 0; i < 256; i++) {
-                let x = this.toGamma(Math.min(1, lin[i] * wb[c] * ex));
+                // Restore colour first, on the scan as it is
+                let x0 = lin[i];
+                if (rs) {
+                    const v = i / 255;
+                    x0 = this.toLinear(v + (this.restoreValue(rs, a.restore.d, v) - v) * k);
+                }
+                let x = this.toGamma(Math.min(1, x0 * wb[c] * ex));
                 if (tone) x = tone(x);
                 if (upto !== 'levels') {
                     x = this.levels(a.levels.rgb, this.levels(a.levels[ch], x));
@@ -651,15 +888,19 @@ const Develop = {
     // The colour mixer, vibrance and saturation, on one colour (0–1)
     colourFn(a) {
         const own = this.ownColourFn(a);
-        const look = this.look(a.look);
+        const look = this.lookOf(a);
         if (!look) return own;
-        // The look, over the photo's own settings, by its amount
-        // (a look's own tables never change: made once)
-        this._looks = this._looks || {};
-        const made = this._looks[look.id] || (this._looks[look.id] = (() => {
+        // The look, over the photo's own settings, by its amount (a look's
+        // tables, as dialled in, are made once and kept)
+        this._looks = this._looks || new Map();
+        const lkey = look.id + JSON.stringify(look.adj);
+        let made = this._looks.get(lkey);
+        if (!made) {
             const la = this.full(look.adj);
-            return { lt: this.channelTables(la), lc: this.ownColourFn(la) };
-        })());
+            made = { lt: this.channelTables(la), lc: this.ownColourFn(la) };
+            this._looks.set(lkey, made);
+            if (this._looks.size > 40) this._looks.delete(this._looks.keys().next().value);
+        }
         const { lt, lc } = made;
         const k = a.lookAmount / 100;
         const at = (c, x) => {
@@ -762,7 +1003,28 @@ const Develop = {
         };
     },
 
+    // Made from the colour settings alone (colourFn), so it's remembered by
+    // them: dragging Exposure, say, or the looks' pictures drawn again, used
+    // to make each one afresh (~15 ms apiece). Enough kept for a whole tab
+    // of looks and the photo itself; nothing writes into one.
+    LUTS_KEPT: 12,
+
     colourLut(a, N = this.LUT_SIZE) {
+        const key = N + JSON.stringify([a.hsl, a.saturation, a.vibrance, a.grade, a.gradeBlend, a.gradeBalance, a.mono, a.look, a.lookAmount, a.lookAdj]);
+        const luts = this._luts || (this._luts = new Map());
+        if (luts.has(key)) {
+            const kept = luts.get(key);
+            luts.delete(key);
+            luts.set(key, kept); // the most recently used last
+            return kept;
+        }
+        const lut = this.makeColourLut(a, N);
+        luts.set(key, lut);
+        if (luts.size > this.LUTS_KEPT) luts.delete(luts.keys().next().value);
+        return lut;
+    },
+
+    makeColourLut(a, N) {
         const f = this.colourFn(a);
         if (!f) return null;
         const out = new Float32Array(N * N * N * 4);
@@ -800,7 +1062,7 @@ const Develop = {
     // null for none: { vig: [amount, middle, width, roundness], grain:
     // [amount, cells across the long side] }
     effects(a) {
-        const look = this.look(a.look);
+        const look = this.lookOf(a);
         const la = look ? this.full(look.adj) : null, k = look ? a.lookAmount / 100 : 0;
         const vig = Math.max(-100, Math.min(100, a.vignette + (la ? la.vignette * k : 0)));
         const grain = Math.min(100, a.grain + (la ? la.grain * k : 0));
@@ -1079,6 +1341,28 @@ const Develop = {
         return this.clean({ ...base, levels: { ...(base.levels || {}), ...levels } });
     },
 
+    // Backlight: what's in front of a bright sky or window lifted, and the
+    // bright part held back, by how much of the photo is bright and how dark
+    // its middle is. → the settings with Shadows, Highlights and a little
+    // Exposure set (the rest kept)
+    backlight(px, adj) {
+        const h = this.histogram(px);
+        const base = this.clean(adj) || {};
+        if (!h.n) return base;
+        let bright = 0, dark = 0;
+        for (let i = 0; i < 256; i++) {
+            if (i > 217) bright += h.l[i];
+            else if (i < 64) dark += h.l[i];
+        }
+        bright /= h.n;
+        dark /= h.n;
+        const mid = this.percentile(h.l, h.n, 0.5);
+        const shadows = Math.round(Math.min(80, 25 + 100 * dark));
+        const highlights = -Math.round(Math.min(70, Math.max(20, 20 + 160 * bright)));
+        const exposure = mid < 0.3 ? +Math.min(0.5, (0.3 - mid) * 2).toFixed(2) : 0;
+        return this.clean({ ...base, shadows, highlights, ...(exposure ? { exposure: +((base.exposure || 0) + exposure).toFixed(2) } : {}) }) || {};
+    },
+
     // ---- On the GPU ----
 
     VERT: `#version 300 es
@@ -1099,6 +1383,7 @@ uniform sampler2D tone;
 uniform sampler3D lut;
 uniform bool useLut;
 uniform bool before;
+uniform bool clip;    // Show clipping: lost highlights red, lost shadows blue
 uniform bool flip;
 uniform float lutN;
 uniform vec4 vig;    // amount, middle, width, roundness
@@ -1218,7 +1503,12 @@ void main() {
             t += n * k;
         }
     }
-    o = vec4(clamp(t, 0.0, 1.0), c.a);
+    t = clamp(t, 0.0, 1.0);
+    if (clip) {
+        if (max(t.r, max(t.g, t.b)) >= 0.998) t = vec3(1.0, 0.16, 0.16);
+        else if (min(t.r, min(t.g, t.b)) <= 0.002) t = vec3(0.2, 0.45, 1.0);
+    }
+    o = vec4(t, c.a);
 }`,
 
     // A WebGL2 renderer on `canvas`, or null where there's none
@@ -1371,11 +1661,12 @@ void main() {
             // The image, at w × h on the canvas. flip: rows top first, as
             // readPixels gives them back
             // frame: where it is in the whole picture (the effects need it)
-            draw(w, h, { before = false, flip = false, frame = null } = {}) {
+            draw(w, h, { before = false, flip = false, frame = null, clip = false } = {}) {
                 if (canvas.width !== w) canvas.width = w;
                 if (canvas.height !== h) canvas.height = h;
                 gl.viewport(0, 0, w, h);
                 gl.uniform1i(u('before'), before ? 1 : 0);
+                gl.uniform1i(u('clip'), clip ? 1 : 0);
                 gl.uniform1i(u('flip'), flip ? 1 : 0);
                 const f = frame || { x: 0, y: 0, W: w, H: h };
                 gl.uniform4f(u('frame'), f.x, f.y, f.W, f.H);
@@ -1421,7 +1712,7 @@ void main() {
         map = map || this.cropMap(null, canvas.width, canvas.height);
         const brush = this.brushFor(T.masks, map.asp);
         if (brush && R && !R.lost) R.setBrush(brush);
-        const d = scale >= 0.5 ? this.detail(this.full(adj)) : null;
+        const d = this.detail(this.full(adj), scale, canvas.width, canvas.height);
         // Detail reads round each block: from the picture as it was
         let source = null;
         if (d) {
@@ -1458,22 +1749,57 @@ void main() {
         return true;
     },
 
-    // ---- Detail: sharpening and noise reduction ----
+    // ---- Detail: descreen, sharpening and noise reduction ----
     //
     // On the photo before everything else, in brightness and colour
     // (Y, and the colour differences Cb, Cr), each a pass across then a
     // pass down:
+    //   descreen: a printed photo's dots blurred away, in a blur sized to
+    //           their spacing (`screen`), colour more than brightness (the
+    //           colour screens' rosette is coarser than the dots); then
+    //           the edges brought back a little, at a size the dots don't
+    //           have
     //   noise: an edge-keeping (bilateral) blur of the brightness
     //   colorNoise: a blur of the colour only, so blotches go and edges stay
     //   sharpen: an unsharp mask of the brightness (no colour fringes);
     //            Masking keeps it to the edges, off flat skin and sky
     // Sizes are in the photo's own pixels: `scale` is how many of this
-    // picture's pixels there are to one of the photo's (a screen-sized
-    // preview is 0.3 or so, where none of it shows: it's left out there).
+    // picture's pixels there are to one of the photo's. Below a half (a
+    // screen-sized preview, a thumbnail) sharpening and noise don't show
+    // and are left out; descreen is kept while the dots are still two of
+    // this picture's pixels apart, since then they'd show.
 
-    detail(a) {
-        if (!a.sharpen && !a.noise && !a.colorNoise) return null;
-        return { amount: a.sharpen / 100 * 1.5, radius: a.sharpRadius, mask: a.sharpMask / 100, noise: a.noise / 100, color: a.colorNoise / 100 };
+    // Descreen's sizes, in the screen's spacing (measured on the descreen
+    // kit: test/descreen.test.js). linear: the dots mixed in linear light,
+    // as the eye mixes them, which is truer to the print (ΔE 1.5 against
+    // 5.8 on the kit) but lighter than the photo's previews and thumbnails,
+    // which the browser makes smaller in the encoded values (5.5 apart):
+    // off, so every size of the photo looks the same
+    DESCREEN: { y: 0.5, c: 0.8, back: 0.3, backR: 0.8, linear: false },
+
+    // W, H: the whole picture's size at this scale (texture, clarity and
+    // dehaze are sized to it; left out without it)
+    detail(a, scale = 1, W = 0, H = 0) {
+        const near = scale >= 0.5;
+        const ds = a.descreen && a.screen * scale >= 2 ? a.descreen / 100 : 0;
+        const long = Math.max(W, H);
+        const local = long > 0 && (a.texture || a.clarity || a.dehaze);
+        if (!ds && !local && !(near && (a.sharpen || a.noise || a.colorNoise))) return null;
+        const d = near ? { amount: a.sharpen / 100 * 1.5, radius: a.sharpRadius, mask: a.sharpMask / 100, noise: a.noise / 100, color: a.colorNoise / 100 }
+            : { amount: 0, radius: 1, mask: 0, noise: 0, color: 0 };
+        if (ds) { d.descreen = ds; d.screen = a.screen; }
+        if (local) { d.texture = (a.texture || 0) / 100; d.clarity = (a.clarity || 0) / 100; d.dehaze = (a.dehaze || 0) / 100; d.long = long; }
+        return d;
+    },
+
+    // Texture, clarity and dehaze's sizes, in shares of the picture's long
+    // side, and how much (measured: test/presence.test.js)
+    LOCAL: { clarity: 0.012, texture: 0.0015, dehaze: 0.01, clarityGain: 1.3, textureGain: 1.2, haze: 0.85, tMin: 0.4 },
+
+    // Three box blurs' radius for a Gaussian of `sigma` (their sigma is
+    // √(r(r+1)) or so)
+    boxFor(sigma) {
+        return sigma < 0.6 ? 0 : Math.max(1, Math.round(Math.sqrt(sigma * sigma + 0.25) - 0.5));
     },
 
     detailSizes(d, s) {
@@ -1481,13 +1807,167 @@ void main() {
         const rn = d.noise ? Math.min(6, Math.ceil(2 * sn)) : 0;
         const rc = d.color ? Math.min(10, Math.ceil(2 * sc)) : 0;
         const rb = d.amount ? Math.min(10, Math.ceil(2.5 * sb)) : 0;
-        return { sn, sc, sb, rn, rc, rb, margin: Math.max(rn, rc) + rb + (d.amount ? 1 : 0) };
+        const D = this.DESCREEN, p = (d.screen || 0) * s;
+        const dy = D.y * p, dc = D.c * p, db = D.backR * p;
+        const ry = d.descreen ? Math.min(48, Math.ceil(2.5 * dy)) : 0;
+        const rcs = d.descreen ? Math.min(64, Math.ceil(2.5 * dc)) : 0;
+        const rbs = d.descreen && D.back ? Math.min(48, Math.ceil(2.5 * db)) : 0;
+        const md = Math.max(ry + rbs, rcs);
+        // Texture, clarity, dehaze: box blurs (three passes reach 3 × r)
+        const L = this.LOCAL, long = d.long || 0;
+        const bc = d.clarity ? this.boxFor(L.clarity * long) : 0;
+        const bt = d.texture ? this.boxFor(L.texture * long) : 0;
+        const bc0 = d.clarity ? this.boxFor(3 * L.texture * long) : 0;
+        const bt0 = d.texture ? this.boxFor(L.texture * long / 3) : 0;
+        const bd = d.dehaze ? this.boxFor(L.dehaze * long) : 0;
+        const ml = 3 * bd + 3 * Math.max(bc, bt);
+        return { sn, sc, sb, rn, rc, rb, dy, dc, db, ry, rcs, rbs, bc, bc0, bt, bt0, bd, margin: md + ml + Math.max(rn, rc) + rb + (d.amount ? 1 : 0) };
+    },
+
+    // A Gaussian blur of a w × h plane (sigma, out to r), edges repeated
+    gauss(src, w, h, sigma, r) {
+        const k = new Float32Array(2 * r + 1);
+        let ks = 0;
+        for (let i = -r; i <= r; i++) ks += k[i + r] = Math.exp(-(i * i) / (2 * sigma * sigma));
+        for (let i = 0; i <= 2 * r; i++) k[i] /= ks;
+        const tmp = new Float32Array(w * h), out = new Float32Array(w * h);
+        const row = new Float32Array(Math.max(w, h) + 2 * r);
+        for (let y = 0; y < h; y++) {
+            for (let x = -r; x < w + r; x++) row[x + r] = src[y * w + (x < 0 ? 0 : x >= w ? w - 1 : x)];
+            for (let x = 0; x < w; x++) { let v = 0; for (let t = 0; t <= 2 * r; t++) v += row[x + t] * k[t]; tmp[y * w + x] = v; }
+        }
+        for (let x = 0; x < w; x++) {
+            for (let y = -r; y < h + r; y++) row[y + r] = tmp[(y < 0 ? 0 : y >= h ? h - 1 : y) * w + x];
+            for (let y = 0; y < h; y++) { let v = 0; for (let t = 0; t <= 2 * r; t++) v += row[y + t] * k[t]; out[y * w + x] = v; }
+        }
+        return out;
+    },
+
+    // Descreen (RGBA bytes, in place): in the encoded values, as a picture
+    // made smaller mixes the dots (or in linear light: DESCREEN.linear)
+    descreenPx(px, w, h, d, z) {
+        const n = w * h, D = this.DESCREEN, t = d.descreen;
+        const L = D.linear;
+        const toLin = L ? (this._toLin || (this._toLin = Float32Array.from({ length: 256 }, (_, i) => { const v = i / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); })))
+            : (this._toUnit || (this._toUnit = Float32Array.from({ length: 256 }, (_, i) => i / 255)));
+        const Y = new Float32Array(n), Cb = new Float32Array(n), Cr = new Float32Array(n);
+        for (let i = 0; i < n; i++) {
+            const r = toLin[px[i * 4]], g = toLin[px[i * 4 + 1]], b = toLin[px[i * 4 + 2]];
+            const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            Y[i] = y; Cb[i] = b - y; Cr[i] = r - y;
+        }
+        const Yb = this.gauss(Y, w, h, z.dy, z.ry);
+        if (z.rbs) {
+            const Bb = this.gauss(Yb, w, h, z.db, z.rbs);
+            for (let i = 0; i < n; i++) Yb[i] += D.back * (Yb[i] - Bb[i]);
+        }
+        const Cbb = this.gauss(Cb, w, h, z.dc, z.rcs), Crb = this.gauss(Cr, w, h, z.dc, z.rcs);
+        const enc = L ? (v) => { v = v < 0 ? 0 : v > 1 ? 1 : v; return Math.round(255 * (v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055)); }
+            : (v) => Math.round(255 * (v < 0 ? 0 : v > 1 ? 1 : v));
+        for (let i = 0; i < n; i++) {
+            const y = Y[i] + t * (Yb[i] - Y[i]);
+            const cb = Cb[i] + t * (Cbb[i] - Cb[i]), cr = Cr[i] + t * (Crb[i] - Cr[i]);
+            const r = y + cr, b = y + cb, g = (y - 0.2126 * r - 0.0722 * b) / 0.7152;
+            px[i * 4] = enc(r); px[i * 4 + 1] = enc(g); px[i * 4 + 2] = enc(b);
+        }
+    },
+
+    // Three box blurs of a w × h plane (about a Gaussian), radius r, edges
+    // repeated; r 0 gives it back as it is
+    box3(src, w, h, r) {
+        if (!r) return src;
+        let a = Float32Array.from(src);
+        const b = new Float32Array(src.length), k = 2 * r + 1;
+        const pass = (from, to, horiz) => {
+            const len = horiz ? w : h, lines = horiz ? h : w, step = horiz ? 1 : w, next = horiz ? w : 1;
+            for (let l = 0; l < lines; l++) {
+                const o = l * next;
+                let sum = 0;
+                for (let i = -r; i <= r; i++) sum += from[o + Math.min(len - 1, Math.max(0, i)) * step];
+                for (let i = 0; i < len; i++) {
+                    to[o + i * step] = sum / k;
+                    sum += from[o + Math.min(len - 1, i + r + 1) * step] - from[o + Math.max(0, i - r) * step];
+                }
+            }
+        };
+        for (let i = 0; i < 3; i++) { pass(a, b, true); pass(b, a, false); }
+        return a;
+    },
+
+    // Texture, clarity and dehaze (RGBA bytes, in place), in this order:
+    //   dehaze: the haze worked out from each place's darkest channel (in
+    //     clear air something there is dark; haze lifts it: He, Sun and
+    //     Tang's dark channel), taken off towards white light, never more
+    //     than tMin lets; below 0, haze put on
+    //   clarity: the band of the brightness between a blur three times
+    //     texture's and a wide one (big shapes' contrast, leaving the fine detail to
+    //     texture), more in the midtones, softly limited so edges don't
+    //     halo; below 0, softer
+    //   texture: the band of detail between a fine blur and a small one
+    //     (skin, leaves, fabric: not the finest noise, not edges, which
+    //     are held back by the same soft limit); below 0, smoother
+    // The brightness changes are put on the three channels alike.
+    localPx(px, w, h, d, z) {
+        const n = w * h, L = this.LOCAL;
+        if (d.dehaze) {
+            const dark = new Float32Array(n);
+            for (let i = 0; i < n; i++) dark[i] = Math.min(px[i * 4], px[i * 4 + 1], px[i * 4 + 2]) / 255;
+            const db = this.box3(dark, w, h, z.bd);
+            const k = d.dehaze;
+            for (let i = 0; i < n; i++) {
+                // a dark thing next to bright haze keeps its own (no dark halo)
+                const dk = Math.min(dark[i], db[i]);
+                for (let c = 0; c < 3; c++) {
+                    const v = px[i * 4 + c] / 255;
+                    let o;
+                    if (k > 0) {
+                        const t = Math.max(L.tMin, 1 - 0.6 * k * dk);
+                        o = (v - 1) / t + 1;
+                    } else {
+                        o = v + -k * 0.6 * (L.haze - v);
+                    }
+                    px[i * 4 + c] = Math.round(255 * (o < 0 ? 0 : o > 1 ? 1 : o));
+                }
+            }
+        }
+        if (!d.clarity && !d.texture) return;
+        const Y = new Float32Array(n);
+        for (let i = 0; i < n; i++) Y[i] = (0.299 * px[i * 4] + 0.587 * px[i * 4 + 1] + 0.114 * px[i * 4 + 2]) / 255;
+        const add = new Float32Array(n);
+        const soft = (x, lim) => x / (1 + Math.abs(x) / lim);
+        if (d.clarity && z.bc) {
+            // from three times texture's size up (the fine detail is texture's)
+            const T = this.box3(Y, w, h, z.bc0), B = this.box3(Y, w, h, z.bc), k = d.clarity * L.clarityGain;
+            for (let i = 0; i < n; i++) {
+                const y = T[i], m = Math.min(1, 4 * y * (1 - y) * 1.25);
+                const det = y - B[i];
+                add[i] += k > 0 ? k * soft(det, 0.12) * m : k * det;
+            }
+        }
+        if (d.texture && z.bt) {
+            const fine = this.box3(Y, w, h, z.bt0), B = this.box3(Y, w, h, z.bt), k = d.texture * L.textureGain;
+            for (let i = 0; i < n; i++) {
+                const band = fine[i] - B[i];
+                add[i] += k > 0 ? k * soft(band, 0.04) : k * band;
+            }
+        }
+        for (let i = 0; i < n; i++) {
+            const a = add[i] * 255;
+            if (!a) continue;
+            for (let c = 0; c < 3; c++) {
+                const v = px[i * 4 + c] + a;
+                px[i * 4 + c] = v < 0 ? 0 : v > 255 ? 255 : Math.round(v);
+            }
+        }
     },
 
     // RGBA bytes (w × h), in place
     applyDetail(px, w, h, d, s = 1) {
         const z = this.detailSizes(d, s);
         const n = w * h;
+        if (z.ry) this.descreenPx(px, w, h, d, z);
+        if (d.long && (d.texture || d.clarity || d.dehaze)) this.localPx(px, w, h, d, z);
+        if (!z.rn && !z.rc && !z.rb) return px;
         let Y = new Float32Array(n), Cb = new Float32Array(n), Cr = new Float32Array(n);
         for (let i = 0; i < n; i++) {
             const r = px[i * 4] / 255, g = px[i * 4 + 1] / 255, b = px[i * 4 + 2] / 255;
@@ -1597,6 +2077,124 @@ void main() {
             out.data.set(big.data.subarray(from, from + w * 4), r * w * 4);
         }
         return out;
+    },
+
+    // A printed photo's dot screen, found in its own pixels (RGBA, w × h,
+    // at full size: a preview would have lost the dots): the brightness's
+    // spectrum, averaged over a few windows, has a sharp peak at the dots'
+    // spacing that a photo's own texture doesn't: far above the rest of its
+    // ring (SCREEN_FOUND times), and a real share of all the fine detail
+    // (SCREEN_SHARE: the dots are high contrast; the ripple a scanner's
+    // interpolated resolution leaves is faint), with its twin a quarter
+    // turn round (SCREEN_TURNED, as strong or a quarter of it). The kit's
+    // screens stand 12,000 times above their ring or more; its photos that
+    // aren't printed, 400 at most. → { screen (px), strength } or null
+    SCREEN_FOUND: 2000,
+    SCREEN_SHARE: 0.01,
+    SCREEN_TURNED: 0.25,
+    findScreen(px, w, h) {
+        let N = 256;
+        while (N > 64 && N > Math.min(w, h)) N >>= 1;
+        if (N > Math.min(w, h)) return null;
+        const at = (len) => len >= 2 * N ? [len / 4 - N / 2, 3 * len / 4 - N / 2, len / 2 - N / 2] : [(len - N) / 2];
+        const xs = at(w).map(Math.round), ys = at(h).map(Math.round);
+        const wins = [];
+        for (const y of ys) for (const x of xs) wins.push([x, y]);
+        const hann = new Float32Array(N);
+        for (let i = 0; i < N; i++) hann[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * (i + 0.5) / N);
+        const pow = new Float64Array(N * N), re = new Float64Array(N * N), im = new Float64Array(N * N);
+        for (const [x0, y0] of wins) {
+            let mean = 0;
+            for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+                const i = ((y0 + y) * w + x0 + x) * 4;
+                mean += re[y * N + x] = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+            }
+            mean /= N * N;
+            for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+                const i = y * N + x;
+                re[i] = (re[i] - mean) * hann[x] * hann[y];
+                im[i] = 0;
+            }
+            this.fft2(re, im, N);
+            for (let i = 0; i < N * N; i++) pow[i] += re[i] * re[i] + im[i] * im[i];
+        }
+        // Each ring's median power (the photo's own falls off with frequency)
+        const fr = (i) => (i < N / 2 ? i : i - N);
+        const R = Math.floor(N / 2), rings = Array.from({ length: R + 1 }, () => []);
+        for (let v = 0; v < N; v++) for (let u = 0; u < N; u++) {
+            const r = Math.round(Math.hypot(fr(u), fr(v)));
+            if (r <= R && fr(v) >= 0) rings[r].push(pow[v * N + u]);
+        }
+        const med = rings.map(l => { if (!l.length) return 0; l.sort((a, b) => a - b); return l[l.length >> 1]; });
+        const P = (u, v) => pow[((v + N) % N) * N + ((u + N) % N)];
+        let best = null;
+        const r0 = Math.max(3, Math.ceil(N / 24)), r1 = Math.floor(N / 2.1);
+        // All the detail finer than the coarsest screen (half the plane)
+        let total = 0;
+        for (let v = 0; v <= R; v++) for (let u = -R + 1; u < R; u++) if (Math.hypot(u, v) >= r0 && !(v === 0 && u < 0)) total += P(u, v);
+        for (let v = 0; v <= R; v++) for (let u = -R + 1; u < R; u++) {
+            const r = Math.hypot(u, v);
+            if (r < r0 || r > r1 || (v === 0 && u < 0)) continue;
+            const p = P(u, v), m = med[Math.round(r)] || 1e-9;
+            if (p < m * this.SCREEN_FOUND) continue;
+            let peak = true;
+            for (let dv = -1; dv <= 1 && peak; dv++) for (let du = -1; du <= 1; du++) if ((du || dv) && P(u + du, v + dv) > p) { peak = false; break; }
+            if (!peak) continue;
+            // A screen is a lattice of dots: the same peak a quarter turn
+            // round (stripes, a fence or a weave have it one way only)
+            let turned = 0;
+            for (let dv = -1; dv <= 1; dv++) for (let du = -1; du <= 1; du++) turned = Math.max(turned, P(-v + du, u + dv));
+            if (turned < p * this.SCREEN_TURNED) continue;
+            // the peak's power, its neighbours' too (it falls between bins)
+            let sum = 0;
+            for (let dv = -1; dv <= 1; dv++) for (let du = -1; du <= 1; du++) sum += P(u + du, v + dv);
+            if (!best || sum > best.sum) best = { u, v, sum, ratio: p / m, share: sum / total };
+        }
+        if (!best || best.share < this.SCREEN_SHARE) return null;
+        // where between the bins it is (a parabola through each way)
+        const off = (a, b, c) => { const q = a - 2 * b + c; return q < 0 ? Math.max(-0.5, Math.min(0.5, 0.5 * (a - c) / q)) : 0; };
+        const { u, v } = best, c = Math.log(P(u, v) + 1e-12);
+        const du = off(Math.log(P(u - 1, v) + 1e-12), c, Math.log(P(u + 1, v) + 1e-12));
+        const dv = off(Math.log(P(u, v - 1) + 1e-12), c, Math.log(P(u, v + 1) + 1e-12));
+        const screen = N / Math.hypot(u + du, v + dv);
+        const sl = this.SLIDERS.screen;
+        if (screen < sl.min || screen > sl.max) return null;
+        return { screen: +screen.toFixed(1), strength: Math.round(best.ratio) };
+    },
+
+    // In place: a 2D Fourier transform of N × N (N a power of two)
+    fft2(re, im, N) {
+        const rr = new Float64Array(N), ii = new Float64Array(N);
+        const fft = (rr, ii) => {
+            for (let i = 1, j = 0; i < N; i++) {
+                let bit = N >> 1;
+                for (; j & bit; bit >>= 1) j ^= bit;
+                j ^= bit;
+                if (i < j) { let t = rr[i]; rr[i] = rr[j]; rr[j] = t; t = ii[i]; ii[i] = ii[j]; ii[j] = t; }
+            }
+            for (let len = 2; len <= N; len <<= 1) {
+                const a = -2 * Math.PI / len, wr = Math.cos(a), wi = Math.sin(a);
+                for (let i = 0; i < N; i += len) {
+                    let cr = 1, ci = 0;
+                    for (let k = 0; k < len / 2; k++) {
+                        const p = i + k, q = p + len / 2;
+                        const tr = rr[q] * cr - ii[q] * ci, ti = rr[q] * ci + ii[q] * cr;
+                        rr[q] = rr[p] - tr; ii[q] = ii[p] - ti; rr[p] += tr; ii[p] += ti;
+                        const nr = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = nr;
+                    }
+                }
+            }
+        };
+        for (let y = 0; y < N; y++) {
+            for (let x = 0; x < N; x++) { rr[x] = re[y * N + x]; ii[x] = im[y * N + x]; }
+            fft(rr, ii);
+            for (let x = 0; x < N; x++) { re[y * N + x] = rr[x]; im[y * N + x] = ii[x]; }
+        }
+        for (let x = 0; x < N; x++) {
+            for (let y = 0; y < N; y++) { rr[y] = re[y * N + x]; ii[y] = im[y * N + x]; }
+            fft(rr, ii);
+            for (let y = 0; y < N; y++) { re[y * N + x] = rr[y]; im[y * N + x] = ii[y]; }
+        }
     },
 
     // An ImageBitmap with the adjustments (the crop editor's picture)

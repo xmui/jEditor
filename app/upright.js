@@ -36,7 +36,67 @@ const Upright = {
 
     // How many quarter turns clockwise put the photo upright (0 to 3), and
     // how sure that is (0 to 1). `source`: an image, bitmap or blob, as shown.
+    // A blob is looked at in a worker (about a second for a big scan), so
+    // the window keeps up; here, if a worker can't start.
     async guess(source) {
+        const worker = source instanceof Blob ? this.startWorker() : null;
+        if (worker) {
+            try {
+                return await new Promise((resolve, reject) => {
+                    const id = ++this.seq;
+                    this.jobs.set(id, { resolve, reject });
+                    worker.postMessage({ id, blob: source });
+                });
+            } catch (e) { /* the worker failed: here instead */ }
+        }
+        return this.guessHere(source);
+    },
+
+    // The worker: this same code and the network's numbers, made once
+    worker: null,
+    jobs: null,
+    seq: 0,
+    startWorker() {
+        if (this.worker !== null) return this.worker || null;
+        this.worker = false;
+        try {
+            if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined' || typeof UPRIGHT_MODEL === 'undefined') return null;
+            const keep = ['SURE', 'load', 'fromHalf', 'guessHere', 'turnLeft', 'forward', 'conv', 'dense', 'softmax'];
+            const body = keep.map(k => typeof this[k] === 'function' ? this[k].toString() : `${k}: ${JSON.stringify(this[k])}`).join(',\n');
+            const src = `const UPRIGHT_MODEL = ${JSON.stringify(UPRIGHT_MODEL)};
+const Upright = { net: null,
+${body} };
+self.onmessage = async (e) => {
+    try { self.postMessage({ id: e.data.id, result: await Upright.guessHere(e.data.blob) }); }
+    catch (err) { self.postMessage({ id: e.data.id, error: String((err && err.message) || err) }); }
+};`;
+            const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+            const w = new Worker(url);
+            URL.revokeObjectURL(url);
+            this.jobs = new Map();
+            w.onmessage = (e) => {
+                const job = this.jobs.get(e.data.id);
+                if (!job) return;
+                this.jobs.delete(e.data.id);
+                if (e.data.error) job.reject(new Error(e.data.error));
+                else job.resolve(e.data.result);
+            };
+            w.onerror = () => {
+                this.worker = false;
+                const jobs = this.jobs;
+                this.jobs = new Map();
+                jobs.forEach(j => j.reject(new Error('Turn upright\'s worker stopped')));
+                w.terminate();
+            };
+            this.worker = w;
+        } catch (e) {
+            this.worker = false;
+        }
+        return this.worker || null;
+    },
+
+    // The same, on this thread
+    async guessHere(source) {
         const net = this.load();
         if (!net) return null;
         const n = net.size;

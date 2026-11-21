@@ -32,16 +32,18 @@ const Themes = {
             // No menu bar in the window, as a Mac app has none: in the Mac's
             // own menu bar (systemMenus below), iPhoto's and Aperture's way
             systemMenus: ['File', 'Edit', 'View', 'Photos', 'Help'],
+            // Each variant's name in plain words (the owner's branding rule);
+            // its id stays, so a theme chosen before is still found
             variants: [
-                { id: 'finder', name: 'Finder', mode: 'light', swatch: '#c9ced6', css: ['snow/finder.css', 'snow/controls.css', 'snow/modes.css'] },
-                { id: 'aperture', name: 'Aperture', mode: 'dark', swatch: '#3a3a3a', css: ['snow/finder.css', 'snow/controls.css', 'snow/modes.css', 'snow/aperture.css'] }
+                { id: 'finder', name: 'Light', mode: 'light', swatch: '#c9ced6', css: ['snow/finder.css', 'snow/controls.css', 'snow/modes.css'] },
+                { id: 'aperture', name: 'Dark', mode: 'dark', swatch: '#3a3a3a', css: ['snow/finder.css', 'snow/controls.css', 'snow/modes.css', 'snow/aperture.css'] }
             ]
         },
         {
             id: 'mac84', name: '1984', year: 1984, skin: 'mac84', layout: 'docked', title: 'mac',
             menus: ['File', 'Edit', 'View', 'Photo', 'Special'],
             variants: [
-                { id: 'finder', name: 'Finder', mode: 'light', swatch: '#000000', css: ['mac84/finder.css', 'mac84/controls.css', 'mac84/modes.css'] }
+                { id: 'finder', name: 'Classic', mode: 'light', swatch: '#000000', css: ['mac84/finder.css', 'mac84/controls.css', 'mac84/modes.css'] }
             ],
             settings: [
                 {
@@ -84,7 +86,8 @@ const Themes = {
             ['Sync adjustments…', 'edit.syncAdjust', true],
             ['Auto Sync', 'adjust.autoSync', true],
             '—',
-            ['Search', 'app.search', true]
+            ['Search', 'app.search', true],
+            ['Find anything…', 'app.palette']
         ],
         View: [
             ['Photos', 'view.grid', true],
@@ -104,6 +107,8 @@ const Themes = {
             ['Rotate left', 'edit.rotateLeft', true],
             ['Rotate right', 'edit.rotateRight', true],
             ['Rotate 180°', 'edit.rotate180', true],
+            ['Flip left to right', 'edit.flipH', true],
+            ['Flip upside down', 'edit.flipV', true],
             '—',
             ['Crop and straighten', 'edit.crop', true],
             ['Auto crop', 'edit.autoCrop', true],
@@ -122,6 +127,8 @@ const Themes = {
             ['Settings…', 'app.settings']
         ],
         Help: [
+            ['Take the tour', 'app.tour'],
+            ['Guide', 'app.guide'],
             ['Keyboard shortcuts', 'app.shortcuts'],
             ['What\'s new', () => app.toggleWhatsNew()]
         ]
@@ -131,15 +138,20 @@ const Themes = {
 
     init(app) {
         this.app = app;
+        // Settings → Experimental: turned on, the chosen theme is back at
+        // once; off, jEditor's own look (the choice is kept)
+        addEventListener('jeditor-experiments', () => { this.apply(); this.render(); });
         addEventListener('jeditor-window', (e) => {
             const bar = document.getElementById('th-titlebar');
             if (bar) bar.classList.toggle('maximized', !!(e.detail && e.detail.maximized));
         });
     },
 
-    // Themes are offered: an app that has them
+    // Themes are offered: an app that has them, with the experiment on
+    // (Settings → Experimental: paused, off to start with)
     can() {
-        return typeof Host !== 'undefined' && Host.has('themes');
+        return typeof Host !== 'undefined' && Host.has('themes')
+            && typeof Experiments !== 'undefined' && Experiments.on('themes');
     },
 
     // The chosen { theme, variant }, or null for jEditor's own look
@@ -277,6 +289,9 @@ const Themes = {
         // photo, the folder, the selection
         const mo = this._titleWatch = new MutationObserver(sync);
         mo.observe(document.body, { attributes: true, attributeFilter: ['data-view'] });
+        // Going home, and back into a folder
+        const dz = document.getElementById('drop-zone');
+        if (dz) mo.observe(dz, { attributes: true, attributeFilter: ['class'] });
         for (const id of ['file-name-text', 'fb-crumbs', 'file-count', 'selection-count']) {
             const el = document.getElementById(id);
             if (el) mo.observe(el, { childList: true, characterData: true, subtree: true });
@@ -305,6 +320,8 @@ const Themes = {
 
     title(theme) {
         const app = this.app;
+        // On the home page, just the app's name (no folder's open)
+        if (app.elements && app.elements.mainInterface && app.elements.mainInterface.classList.contains('hidden')) return 'jEditor';
         const single = document.body.dataset.view === 'single' && app.currentFile;
         const scope = typeof Folders !== 'undefined' && Folders.scope;
         const name = single ? app.currentFile.name
@@ -377,6 +394,8 @@ const Themes = {
         const native = Host.get();
         if (!native || !native.setMenus) return;
         const names = theme && (theme.systemMenus || theme.menus);
+        // jEditor's own look: its own menus (menubar.js)
+        if (!names && typeof MenuBar !== 'undefined' && MenuBar.system()) return;
         if (!names) {
             if (this._menuKey) { this._menuKey = ''; native.setMenus(null); }
             return;
@@ -526,8 +545,8 @@ const Themes = {
 };
 
 // 1984's thumbnails: one bit, dithered the MacPaint way (Atkinson), at the
-// size each is shown. Only the grid's and the film strip's; the photo
-// opened stays in colour. data-ts-thumbs says which (themes.js settings).
+// size each is shown. The grid's, the film strip's, the prints on the home
+// page and Open a folder's; the photo opened stays in colour. data-ts-thumbs says which (themes.js settings).
 const Dither = {
     start() {
         if (this.mo) { this.soon(true); return; }
@@ -580,7 +599,7 @@ const Dither = {
 
     run(sizes) {
         if (document.documentElement.dataset.tsThumbs !== 'dither') { this.undo(); return; }
-        for (const im of document.querySelectorAll('#grid-view .grid-item img, #thumbnail-strip .thumb-item img, #mode-strip .mode-thumb img')) {
+        for (const im of document.querySelectorAll('#grid-view .grid-item img, #thumbnail-strip .thumb-item img, .recent-print img, img.oc-pic')) {
             const done = im.dataset.undithered && im.src.startsWith('data:');
             if (done) {
                 // Shown at a new size: again, from its own thumbnail
@@ -606,7 +625,9 @@ const Dither = {
         const g = c.getContext('2d');
         g.fillStyle = '#fff';
         g.fillRect(0, 0, w, h);
-        const r = Math.min(w / img.naturalWidth, h / img.naturalHeight);
+        // Fitted as it's shown: whole, or filling its box (the prints)
+        const fill = getComputedStyle(img).objectFit === 'cover';
+        const r = (fill ? Math.max : Math.min)(w / img.naturalWidth, h / img.naturalHeight);
         const dw = Math.round(img.naturalWidth * r), dh = Math.round(img.naturalHeight * r);
         const ox = Math.floor((w - dw) / 2), oy = Math.floor((h - dh) / 2);
         g.drawImage(img, ox, oy, dw, dh);

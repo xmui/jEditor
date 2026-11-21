@@ -1,32 +1,33 @@
-// Save edits when done: a project setting that holds crops and turns back
-// instead of writing each one into the photo straight away.
+// Edits are kept in jEditor (Lightroom's way): in a project, a crop, a
+// straighten, a turn, adjustments (adjust.js) and painting (paint.js) are
+// kept as an edit on the photo: what the crop editor would save (crop.js
+// snapshot: the turn, the tilt and the box, relative to the photo's size),
+// plus `adj` and `paint`. The photo on disk isn't touched, so an edit can
+// be changed again and again, always from the whole photo. The grid, film
+// strip and viewer show each photo as it will be saved, with a pencil on
+// the edited ones. Nothing nags about them: they're kept, not at risk.
 //
-// Normally an edit is saved the moment it's made (that's the point). With
-// this on, a crop, a straighten, a turn or a batch Auto crop is kept as an
-// edit on the photo: what the crop editor would save (crop.js snapshot:
-// the turn, the tilt and the box, relative to the photo's size). The photo
-// on disk isn't touched, so the crop can be changed again and again, always
-// from the whole photo. The grid, film strip and viewer show each photo
-// as it will be saved, with a pencil on the edited ones, and a bar says
-// how many are waiting, with Save and Discard.
+// The one choice is Write edits to file (Ctrl+S,
+// the right-click menus, ⋯ in Adjust and Paint: app.saveOverOriginal),
+// which writes the edit into the photo; the original goes to originals/
+// so Ctrl+Z puts it back, edit and all. Export makes edited copies and
+// leaves the photos and their edits as they are. Edits are kept with the
+// project (edits.json, beside flags.json; see folder-cache.js), so they're
+// still there after closing jEditor. Like flags they live on the photo
+// objects while the project is open, so a rename or a move inside jEditor
+// carries them along.
 //
-// Save writes them all: over the photos (the originals are kept for Ctrl+Z,
-// as batch Auto crop does), or as copies in "jEditor Export" with the
-// photos left alone. Edits are kept with the project (edits.json, beside
-// flags.json; see folder-cache.js), so they're still there after closing
-// jEditor. Like flags they live on the photo objects while the project is
-// open, so a rename or a move inside jEditor carries them along.
-//
-// Adjustments (adjust.js: light, color, curves; `adj` on an edit) are
-// always kept this way, whether or not the setting is on: they're never
-// written into the photo until it's saved or exported. A photo with
-// adjustments keeps its crop and turns as an edit too, so everything is
-// applied once, from the original.
+// Without a project (a photo opened on its own, read-only folders) there's
+// nowhere to keep them, so a turn or a crop is written straight away.
+// Settings → Projects → Saving can turn keeping off (uiPrefs.keepEdits:
+// false): then a turn or a crop is written straight away in a project too,
+// except on a photo that already has an edit kept (it stays kept until
+// it's saved over or discarded; adjustments and paint are always kept).
+// It also clears the open project's edits (clearStored).
 
 const Edits = {
     FILE: 'edits.json',
 
-    defer: false,       // this project keeps edits until saved
     orphans: new Map(), // path → edit of photos not in the folder now
 
     ICON: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/></svg>',
@@ -35,26 +36,13 @@ const Edits = {
         if (this._inited) return;
         this._inited = true;
         this.app = app;
-        const bind = (id, fn) => {
-            const b = document.getElementById(id);
-            if (b) b.addEventListener('click', (e) => { e.currentTarget.blur(); fn(); });
-        };
-        bind('edits-save', () => this.saveAll());
-        bind('edits-discard', () => this.discardAll());
-        bind('edits-off', () => this.setDefer(false));
     },
 
-    // Another folder is being opened (or none): a reminder of what's
-    // waiting in the one being left, which keeps its edits for next time
+    // Another folder is being opened (or none). The one being left keeps
+    // its edits for next time, so there's nothing to warn about
     reset() {
         const app = this.app;
-        const n = app && app.files && this.defer ? app.files.filter(f => f._edit).length : 0;
         const left = this._loadedFor;
-        // (once the next one is set: not when the same one is opened again)
-        if (n && left) setTimeout(() => {
-            if (app.dirHandle === left) return;
-            app.showToast(`${left.name}: ${n.toLocaleString()} edit${n === 1 ? '' : 's'} not saved yet — still there when you open it again`, 6000, null, null, { type: 'info' });
-        }, 0);
         // What hasn't been written yet goes to the project being left,
         // after any write still under way (its folder is taken now)
         if (left && (this._dirty || this._saving) && !app.readOnlyMode) {
@@ -64,15 +52,28 @@ const Edits = {
             this._final = before.then(async () => this.writeOut(await root, data));
         }
         this._dirty = false;
-        this.defer = false;
         this.orphans = new Map();
         this._loadedFor = null;
-        this.updateBar();
     },
 
-    // Edits wait for Save in the open project
+    // Edits are kept in the open project (not written into the photos)
     on() {
-        return !!(this.defer && this.canKeep());
+        return this.keeping() && this.canKeep();
+    },
+
+    // Settings → Saving: Keep edits in jEditor (on unless turned off)
+    keeping() {
+        const p = this.app && this.app.uiPrefs;
+        return !(p && p.keepEdits === false);
+    },
+
+    setKeeping(on) {
+        const app = this.app;
+        on = !!on;
+        if (on === this.keeping()) return;
+        app.uiPrefs.keepEdits = on;
+        app.saveUiPrefs();
+        app.showToast(on ? 'Edits are kept in jEditor; the photos stay as they are' : 'Edits are saved straight into the photos from now on', 3000);
     },
 
     // There's a project to keep edits in
@@ -81,12 +82,12 @@ const Edits = {
         return !!(app && app.dirHandle && !app.readOnlyMode);
     },
 
-    // This photo's crops and turns are kept as an edit, not written: the
-    // setting is on, or it has adjustments or paint (which always are), or
-    // it's a RAW or a HEIC (raw.js, codec.js: never written), an AVIF or a
-    // JPEG XL (written only by Save edits, through the codecs: codec.js)
+    // This photo's crops and turns are kept as an edit, not written: in a
+    // project, or it has an edit kept already (adjustments and paint
+    // always are), or it's a RAW or a HEIC (raw.js, codec.js: never written), an AVIF or a
+    // JPEG XL (written only by Write edits to file, through the codecs: codec.js)
     keeps(f) {
-        return this.on() || !!(this.canKeep() && f && ((f._edit && (f._edit.adj || f._edit.paint)) || Raw.is(f.name) || Codec.isHeif(f.name) || Codec.of(f.name)));
+        return this.on() || !!(this.canKeep() && f && (f._edit || Raw.is(f.name) || Codec.isHeif(f.name) || Codec.of(f.name)));
     },
 
     // An edit with these adjustments (null: none), its crop kept; from: the
@@ -100,10 +101,10 @@ const Edits = {
         return this.isNothing(out) ? null : out;
     },
 
-    // No turn, no tilt, the whole photo (adjustments or not)
+    // No turn, no flip, no tilt, the whole photo (adjustments or not)
     wholePhoto(e) {
         const n = e.n, eq = (a, b) => Math.abs(a - b) < 1e-6;
-        return !((e.q || 0) % 4) && !e.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5);
+        return !((e.q || 0) % 4) && !e.m && !e.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5);
     },
 
     get(f) {
@@ -139,10 +140,8 @@ const Edits = {
         const app = this.app;
         this._loadedFor = app.dirHandle;
         this.orphans = new Map();
-        this.defer = false;
         if (!app.dirHandle || app.readOnlyMode) {
-            this.updateBar();
-            return [];
+                return [];
         }
         // (the last project's last write first: it may be this one)
         if (this._final) await this._final.catch(() => { });
@@ -154,7 +153,6 @@ const Edits = {
             data = fh && JSON.parse(await (await fh.getFile()).text());
         } catch (e) { /* nothing kept */ }
         if (this._loadedFor !== app.dirHandle) return [];
-        this.defer = !!(data && data.defer);
         const saved = new Map(Object.entries((data && data.edits) || {}));
         for (const f of app.files) {
             const rel = f.relPath || f.name;
@@ -170,7 +168,6 @@ const Edits = {
         }
         // Paint layers nothing in edits.json uses any more (paint.js)
         Paint.tidy(Object.values((data && data.edits) || {}).map(v => this.clean(v)).filter(Boolean)).catch(() => { });
-        this.updateBar();
         if (typeof Places !== 'undefined' && Places.boxes) Places.drawCard();
         return app.files.filter(f => f._edit);
     },
@@ -211,6 +208,8 @@ const Edits = {
             angle: num(v.angle) ? Math.max(-45, Math.min(45, v.angle)) : 0,
             n: { x0: n.x0, y0: n.y0, x1: n.x1, y1: n.y1 }
         };
+        // Flipped left to right, before the turn (CropGeom.flipped)
+        if (v.m === true) e.m = true;
         if (typeof v.aspectKey === 'string') e.aspectKey = v.aspectKey;
         if (typeof v.landscape === 'boolean') e.landscape = v.landscape;
         if (num(v.size)) e.size = v.size;
@@ -244,24 +243,23 @@ const Edits = {
 
     async save() {
         const app = this.app;
-        this.updateBar();
         if (!this._dirty || !app.dirHandle || app.readOnlyMode) return;
         this._dirty = false;
         const data = this.collect();
         await this.writeOut(await FolderCache.root(app, !this.isEmpty(data)).catch(() => null), data);
     },
 
-    // Nothing to keep: no setting, no edits
+    // Nothing to keep
     isEmpty(data) {
-        return !data.defer && !Object.keys(data.edits).length;
+        return !Object.keys(data.edits).length;
     },
 
-    // The setting and every edit, as edits.json holds them
+    // Every edit, as edits.json holds them
     collect() {
         const out = {};
         for (const [k, v] of this.orphans) out[k] = v;
         for (const f of this.app.files) if (f._edit) out[f.relPath || f.name] = f._edit;
-        return { version: 1, defer: this.defer, edits: out };
+        return { version: 1, edits: out };
     },
 
     // Written to the project's data folder (removed when there's nothing)
@@ -275,7 +273,7 @@ const Edits = {
         }
     },
 
-    // Clean Up removed edits.json: the edits go, the setting stays
+    // Clean Up removed edits.json: the edits go
     clearAll() {
         this.orphans = new Map();
         const had = this.edited();
@@ -283,13 +281,11 @@ const Edits = {
         if (had.length) this.changed(had);
         this._dirty = true;
         this.saveSoon();
-        this.updateBar();
     },
 
     // Photos that left the folder keep their edits in case they come back
     forgetFiles(files) {
         for (const f of files) if (f._edit) this.orphans.set(f.relPath || f.name, f._edit);
-        if (files.some(f => f._edit)) this.updateBar();
     },
 
     adopt(files) {
@@ -330,7 +326,7 @@ const Edits = {
         }
     },
 
-    // No turn, no tilt, the whole photo, no adjustments and no paint
+    // No turn, no flip, no tilt, the whole photo, no adjustments and no paint
     isNothing(e) {
         return this.wholePhoto(e) && !(e.adj && Develop.active(e.adj)) && !Paint.has(e);
     },
@@ -341,14 +337,9 @@ const Edits = {
         this.app.showToast(`Undid ${entry.label || 'edit'} on ${n === 1 ? entry.items[0].file.name : n + ' photos'}`, 3000, null, null, { kind: 'undo' });
     },
 
-    // Edits put back (Ctrl+Z). Kept crops need the setting (or
-    // adjustments): it comes back on if it was turned off since
+    // Edits put back (Ctrl+Z)
     restore(items) {
         for (const it of items) this.put(it.file, it.edit);
-        if (!this.defer && items.some(it => it.file._edit && !it.file._edit.adj)) {
-            this.defer = true;
-            if (typeof Places !== 'undefined' && Places.boxes) Places.drawCard();
-        }
         this.changed(items.map(it => it.file));
     },
 
@@ -376,24 +367,31 @@ const Edits = {
         return t;
     },
 
+    // Flipped as they're seen ('h' left to right, 'v' upside down): the
+    // same box on the photo, mirrored with it. Twice is back as it was
+    flip(files, axis) {
+        if (!files.length) return true;
+        this.set(files.map(f => ({ file: f, edit: this.flipped(f._edit, axis) })), axis === 'v' ? 'flip upside down' : 'flip');
+        return true;
+    },
+
+    flipped(e, axis) {
+        const t = e ? { ...e, n: { ...e.n } } : { q: 0, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } };
+        const f = CropGeom.flipped(t, axis);
+        const out = { ...t, q: f.q, angle: f.angle, n: f.n };
+        if (f.m) out.m = true;
+        else delete out.m;
+        // Batch Auto crop's record (crop-log.js) no longer describes it
+        delete out.auto;
+        return out;
+    },
+
     // Back to the photos as they are on disk
     discard(files) {
         files = files.filter(f => f && f._edit);
         if (!files.length) return;
         this.set(files.map(f => ({ file: f, edit: null })), 'edits');
         this.app.showToast(`Discarded the edit${files.length === 1 ? ` on ${files[0].name}` : `s on ${files.length} photos`} — Ctrl+Z brings ${files.length === 1 ? 'it' : 'them'} back`, 3000);
-    },
-
-    async discardAll() {
-        const list = this.edited();
-        if (!list.length) return;
-        const ok = await UI.confirm({
-            title: `Discard ${list.length === 1 ? 'the edit' : `all ${list.length.toLocaleString()} edits`}?`,
-            message: 'The photos go back to how they are on disk. Ctrl+Z brings the edits back.',
-            ok: 'Discard',
-            danger: true
-        });
-        if (ok) this.discard(list);
     },
 
     // Thumbnails, viewer, badges, the bar and the file
@@ -405,78 +403,48 @@ const Edits = {
             if (f._stripEl) this.decorate(f._stripEl, f);
         }
         this.updateHeader();
-        this.updateBar();
         if (save) this.saveSoon();
-    },
-
-    // ---- The setting ----
-
-    async setDefer(on) {
-        const app = this.app;
-        on = !!on;
-        if (on === this.defer) return true;
-        if (!app.dirHandle || app.readOnlyMode) {
-            app.showToast('This needs a folder opened with Open folder');
-            return false;
-        }
-        if (!on) {
-            // (adjusted photos keep theirs either way)
-            const waiting = this.edited().filter(f => !f._edit.adj);
-            const n = waiting.length;
-            if (n) {
-                const how = await UI.choose({
-                    title: `${n.toLocaleString()} edit${n === 1 ? '' : 's'} not saved yet`,
-                    message: 'From now on, edits are saved straight away. What about the ones waiting?',
-                    ok: 'Save them',
-                    alt: 'Discard them',
-                    altDanger: true
-                });
-                if (!how) return false;
-                if (how === 'ok' && !await this.saveAll({ overwrite: true, list: waiting })) return false;
-                if (how === 'alt') this.discard(waiting);
-            }
-        }
-        this.defer = on;
-        this.saveSoon();
-        await this.flush();
-        this.updateBar();
-        if (typeof Places !== 'undefined' && Places.boxes) Places.drawCard();
-        app.showToast(on ? 'Edits are kept until you save them' : 'Edits are saved straight away', 2500);
-        return true;
     },
 
     // ---- Saving ----
 
-    // Over the photos, or as copies in "jEditor Export". overwrite: skip
-    // the question. True when it was done.
-    async saveAll({ overwrite = false, list = null } = {}) {
+    // Write edits to file: the edits written into their photos (the
+    // originals kept for Ctrl+Z). True when it was done.
+    async saveAll({ list = null } = {}) {
         const app = this.app;
-        list = list || this.edited();
+        list = (list || this.edited()).filter(f => f && f._edit);
         if (!list.length) {
             app.showToast('No edits to save');
             return true;
         }
         if (!app.ensureWritable()) return false;
-        let how = overwrite ? 'ok' : null;
-        if (!how) {
-            const n = list.length, all = app.files.length;
-            how = await UI.choose({
-                title: `Save ${n === 1 ? 'the edit' : `${n.toLocaleString()} edits`}`,
-                message: 'Write the edits into the photos, or keep the photos as they are and export edited copies.',
-                items: [
-                    `Save into the photos: ${n.toLocaleString()} photo${n === 1 ? ' is' : 's are'} changed. The originals are kept by jEditor, so Ctrl+Z puts them back.`,
-                    `Export copies: all ${all.toLocaleString()} photo${all === 1 ? '' : 's'} go to "jEditor Export" in this folder, the edited ones with their edits. The edits stay, to change or save later.`
-                ],
-                ok: 'Save into photos',
-                alt: 'Export copies'
-            });
+        return app.saveEdits(list);
+    },
+
+    // Settings → Saving → Clear…: every edit kept for the open project
+    // taken off, after asking (Ctrl+Z puts them back while it's open)
+    async clearStored() {
+        const app = this.app;
+        if (!this.canKeep()) {
+            app.showToast('Open a project first: edits are kept for each project', 3000);
+            return false;
         }
-        if (how === 'ok') return app.saveEdits(list);
-        if (how === 'alt') {
-            await app.exportCopies(app.files);
-            return true;
+        const files = this.edited(), n = files.length + this.orphans.size;
+        if (!n) {
+            app.showToast(`No edits are stored for ${app.dirHandle.name}`, 2500);
+            return false;
         }
-        return false;
+        const ok = await UI.confirm({
+            title: `Clear ${n.toLocaleString()} edit${n === 1 ? '' : 's'} stored for ${app.dirHandle.name}?`,
+            message: 'The crops, turns, adjustments and painting kept in jEditor for this project are removed. The photos on disk stay exactly as they are, and so does anything already written to the files or exported.',
+            ok: 'Clear edits',
+            danger: true
+        });
+        if (!ok) return false;
+        this.orphans = new Map();
+        if (files.length) this.discard(files);
+        else { this._dirty = true; this.saveSoon(); }
+        return true;
     },
 
     // ---- On screen ----
@@ -488,10 +456,10 @@ const Edits = {
             if (b) b.remove();
             return;
         }
+        // A small neutral dot: edited in jEditor, the file as it was
         if (!b) {
             b = document.createElement('span');
             b.className = 'tile-edit';
-            b.innerHTML = this.ICON;
             el.appendChild(b);
         }
         b.title = this.describe(f._edit);
@@ -514,41 +482,8 @@ const Edits = {
         if (e) el.title = this.describe(e);
     },
 
-    // The pencil's tooltip
-    describe(e) {
-        if (e.paint && !this.on()) return 'Painted — the photo on disk is unchanged; Export (or Save edits) writes the result';
-        if (e.adj && !this.on()) return 'Adjusted — the photo on disk is unchanged; Export (or Save edits) writes the result';
-        return 'Edited — not saved into the photo yet';
-    },
-
-    // How many are waiting, with Save and Discard
-    updateBar() {
-        const bar = document.getElementById('edits-bar');
-        if (!bar) return;
-        const on = this.on();
-        bar.classList.toggle('hidden', !on);
-        const iface = this.app && this.app.elements && this.app.elements.mainInterface;
-        if (iface) iface.classList.toggle('edits-on', on);
-        if (!on) return;
-        const n = this.count();
-        const text = document.getElementById('edits-text');
-        const full = n ? `${n.toLocaleString()} edit${n === 1 ? '' : 's'} not saved yet` : 'Edits are kept until you save';
-        // Short of room, only the count shows (style.css): the rest is its tooltip
-        text.textContent = '';
-        if (n) {
-            text.append(`${n.toLocaleString()} edit${n === 1 ? '' : 's'}`);
-            const more = document.createElement('span');
-            more.className = 'edits-more';
-            more.textContent = ' not saved yet';
-            text.append(more);
-        } else {
-            text.append(full);
-        }
-        text.title = full;
-        document.getElementById('edits-save').disabled = !n;
-        document.getElementById('edits-discard').classList.toggle('hidden', !n);
-        document.getElementById('edits-off').classList.toggle('hidden', !!n);
-        // The bottom row makes room for it (fit.js)
-        if (typeof Fit !== 'undefined') Fit.run();
+    // The dot's tooltip (and the pencil's by the name), in two lines
+    describe() {
+        return Host.say('Edited — the original file is untouched\nCtrl+S writes your edits into the file');
     }
 };

@@ -61,8 +61,11 @@ if (!SITE) {
     // The codec worker and the codecs it loads (codec.js) stay files: a
     // worker and WebAssembly can't be inlined into the page
     const codecs = fs.readdirSync(path.join(APP, 'codecs')).filter(f => /\.(js|wasm)$/.test(f)).map(f => 'codecs/' + f);
-    const assets = ['version.js', 'manifest.json', 'icon.png', 'icon-192.png', 'icon-maskable-512.png', 'codec-worker.js', 'tiff-codec.js', ...codecs];
+    // What's new's pictures (highlights.js) too
+    const art = fs.readdirSync(path.join(APP, 'whatsnew')).filter(f => f.endsWith('.webp')).map(f => 'whatsnew/' + f);
+    const assets = ['version.js', 'manifest.json', 'icon.png', 'icon-192.png', 'icon-maskable-512.png', 'codec-worker.js', 'tiff-codec.js', ...codecs, ...art];
     fs.mkdirSync(path.join(SITE, 'codecs'), { recursive: true });
+    fs.mkdirSync(path.join(SITE, 'whatsnew'), { recursive: true });
     for (const f of assets) fs.copyFileSync(path.join(APP, f), path.join(SITE, f));
     // Service worker: same code, precaching what this build contains
     const precache = ['./', './index.html', ...assets.map(f => './' + f)];

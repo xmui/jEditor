@@ -12,6 +12,11 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 const { _electron: electron } = require('playwright-core');
+const { QUIET_FIRST_OPEN, floatingBoxes, overTopBar } = require('./page-helpers.js');
+const { CONFORMANCE, EXPECTED, KNOWN } = require('./handles-conformance.js');
+// JEDITOR_HOST_HANDLES=1: the whole suite with the app's own folder handles
+// (mac/handles.js), not Chromium's (docs/plans/lighter-desktop.md, step 1)
+const HOST_HANDLES = process.env.JEDITOR_HOST_HANDLES === '1';
 
 const ROOT = path.join(__dirname, '..');
 const MAC = path.join(ROOT, 'mac');
@@ -76,6 +81,12 @@ async function launch(profile, args = [], env = {}) {
     page.on('pageerror', e => errors.push(e.message));
     page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
     await page.waitForFunction(() => typeof app !== 'undefined' && app.elements && window.JEditorNative);
+    await page.evaluate(QUIET_FIRST_OPEN);
+    // (the page read its settings before that: Keep edits off now too)
+    await page.evaluate(() => { try { if (JSON.parse(localStorage.getItem('jeditor.ui') || '{}').keepEdits === false) app.uiPrefs.keepEdits = false; } catch (e) { /* no storage */ } });
+    // Themes are paused, under Settings → Experimental (off to start with):
+    // on here, for the tests that use one (a test of it being off sets it)
+    await page.evaluate(() => { if (!Experiments.on('themes')) Experiments.set('themes', true); });
     return { app, page, errors };
 }
 
@@ -112,7 +123,7 @@ const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - 
 const loaded = (page, n) => page.waitForFunction((n) => !app.isLoading && app.files.length === n, n, { timeout: 20000 });
 
 // A prompt nobody answers would wait for ever: fail instead
-setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a folder that never opened?)'); process.exit(1); }, 180000).unref();
+setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a folder that never opened?)'); process.exit(1); }, 900000).unref(); // (the mode chip's cases, every size, look and theme, take a while: each waits for the sidebar's slide)
 
 (async () => {
     await new Promise(r => releaseServer.listen(0, '127.0.0.1', r));
@@ -157,6 +168,24 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await page.evaluate(() => app.undo());
         check('... and Ctrl+Z puts it back', fs.existsSync(path.join(smith, 'photo2.jpg')));
         check('no .jeditor folder in the project', !fs.existsSync(path.join(smith, '.jeditor')), fs.readdirSync(smith).join());
+        check('no JS errors', errors.length === 0, errors.join('; '));
+        await app.close();
+    }
+
+    console.log(`mac: folder handles, ${HOST_HANDLES ? 'the app\'s own (handles.js)' : 'Chromium\'s'}`);
+    {
+        // The file operations the page does, on a folder on disk: Chromium's
+        // own handles give what test/handles-conformance.js records, and
+        // the app's own (JEDITOR_HOST_HANDLES=1) the same
+        const dir = fs.mkdtempSync(path.join(tmp, 'conformance-'));
+        const { app, page, errors } = await launch(path.join(tmp, 'profile-conformance'));
+        const r = await page.evaluate(`(async () => { const root = await JEditorNative.folderHandle(${JSON.stringify(dir)}); const r = await (${CONFORMANCE})(root); r.ours = !!(window.HostHandles && HostHandles.isOurs(root)); return r; })()`);
+        const want = (k) => (HOST_HANDLES && k in KNOWN ? KNOWN[k] : EXPECTED[k]);
+        const diff = Object.keys(EXPECTED).filter(k => r[k] !== want(k));
+        check(HOST_HANDLES ? 'the app makes the handles (the switch is on)' : 'Chromium makes the handles (the switch is off)', r.ours === HOST_HANDLES);
+        check(`every file operation gives what Chromium's own handles do (${Object.keys(EXPECTED).length})`, diff.length === 0,
+            diff.map(k => `${k}: wanted ${JSON.stringify(want(k))}, got ${JSON.stringify(r[k])}`).join('; '));
+        check('nothing left in the folder', fs.readdirSync(dir).length === 0, fs.readdirSync(dir).join());
         check('no JS errors', errors.length === 0, errors.join('; '));
         await app.close();
     }
@@ -233,7 +262,9 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         check('XP: its own menus in the Mac\'s menu bar too', names(xp) === 'File,Edit,View,Picture,Tools,Window,Help', names(xp));
         await choose('');
         const back = await bar();
-        check('jEditor\'s own look: the app\'s usual menus again', names(back) === names(own) && names(own) === 'File,Edit,View,Window', names(back));
+        check('jEditor\'s own look: its own menus again (menubar.js), with every command', names(back) === names(own) && names(own) === 'File,Edit,View,Photo,Window,Help' && !!find(own, 'Photo', 'Rotate left') && !!find(own, 'File', 'New Window'), names(back));
+        const open = find(own, 'File', 'Open folder…'), rotate = find(own, 'Photo', 'Rotate left');
+        check('... Open folder is the app\'s own ⌘O; the rest have their keys, left to the page', !!open && open.key === 'CmdOrCtrl+O' && open.reg !== false && !!rotate && rotate.key === '[' && rotate.reg === false, JSON.stringify([open, rotate]));
         check('no JS errors', errors.length === 0, errors.join('; '));
         await app.close();
     }
@@ -265,6 +296,11 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         check('... and the other window shows it', await second.evaluate(() => app.files.some(f => f.name === 'photo2 (2).jpg')));
         await page.evaluate(() => app.undo());
         check('Ctrl+Z moves it back', fs.existsSync(path.join(smith, 'photo2.jpg')) && !fs.existsSync(path.join(jones, 'photo2 (2).jpg')));
+        // Redo (Ctrl+Shift+Z): moved over again, and Ctrl+Z takes it back again
+        const redid = await page.evaluate(() => app.redo());
+        const movedAgain = !fs.existsSync(path.join(smith, 'photo2.jpg')) && fs.existsSync(path.join(jones, 'photo2 (2).jpg'));
+        await page.evaluate(() => app.undo());
+        check('... Redo moves it over again, and Ctrl+Z back again', redid && movedAgain && fs.existsSync(path.join(smith, 'photo2.jpg')) && !fs.existsSync(path.join(jones, 'photo2 (2).jpg')), JSON.stringify([redid, movedAgain]));
 
         // Copied into Jones's Ceremony folder; undo removes the copy
         const copied = await page.evaluate(async (dest) => {
@@ -305,8 +341,10 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         const { app, page, errors } = await launch(profile, [], { JEDITOR_VOLUMES: volumes });
         await app.evaluate(({ dialog }, p) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] }); }, projectsDir);
         const r = await page.evaluate(async (p) => {
+            // All projects…, on the home page
+            document.getElementById('home-all').click();
             const box = document.getElementById('start-places');
-            const shown = getComputedStyle(box).display !== 'none';
+            const shown = getComputedStyle(box).display !== 'none' && box.getClientRects().length > 0;
             await Places.chooseFolder();
             const places = await JEditorNative.places();
             return {
@@ -327,6 +365,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         // New project: a folder in the projects folder, opened
         await page.evaluate(async () => {
             UI.prompt = async () => 'Gamma';
+            UI.choose = async () => 'ok'; // (which kind: a folder for photos)
             await Places.newProject();
             const until = Date.now() + 10000;
             while ((!app.dirHandle || app.dirHandle.name !== 'Gamma') && Date.now() < until) await new Promise(res => setTimeout(res, 50));
@@ -351,6 +390,52 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         const alphaTo = path.join(projectsDir, 'Alpha Smith');
         check('Rename renames the folder on disk', renamed.to === alphaTo && fs.existsSync(alphaTo) && !fs.existsSync(alpha), renamed.to);
         check('... and its flags go with it', renamed.star && renamed.orderPath === alphaTo && !renamed.oldStore, JSON.stringify(renamed));
+
+        // The sidebar's rename (in place: Places.renameFolder), on the disk:
+        // Recents follow it, and Undo puts the old name back
+        const beta = makeOrder(projectsDir, 'Beta', 1);
+        // A desktop window: xvfb's screen is 640 wide, where the sidebar is over the grid, as on a phone
+        await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1200, 800));
+        const follow = await page.evaluate(async (p) => {
+            const until = (ok) => new Promise(async (res) => { const end = Date.now() + 10000; while (!ok() && Date.now() < end) await new Promise(r => setTimeout(r, 50)); res(); });
+            await JEditorNative.openPath(p.beta);
+            await until(() => app.dirHandle && app.dirHandle.name === 'Beta');
+            await JEditorNative.openPath(p.alphaTo);
+            await until(() => app.dirHandle && app.dirHandle.name === 'Alpha Smith');
+            await Recents.saving;
+            const to = await Places.renameFolder(p.beta, 'Beta Jones');
+            const list = await Recents.list();
+            const paths = await Promise.all(list.map(r => JEditorNative.folderPath(r.handle)));
+            const step = (app._undoStack || []).slice(-1)[0];
+            // The docked sidebar: against the window's left edge, full height; the folder pill beside it
+            app.setView('grid');
+            if (!Folders.railOpen()) Folders.toggleRail();
+            await new Promise(r => setTimeout(r, 300));
+            // (the slide in, and the pill moving over, ended: on a slow Mac 300ms wasn't always enough)
+            for (let i = 0; i < 40 && document.getAnimations().some(a => a.playState === 'running' && a.effect && a.effect.getComputedTiming().iterations !== Infinity); i++) await new Promise(r => setTimeout(r, 50));
+            const rail = document.getElementById('folder-rail').getBoundingClientRect();
+            const bar = document.getElementById('folder-bar').getBoundingClientRect();
+            // (with macOS 26's toolbar there's no folder pill: the toolbar has its controls)
+            const native = document.documentElement.classList.contains('native-toolbar');
+            const docked = { left: rail.left, top: rail.top, full: Math.round(rail.bottom) === innerHeight, beside: native ? !bar.width : bar.left >= rail.right, native };
+            // Recents in the sidebar: Beta Jones, not the open one
+            await Places.draw();
+            const recents = [...document.querySelectorAll('#sb-places .sb-recent .fr-name')].map(n => n.textContent);
+            await app.undo();
+            const undone = await JEditorNative.folderPath(app.dirHandle).catch(() => null);
+            // Redo: the new name again, and Ctrl+Z the old one again
+            const redid = await app.redo();
+            const redoneStep = (app._undoStack || []).slice(-1)[0];
+            const redo = { redid, step: redoneStep && redoneStep.type };
+            await app.undo();
+            return { to, names: list.map(r => r.name), paths, step: step && step.type, docked, recents, redo, undone };
+        }, { beta, alphaTo });
+        const betaTo = path.join(projectsDir, 'Beta Jones');
+        check('the sidebar\'s Rename: Recents follow it to its new name', follow.to === betaTo && follow.names.includes('Beta Jones') && !follow.names.includes('Beta') && follow.paths.includes(betaTo), JSON.stringify(follow));
+        check('... and Undo puts the old name back on the disk', follow.step === 'project-rename' && fs.existsSync(beta) && !fs.existsSync(betaTo), JSON.stringify([follow.step, fs.existsSync(beta)]));
+        check('... Redo gives it the new name again, and Ctrl+Z the old one again', follow.redo.redid && follow.redo.step === 'project-rename' && fs.existsSync(beta) && !fs.existsSync(betaTo), JSON.stringify(follow.redo));
+        check('the sidebar is docked: the window\'s left edge, its full height, the folder pill beside it', follow.docked.left === 0 && follow.docked.top === 0 && follow.docked.full && follow.docked.beside, JSON.stringify(follow.docked));
+        check('Recents lists the others opened, not the open project', follow.recents.includes('Beta Jones') && !follow.recents.includes('Alpha Smith'), JSON.stringify(follow.recents));
 
         // A whole folder onto the drive; again: a free name
         const copied = await page.evaluate(async (p) => {
@@ -396,6 +481,72 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await app.close();
     }
 
+    console.log('mac: photo apps\' libraries are left out (a setting opens them)');
+    {
+        const pics = makeOrder(tmp, 'Pictures', 2); // 2 photos and Ceremony/c1.jpg
+        for (const lib of ['Photos Library.photoslibrary/resources/derivatives', 'iPhoto Library.photolibrary/Thumbnails', 'Aperture.aplibrary/Previews', 'Catalog Previews.lrdata/0', 'Lightroom.lrlibrary/x']) {
+            fs.mkdirSync(path.join(pics, lib), { recursive: true });
+            fs.writeFileSync(path.join(pics, lib, 'thumb.jpg'), JPEG);
+        }
+        const { app, page, errors } = await launch(profile, [pics]);
+        await loaded(page, 3);
+        const r = await page.evaluate(async (pics) => {
+            const out = { files: app.files.map(f => f.name).sort().join() };
+            const listed = await JEditorNative.listDir(pics);
+            out.listed = listed.folders.map(f => f.name).sort().join();
+            out.counted = (await JEditorNative.countPhotos([pics])).counts[0];
+            app.uiPrefs.openLibraries = true;
+            await app.refreshFolder();
+            for (let i = 0; i < 100 && app.files.length !== 8; i++) await new Promise(r => setTimeout(r, 100));
+            out.opened = app.files.length;
+            out.listedOn = (await JEditorNative.listDir(pics)).folders.length;
+            out.countedOn = (await JEditorNative.countPhotos([pics])).counts[0];
+            app.uiPrefs.openLibraries = false;
+            out.setting = !!document.getElementById('cust-open-libraries');
+            return out;
+        }, pics);
+        check('a folder with photo apps\' libraries in it: only your photos, not their previews', r.files === 'c1.jpg,photo1.jpg,photo2.jpg' && r.listed === 'Ceremony' && r.counted === 3, JSON.stringify(r));
+        check('... Settings → Projects can open them as folders', r.setting && r.opened === 8 && r.listedOn === 6 && r.countedOn === 8, JSON.stringify(r));
+        check('libraries: no JS errors', errors.length === 0, errors.join('; '));
+        await app.close();
+    }
+
+    console.log('mac: a huge folder asks before it opens');
+    {
+        const big = makeOrder(tmp, 'Big order', 3); // 3 photos and Ceremony/c1.jpg
+        const { app, page, errors } = await launch(profile, [big]);
+        await loaded(page, 4);
+        const r = await page.evaluate(async () => {
+            const wait = (ms) => new Promise(r => setTimeout(r, ms));
+            const shown = () => !document.getElementById('ui-dialog').classList.contains('hidden');
+            const dir = app.dirHandle, out = {};
+            app.renderCustomizePanel();
+            out.setting = document.getElementById('cust-huge-folder').value;
+            app.uiPrefs.hugeFolder = 3;
+            // Cancel: not opened, back to the start screen
+            let opening = app.openDirectory(dir, { scope: '' });
+            for (let i = 0; i < 100 && !shown(); i++) await wait(50);
+            out.message = document.getElementById('uid-text').textContent;
+            out.buttons = ['uid-ok', 'uid-alt', 'uid-cancel'].map(id => document.getElementById(id).textContent).join('|');
+            document.getElementById('uid-cancel').click();
+            await opening;
+            out.cancelled = !app.dirHandle && app.files.length === 0 && !app.elements.dropZone.classList.contains('hidden') && !app.isLoading;
+            // Don't ask again: opened, and not asked from then on
+            opening = app.openDirectory(dir, { scope: '' });
+            for (let i = 0; i < 100 && !shown(); i++) await wait(50);
+            document.getElementById('uid-alt').click();
+            await opening;
+            out.opened = app.files.length;
+            out.after = app.uiPrefs.hugeFolder;
+            app.uiPrefs.hugeFolder = 2000;
+            return out;
+        });
+        check('a folder of more photos than Settings → Projects says asks first: Open, Don\'t ask again, Cancel', r.setting === '2000' && /This folder has 4 photos\. Opening it may take a while\. Open it anyway\?/.test(r.message) && r.buttons === 'Open|Don\'t ask again|Cancel', JSON.stringify(r));
+        check('... Cancel doesn\'t open it; Don\'t ask again opens it and stops asking', r.cancelled && r.opened === 4 && r.after === 0, JSON.stringify(r));
+        check('huge folder: no JS errors', errors.length === 0, errors.join('; '));
+        await app.close();
+    }
+
     console.log('mac: closing in Adjust or Paint (holdClose)');
     {
         const { app, page, errors } = await launch(profile);
@@ -428,6 +579,38 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         };
         const closed = await Promise.race([exited, gone()]);
         check('... its yes closes it', closed);
+        await app.close().catch(() => { });
+    }
+
+    console.log('mac: Reload (⌘R, View → Reload), asking first if something isn\'t kept');
+    {
+        const { app, page, errors } = await launch(profile);
+        await page.waitForFunction(() => typeof Modes !== 'undefined' && typeof UI !== 'undefined', null, { timeout: 15000 });
+        const item = await app.evaluate(({ Menu }) => {
+            const view = Menu.getApplicationMenu().items.find(i => i.label === 'View');
+            const r = view && view.submenu.items.find(i => i.label === 'Reload');
+            return r ? { accelerator: r.accelerator } : null;
+        });
+        check('View → Reload, ⌘R, in every build (not only development ones)', !!item && item.accelerator === 'CmdOrCtrl+R', JSON.stringify(item));
+        const mark = () => page.evaluate(() => { window.__mark = 1; });
+        const marked = () => page.evaluate(() => window.__mark === 1).catch(() => false);
+        // Something not kept: it asks, and Cancel stays
+        await mark();
+        await page.evaluate(() => { window.__unkept = Modes.unkept; Modes.unkept = () => true; window.__asked = 0; UI.choose = async () => { window.__asked++; return null; }; });
+        await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items.find(i => i.label === 'View').submenu.items.find(i => i.label === 'Reload').click());
+        await page.waitForTimeout(600);
+        check('... with something not kept it asks first, and Cancel keeps the page', await marked() && await page.evaluate(() => window.__asked) === 1);
+        // Plain R is Rescan folder, not Reload
+        await page.evaluate(() => { Modes.unkept = window.__unkept; });
+        await page.keyboard.press('r');
+        await page.waitForTimeout(500);
+        const plainR = await marked();
+        // Nothing to keep: Ctrl+R reloads (the page's own key, as in the Windows app)
+        const loaded_ = page.waitForEvent('load', { timeout: 8000 }).then(() => true, () => false);
+        await page.keyboard.press('Control+r');
+        const reloaded = await loaded_ && !(await marked());
+        check('... plain R doesn\'t reload; Ctrl+R does, with nothing to keep', plainR && reloaded, JSON.stringify({ plainR, reloaded }));
+        check('Reload: no JS errors', errors.length === 0, errors.join('; '));
         await app.close().catch(() => { });
     }
 
@@ -521,11 +704,14 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             out.photoFilter = img && getComputedStyle(img).backdropFilter;
             // Room for the traffic lights, given back in full screen
             app.setView('grid');
+            if (Folders.railOpen()) Folders.toggleRail();
             await new Promise(r => setTimeout(r, 400));
+            // (the sidebar closed, the first pill is Photos · Adjust · Paint's row, the folder pill after it)
             const gutter = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gutter'));
-            out.lightsRoom = document.querySelector('.folder-bar').getBoundingClientRect().left - gutter;
+            const first = () => document.querySelector('#mode-row.float:not(.hidden)') || document.querySelector('.folder-bar');
+            out.lightsRoom = first().getBoundingClientRect().left - gutter;
             document.documentElement.classList.add('fullscreen');
-            out.fullscreenRoom = document.querySelector('.folder-bar').getBoundingClientRect().left - gutter;
+            out.fullscreenRoom = first().getBoundingClientRect().left - gutter;
             document.documentElement.classList.remove('fullscreen');
             // The top row moves the window; buttons in it don't
             out.drag = getComputedStyle(document.body, '::before').getPropertyValue('-webkit-app-region') || getComputedStyle(document.body, '::before').getPropertyValue('app-region');
@@ -552,11 +738,10 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                     app.applyUiPrefs();
                     app.setView(where === 'grid' || where === 'sidebar' ? 'grid' : 'single');
                     await wait(300);
-                    const rail = !!document.getElementById('mode-seg').getClientRects().length;
-                    if (rail !== (where === 'sidebar')) app.keyHandlers()['folders.rail']();
+                    if (Folders.railOpen() !== (where === 'sidebar')) app.keyHandlers()['folders.rail']();
                     if (where === 'adjust' || where === 'paint') {
                         Modes.go(where);
-                        for (let i = 0; i < 60 && !document.querySelector('.mode-float.over-mode:not(.hidden)'); i++) await wait(50);
+                        for (let i = 0; i < 60 && !document.querySelector('.mode-float.over-mode:not(.hidden), #mode-row.over-mode:not(.hidden), .folder-rail:not(.hidden) #mode-row'); i++) await wait(50);
                     }
                     await wait(500);
                 }, [scale, where]);
@@ -570,8 +755,10 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                     const lights = { name: 'the traffic lights', left: l.x, top: l.y, right: l.x + 54, bottom: l.y + 14 };
                     // Over Adjust and Paint, only the mode chip: the rest is under them
                     const editing = !!document.querySelector('.mode-screen:not(.hidden)');
-                    const pills = seen(editing ? '.mode-float' : 'header .toolbar, header .file-info, .folder-bar, .mode-float');
-                    const others = seen('#mode-seg, .folder-rail, .mode-screen:not(.hidden) .mode-head-acts, .paint-options, .paint-tools');
+                    const pills = seen(editing ? '.mode-float, #mode-row.float' : 'header .toolbar, header .file-info, .folder-bar, .mode-float, #mode-row.float');
+                    // (in jEditor's own look the lights are in the sidebar's top, as Finder's: what's in it starts below them)
+                    const others = seen('.folder-rail > *, .mode-screen:not(.hidden) .mode-head-acts, .paint-options, .paint-tools');
+                    if (document.documentElement.dataset.skin) others.push(...seen('.folder-rail'));
                     const out = [];
                     for (const a of [lights, ...pills]) for (const b of [...pills, ...others]) if (a !== b && hit(a, b) && !(a.name === 'mode-float' && b.name === 'folder-bar')) out.push(a.name + ' over ' + b.name);
                     // The lights in line with the pill beside them
@@ -583,6 +770,129 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 if (r.off > 2) offRow.push(`${where} at ${scale * 100}%: ${r.off}px off ${r.by}`);
             }
         }
+        // The mode chip over Adjust and Paint, measured: whole (nothing over
+        // it or cutting it off) and clear of the title bar, at every Toolbar
+        // size, with the sidebar open and closed, in full screen, in
+        // jEditor's look and each theme (whose title bar is the page's own).
+        // The window's own title on macOS 26 is measured below, on a Mac.
+        // (Needs fixing, 2026-11-01: the third time this row needed fixing.)
+        const chipMiss = [];
+        const shotDir = process.env.JEDITOR_SCREENSHOTS;
+        if (shotDir) fs.mkdirSync(shotDir, { recursive: true });
+        const size = (width) => app.evaluate(({ BrowserWindow }, width) => { const w = BrowserWindow.getAllWindows()[0]; w.setSize(width, 860); }, width);
+        // (The window's narrowest, 640, and a camera's long file name: the
+        // head's title is centred, and slid under the chip there)
+        for (const width of [1280, 640]) {
+          await size(width);
+          await page.waitForTimeout(300);
+          for (const theme of ['', 'xp/royale', 'snow/finder', 'mac84/finder']) {
+            for (const look of theme ? [''] : ['', 'full', 'native']) {
+                for (const scale of [0.8, 1, 1.3, 1.6]) {
+                    for (const rail of [false, true]) {
+                        for (const where of ['adjust', 'paint']) {
+                            const r = await page.evaluate(async ([theme, look, scale, rail, where]) => {
+                                const wait = (ms) => new Promise(r => setTimeout(r, ms));
+                                if ((app.uiPrefs.skin || '') !== theme) { Themes.choose(theme); await wait(600); }
+                                document.documentElement.classList.toggle('fullscreen', look === 'full');
+                                document.documentElement.classList.toggle('native-toolbar', look === 'native');
+                                if (Modes.current() !== 'photos') { await Modes.go('photos'); await wait(100); }
+                                app.uiPrefs.scale = scale;
+                                app.applyUiPrefs();
+                                app.setView('grid');
+                                await wait(80);
+                                if (Folders.railOpen() !== rail) app.keyHandlers()['folders.rail']();
+                                // Until the sidebar's slide (and what moves with it) has ended:
+                                // measured mid-slide, the chip was still off the window's edge
+                                const still = async (first = 80) => { await wait(first); for (let i = 0; i < 40 && document.getAnimations().some(a => a.playState === 'running' && a.effect && a.effect.getComputedTiming().iterations !== Infinity); i++) await wait(50); };
+                                await still();
+                                // Photos' own chip (the folder pill's, the sidebar closed), to match
+                                const photos = document.getElementById('mode-chip-bar');
+                                const pb = photos && photos.getClientRects().length ? photos.getBoundingClientRect() : null;
+                                const look_ = (e) => { const c = getComputedStyle(e); return [c.fontSize, c.fontWeight, c.paddingLeft, c.paddingRight, c.borderRadius, c.backgroundColor, c.color].join(' '); };
+                                const photosLook = pb && look_(photos);
+                                Modes.go(where);
+                                for (let i = 0; i < 60 && !document.querySelector('.mode-float.over-mode:not(.hidden), #mode-row.over-mode:not(.hidden), .folder-rail:not(.hidden) #mode-row'); i++) await wait(50);
+                                const name = document.querySelector('.mode-screen:not(.hidden) .mode-title');
+                                if (name) name.textContent = 'IMG_20261101_143207.jpg';
+                                await wait(150);
+                                await still(0);
+                                const back = async () => { await Modes.go('photos'); app.uiPrefs.scale = 1; app.applyUiPrefs(); };
+                                // macOS 26: the toolbar's own mode button, as in Photos (bridge.js);
+                                // the page's chip would be in its title bar, which takes the press
+                                if (look === 'native') {
+                                    const miss = [];
+                                    if (document.getElementById('mode-float').getClientRects().length) miss.push('the page\'s chip shows under the toolbar');
+                                    const h = document.querySelector('.mode-screen:not(.hidden) .mode-head').getBoundingClientRect();
+                                    if (h.top < 52) miss.push(`the head (top ${Math.round(h.top)}) under the toolbar`);
+                                    await back();
+                                    return { miss, box: null };
+                                }
+                                // (jEditor's own look: the row's button for the mode, in the sidebar, or floating where it is over Photos, in line with the file's pill: not in the head)
+                                const own = !theme;
+                                                                const chip = own ? document.querySelector(`#mode-row:not(.hidden) #mode-seg button[data-mode="${where}"]`) : document.querySelector('.mode-float.over-mode:not(.hidden) .mode-chip');
+                                if (!chip) return { miss: ['no chip'] };
+                                const b = chip.getBoundingClientRect();
+                                const miss = [];
+                                // Not in a drag region: the chip, and what's at its centre, say no-drag
+                                // (a drag region over it moves the window instead: hard to press)
+                                const region = (e) => { for (; e && e !== document.documentElement; e = e.parentElement) { const v = getComputedStyle(e).getPropertyValue('-webkit-app-region'); if (v && v !== 'none') return v; } return 'none'; };
+                                const mid = document.elementFromPoint((b.left + b.right) / 2, (b.top + b.bottom) / 2);
+                                if (region(chip) === 'drag' || region(mid) === 'drag') miss.push(`in a drag region (${region(chip)}, ${region(mid)})`);
+                                // The same button as Photos': its size, at 100% (Photos' grows with
+                                // Toolbar size; this one stays at the head's size)
+                                // (its width is its word's: Photos, Adjust, Paint)
+                                if (pb && scale === 1 && (Math.abs(pb.height - b.height) > 1 || photosLook !== look_(chip))) miss.push(`not Photos' button (${Math.round(b.height)}px, ${look_(chip)}; Photos' ${Math.round(pb.height)}px, ${photosLook})`);
+                                // Whole: each corner (2px in) and the middle are the chip's own (its
+                                // pill's round corners: the box it floats in)
+                                // (the row's buttons are round, and a click in a round button's corner isn't its: each side's middle, 3px in)
+                                const pts = own ? [[b.left + 3, (b.top + b.bottom) / 2], [b.right - 3, (b.top + b.bottom) / 2], [(b.left + b.right) / 2, b.top + 3], [(b.left + b.right) / 2, b.bottom - 3], [(b.left + b.right) / 2, (b.top + b.bottom) / 2]]
+                                    : [[b.left + 2, b.top + 2], [b.right - 2, b.top + 2], [b.left + 2, b.bottom - 2], [b.right - 2, b.bottom - 2], [(b.left + b.right) / 2, (b.top + b.bottom) / 2]];
+                                for (const [x, y] of pts) {
+                                    const at = document.elementFromPoint(x, y);
+                                    if (!at || !chip.parentElement.contains(at)) miss.push(`at ${Math.round(x)},${Math.round(y)}: ${at ? (at.id || at.className || at.tagName) : 'outside the window'}`);
+                                }
+                                if (b.top < 0 || b.left < 0 || b.right > innerWidth) miss.push('outside the window');
+                                // Clear of a theme's title bar (its title in it)
+                                const bar = document.getElementById('th-titlebar');
+                                if (bar && bar.getClientRects().length) {
+                                    const t = bar.getBoundingClientRect();
+                                    if (b.top < t.bottom - 1) miss.push(`in the title bar (chip top ${Math.round(b.top)}, bar bottom ${Math.round(t.bottom)})`);
+                                }
+                                // Clear of the head's title and size, and its buttons
+                                for (const e of document.querySelectorAll('.mode-screen:not(.hidden) .mode-head > :is(.mode-title, .crop-dims, .mode-head-acts)')) {
+                                    const t = e.getBoundingClientRect();
+                                    if (t.width && b.left < t.right - 1 && t.left < b.right - 1 && b.top < t.bottom - 1 && t.top < b.bottom - 1) miss.push(`over ${e.id || e.className} [${[t.left, t.top, t.right, t.bottom].map(Math.round)}]`);
+                                }
+                                // ...and the title clear of the head's buttons
+                                const acts = document.querySelector('.mode-screen:not(.hidden) .mode-head-acts');
+                                for (const e of document.querySelectorAll('.mode-screen:not(.hidden) .mode-head > :is(.mode-title, .crop-dims)')) {
+                                    const t = e.getBoundingClientRect(), a = acts && acts.getBoundingClientRect();
+                                    if (a && t.width && a.left < t.right - 1 && t.left < a.right - 1 && a.top < t.bottom - 1 && t.top < a.bottom - 1) miss.push(`${e.id} under the head's buttons`);
+                                }
+                                // In its head, not past it
+                                const head = document.querySelector('.mode-screen:not(.hidden) .mode-head');
+                                if (head && !own) { const h = head.getBoundingClientRect(); if (b.bottom > h.bottom + 1 || b.top < h.top - 1) miss.push(`outside the head (${Math.round(b.top)}–${Math.round(b.bottom)} in ${Math.round(h.top)}–${Math.round(h.bottom)})`); }
+                                const box = [b.left, b.top, b.right, b.bottom].map(Math.round);
+                                // Toolbar size back after each case: none leaks into later checks
+                                await back();
+                                return { miss, box };
+                            }, [theme, look, scale, rail, where]);
+                            const name = `${theme || 'jEditor'}${look ? ' ' + look : ''} ${where} at ${scale * 100}%, ${width}px${rail ? ', sidebar open' : ''}`;
+                            for (const m of r.miss) chipMiss.push(`${name}: ${m} ${JSON.stringify(r.box)}`);
+                            if (shotDir && !rail && where === 'adjust' && (scale === 1 || width === 640 && scale === 1.6)) {
+                                await page.evaluate(async ([where, scale]) => { app.uiPrefs.scale = scale; app.applyUiPrefs(); await Modes.go(where); document.querySelector('.mode-screen:not(.hidden) .mode-title').textContent = 'IMG_20261101_143207.jpg'; await new Promise(r => setTimeout(r, 400)); }, [where, scale]);
+                                fs.writeFileSync(path.join(shotDir, `chip-${(theme || 'jeditor').replace('/', '-')}${look ? '-' + look : ''}-${where}-${width}-${scale * 100}.png`), await page.screenshot({ clip: { x: 0, y: 0, width: Math.min(width, 640), height: 100 } }));
+                                await page.evaluate(async () => { await Modes.go('photos'); app.uiPrefs.scale = 1; app.applyUiPrefs(); });
+                            }
+                        }
+                    }
+                }
+            }
+          }
+        }
+        await size(1280);
+        await page.evaluate(async () => { document.documentElement.classList.remove('fullscreen', 'native-toolbar'); Themes.choose(''); await new Promise(r => setTimeout(r, 600)); });
+        check('the mode chip over Adjust and Paint is whole, pressable (out of any drag region), Photos\' size, and clear of the title bar: every Toolbar size, 1280 and 640 wide, sidebar open and closed, full screen, each theme; with macOS 26\'s toolbar, its own button instead', chipMiss.length === 0, chipMiss.slice(0, 12).join('; '));
         // Back to 100%, kept: the next windows open with this profile
         await page.evaluate(async () => { await Modes.go('photos'); app.uiPrefs.scale = 1; app.applyUiPrefs(); app.saveUiPrefs(); });
         check('the traffic lights, the top row and Photos · Adjust · Paint clear of each other, at every Toolbar size', overlaps.length === 0, overlaps.join('; '));
@@ -628,7 +938,8 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             const describe = () => app.evaluate(({ BrowserWindow }) => global.jeditorToolbar.describe(BrowserWindow.getAllWindows()[0].getNativeWindowHandle()));
             const click = (id, value) => app.evaluate(({ BrowserWindow }, [id, value]) => global.jeditorToolbar.click(BrowserWindow.getAllWindows()[0].getNativeWindowHandle(), id, value), [id, value]);
             const settle = () => page.waitForTimeout(400);
-            await page.evaluate(() => { app.setView('single'); app.loadIndex(0); });
+            // The view switch is in More in 2.0's pill: on the pill for this
+            await page.evaluate(() => { app.uiPrefs.placement.view = 'main'; app.applyUiPrefs(); app.setView('single'); app.loadIndex(0); });
             await settle();
             let d = await describe();
             const ids = d.items.map(i => i.id);
@@ -645,21 +956,23 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await settle();
             d = await describe();
             const view = await page.evaluate(() => app.viewMode);
-            check('a click is the page\'s own: the grid, with the folders and search there now', view === 'grid' && ['rail', 'scope', 'search'].every(i => d.items.some(x => x.id === i)), JSON.stringify([view, d.items.map(i => i.id)]));
+            check('a click is the page\'s own: the grid, with the folders and Find anything there now', view === 'grid' && ['rail', 'scope', 'find'].every(i => d.items.some(x => x.id === i)), JSON.stringify([view, d.items.map(i => i.id)]));
             await click('sort', 'name_desc');
             await settle();
             d = await describe();
             check('sorting from the toolbar sorts, and its menu says so', await page.evaluate(() => app.sortMode) === 'name_desc' && d.items.find(i => i.id === 'sort').menu.includes('✓Name (Z–A)'), JSON.stringify(d.items.find(i => i.id === 'sort')));
-            await click('search', 'black');
-            await page.waitForTimeout(600);
-            check('searching from the toolbar finds photos', await page.evaluate(() => app.viewFiles().map(f => f.name).join()) === '2-black.jpg');
-            await click('search', '');
-            await page.waitForTimeout(600);
+            await click('find');
+            await page.waitForTimeout(300);
+            check('the toolbar\'s Find anything opens it, to find a photo or folder', await page.evaluate(() => Palette.isOpen()), await page.evaluate(() => document.activeElement && document.activeElement.outerHTML.slice(0, 120)));
+            await page.keyboard.press('Escape');
+            await page.waitForTimeout(300);
 
             // Photos · Adjust · Paint: in the toolbar (as in the folder pill),
             // never the page's own chip under it; over Adjust and Paint the
-            // toolbar steps aside and their head, with the chip, is the top row
-            await page.evaluate(() => { if (document.getElementById('mode-seg').getClientRects().length) app.keyHandlers()['folders.rail'](); });
+            // toolbar stays with that same button, and their head is below it
+            // (the page's chip there sat in the title bar, which took the press:
+            // hard to press, Needs fixing 2026-11-05)
+            await page.evaluate(() => { if (Folders.railOpen()) app.keyHandlers()['folders.rail'](); });
             await settle();
             d = await describe();
             const modeItem = d.items.find(i => i.id === 'mode');
@@ -671,19 +984,61 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 global.sentModels = [];
                 if (!t._update) { t._update = t.update; t.update = (h, m) => { global.sentModels.push(`${Date.now() % 100000} ${m.visible ? 'shown' : 'hidden'} ${(m.items || []).map(i => i.id || '|').join(',')}`); return t._update(h, m); }; }
             });
+            // The single view's toolbar, in Photos: its mode button is the one
+            // Adjust and Paint keep, in the same place (first)
+            await page.evaluate(() => app.setView('single'));
+            await settle();
+            const photosMode = (await describe()).items.find(i => i.id === 'mode');
             await click('mode', 'adjust');
             // Adjust is open once its screen shows (after the photo's loaded)
             await page.waitForFunction(() => !document.getElementById('adjust-editor').classList.contains('hidden'), null, { timeout: 15000 });
             await settle();
             d = await describe();
-            const chip = await page.evaluate(() => { const b = document.getElementById('mode-float').getBoundingClientRect(); return { top: b.top, height: b.height }; });
             const sent = await app.evaluate(() => global.sentModels.slice(-4));
-            check('... choosing Adjust there opens it; the toolbar steps aside, the chip is in Adjust\'s head', d.visible === false && chip.height > 0 && chip.top < 20, JSON.stringify([d.visible, chip, `now ${await app.evaluate(() => Date.now() % 100000)}`, sent]));
+            check('... choosing Adjust there opens it; the toolbar stays, with the same mode button first, and no page chip', d.visible === true && d.items[0] && d.items[0].id === 'mode' && d.items[0].menu.includes('✓Adjust') && !!photosMode && d.items[0].menu.length === photosMode.menu.length && !await page.evaluate(() => document.getElementById('mode-float').getClientRects().length), JSON.stringify([d.visible, d.items, photosMode, sent]));
+            // Measured at every Toolbar size, sidebar open and closed, in and out
+            // of full screen: the toolbar's mode button is there, the page's chip
+            // isn't, and the head (its buttons) starts below the toolbar
+            const modeMiss = [];
+            const full = (on) => app.evaluate(({ BrowserWindow }, on) => BrowserWindow.getAllWindows()[0].setFullScreen(on), on);
+            for (const fs_ of [false, true]) {
+                if (fs_) { await full(true); await page.waitForTimeout(1500); }
+                for (const scale of [0.8, 1, 1.3, 1.6]) {
+                    for (const rail of [false, true]) {
+                        for (const where of ['adjust', 'paint']) {
+                            const c = await page.evaluate(async ([scale, rail, where]) => {
+                                const wait = (ms) => new Promise(r => setTimeout(r, ms));
+                                if (Modes.current() !== 'photos') { await Modes.go('photos'); await wait(300); }
+                                app.uiPrefs.scale = scale;
+                                app.applyUiPrefs();
+                                if (Folders.railOpen() !== rail) app.keyHandlers()['folders.rail']();
+                                await Modes.go(where);
+                                for (let i = 0; i < 60 && document.getElementById(`${where}-editor`).classList.contains('hidden'); i++) await wait(50);
+                                await wait(400);
+                                const head = document.querySelector(`#${where}-editor .mode-head`).getBoundingClientRect();
+                                const acts = [...document.querySelectorAll(`#${where}-editor .mode-head :is(button, input, select)`)].filter(b => b.getClientRects().length).map(b => b.getBoundingClientRect().top);
+                                return { float: document.getElementById('mode-float').getClientRects().length, headTop: head.top, firstControl: acts.length ? Math.min(...acts) : null };
+                            }, [scale, rail, where]);
+                            d = await describe();
+                            const name = `${where} at ${scale * 100}%${rail ? ', sidebar open' : ''}${fs_ ? ', full screen' : ''}`;
+                            const item = d.items[0];
+                            if (!d.visible || !item || item.id !== 'mode' || !item.menu.includes('✓' + where[0].toUpperCase() + where.slice(1))) modeMiss.push(`${name}: no mode button in the toolbar ${JSON.stringify([d.visible, d.items])}`);
+                            if (c.float) modeMiss.push(`${name}: the page's own chip shows too`);
+                            if (c.firstControl !== null && c.firstControl < d.toolbarHeight) modeMiss.push(`${name}: the head's buttons (${Math.round(c.firstControl)}) under the toolbar (${d.toolbarHeight}px)`);
+                        }
+                    }
+                }
+                if (fs_) { await full(false); await page.waitForTimeout(1500); }
+            }
+            await page.evaluate(() => { app.uiPrefs.scale = 1; app.applyUiPrefs(); });
+            check('... Adjust and Paint keep the toolbar\'s mode button, with no page chip and their head below it: every Toolbar size, sidebar open and closed, full screen', modeMiss.length === 0, modeMiss.slice(0, 8).join('; '));
             await page.evaluate(() => Modes.go('photos'));
             await page.waitForFunction(() => Modes.current() === 'photos', null, { timeout: 15000 });
             await settle();
             d = await describe();
-            check('... and back in Photos, the toolbar is back', d.visible && d.items.some(i => i.id === 'mode'), JSON.stringify(d).slice(0, 200));
+            // (its mode button, or, with the sidebar open, the sidebar's own row of modes under it)
+            const railRow = await page.evaluate(() => { const r = document.querySelector('.folder-rail:not(.hidden) #mode-row'); return !!r && !!r.getClientRects().length && r.getBoundingClientRect().top >= 52; });
+            check('... and back in Photos, the toolbar is back', d.visible && (d.items.some(i => i.id === 'mode') || railRow), JSON.stringify([railRow, d]).slice(0, 300));
 
             // The toolbar's empty space moves the window: pressed there, it's the
             // window's (the drag view), not the page's under it
@@ -754,7 +1109,219 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await app.close();
     }
 
-    console.log('mac: permissions, the first time');
+    // What floats over the page (dialogs, the guide, Find anything, menus, a
+    // message, the tour's card at every stop) stays out of what the window
+    // draws over its top: macOS 26's toolbar (its real height), or the
+    // traffic lights where bridge.js put them; and under a theme (Snow
+    // Leopard, 1984), out of its title and menu bars. At the window's
+    // biggest and smallest, and in full screen on a Mac. (Needs fixing,
+    // 2026-11-08: the tour went up under the toolbar, one more overlay
+    // after others: style.css's --top-safe is for all of them now.)
+    // The home page's top bar (jEditor, the version, Settings) makes room for
+    // the traffic lights, and they're in line with it (bridge.js:
+    // reportLights). (Needs fixing, 2026-11-08: the lights hung under the
+    // jEditor logo there.) With macOS 26's toolbar, AppKit places them in
+    // the same corner, which the room is for too.
+    console.log('mac: the home page and the traffic lights');
+    {
+        // Without macOS 26's toolbar: bridge.js places the lights
+        const { app, page, errors } = await launch(profile, [], { JEDITOR_NATIVE_TOOLBAR: '0' });
+        const native = await page.evaluate(() => !!window.jeditorMac.nativeToolbar);
+        // In jEditor's own look (a theme hides the lights)
+        await page.evaluate(async () => { if (app.uiPrefs.skin) { Themes.choose(''); await new Promise(r => setTimeout(r, 800)); } });
+        if (native) {
+            console.log('        (skipped: with macOS 26\'s toolbar, AppKit places the lights)');
+        } else {
+            const miss = [];
+            for (const [w, h] of [[1280, 860], [640, 480]]) {
+                await app.evaluate(({ BrowserWindow }, [w, h]) => BrowserWindow.getAllWindows()[0].setSize(w, h), [w, h]);
+                await page.waitForTimeout(600);
+                const l = (await app.evaluate(() => global.jeditorLights()))[0];
+                const r = await page.evaluate(() => {
+                    const box = (e) => { const b = e.getBoundingClientRect(); return { name: e.className || e.id, left: b.left, top: b.top, right: b.right, bottom: b.bottom }; };
+                    const bar = document.querySelector('.drop-zone:not(.hidden) .home-bar');
+                    return bar && { brand: box(bar.querySelector('.home-brand')), parts: [...bar.children].filter(e => e.getClientRects().length && !e.classList.contains('home-gap')).map(box) };
+                });
+                if (!l || !r) { miss.push(`${w}×${h}: ${!l ? 'no lights reported' : 'no home bar'}`); continue; }
+                const lights = { name: 'the traffic lights', left: l.x, top: l.y, right: l.x + 54, bottom: l.y + 14 };
+                for (const o of overTopBar(r.parts, [lights])) miss.push(`${w}×${h}: ${o}`);
+                const off = Math.abs((r.brand.top + r.brand.bottom) / 2 - (l.y + 7));
+                if (off > 2) miss.push(`${w}×${h}: the lights ${Math.round(off)}px out of line with jEditor`);
+            }
+            check('the home page\'s top bar leaves room for the traffic lights, in line with them', miss.length === 0, miss.join('; '));
+            await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1280, 860));
+        }
+        check('no JS errors', errors.length === 0, errors.join('; '));
+        await app.close();
+    }
+
+    console.log('mac: the window\'s top bar, kept clear');
+    {
+        // On a Mac, again without macOS 26's toolbar (as before macOS 26, or
+        // when it's off): the traffic lights in the page's top row, for real
+        const passes = [{ env: {}, themes: ['', 'snow/finder', 'mac84/finder'], tag: '' }];
+        if (process.platform === 'darwin') passes.push({ env: { JEDITOR_NATIVE_TOOLBAR: '0' }, themes: [''], tag: ', without macOS 26\'s toolbar' });
+        for (const pass of passes) {
+            const { app, page, errors } = await launch(profile, [path.join(tmp, 'Glass')], pass.env);
+            await loaded(page, 2);
+            await page.evaluate(() => localStorage.setItem('jeditor.tour', JSON.stringify({ offered: true })));
+            const native = await page.evaluate(() => !!window.jeditorMac.nativeToolbar);
+            const size = (w, h) => app.evaluate(({ BrowserWindow }, [w, h]) => BrowserWindow.getAllWindows()[0].setSize(w, h), [w, h]);
+            const full = (on) => app.evaluate(({ BrowserWindow }, on) => BrowserWindow.getAllWindows()[0].setFullScreen(on), on);
+            // What's over the top of the page now
+            const bars = async (theme) => {
+                if (theme) {
+                    return page.evaluate(() => {
+                        const r = document.getElementById('th-top').getBoundingClientRect();
+                        return [{ name: 'the theme\'s title and menu bars', left: r.left, top: r.top, right: r.right, bottom: r.bottom }];
+                    });
+                }
+                if (native) {
+                    const d = await app.evaluate(({ BrowserWindow }) => global.jeditorToolbar.describe(BrowserWindow.getAllWindows()[0].getNativeWindowHandle()));
+                    return d.toolbarHeight ? [{ name: 'the toolbar', left: 0, top: 0, right: 1e5, bottom: d.toolbarHeight }] : [];
+                }
+                const l = (await app.evaluate(() => global.jeditorLights()))[0];
+                const fullscreen = await page.evaluate(() => document.documentElement.classList.contains('fullscreen'));
+                // Three lights, 14px each, 20px apart (as above)
+                return l && !fullscreen ? [{ name: 'the traffic lights', left: l.x, top: l.y, right: l.x + 54, bottom: l.y + 14 }] : [];
+            };
+            const over = [], unmeasured = [];
+            const cases = [];
+            for (const theme of pass.themes) for (const [w, h] of [[1280, 860], [640, 480]]) cases.push({ theme, w, h });
+            if (process.platform === 'darwin') cases.push({ theme: '', w: 1280, h: 860, full: true });
+            for (const c of cases) {
+                const name = `${c.theme || 'jEditor\'s look'}, ${c.full ? 'full screen' : `${c.w}×${c.h}`}`;
+                await page.evaluate(async (theme) => {
+                    if ((app.uiPrefs.skin || '') !== theme) { Themes.choose(theme); await new Promise(r => setTimeout(r, 800)); }
+                }, c.theme);
+                await size(c.w, c.h);
+                if (c.full) await full(true);
+                await page.waitForTimeout(c.full ? 1500 : 600);
+                const b = await bars(c.theme);
+                if (!b.length && !c.full) unmeasured.push(name);
+                const boxes = await floatingBoxes(page);
+                for (const o of overTopBar(boxes, b)) over.push(`${name}: ${o}`);
+                if (boxes.length < 15) unmeasured.push(`${name}: only ${boxes.length} (${boxes.map(x => x.name).join(', ')})`);
+                if (c.full) { await full(false); await page.waitForTimeout(1500); }
+            }
+            await page.evaluate(() => { if (app.uiPrefs.skin) Themes.choose(''); });
+            await size(1280, 860);
+            check('dialogs, the guide, Find anything, menus, messages and the tour\'s card stay clear of the toolbar, the traffic lights and a theme\'s bars' + pass.tag, over.length === 0, over.slice(0, 8).join('; '));
+            check('... each measured, with what\'s over the top known' + pass.tag, unmeasured.length === 0, unmeasured.join('; '));
+            check('no JS errors' + pass.tag, errors.length === 0, errors.join('; '));
+            await app.close();
+        }
+    }
+
+    console.log('mac: the Photos library (a stand-in: JEDITOR_PHOTOS_LIBRARY)');
+    {
+        const lib = path.join(tmp, 'PhotosLibrary');
+        for (const [album, n] of [['Wedding', 3], ['Favourites', 1], ['Birthday', 2]]) {
+            fs.mkdirSync(path.join(lib, album), { recursive: true });
+            for (let i = 1; i <= n; i++) fs.writeFileSync(path.join(lib, album, `IMG_000${i}.jpg`), JPEG);
+        }
+        // Two cameras' IMG_0001 in the whole library: both are there, under their own names
+        const before = fs.readdirSync(path.join(lib, 'Wedding')).map(n => fs.readFileSync(path.join(lib, 'Wedding', n)).toString('base64')).join();
+        const { app, page, errors } = await launch(path.join(tmp, 'profile-photos'), [], { JEDITOR_PHOTOS_LIBRARY: lib });
+        await page.click('#home-all');
+        await page.waitForSelector('#start-places .sb-row[data-path="photos-library:"]', { timeout: 10000 }).catch(() => { });
+        const r = await page.evaluate(async () => {
+            const box = document.getElementById('start-places');
+            const row = () => box.querySelector('.sb-row[data-path="photos-library:"]');
+            const had = !!row() && row().querySelector('.fr-name').textContent;
+            row().querySelector('.fr-caret').click();
+            for (let i = 0; i < 50 && !box.querySelector('.sb-row[data-path^="photos-library:album"]'); i++) await new Promise(r => setTimeout(r, 100));
+            const albums = [...box.querySelectorAll('.sb-row[data-path^="photos-library:album"]')].map(r => [r.querySelector('.fr-name').textContent, r.querySelector('.sb-meta') ? r.querySelector('.sb-meta').textContent : '']);
+            return { feature: Host.has('photosLibrary'), had, albums, perm: (await JEditorNative.permissions()).rows.map(r => r.id + ':' + r.state).join() };
+        });
+        check('Locations has the Photos library (photosLibrary), with its own row in the permissions window', r.feature && r.had === 'Photos library' && /photos:granted/.test(r.perm), JSON.stringify(r));
+        check('... it opens out like a drive: Favourites first, then the albums by name, with how many photos', JSON.stringify(r.albums) === '[["Favourites","1"],["Birthday","2"],["Wedding","3"]]', JSON.stringify(r.albums));
+        await page.click('#start-places .sb-row[data-path="photos-library:album:Wedding"] .sb-main');
+        await loaded(page, 3);
+        const o = await page.evaluate(async () => {
+            for (let i = 0; i < 50 && !app.files.every(f => f.thumbnailUrl); i++) await new Promise(r => setTimeout(r, 100));
+            await Places.drawCard();
+            const card = document.getElementById('sb-card');
+            const f = app.files[0];
+            const data = await f.handle.getFile();
+            const toast = () => [...document.querySelectorAll('.toast')].map(t => t.textContent).join(' | ');
+            const writable = app.ensureWritable();
+            const files = app.ensureWritable({ files: true });
+            let made = 'no';
+            try { await app.dirHandle.getFileHandle('New.jpg', { create: true }); made = 'yes'; } catch (e) { made = e.name; }
+            return {
+                name: app.dirHandle.name, n: app.files.length, names: app.files.map(x => x.name).sort().join(),
+                readOnly: app.readOnlyMode, library: app.library, path: await JEditorNative.folderPath(app.dirHandle),
+                thumbs: app.files.every(x => /^blob:/.test(x.thumbnailUrl || '')), size: f.size, got: data.size, type: data.type,
+                cardName: card.querySelector('.sb-card-name').tagName, cardText: card.textContent,
+                renameBtn: !!card.querySelector('[data-act="rename"]'), exportBtn: !!card.querySelector('[data-act="export"]'), revealBtn: !!card.querySelector('[data-act="reveal"]'),
+                menu: Places.cardItems().map(i => i[0]).join('|'),
+                writable, files, made, toast: toast(), fixed: app.fixedFiles,
+                active: !!document.querySelector('.sb-row.active[data-path="photos-library:album:Wedding"]'),
+                recent: JSON.stringify(localStorage).includes('Wedding')
+            };
+        });
+        check('an album opens as the project: its photos, its name, its path photos-library:<id>', o.name === 'Wedding' && o.n === 3 && o.names === 'IMG_0001.jpg,IMG_0002.jpg,IMG_0003.jpg' && !o.readOnly && o.library && o.fixed && o.path === 'photos-library:album:Wedding', JSON.stringify(o));
+        check('... thumbnails come from the library, and a photo is the library\'s own (size and date without reading it)', o.thumbs && o.size === o.got && o.got > 0 && o.type === 'image/jpeg', JSON.stringify(o));
+        check('... its card has the album and no Finder, rename, pin or export', /Photos library/.test(o.cardText) && !/read-only/.test(o.cardText) && !o.renameBtn && !o.exportBtn && !o.revealBtn && !/Rename|Export|Pin|Finder/.test(o.menu), JSON.stringify(o));
+        check('... its photos can be edited, but none added, renamed, moved or deleted (that\'s for Photos)', o.writable === true && o.files === false && /renamed, moved and deleted in Photos/.test(o.toast) && o.made === 'NotAllowedError', JSON.stringify(o));
+        // An edit saved back: rotating a photo writes it into the library (a
+        // Photos edit on the current version); the original is kept, and undo
+        // saves the version before as one more edit
+        const wed = (n) => fs.readFileSync(path.join(lib, 'Wedding', n));
+        const ed = await page.evaluate(async () => {
+            const f = app.files.find(x => x.name === 'IMG_0001.jpg');
+            const ok = await app.rotateImage(f, 90);
+            for (let i = 0; i < 50 && (f.isBusy || f._rotationQueue); i++) await new Promise(r => setTimeout(r, 100));
+            const peek = f.handle.peek();
+            const got = await f.handle.getFile();
+            return { ok, size: got.size, peekSize: peek.size, modified: got.lastModified, undo: (app._undoStack || []).length };
+        });
+        const rotated = wed('IMG_0001.jpg');
+        const orig = path.join(lib, '.originals', 'Wedding', 'IMG_0001.jpg');
+        check('editing a library photo saves it back into the library, the original kept (as Photos keeps it)', ed.ok !== false && !rotated.equals(JPEG) && fs.existsSync(orig) && fs.readFileSync(orig).equals(JPEG) && ed.size === rotated.length && ed.peekSize === rotated.length && ed.undo > 0, JSON.stringify(ed));
+        await page.evaluate(async () => {
+            await app.undo();
+            const f = app.files.find(x => x.name === 'IMG_0001.jpg');
+            for (let i = 0; i < 50 && (f.isBusy || f._rotationQueue); i++) await new Promise(r => setTimeout(r, 100));
+            await new Promise(r => setTimeout(r, 300));
+        });
+        const vers = fs.readdirSync(path.join(lib, '.versions', 'Wedding')).filter(n => n.startsWith('IMG_0001.jpg.'));
+        check('... undo puts it back as it was, saved as one more edit (nothing in the library lost)', !wed('IMG_0001.jpg').equals(rotated) && vers.length === 2 && fs.readFileSync(path.join(lib, '.versions', 'Wedding', vers.sort()[1])).equals(rotated), JSON.stringify({ vers, same: wed('IMG_0001.jpg').equals(JPEG) }));
+        const menus = await page.evaluate(() => {
+            app.currentFile = app.files[0];
+            const labels = (items) => items.map(i => i[0]).filter(l => typeof l === 'string').join('|');
+            return { photo: labels(app.buildContextItems(null, true)), grid: labels(app.buildContextItems(null, false)) };
+        });
+        check('... its menus have no Move, Rename, Convert or Delete, and no Add to Photos (it\'s there)', /Turn and flip|Rotate left/.test(menus.photo) && /Adjust/.test(menus.photo) && !/Move|Rename|Convert|Delete|Add to Photos/.test(menus.photo) && !/New folder|Rename all|Clean up|Add all/.test(menus.grid) && !/—\|—/.test(menus.photo), JSON.stringify(menus));
+        check('... it\'s marked in the sidebar, and it isn\'t in Recent', o.active && !o.recent, JSON.stringify(o));
+        const whole = await page.evaluate(async () => {
+            await Places.open('photos-library:');
+            for (let i = 0; i < 50 && app.files.length !== 6; i++) await new Promise(r => setTimeout(r, 100));
+            return { name: app.dirHandle.name, names: app.files.map(f => f.name).sort().join() };
+        });
+        check('Open on the Photos library: all of it, two photos of one name both there', whole.name === 'Photos library' && whole.names === 'IMG_0001 (2).jpg,IMG_0001 (3).jpg,IMG_0001.jpg,IMG_0002 (2).jpg,IMG_0002.jpg,IMG_0003.jpg', JSON.stringify(whole));
+        const others = ['IMG_0002.jpg', 'IMG_0003.jpg'].map(n => wed(n).toString('base64')).join();
+        check('... and the rest of the library is as it was: no photos or albums added, renamed or removed', before.split(',').slice(1).join() === others && fs.readdirSync(lib).filter(n => !n.startsWith('.')).sort().join() === 'Birthday,Favourites,Wedding' && fs.readdirSync(path.join(lib, 'Wedding')).sort().join() === 'IMG_0001.jpg,IMG_0002.jpg,IMG_0003.jpg');
+        // Add to Photos library (photosAdd): a folder project's photos into an album named after it
+        const order = path.join(tmp, 'Order 1207');
+        fs.mkdirSync(order, { recursive: true });
+        for (const n of ['scan 1.jpg', 'scan 2.jpg']) fs.writeFileSync(path.join(order, n), JPEG);
+        await page.evaluate((p) => JEditorNative.openPath(p), order);
+        await loaded(page, 2);
+        const add = await page.evaluate(async () => {
+            for (let i = 0; i < 50 && app.isLoading; i++) await new Promise(r => setTimeout(r, 100));
+            const can = Host.has('photosAdd') && app.canAddToPhotos();
+            const added = await app.addToPhotos(app.files);
+            return { can, added, toast: [...document.querySelectorAll('.toast')].map(t => t.textContent).join(' | ') };
+        });
+        const album = path.join(lib, 'Order 1207');
+        check('Add to Photos library: a project\'s photos go in as they are, in an album named after it', add.can && add.added === 2 && fs.existsSync(album) && fs.readdirSync(album).sort().join() === 'scan 1.jpg,scan 2.jpg' && fs.readFileSync(path.join(album, 'scan 1.jpg')).equals(JPEG) && /Added 2 photos to the Photos library \(the album “Order 1207”\)/.test(add.toast), JSON.stringify(add));
+        check('no JS errors', errors.length === 0, errors.join('; '));
+        await app.close();
+    }
+
+        console.log('mac: permissions, the first time');
     {
         const vols = path.join(tmp, 'PermVolumes');
         fs.mkdirSync(path.join(vols, 'Card'), { recursive: true });
@@ -770,9 +1337,10 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await first.page.evaluate(() => Permissions.refresh());
         const before = await rows();
         const full = before.find(r => r[0] === 'full');
-        check('the first time, it opens on its own: folders, drives, Full Disk Access', JSON.stringify(before.map(r => r[0])) === '["folders","volumes","full"]' && await first.page.evaluate(() => Permissions.isOpen()), JSON.stringify(before));
+        // (and the Photos library's, on a Mac with the native module: before Full Disk Access)
+        check('the first time, it opens on its own: folders, drives, Full Disk Access', JSON.stringify(before.map(r => r[0]).filter(id => id !== 'photos')) === '["folders","volumes","full"]' && await first.page.evaluate(() => Permissions.isOpen()), JSON.stringify(before));
         if (full && full[1] === 'granted') {
-            check('... with Full Disk Access, everything is on', before.every(r => r[1] === 'granted'), JSON.stringify(before));
+            check('... with Full Disk Access, everything is on (but the Photos library, which asks on its own)', before.filter(r => r[0] !== 'photos').every(r => r[1] === 'granted'), JSON.stringify(before));
         } else {
             check('... each asks (Allow…), Full Disk Access opens System Settings', before[0][1] === 'ask' && before[0][2] === 'Allow…' && before[1][1] === 'ask' && full[2] === 'Open Settings', JSON.stringify(before));
             await first.page.click('#perm-list .perm-row[data-id="folders"] button');

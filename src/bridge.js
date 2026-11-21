@@ -78,7 +78,7 @@
         } else if (msg.type === 'logLines' && onLogLines) {
             onLogLines(msg.lines || []);
         } else if (msg.type === 'copyProgress' && copying.has(msg.copy)) {
-            copying.get(msg.copy)(msg.done, msg.total);
+            copying.get(msg.copy)(msg.done, msg.total, msg.moved);
         } else if (msg.type === 'burnProgress' && burning.has(msg.burn)) {
             burning.get(msg.burn)(msg.done, msg.total);
         } else if (msg.type === 'scanned' && onScanned) {
@@ -210,7 +210,8 @@
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
         platform: 'windows',
-        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn', 'themes'],
+        // (engine: when jeditor_engine.dll loaded; the app says so, Engine.cs)
+        features: ['recycle', 'reveal', 'places', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn', 'themes', 'folderMove', 'cacheFolder', 'menuBar', 'systemFonts'].concat(window.__jeditorEngine ? ['engine'] : [], window.__jeditorEngine && window.__jeditorEngine.heic ? ['engineHeic'] : []),
         // jEditor's storage on this PC: a folder handle, one subfolder per
         // order (see app/folder-cache.js)
         async dataDir() {
@@ -220,10 +221,26 @@
         },
         // Where a folder handle is on disk (null: not known)
         folderPath,
+        // The engine's thumbnail of the photo at relPath ('a/b.jpg') in the
+        // folder at dir: a URL the app answers (Engine.cs), w px wide as
+        // shown; 204 (no content) when the engine can't make it
+        engineThumb(dir, relPath, w) {
+            const path = dir.replace(/[\\/]+$/, '') + '\\' + String(relPath).replace(/\//g, '\\');
+            return `https://engine.jeditor.example/thumb?w=${w}&path=${encodeURIComponent(path)}`;
+        },
+        // The viewer's picture of the same photo, its long side at most
+        // edge, with the photo's own size in X-Width and X-Height
+        enginePreview(dir, relPath, edge) {
+            const path = dir.replace(/[\\/]+$/, '') + '\\' + String(relPath).replace(/\//g, '\\');
+            return `https://engine.jeditor.example/preview?edge=${edge}&path=${encodeURIComponent(path)}`;
+        },
         // A folder handle for a path, with permission to edit it
         async folderHandle(path) {
-            const { objects } = await answer('folderHandle', { path });
+            const { msg, objects } = await answer('folderHandle', { path });
             if (!objects[0]) throw new Error('That folder isn\'t there');
+            // Remembered with its path, as a picked folder is (folderPath:
+            // the engine asks by path)
+            remember(objects[0], msg.path || path);
             return objects[0];
         },
         // Files to the Recycle Bin, by path. Per file: { token } (Ctrl+Z:
@@ -254,6 +271,10 @@
         async places() {
             return (await answer('places')).msg;
         },
+        // The font families installed on this PC → ['Arial', 'Bahnschrift', …]
+        async fonts() {
+            return (await answer('fonts')).msg.fonts || [];
+        },
         // A folder's folders → { path, name, parent, folders: [{ name, path }], photos, more }
         async listDir(path) {
             return (await answer('listDir', { path })).msg;
@@ -275,10 +296,6 @@
         // (counting stops at `limit`)
         async countPhotos(paths) {
             return (await answer('countPhotos', { paths })).msg;
-        },
-        // Explorer's pinned Quick Access folders → [{ name, path }]
-        async quickAccess() {
-            return (await answer('quickAccess')).msg.folders;
         },
         // Ejects a USB drive → { ok, error? }
         async eject(path) {
@@ -434,6 +451,42 @@
                 return { bytes: msg.bytes };
             });
         },
+        // ---- Moving the projects folder or the cache (folderMove,
+        // cacheFolder; app/folder-move.js) ----
+        // What's in a folder: { folders, files, bytes }, and with dest the
+        // room there: { free (-1: unknown), drive, sameDrive, refused }
+        async folderSize(path, dest) {
+            const { msg } = await answer('folderSize', { path, dest });
+            if (msg.error) throw new Error(msg.error);
+            return msg;
+        },
+        // Everything in path into dest, each item copied, checked and only
+        // then removed; progress(done, total, moved) → { moved, left:
+        // [{ name, why }], error, stopped }. Has a copyId, for cancelCopy.
+        moveFolder(path, dest, progress) {
+            const id = nextId++;
+            copying.set(id, progress || (() => { }));
+            const done = new Promise((resolve) => {
+                pending.set(id, resolve);
+                post({ type: 'moveFolder', id, path, dest });
+            }).then(({ msg }) => {
+                copying.delete(id);
+                return { moved: msg.moved || 0, left: msg.left || [], error: msg.error || null, stopped: !!msg.stopped };
+            });
+            done.copyId = id;
+            return done;
+        },
+        // The cache's folder: { path, chosen }
+        async cacheDir() {
+            return (await answer('cacheDir')).msg;
+        },
+        // The cache kept in a folder of its own in path from now on (null:
+        // where it was at first) → its folder
+        async setCacheDir(path) {
+            const { msg } = await answer('setCacheDir', { path });
+            if (msg.error) throw new Error(msg.error);
+            return msg.path;
+        },
         cancelCopy(id) {
             post({ type: 'cancelCopy', copy: id });
         },
@@ -546,7 +599,7 @@
     }
 
     // Opened the folder; now, with the app checking on disk after each step:
-    // save an edit (the handle can write), flag a photo (the order's data
+    // turn a photo and save over the original (the handle can write), flag a photo (the order's data
     // goes to jEditor's storage, not the folder), delete one (it's in the
     // Recycle Bin) and undo that (it's back, unchanged), and look for updates
     async function smokeTest(a) {
@@ -558,7 +611,32 @@
         const listed = a.files.length;
         let lastScanned = null; // the scan step's last photo, moved by the windows step
         const file = a.files[0];
-        const rotated = file ? await a.rotateImage(file, 90) !== false : false;
+        // (edits are kept in jEditor: Write edits to file writes the turn)
+        const rotated = file ? (await a.rotateImage(file, 90) !== false && (!file._edit || await a.saveOverOriginal([file], { how: 'originals' }) !== false)) : false;
+        // The engine: a thumbnail of the first photo, made by the app
+        // (Engine.cs) from the file on disk, 64 px wide
+        if (window.JEditorNative.features.includes('engine') && file) {
+            try {
+                const here = await window.JEditorNative.folderPath(a.dirHandle);
+                const r = await fetch(window.JEditorNative.engineThumb(here, file.relPath || file.name, 64));
+                const bmp = r.status === 200 ? await createImageBitmap(await r.blob()) : null;
+                steps.engine = !here ? 'no path for the folder' : !bmp ? `the app answered ${r.status}`
+                    : bmp.width === 64 ? true : `a thumbnail ${bmp.width} px wide, not 64`;
+            } catch (e) {
+                steps.engine = 'failed: ' + (e && e.message || e);
+            }
+        }
+        // And a HEIC's (scripts/smoke-test.ps1 puts one beside the order)
+        if (window.JEditorNative.features.includes('engineHeic')) {
+            try {
+                const here = await window.JEditorNative.folderPath(a.dirHandle);
+                const r = await fetch(window.JEditorNative.engineThumb(here + '\\..', 'engine-check.heic', 64));
+                const bmp = r.status === 200 ? await createImageBitmap(await r.blob()) : null;
+                steps.engineHeic = !bmp ? `the app answered ${r.status}` : bmp.width === 64 ? true : `a thumbnail ${bmp.width} px wide, not 64`;
+            } catch (e) {
+                steps.engineHeic = 'failed: ' + (e && e.message || e);
+            }
+        }
         try {
             Flags.apply('star', [file]);
             await Flags.save();
@@ -669,7 +747,6 @@
                     const { counts } = await window.JEditorNative.countPhotos([here]);
                     steps.counted = counts[0] === a.files.length ? true : `counted ${counts[0]} photos, jEditor shows ${a.files.length}`;
                 }
-                steps.pins = Array.isArray(await window.JEditorNative.quickAccess()) || 'no answer';
                 // New project and Rename: a folder made beside this one, with
                 // stored data, renamed; the data must follow it
                 if (here) {

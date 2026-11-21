@@ -80,10 +80,11 @@ const Picked = {
         if (!this.available()) return;
         document.documentElement.classList.add('picked-mode');
         const open = document.getElementById('btn-browse-folder');
-        if (open) open.lastChild.textContent = ' Open photos';
+        if (open) {
+            open.querySelector('.home-tile-name').textContent = 'Open photos';
+            open.querySelector('.home-tile-sub').textContent = '';
+        }
         const hint = document.querySelector('.drop-hint');
-        const tagline = document.querySelector('.start-tagline');
-        if (tagline) tagline.textContent = 'Rotate, crop and sort photos. Nothing is uploaded.';
         const where = { ios: 'Photos or Files', android: 'your gallery or files' }[Start.device()] || 'your photos';
         if (hint) hint.textContent = `From ${where}. Edited photos are saved with Save, to wherever you share them.`;
         this.input = document.createElement('input');

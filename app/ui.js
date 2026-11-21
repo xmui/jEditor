@@ -19,6 +19,20 @@ const UI = {
 
     el(id) { return document.getElementById(id); },
 
+    // How far down from the window's top something floating over the page
+    // has to stay, in px: a theme's title and menu bars, or the Mac's
+    // traffic lights and toolbar (style.css: --top-safe). 0 elsewhere.
+    topSafe() {
+        let p = this._safe;
+        if (!p) {
+            p = this._safe = document.createElement('div');
+            p.setAttribute('aria-hidden', 'true');
+            p.style.cssText = 'position:fixed;top:0;left:0;width:0;height:var(--top-safe,0px);visibility:hidden;pointer-events:none';
+        }
+        if (!p.isConnected) document.body.appendChild(p);
+        return p.getBoundingClientRect().height;
+    },
+
     init() {
         if (this._inited) return;
         this._inited = true;
@@ -32,7 +46,12 @@ const UI = {
         });
         document.addEventListener('keydown', (e) => this.trapTab(e), true);
         document.addEventListener('pointerdown', () => { this._pointer = true; }, true);
-        document.addEventListener('keydown', () => { this._pointer = false; }, true);
+        document.addEventListener('keydown', (e) => {
+            this._pointer = false;
+            if (e.key === 'Tab' || e.key.startsWith('Arrow')) {
+                for (const q of document.querySelectorAll('.focus-quiet')) q.classList.remove('focus-quiet');
+            }
+        }, true);
 
         // alert / confirm / prompt
         const box = this.el('ui-dialog');
@@ -62,6 +81,10 @@ const UI = {
         const i = this._stack.findIndex(s => s.overlay === overlay);
         if (open && i === -1) {
             this._stack.push({ overlay, returnTo: document.activeElement, byKeys: !this._pointer });
+            // Where the dialog puts the focus as it opens shows no ring
+            // (the main button is already the one Enter presses) until the
+            // keyboard moves it: Tab or an arrow (style.css: .focus-quiet)
+            overlay.classList.add('focus-quiet');
             // After the dialog's own code has had a chance to focus a field
             requestAnimationFrame(() => {
                 if (overlay.classList.contains('hidden') || overlay.contains(document.activeElement)) return;
@@ -121,7 +144,9 @@ const UI = {
     // ---- alert / confirm / prompt ----
 
     // opts: { title, message, items: [text], note, ok, cancel, danger, input: { label, value, placeholder, inputMode },
-    //        alt, altDanger (choose) }
+    //        alt, altDanger (choose), check: { label, note, value } (a switch under
+    //        a prompt: it then answers { value, checked }, or null; under a
+    //        choose: { answer: 'ok' | 'alt', checked }, or null) }
     // Text only, never HTML: file names go in safely.
     show(kind, opts) {
         this.init();
@@ -159,6 +184,13 @@ const UI = {
         const field = this.el('uid-field');
         const input = this.el('uid-input');
         field.classList.toggle('hidden', kind !== 'prompt');
+        const check = this.el('uid-check');
+        check.classList.toggle('hidden', !o.check);
+        if (o.check) {
+            this.el('uid-check-label').textContent = o.check.label || '';
+            this.el('uid-check-note').textContent = o.check.note || '';
+            this.el('uid-check-box').checked = !!o.check.value;
+        }
         if (kind === 'prompt') {
             const f = o.input || {};
             this.el('uid-field-label').textContent = f.label || '';
@@ -186,7 +218,7 @@ const UI = {
             if (kind === 'prompt') { input.focus(); input.select(); }
             else (o.danger ? cancel : ok).focus();
         });
-        return new Promise(resolve => { this._pending = { kind, resolve }; });
+        return new Promise(resolve => { this._pending = { kind, resolve, check: !!o.check }; });
     },
 
     answer(yes) {
@@ -196,7 +228,11 @@ const UI = {
         this.el('ui-dialog').classList.add('hidden');
         if (p.kind === 'alert') p.resolve();
         else if (p.kind === 'confirm') p.resolve(!!yes);
-        else if (p.kind === 'choose') p.resolve(yes === 'alt' ? 'alt' : yes ? 'ok' : null);
+        else if (p.kind === 'choose') {
+            const a = yes === 'alt' ? 'alt' : yes ? 'ok' : null;
+            p.resolve(p.check && a ? { answer: a, checked: this.el('uid-check-box').checked } : a);
+        }
+        else if (p.check) p.resolve(yes ? { value: this.el('uid-input').value, checked: this.el('uid-check-box').checked } : null);
         else p.resolve(yes ? this.el('uid-input').value : null);
     },
 

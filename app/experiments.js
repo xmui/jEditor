@@ -4,9 +4,12 @@
 // 'jeditor-experiments' event on window says so). Betas (Settings →
 // Updates → Beta builds) get new ones first.
 //
-// An experiment: { id, title, text, beta, needs }. beta: on to start with
-// in a beta build (still off in a release until turned on). needs: a
-// feature the app must have (host.js), or it isn't offered. When one is done
+// An experiment: { id, title, text, beta, needs, soon }. beta: on to start
+// with in a beta build (still off in a release until turned on). needs: a
+// feature the app must have (host.js), or it isn't offered. soon: listed,
+// greyed out with Coming soon, and off in betas and releases alike; a
+// choice saved before is set aside. Only code (the tests) can turn it on,
+// with set(), for this profile's windows. When one is done
 // it leaves this list and is simply part of jEditor.
 //
 // What only shows with one on is marked data-experiment="id" in the page:
@@ -14,6 +17,12 @@
 
 const Experiments = {
     LIST: [
+        {
+            // Paused until they match the 2.0 look (themes.js: can)
+            id: 'themes', needs: 'themes', soon: true,
+            title: 'Themes',
+            text: 'Dress jEditor as a computer from another time.'
+        },
         {
             id: 'auto-crop',
             title: 'Auto crop',
@@ -36,6 +45,7 @@ const Experiments = {
         const prefs = (this.app && this.app.uiPrefs && this.app.uiPrefs.experiments) || {};
         const x = this.shown().find(e => e.id === id);
         if (!x) return false;
+        if (x.soon) return this.trying[id] === true;
         if (typeof prefs[id] === 'boolean') return prefs[id];
         return !!(x.beta && this.betaBuild());
     },
@@ -50,10 +60,24 @@ const Experiments = {
         return typeof APP_BUILD !== 'undefined' && /-beta\./.test(APP_BUILD);
     },
 
+    // A Coming soon one turned on by code (the tests), for every window of
+    // this profile: a window that opens in its place (a theme on Linux)
+    // still has it. Settings can't turn one on, so people never do.
+    TRYING: 'jeditor.experiments.trying',
+    trying: (() => {
+        try { return JSON.parse(localStorage.getItem('jeditor.experiments.trying') || '{}') || {}; } catch (e) { return {}; }
+    })(),
+
     set(id, value) {
         const app = this.app;
-        app.uiPrefs.experiments = { ...(app.uiPrefs.experiments || {}), [id]: !!value };
-        app.saveUiPrefs();
+        const x = this.LIST.find(e => e.id === id);
+        if (x && x.soon) {
+            this.trying[id] = !!value;
+            try { localStorage.setItem(this.TRYING, JSON.stringify(this.trying)); } catch (e) { /* no storage: this window only */ }
+        } else {
+            app.uiPrefs.experiments = { ...(app.uiPrefs.experiments || {}), [id]: !!value };
+            app.saveUiPrefs();
+        }
         this.apply();
         dispatchEvent(new CustomEvent('jeditor-experiments', { detail: { id, on: !!value } }));
     },
@@ -76,6 +100,13 @@ const Experiments = {
             label.className = 'set-label';
             label.htmlFor = 'exp-' + x.id;
             label.textContent = x.title;
+            if (x.soon) {
+                const soon = document.createElement('span');
+                soon.className = 'exp-soon';
+                soon.textContent = 'Coming soon';
+                label.appendChild(soon);
+                row.classList.add('is-soon');
+            }
             const small = document.createElement('small');
             small.textContent = x.text;
             label.appendChild(small);
@@ -84,6 +115,7 @@ const Experiments = {
             input.className = 'switch';
             input.id = 'exp-' + x.id;
             input.checked = this.on(x.id);
+            input.disabled = !!x.soon;
             input.addEventListener('change', () => this.set(x.id, input.checked));
             row.append(label, input);
             list.appendChild(row);

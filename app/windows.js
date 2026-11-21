@@ -42,7 +42,8 @@ const Windows = {
         clearTimeout(this._publish);
         this._publish = setTimeout(async () => {
             const app = this.app;
-            const path = app.dirHandle ? await FolderCache.orderPath(app).catch(() => null) : null;
+            // A read-only one (the Photos library) isn't somewhere to move photos to
+            const path = app.dirHandle && !app.fixedFiles ? await FolderCache.orderPath(app).catch(() => null) : null;
             this.native().setState({
                 name: app.dirHandle ? app.dirHandle.name : null,
                 path,
@@ -87,7 +88,7 @@ const Windows = {
     // ---- Photos from another window ----
 
     foreign(e) {
-        return !Folders.dragging && this.app.dirHandle && !this.app.readOnlyMode &&
+        return !Folders.dragging && this.app.dirHandle && !this.app.fixedFiles &&
             e.dataTransfer && [...e.dataTransfer.types].includes(this.TYPE);
     },
 
@@ -158,6 +159,21 @@ const Windows = {
         }
         if (app.dirHandle) Watch.request({ full: true });
         return items;
+    },
+
+    // Redo: moved or copied again from where they are, into the folder
+    // they went to (a free name there if theirs is taken now)
+    async again(entry) {
+        const byDir = new Map();
+        for (const it of entry.items) {
+            const dir = String(it.to).replace(/[\\/][^\\/]*$/, '');
+            if (!byDir.has(dir)) byDir.set(dir, []);
+            byDir.get(dir).push(it.from);
+        }
+        for (const [dir, paths] of byDir) {
+            const items = await this.send(paths, dir, '', entry.copy, entry.where);
+            if (!items) throw new Error('they couldn\'t be ' + (entry.copy ? 'copied' : 'moved') + ' again');
+        }
     },
 
     async undo(entry) {

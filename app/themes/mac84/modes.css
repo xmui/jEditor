@@ -272,7 +272,8 @@
 :root[data-skin="mac84"] .dupes-stage { background: #fff; }
 :root[data-skin="mac84"] .dupe-card { border-radius: 0; }
 :root[data-skin="mac84"] .dupe-card.marked { outline: 2px solid #000; }
-:root[data-skin="mac84"] .dupe-badge { border-radius: 0; border: 1px solid #000; background: #fff; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .dupe-card.kept { border-color: #000; }
+:root[data-skin="mac84"] .dupe-pill, :root[data-skin="mac84"] .dupe-tile-keep { border-radius: 0; border: 1px solid #000; background: #fff; color: #000; font: 12px var(--m-font); }
 :root[data-skin="mac84"] .dupes-message { color: #000; font: 12px var(--m-font); }
 
 /* ---- The strip of photos in Adjust and Paint: dithered like the rest ---- */
