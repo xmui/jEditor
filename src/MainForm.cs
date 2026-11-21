@@ -469,7 +469,6 @@ sealed class MainForm : Form
             case "makeFolder":
             case "renameFolder":
             case "countPhotos":
-            case "quickAccess":
             case "eject":
             case "reveal":
             case "pickPath":
@@ -748,14 +747,6 @@ sealed class MainForm : Form
                     var counts = await Task.Run(() => paths.AsParallel().AsOrdered().WithDegreeOfParallelism(4)
                         .Select(p => Path.IsPathFullyQualified(p) ? Projects.Count(p) : -1).ToList());
                     Reply(id, new { counts, limit = Projects.Limit });
-                    break;
-                }
-                case "quickAccess":
-                {
-                    List<(string Name, string Path)> pins;
-                    try { pins = await Projects.QuickAccessAsync(); }
-                    catch (Exception e) { Log.Write("Quick Access: " + e.Message); pins = []; }
-                    Reply(id, new { folders = pins.Select(p => new { name = p.Name, path = p.Path }) });
                     break;
                 }
                 case "eject":
