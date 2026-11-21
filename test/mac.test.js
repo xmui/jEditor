@@ -702,8 +702,25 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             const top = ir && document.elementFromPoint(ir.x + ir.width / 2, ir.y + ir.height / 2);
             out.photoClear = !!top && (top === img || img.contains(top) || top.contains(img));
             out.photoFilter = img && getComputedStyle(img).backdropFilter;
-            // Room for the traffic lights, given back in full screen
+            // One row (the owner, 21 November): the sidebar to the top, its own
+            // row on the lights' line, after them, in line with the top row's
+            // pills, pressable, and its rows straight under it
             app.setView('grid');
+            if (!Folders.railOpen()) Folders.toggleRail();
+            await new Promise(r => setTimeout(r, 400));
+            {
+                const box = (e) => e && e.getClientRects().length ? e.getBoundingClientRect() : null;
+                const row = box(document.querySelector('.folder-rail #mode-row'));
+                const seg = box(document.querySelector('.folder-rail #mode-row .mode-seg'));
+                const pill = box(document.querySelector('header .file-info'));
+                const card = box(document.querySelector('.folder-rail .sb-card'));
+                const btns = ['mode-row-side', 'mode-row-find'].map(id => document.getElementById(id)).filter(b => b && b.getClientRects().length);
+                const pressable = btns.every(b => { const r = b.getBoundingClientRect(); const at = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return !!at && (at === b || b.contains(at)); });
+                const mid = (r) => r ? Math.round((r.top + r.bottom) / 2) : null;
+                const lightsEnd = Math.max(12, parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gutter'))) + 54;
+                out.oneRow = { row: mid(seg), pill: mid(pill), segLeft: seg && Math.round(seg.left), lightsEnd, cardTop: card && Math.round(card.top), rowBottom: row && Math.round(row.bottom), buttons: btns.length, pressable };
+            }
+            // Room for the traffic lights, given back in full screen
             if (Folders.railOpen()) Folders.toggleRail();
             await new Promise(r => setTimeout(r, 400));
             // (the sidebar closed, the first pill is Photos · Adjust · Paint's row, the folder pill after it)
@@ -721,6 +738,8 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         check('the Mac\'s glass: blurred, with light along its edge', r.platform === 'mac' && /blur\(\d/.test(r.filter) && /inset/.test(r.rim), JSON.stringify([r.filter, r.rim]));
         check('the photo is never under glass', r.photoClear && (!r.photoFilter || r.photoFilter === 'none'), JSON.stringify([r.photoClear, r.photoFilter]));
         check('the traffic lights get their room, and give it back in full screen', r.lightsRoom === 72 && r.fullscreenRoom === 0, JSON.stringify([r.lightsRoom, r.fullscreenRoom]));
+        const o = r.oneRow || {};
+        check('one row: the sidebar open, its own row of modes on the lights\' line, after them, in line with the pills, its buttons pressable, its rows straight under it', o.row !== null && Math.abs(o.row - o.pill) <= 1 && o.segLeft >= o.lightsEnd && o.buttons === 2 && o.pressable && o.cardTop - o.rowBottom <= 12, JSON.stringify(o));
         check('the top row moves the window, its buttons don\'t', r.drag === 'drag' && r.noDrag === 'no-drag', JSON.stringify([r.drag, r.noDrag]));
 
         // The top row, the traffic lights and Photos · Adjust · Paint: at every
@@ -756,8 +775,9 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                     // Over Adjust and Paint, only the mode chip: the rest is under them
                     const editing = !!document.querySelector('.mode-screen:not(.hidden)');
                     const pills = seen(editing ? '.mode-float, #mode-row.float' : 'header .toolbar, header .file-info, .folder-bar, .mode-float, #mode-row.float');
-                    // (in jEditor's own look the lights are in the sidebar's top, as Finder's: what's in it starts below them)
-                    const others = seen('.folder-rail > *, .mode-screen:not(.hidden) .mode-head-acts, .paint-options, .paint-tools');
+                    // (in jEditor's own look the lights are in the sidebar's top, as Finder's, on its own row's
+                    // line: clear of that row's switch and buttons, and of what's under it)
+                    const others = seen('.folder-rail > :not(#mode-row), .folder-rail #mode-row > :not(.mode-row-gap), .mode-screen:not(.hidden) .mode-head-acts, .paint-options, .paint-tools');
                     if (document.documentElement.dataset.skin) others.push(...seen('.folder-rail'));
                     const out = [];
                     for (const a of [lights, ...pills]) for (const b of [...pills, ...others]) if (a !== b && hit(a, b) && !(a.name === 'mode-float' && b.name === 'folder-bar')) out.push(a.name + ' over ' + b.name);
@@ -929,7 +949,8 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
 
     console.log('mac: the native toolbar (macOS 26)');
     {
-        const { app, page, errors } = await launch(profile, [path.join(tmp, 'Glass')]);
+        // (off unless asked for, for now: main.js)
+        const { app, page, errors } = await launch(profile, [path.join(tmp, 'Glass')], { JEDITOR_NATIVE_TOOLBAR: '1' });
         const native = await page.evaluate(() => !!window.jeditorMac.nativeToolbar);
         if (!native) {
             console.log('        (skipped: needs macOS 26 and the native module, native/build.js)');
@@ -1157,10 +1178,11 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
 
     console.log('mac: the window\'s top bar, kept clear');
     {
-        // On a Mac, again without macOS 26's toolbar (as before macOS 26, or
-        // when it's off): the traffic lights in the page's top row, for real
+        // The page's own top row (macOS 26's toolbar is off for now), and on a
+        // Mac again with that toolbar on: the traffic lights, for real
         const passes = [{ env: {}, themes: ['', 'snow/finder', 'mac84/finder'], tag: '' }];
-        if (process.platform === 'darwin') passes.push({ env: { JEDITOR_NATIVE_TOOLBAR: '0' }, themes: [''], tag: ', without macOS 26\'s toolbar' });
+        // (macOS 26's toolbar is off unless asked for, for now: main.js)
+        if (process.platform === 'darwin') passes.push({ env: { JEDITOR_NATIVE_TOOLBAR: '1' }, themes: [''], tag: ', with macOS 26\'s toolbar' });
         for (const pass of passes) {
             const { app, page, errors } = await launch(profile, [path.join(tmp, 'Glass')], pass.env);
             await loaded(page, 2);
