@@ -1492,6 +1492,45 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    console.log('motion: the mode switch shows one chip; Animations off stops every transition; nothing eases its layout (style.css)');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const files = Array.from({ length: 12 }, (_, i) => makeFakeFile(`c${i}.jpg`, makeJpegBytes(), 'image/jpeg'));
+            app.files = files;
+            app.dirHandle = null;
+            app.setView('grid');
+            app.renderGrid({ sync: true });
+            await new Promise(r => setTimeout(r, 200));
+            const root = document.documentElement;
+            // Gliding, the chip is the glide alone, not the button under it too
+            const seg = document.querySelector('.mode-row .mode-seg.glides');
+            const on = seg && seg.querySelector('button.on');
+            out.glides = !!on;
+            out.onClear = !!on && getComputedStyle(on).backgroundColor === 'rgba(0, 0, 0, 0)';
+            // Info: the grid makes room at once, not over the frames of a slide
+            app.toggleInfoPanel(true);
+            out.gridEased = getComputedStyle(app.elements.gridView).transitionProperty.includes('margin');
+            app.toggleInfoPanel(false);
+            // Adjust's and Paint's screen moves beside the sidebar at once
+            const screen = document.querySelector('.mode-screen');
+            out.screenEased = !!screen && getComputedStyle(screen).transitionProperty.includes('left');
+            // Animations off: the durations every transition is built on are 0
+            root.dataset.motion = 'off';
+            const s = getComputedStyle(root);
+            out.off = ['--dur-fast', '--dur-base', '--dur-slow'].map(v => s.getPropertyValue(v).trim());
+            root.dataset.motion = 'on';
+            return out;
+        });
+        check('the floating mode switch shows one chip as it glides, not the button lit under it too', r.glides && r.onClear, JSON.stringify(r));
+        check('Info and the sidebar move the grid, Adjust and Paint at once, not by easing their layout', !r.gridEased && !r.screenEased, JSON.stringify(r));
+        check('Animations off sets every duration to 0', r.off.every(v => v === '0ms'), JSON.stringify(r));
+        check('mode switch chip: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7a. Lossless rotation for scanner JPEGs (EXIF without Orientation) ----
     console.log('lossless rotation: EXIF without orientation');
     {

@@ -653,7 +653,6 @@ header {
 }
 
 .file-info {
-    padding: 0 var(--sp-1);
     max-width: calc(100% - 2 * 220px);
     /* Off center when a pill on either side needs the room (fit.js) */
     translate: var(--fi-shift, 0) 0;
@@ -1829,11 +1828,9 @@ body.slideshow #image-container:has(.slide-ctl.show) {
 
 /* The sidebar stays beside Adjust and Paint, as beside the grid and the
    photo: they start after it (jEditor's own look; a theme's modes keep the
-   whole window) */
-:root:not([data-skin]) .mode-screen {
-    transition: left var(--dur-slow) var(--ease-out);
-}
-
+   whole window). They move over at once, as the grid does, while the
+   sidebar slides: easing their left made Adjust and Paint fit and draw
+   the photo again on every frame of the slide */
 :root:not([data-skin]) body:has(#main-interface.rail-open:not(.hidden)) .mode-screen {
     left: var(--rail-now);
 }
@@ -4073,10 +4070,6 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     font-weight: normal;
 }
 
-.ex-px {
-    width: 96px;
-}
-
 .ex-opts {
     display: flex;
     flex-direction: column;
@@ -4157,55 +4150,9 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     outline-offset: 2px;
 }
 
-.ex-under {
-    padding: var(--sp-3);
-    border-radius: var(--r-md);
-    background: var(--bg-sunken);
-    border: 1px solid var(--border-subtle);
-}
-
-.ex-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-}
-
-.ex-chip {
-    padding: 2px var(--sp-2);
-    border-radius: var(--r-pill);
-    background: var(--bg-hover);
-    color: var(--text-2);
-    font-size: var(--fs-caption);
-}
-
-.ex-custom {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--sp-2) var(--sp-3);
-}
-
-.ex-cf {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    min-width: 0;
-    color: var(--text-2);
-    font-size: var(--fs-caption);
-}
-
-.ex-cf .field {
-    width: 100%;
-}
-
 .ex-sum b {
     color: var(--text-1);
     font-weight: var(--fw-semibold);
-}
-
-.ex-pills {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--sp-2);
 }
 
 .btn.ex-pill {
@@ -4221,12 +4168,6 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 
 .btn.ex-pill .i {
     color: var(--text-2);
-}
-
-@media (max-width: 520px) {
-    .ex-custom {
-        grid-template-columns: 1fr;
-    }
 }
 
 .ex-top {
@@ -4344,10 +4285,6 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 .ex-eg code {
     color: var(--text-1);
     font-size: inherit;
-}
-
-.ex-quiet {
-    color: var(--text-2);
 }
 
 .ex-prev {
@@ -6347,12 +6284,6 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     color: var(--text-1);
 }
 
-.paint-tool-sep {
-    height: 1px;
-    margin: var(--sp-1) var(--sp-1);
-    background: var(--border-subtle);
-}
-
 .paint-stage {
     position: relative;
     flex: 1;
@@ -6718,11 +6649,6 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     }
     .paint-tool {
         flex: none;
-    }
-    .paint-tool-sep {
-        flex: none;
-        width: 1px;
-        height: auto;
     }
     .paint-stage {
         flex: 1 1 60%;
@@ -9288,11 +9214,6 @@ html:not(.native) .native-only {
     font-weight: normal;
 }
 
-.scan-pv-help {
-    color: var(--text-2);
-    font-size: var(--fs-small);
-}
-
 .scan-pv-tools {
     display: flex;
     flex-wrap: wrap;
@@ -9561,25 +9482,6 @@ button.sb-card-name {
 
 button.sb-card-name:hover {
     background: var(--tb-hover);
-}
-
-.sb-card-name .sb-card-edit {
-    display: inline-flex;
-    flex-shrink: 0;
-    margin-left: calc(-1 * var(--sp-1));
-    color: var(--text-2);
-    opacity: 0;
-    transition: opacity var(--dur-fast) var(--ease-out);
-}
-
-.sb-card-edit svg {
-    width: 14px;
-    height: 14px;
-}
-
-button.sb-card-name:hover .sb-card-edit,
-button.sb-card-name:focus-visible .sb-card-edit {
-    opacity: 1;
 }
 
 .sb-card-path,
@@ -10592,22 +10494,27 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
     color: var(--text-1);
 }
 
+/* The switch as a pill (the owner's addition, 19 November): a round
+   track, and the mode you're in on a raised round chip, as the iPhone's
+   segmented controls. Open or floating, the same */
 :root:not([data-skin]) .mode-row .mode-seg {
+    --seg-cell: calc(var(--ctl-lg) - 12px);
     /* Its own width, not the sidebar's (no container query here) */
     container-type: normal;
-    width: calc(3 * (var(--ctl-lg) - 8px) + 4px);
+    width: calc(3 * var(--seg-cell) + 4px + 6px);
     flex: none;
     display: grid;
-    grid-template-columns: repeat(3, calc(var(--ctl-lg) - 8px));
+    grid-template-columns: repeat(3, var(--seg-cell));
     gap: 2px;
     margin: 0;
-    padding: 0;
-    background: none;
+    padding: 3px;
+    border-radius: var(--r-pill);
+    background: var(--seg-bg);
 }
 
 :root:not([data-skin]) .mode-row .mode-seg > button {
-    width: calc(var(--ctl-lg) - 8px);
-    height: calc(var(--ctl-lg) - 8px);
+    width: var(--seg-cell);
+    height: var(--seg-cell);
     padding: 0;
     border-radius: var(--r-pill);
     color: var(--text-2);
@@ -10621,41 +10528,15 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
     display: none;
 }
 
-/* The mode you're in: its icon in the accent, on the soft chosen pill */
-:root:not([data-skin]) .mode-row .mode-seg > button.on,
-:root:not([data-skin]) .mode-row .mode-seg > button.on:hover {
-    color: var(--accent-text);
-}
-
-/* The switch as a pill (the owner's addition, 19 November): a round
-   track, and the mode you're in on a raised round chip, as the iPhone's
-   segmented controls. Open or floating, the same */
-:root:not([data-skin]) .mode-row .mode-seg {
-    --seg-cell: calc(var(--ctl-lg) - 12px);
-    width: calc(3 * var(--seg-cell) + 4px + 6px);
-    grid-template-columns: repeat(3, var(--seg-cell));
-    padding: 3px;
-    border-radius: var(--r-pill);
-    background: var(--seg-bg);
-}
-:root:not([data-skin]) .mode-row .mode-seg > button {
-    width: var(--seg-cell);
-    height: var(--seg-cell);
-}
-:root:not([data-skin]) .folder-rail .mode-row .mode-seg > button.on,
-:root:not([data-skin]) .folder-rail .mode-row .mode-seg .seg-glide,
-:root:not([data-skin]) .mode-row.float .mode-seg > button.on,
-:root:not([data-skin]) .mode-row.float .mode-seg .seg-glide {
-    background: var(--seg-active);
-    box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.08), 0 1px 3px rgb(0 0 0 / 0.18);
-}
-:root:not([data-skin]) .mode-row .mode-seg.glides > button.on {
-    background: transparent;
-    box-shadow: none;
-}
+/* The mode you're in: its icon in the text colour, on the chip */
 :root:not([data-skin]) .mode-row .mode-seg > button.on,
 :root:not([data-skin]) .mode-row .mode-seg > button.on:hover {
     color: var(--text-1);
+}
+:root:not([data-skin]) .folder-rail .mode-row .mode-seg > button.on,
+:root:not([data-skin]) .folder-rail .mode-row .mode-seg .seg-glide {
+    background: var(--seg-active);
+    box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.08), 0 1px 3px rgb(0 0 0 / 0.18);
 }
 
 /* Closed: the same row, floating in the same place */
@@ -10682,6 +10563,14 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
 :root:not([data-skin]) .mode-row.float .mode-seg > button.on,
 :root:not([data-skin]) .mode-row.float .mode-seg .seg-glide {
     background: var(--tb-pressed);
+    box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.08), 0 1px 3px rgb(0 0 0 / 0.18);
+}
+
+/* Gliding (motion.js), the chip is the glide alone: the mode's own button
+   stays clear, or it lit at once under the glide and the chip showed twice */
+:root:not([data-skin]) .mode-row .mode-seg.glides > button.on {
+    background: transparent;
+    box-shadow: none;
 }
 
 :root[data-platform="mac"]:not([data-skin]) .mode-row.float {
@@ -10836,7 +10725,7 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
     padding: 0;
 }
 
-:root:not([data-skin]) .folder-rail :is(.sb-card-btns, .sb-card-export, .sb-card-path, .sb-card-meta, .sb-card-edit, .sb-card-name > svg) {
+:root:not([data-skin]) .folder-rail :is(.sb-card-btns, .sb-card-export, .sb-card-path, .sb-card-meta, .sb-card-name > svg) {
     display: none;
 }
 
@@ -12645,7 +12534,7 @@ body.touring .controls.idle button { pointer-events: auto; }
     padding: 0;
     overflow: hidden;
     border-radius: var(--r-sm);
-    background: var(--surface-2);
+    background: var(--bg-raised);
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-1) 10%, transparent), var(--shadow-2);
 }
 
@@ -12900,8 +12789,9 @@ body.touring .controls.idle button { pointer-events: auto; }
     color: var(--text-1);
 }
 :root:not([data-skin]) .interface.info-open #grid-view {
+    /* At once, not eased: each frame of a slide laid the whole grid out
+       again (its ResizeObserver), with the columns jumping part way */
     margin-right: calc(300px + var(--gutter));
-    transition: margin-right var(--dur-base) var(--ease-out);
 }
 /* The photo fits beside it, but zoomed in runs on under it (padding, not
    a margin: the owner, "it should also go behind the right pane") */
@@ -13415,22 +13305,28 @@ body.touring .controls.idle button { pointer-events: auto; }
 .hl-sheet:hover .hl-fan img:nth-child(1) { transform: translate(-36%, 4%) rotate(-10deg); }
 .hl-sheet:hover .hl-fan img:nth-child(2) { transform: translate(36%, 4%) rotate(10deg); }
 .hl-big { position: absolute; left: var(--sp-4); bottom: var(--sp-3); font-size: 64px; font-weight: 700; letter-spacing: -0.05em; line-height: 1; color: #fff; text-shadow: 0 4px 30px rgb(0 0 0 / 0.45); }
-/* Old photos: faded and restored, a wipe going back and forth */
+/* Old photos: faded and restored, a wipe going back and forth. Moved,
+   not clipped or placed: the faded one's frame slides one way and the
+   picture in it the other, so it stays put, and the bar slides with the
+   edge, all transforms the GPU does without laying out or painting */
 .hl-ba { position: absolute; inset: 0; }
 .hl-ba img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.hl-ba .before { filter: sepia(0.75) saturate(0.55) contrast(0.78) brightness(1.12) hue-rotate(-12deg); clip-path: inset(0 50% 0 0); animation: hl-wipe 6s ease-in-out infinite alternate; }
-.hl-bar { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: #fff; box-shadow: 0 0 12px rgb(0 0 0 / 0.35); animation: hl-wipe-bar 6s ease-in-out infinite alternate; }
+.hl-wipe { position: absolute; inset: 0; overflow: hidden; translate: -50% 0; animation: hl-wipe 6s ease-in-out infinite alternate; }
+.hl-ba .before { filter: sepia(0.75) saturate(0.55) contrast(0.78) brightness(1.12) hue-rotate(-12deg); translate: 50% 0; animation: hl-wipe-pic 6s ease-in-out infinite alternate; }
+.hl-bar { position: absolute; inset: 0; translate: 50% 0; pointer-events: none; animation: hl-wipe-bar 6s ease-in-out infinite alternate; }
+.hl-bar::before { content: ""; position: absolute; top: 0; bottom: 0; left: -1px; width: 2px; background: #fff; box-shadow: 0 0 12px rgb(0 0 0 / 0.35); }
 .hl-ba em { position: absolute; bottom: var(--sp-3); font-style: normal; font-size: var(--fs-small); font-weight: var(--fw-semibold); color: #fff; padding: 2px 10px; border-radius: var(--r-pill); background: rgb(0 0 0 / 0.4); }
 .hl-ba .l { left: var(--sp-3); }
 .hl-ba .r { right: var(--sp-3); }
-@keyframes hl-wipe { from { clip-path: inset(0 72% 0 0); } to { clip-path: inset(0 28% 0 0); } }
-@keyframes hl-wipe-bar { from { left: 28%; } to { left: 72%; } }
+@keyframes hl-wipe { from { translate: -72% 0; } to { translate: -28% 0; } }
+@keyframes hl-wipe-pic { from { translate: 72% 0; } to { translate: 28% 0; } }
+@keyframes hl-wipe-bar { from { translate: 28% 0; } to { translate: 72% 0; } }
 .hl-card.hl-in > * { animation: hl-in var(--dur-base) var(--ease-out) backwards; }
 @keyframes hl-in { from { opacity: 0; transform: translateX(10px); } }
-:root[data-motion="off"] :is(.hl-ba .before, .hl-bar, .hl-card.hl-in > *) { animation: none; }
+:root[data-motion="off"] :is(.hl-wipe, .hl-ba .before, .hl-bar, .hl-card.hl-in > *) { animation: none; }
 :root[data-motion="off"] :is(.hl-fan img, .hl-dots button) { transition: none; }
 @media (prefers-reduced-motion: reduce) {
-    :is(.hl-ba .before, .hl-bar, .hl-card.hl-in > *) { animation: none; }
+    :is(.hl-wipe, .hl-ba .before, .hl-bar, .hl-card.hl-in > *) { animation: none; }
     :is(.hl-fan img, .hl-dots button) { transition: none; }
 }
 @media (max-height: 640px) {

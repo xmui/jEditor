@@ -123,7 +123,7 @@ const Highlights = {
         const t = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
         const img = (n, cls = '') => `<img class="${cls}" src="whatsnew/${n}.webp" alt="" draggable="false">`;
         if (c.art === 'fan') return `<div class="hl-fan">${img(`fan-photos-${t}`)}${img(`fan-paint-${t}`)}${img(`fan-adjust-${t}`)}</div><span class="hl-big">2.0</span>`;
-        if (c.art === 'old') return `<div class="hl-ba">${img('old', 'after')}${img('old', 'before')}<span class="hl-bar"></span><em class="l">Faded</em><em class="r">Restored</em></div>`;
+        if (c.art === 'old') return `<div class="hl-ba">${img('old', 'after')}<span class="hl-wipe">${img('old', 'before')}</span><span class="hl-bar"></span><em class="l">Faded</em><em class="r">Restored</em></div>`;
         return img(`${c.art}-${t}`, 'hl-pic');
     },
 
