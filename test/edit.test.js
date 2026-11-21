@@ -4218,6 +4218,63 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('sidebar')) {
+        console.log('the sidebar switching modes (modes.js, folders.js): as each mode has it, from the first frame');
+        const { page, issues } = await open();
+        await page.setViewportSize({ width: 1400, height: 900 });
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const bytes = await makeRealJpeg(300, 200, { color: '#777' });
+                await openProject('side', { 'a.jpg': new Blob([bytes], { type: 'image/jpeg' }) });
+                const rail = document.getElementById('folder-rail');
+                const shown = () => !rail.classList.contains('hidden') && rail.getBoundingClientRect().width > 0;
+                // Each frame while switching: is the sidebar there, and should
+                // it be, for the mode on screen then
+                const frames = async (go, want) => {
+                    const bad = [];
+                    let on = true, n = 0;
+                    const look = () => {
+                        const m = Modes.current();
+                        if (shown() !== want[m]) bad.push(`${n}:${m}:${shown()}`);
+                        n++;
+                        if (on) requestAnimationFrame(look);
+                    };
+                    requestAnimationFrame(look);
+                    await go();
+                    await sleep(300);
+                    on = false;
+                    await sleep(30);
+                    return bad;
+                };
+                const out = {};
+                // Open in Photos, closed in Adjust and Paint (the owner's flash),
+                // then the other way round, and closed everywhere
+                for (const [name, photos, modes] of [['photosOpen', true, false], ['modesOpen', false, true], ['allClosed', false, false]]) {
+                    step = name;
+                    app.uiPrefs.folderRail = photos;
+                    app.uiPrefs.railIn = { adjust: modes, paint: modes };
+                    app.openSingle(app.files[0]);
+                    Folders.render();
+                    await sleep(200);
+                    const want = { photos, adjust: modes, paint: modes };
+                    const bad = [];
+                    for (const m of ['adjust', 'paint', 'photos', 'paint', 'adjust', 'photos']) {
+                        bad.push(...(await frames(() => Modes.go(m), want)).map(b => `→${m} ${b}`));
+                        if (m !== 'photos') await until(() => (m === 'adjust' ? Adjust.ready : PaintEditor.ready));
+                    }
+                    out[name] = bad;
+                }
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message }; }
+        });
+        check('sidebar: open in Photos, closed in Adjust and Paint: never shows in them, not for a frame', r.photosOpen && r.photosOpen.length === 0, JSON.stringify(r));
+        check('sidebar: closed in Photos, open in Adjust and Paint: there from their first frame, never in Photos', r.modesOpen && r.modesOpen.length === 0, JSON.stringify(r));
+        check('sidebar: closed everywhere: never shows switching', r.allClosed && r.allClosed.length === 0, JSON.stringify(r));
+        check('sidebar: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     if (wanted('modes')) {
         console.log('modes: Photos, Adjust and Paint (modes.js), Start in, Paint\'s start (blank.js)');
         const { page, issues } = await open();

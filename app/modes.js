@@ -201,7 +201,16 @@ const Modes = {
     // theme (style.css: .mode-arrive). Not when the strip steps to another photo in the same
     // mode, which closes and opens it again
     arrive(el) {
-        if (!el || this._stepping) return;
+        if (!el) return;
+        // The sidebar as the mode arriving has it, from its first frame: it
+        // was set only once the mode had opened, so one kept closed there
+        // showed for a frame or two as it came in (Photos' left open)
+        const mode = this.current();
+        if (this._railFor !== mode && typeof Folders !== 'undefined' && Folders.app) {
+            this._railFor = mode;
+            Folders.render();
+        }
+        if (this._stepping) return;
         const root = document.documentElement;
         if (root.dataset.skin || root.dataset.motion === 'off') return;
         el.classList.remove('mode-arrive');
