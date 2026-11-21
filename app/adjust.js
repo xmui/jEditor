@@ -443,6 +443,10 @@ const Adjust = {
             bmp.close();
             bmp = small;
         }
+        // Another photo opened (or Adjust closed) while this one loaded:
+        // nothing of this one's is kept, so the other's picture and crop
+        // aren't overwritten
+        if (!current()) { bmp.close(); return; }
         const scale = fullW / bmp.width;
         // This working copy's pixels to one of the photo's (detail needs it)
         this.pxScale = 1 / scale;
@@ -470,8 +474,14 @@ const Adjust = {
         this._baseKey = 'null';
         // Paint goes over everything (paint.js): shown on top, as it will be
         const painted = Paint.has(kept) ? await Paint.prepare(kept).catch(() => null) : null;
+        // Gone stale while its paint was made: only its own canvas is let
+        // go (the photo open now may already have its own)
+        if (!current()) {
+            if (this.base === base) this.dropPicture();
+            else base.width = base.height = 0;
+            return;
+        }
         this._painted = painted;
-        if (!current()) { this.dropPicture(); return; }
         const o = this.cropped ? this.cropped.outputRect() : { w: base.width, h: base.height };
         this.el('adj-dims').textContent = `${Math.round(o.w * scale)} × ${Math.round(o.h * scale)}`;
         // The photo's own size, as shown (cropped): what the zoom is of
@@ -599,6 +609,7 @@ const Adjust = {
         this.w = bmp.width;
         this.h = bmp.height;
         this._detailKey = null;
+        this._glow = this._hist = null;
 
         // What the histogram and Auto look at
         const s = Math.min(1, this.SAMPLE / Math.max(bmp.width, bmp.height));
@@ -1319,10 +1330,10 @@ const Adjust = {
     },
 
     // The sharp part adjusted as the picture is (called with draw())
-    drawSharp() {
+    drawSharp(T = null) {
         const s = this._sharp;
         if (!s) return;
-        const T = Develop.tables(this.a);
+        T = T || Develop.tables(this.a);
         const { r, FW, FH } = s;
         const frame = { x: r.x, y: r.y, w: r.w, W: FW, H: FH, glow: this.glow, map: this.map };
         const R = this._sharpGl && !this._sharpGl.lost ? this._sharpGl : null;
@@ -1373,10 +1384,14 @@ const Adjust = {
         if (!this.ready) return;
         if (this.usePicture()) this.layout();
         const T = Develop.tables(this.a);
-        // Halation's glow, from the whole picture (as saving makes it)
+        // Halation's glow, from the whole picture (as saving makes it):
+        // made again only when the settings change, not on every redraw
         let glow = null;
         if (T.fx && T.fx.hal[0]) {
-            glow = Develop.glowMap(Develop.applyCPU(this.sample, { ...T, fx: null }, this.sampleOut), this.sampleW, this.sampleH);
+            if (!this._glow || this._glow.key !== T.key) {
+                this._glow = { key: T.key, map: Develop.glowMap(Develop.applyCPU(this.sample, { ...T, fx: null }, this.sampleOut), this.sampleW, this.sampleH) };
+            }
+            glow = this._glow.map;
         }
         this.glow = glow;
         this.detailSoon();
@@ -1400,10 +1415,16 @@ const Adjust = {
                 this.ctx.putImageData(this.out, 0, 0);
             }
         }
-        this.drawSharp();
+        this.drawSharp(T);
         this.sharpSoon();
-        const px = this.before ? this.sample : Develop.applyCPU(this.sample, T, this.sampleOut, { x: 0, y: 0, w: this.sampleW, W: this.sampleW, H: this.sampleH, glow, map: this.map, brush });
-        this.hist = Develop.histogram(px);
+        // The histogram, once per change (a redraw for detail, spots or
+        // masks shown doesn't change it)
+        const histKey = this.before ? 'before' : T.key;
+        if (!this._hist || this._hist.key !== histKey) {
+            const px = this.before ? this.sample : Develop.applyCPU(this.sample, T, this.sampleOut, { x: 0, y: 0, w: this.sampleW, W: this.sampleW, H: this.sampleH, glow, map: this.map, brush });
+            this._hist = { key: histKey, hist: Develop.histogram(px) };
+        }
+        this.hist = this._hist.hist;
         this.drawPanels();
         AdjustMasks.draw();
         AdjustSpots.draw();
@@ -1497,7 +1518,13 @@ const Adjust = {
             this.fullCanvas = c;
             this.fullCtx = c.getContext('2d', { willReadFrequently: true });
             return c;
-        })().catch((e) => { console.warn('Adjust: no full-size photo for 1:1:', e); return null; });
+        })().catch((e) => {
+            console.warn('Adjust: no full-size photo for 1:1:', e);
+            // Tried again next time (a photo still being written, a drive
+            // that came back), not left empty for as long as it's open
+            if (this._fullKey === key && this._fullFor === file) this._fullFor = null;
+            return null;
+        });
         return this._fullPromise;
     },
 

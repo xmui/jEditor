@@ -1043,11 +1043,11 @@ const Develop = {
 
     // Both tables for a set of settings (remembered for the last few)
     tables(adj) {
-        const key = JSON.stringify(this.tonal(adj));
+        const c = this.tonal(adj);
+        const key = JSON.stringify(c);
         this._tables = this._tables || new Map();
         let t = this._tables.get(key);
         if (!t) {
-            const c = this.tonal(adj);
             const a = this.full(c);
             t = { key, channels: this.channelTables(a), lut: this.colourLut(a), N: this.LUT_SIZE, fx: this.effects(a), masks: this.maskTables(c && c.masks) };
             this._tables.set(key, t);
