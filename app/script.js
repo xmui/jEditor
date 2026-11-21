@@ -344,8 +344,8 @@ const app = {
             if (b) b.addEventListener('click', () => this.toggleCustomizePanel());
         }
         document.getElementById('btn-shortcuts').addEventListener('click', () => this.toggleShortcutsPanel());
-        document.getElementById('btn-whatsnew').addEventListener('click', () => this.toggleWhatsNew());
-        document.getElementById('btn-whatsnew-start').addEventListener('click', () => this.toggleWhatsNew(true));
+        document.getElementById('btn-whatsnew').addEventListener('click', () => this.openWhatsNew());
+        document.getElementById('btn-whatsnew-start').addEventListener('click', () => this.openWhatsNew());
         document.getElementById('btn-shortcuts-start').addEventListener('click', () => this.toggleShortcutsPanel(true));
         document.getElementById('whatsnew-close').addEventListener('click', () => this.toggleWhatsNew(false));
         document.getElementById('whatsnew-panel').addEventListener('mousedown', (e) => {
@@ -5848,7 +5848,7 @@ const app = {
 
         // The rename tool, folder dialogs, Settings and the alert/confirm
         // dialogs handle their own keys
-        const modal = Renamer.isOpen || Folders.isModalOpen() || Export.isOpen() || Recents.isPromptOpen() || AdjustSync.isOpen() || UI.isOpen() || Stored.isOpen() || Scan.isOpen() || Camera.isOpen() || Blank.isOpen();
+        const modal = Renamer.isOpen || Folders.isModalOpen() || Export.isOpen() || Recents.isPromptOpen() || AdjustSync.isOpen() || UI.isOpen() || Stored.isOpen() || Scan.isOpen() || Camera.isOpen() || Blank.isOpen() || (typeof Highlights !== 'undefined' && Highlights.isOpen());
 
         // Find anything (palette.js): its key works everywhere, in each mode
         // and from inside a box being typed in; open, it has the keys
@@ -6050,8 +6050,19 @@ const app = {
         } catch (e) { return; /* private mode: no way to show it only once */ }
         if (!seen || this.compareVersions(APP_VERSION, seen) <= 0) return;
         this._newSince = seen;
+        // The first 2.x after 1.x: What's new's cards (highlights.js), once
+        if (typeof Highlights !== 'undefined' && Highlights.firstTime(seen)) {
+            setTimeout(() => { if (!Tour.running) Highlights.open(); }, 900);
+            return;
+        }
         setTimeout(() => this.showToast(`Updated to ${APP_VERSION}`, 10000, 'whatsnew',
             { label: 'What\'s new', run: () => this.toggleWhatsNew(true) }), 600);
+    },
+
+    // What's new: the 2.0 cards (highlights.js), or the list in a theme
+    openWhatsNew() {
+        if (typeof Highlights !== 'undefined') Highlights.open();
+        else this.toggleWhatsNew(true);
     },
 
     isWhatsNewOpen() {

@@ -208,11 +208,31 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             /^- three\n[^]*2\.1\.0 beta[^]*- two one[^]*2\.0\.0 beta[^]*- two\n$/.test(made) && !made.includes('- one'), made);
 
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
-        const r = await page.evaluate(() => {
+        const r = await page.evaluate(async () => {
             const out = {};
             out.startLink = document.getElementById('btn-whatsnew-start').textContent;
             document.getElementById('btn-whatsnew-start').click();
-            out.open = app.isWhatsNewOpen();
+            // 2.0's cards first (highlights.js): seven, the keys move along, See all is the list
+            const sheet = document.querySelector('#highlights .hl-sheet');
+            const key = (k) => sheet.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+            out.cards = Highlights.isOpen() && document.querySelectorAll('#highlights .hl-dots button').length === 7 && !app.isWhatsNewOpen();
+            key('ArrowRight'); key('ArrowRight');
+            out.moved = Highlights.i === 2 && document.querySelector('#highlights .hl-dots [aria-selected="true"]') === document.querySelectorAll('#highlights .hl-dots button')[2];
+            key('ArrowLeft');
+            out.back = Highlights.i === 1;
+            // No folder open: nothing for Show me to light up; the tour's card offers the tour
+            out.noShow = !document.querySelector('#highlights [data-hl="show"]');
+            Highlights.go(5);
+            out.tourBtn = !!document.querySelector('#highlights [data-hl="tour"]');
+            out.keysShown = document.querySelectorAll('#highlights .hl-body kbd').length > 0 && !sheet.textContent.includes('{key');
+            Highlights.go(6);
+            out.lastBtns = [...document.querySelectorAll('#highlights .hl-acts button')].map(x => x.textContent).join('|');
+            key('Escape');
+            out.escCloses = !Highlights.isOpen();
+            app.openWhatsNew();
+            Highlights.go(6);
+            document.querySelector('#highlights [data-hl="all"]').click();
+            out.open = app.isWhatsNewOpen() && !Highlights.isOpen();
             const secs = [...document.querySelectorAll('#whatsnew-list section')];
             out.sections = secs.length;
             out.firstIsCurrent = !!secs[0].querySelector('.wn-tag.current') && secs[0].textContent.includes(APP_VERSION);
@@ -221,6 +241,22 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
             out.closed = !app.isWhatsNewOpen();
             out.inMore = app.uiPrefs.placement.whatsnew === 'more' && !!app.headerButton('whatsnew');
+            // Shown by itself only on the first 2.x after 1.x
+            out.first = [Highlights.firstTime('1.51.0', '2.0.0'), Highlights.firstTime('2.0.0', '2.1.0'), Highlights.firstTime(null, '2.0.0'), Highlights.firstTime('1.50.1', '1.51.0')].join();
+            // In a theme: the list, as before
+            document.documentElement.dataset.skin = 'test';
+            app.openWhatsNew();
+            out.themeList = app.isWhatsNewOpen() && !Highlights.isOpen();
+            app.toggleWhatsNew(false);
+            delete document.documentElement.dataset.skin;
+            // Show me: one stop of the tour, with Done and no "1 of 1"
+            Tour.spot({ id: 'test', view: 'home', target: ['#btn-whatsnew-start'], side: 'above', title: 'Here', text: () => 'It is here.' });
+            // The card fills once the place is ready (Tour.go waits for it)
+            for (let t = 0; t < 60 && !document.querySelector('.tour-card .tour-foot'); t++) await new Promise(res => setTimeout(res, 50));
+            const tc = document.querySelector('.tour-card');
+            out.spot = Tour.running && !!tc && !tc.querySelector('.tour-step') && [...tc.querySelectorAll('.tour-foot button')].map(x => x.textContent).join() === 'Done';
+            tc && tc.querySelector('.tour-foot [data-act="end"]').click();
+            out.spotEnds = !Tour.running && !document.querySelector('.tour-card');
             return out;
         });
         // First visit: no notice. After an update: one notice, once.
@@ -253,6 +289,10 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         const windowTitle = await page.title();
 
         check('start screen links to What\'s New', r.startLink.includes(require(path.join(ROOT, 'package.json')).version), r.startLink);
+        check("What's new opens 2.0's seven cards; the arrows move along, Esc closes, See all opens the list", r.cards && r.moved && r.back && r.escCloses && r.lastBtns === 'See all|Start', JSON.stringify(r));
+        check("What's new's cards: keys as key caps; Show me only with a folder open; the start card offers the tour", r.keysShown && r.noShow && r.tourBtn, JSON.stringify(r));
+        check("What's new's cards come by themselves only on the first 2.x after 1.x", r.first === 'true,false,false,false', r.first);
+        check("in a theme What's new is the list; Show me is one stop of the tour, with Done", r.themeList && r.spot && r.spotEnds, JSON.stringify(r));
         check("What's New lists every version, this one marked", r.open && r.sections === log.length && r.firstIsCurrent, JSON.stringify(r));
         check("What's New shows `keys` as key caps", r.keys > 0 && r.noRawBackticks);
         check("Esc closes What's New; control sits in More", r.closed && r.inMore);
