@@ -3684,6 +3684,97 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('paintdrop')) {
+        console.log('paint: an image brought in or pasted is in plain Free transform (paint-editor.js: importImage, paste)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 400; c.height = 300;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 400, 300);
+                await openProject('drop', { 'd.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                P.opts.snap = false;
+                const st = document.getElementById('paint-stage');
+                const sc = (q) => { const sp = P.V().transformPoint(q); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                const drag = (from, to) => {
+                    st.dispatchEvent(new PointerEvent('pointerdown', { ...sc(from), pointerId: 1, bubbles: true, button: 0 }));
+                    st.dispatchEvent(new PointerEvent('pointermove', { ...sc(to), pointerId: 1, bubbles: true }));
+                    st.dispatchEvent(new PointerEvent('pointerup', { ...sc(to), pointerId: 1, bubbles: true }));
+                };
+                const corner = () => P.floatHandles().corners.find(([id]) => id === 'se')[1];
+                const sized = () => { const q = corner(); drag(q, { x: q.x + 20, y: q.y + 20 }); const f = P.float; return { mode: f.mode, bent: !!f.quad || !!f.mesh, grew: f.t.sx > 1.05 || f.t.sy > 1.05, square: Math.abs(f.t.sx - f.t.sy) < 0.2 }; };
+                // Brought in (dropped, or Bring in an image)
+                step = 'import';
+                const img = document.createElement('canvas'); img.width = 100; img.height = 100;
+                img.getContext('2d').fillStyle = '#ff0000'; img.getContext('2d').fillRect(0, 0, 100, 100);
+                await P.importImage(await canvasBlob(img), 'red.png');
+                out.importMode = box().querySelector('.paint-tf-mode') && box().querySelector('.paint-tf-mode').value;
+                out.imported = sized();
+                P.commitFloat();
+                // Pasted (what's selected: with nothing selected, Ctrl+C copies the layer)
+                step = 'paste';
+                pressKey('a', { ctrlKey: true });
+                P.copy();
+                P.paste();
+                out.pasted = P.float && sized();
+                if (P.float) P.commitFloat();
+                // The lock: a wide image keeps its shape at a corner, Shift
+                // frees it, and a side still stretches one way
+                step = 'lock';
+                const wide = document.createElement('canvas'); wide.width = 120; wide.height = 60;
+                wide.getContext('2d').fillStyle = '#00ff00'; wide.getContext('2d').fillRect(0, 0, 120, 60);
+                await P.importImage(await canvasBlob(wide), 'wide.png');
+                const lockBtn = box().querySelector('.paint-tf-lock');
+                out.lockOn = lockBtn && lockBtn.getAttribute('aria-pressed');
+                const se = () => P.floatHandles().corners.find(([id]) => id === 'se')[1];
+                const pull = (q, dx, dy, shift) => {
+                    st.dispatchEvent(new PointerEvent('pointerdown', { ...sc(q), pointerId: 1, bubbles: true, button: 0, shiftKey: !!shift }));
+                    st.dispatchEvent(new PointerEvent('pointermove', { ...sc({ x: q.x + dx, y: q.y + dy }), pointerId: 1, bubbles: true, shiftKey: !!shift }));
+                    st.dispatchEvent(new PointerEvent('pointerup', { ...sc({ x: q.x + dx, y: q.y + dy }), pointerId: 1, bubbles: true, shiftKey: !!shift }));
+                };
+                const ratio = () => +(Math.abs(P.float.t.sx) / Math.abs(P.float.t.sy)).toFixed(2);
+                pull(se(), 40, 0);
+                out.kept = ratio();
+                pull(se(), 0, 40, true);
+                out.freed = ratio() !== 1;
+                const before = ratio(), eEdge = P.floatHandles().edges.find(([id]) => id === 'e')[1];
+                pull(eEdge, 30, 0);
+                out.stretched = ratio() > before;
+                lockBtn.click();
+                out.lockOff = box().querySelector('.paint-tf-lock').getAttribute('aria-pressed');
+                const r1 = ratio(); pull(se(), 0, 30);
+                out.offFree = ratio() !== r1;
+                lockBtn.click();
+                // The pointer over the handles
+                step = 'cursor';
+                const hover = (q) => { st.dispatchEvent(new PointerEvent('pointermove', { ...sc(q), pointerId: 1, bubbles: true })); return st.style.cursor; };
+                const h = P.floatHandles(), at = (id) => [...h.corners, ...h.edges].find(([k]) => k === id)[1];
+                out.cursors = [hover(at('se')), hover(at('ne')), hover(at('e')), hover(at('n'))].join();
+                const c0 = at('se'), mid = { x: (at('nw').x + c0.x) / 2, y: (at('nw').y + c0.y) / 2 };
+                out.inside = hover(mid);
+                const out1 = { x: c0.x + 14 / P.view.z, y: c0.y + 14 / P.view.z };
+                out.turn = hover(out1).includes('url(');
+                P.float.t.rot = Math.PI / 2;
+                out.turned = hover(P.floatHandles().corners.find(([id]) => id === 'se')[1]);
+                P.commitFloat();
+                app.cancelPaint();
+                return out;
+                function box() { return document.getElementById('paint-options'); }
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint drop: an image brought in opens in Size and turn, and a corner sizes it without bending it', r.importMode === 'free' && r.imported && r.imported.mode === 'free' && !r.imported.bent && r.imported.grew, JSON.stringify(r));
+        check('paint drop: pasted, the same', r.pasted && r.pasted.mode === 'free' && !r.pasted.bent && r.pasted.grew, JSON.stringify(r));
+        check('paint transform: the lock is on to start with; a corner keeps the shape, Shift frees it, a side stretches; unlocked, a corner is free', r.lockOn === 'true' && r.kept === 1 && r.freed && r.stretched && r.lockOff === 'false' && r.offFree, JSON.stringify(r));
+        check('paint transform: resize arrows at the corners and sides, turned with the box; move inside; turn just outside a corner', r.cursors === 'nwse-resize,nesw-resize,ew-resize,ns-resize' && r.inside === 'move' && r.turn && r.turned === 'nesw-resize', JSON.stringify(r));
+        check('paint drop: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     if (wanted('paintcopy')) {
         console.log('paint: a layer copied and pasted as a layer (paint-editor.js: copyLayer, pasteLayer)');
         const { page, issues } = await open();
@@ -4303,6 +4394,63 @@ const PROJECT = `
         check('menus: ⋯ in Adjust and in Paint opens its menu with the mouse', out.adjustMore && out.paintMore, JSON.stringify(out));
         check('menus: the press that closes it, on Adjust\'s or Paint\'s photo, only closes it (no pin moved, nothing painted); with none open a press goes through', out.adjustSwallowed && out.paintSwallowed && out.adjustThrough && out.paintThrough, JSON.stringify(out));
         check('menus: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    if (wanted('sidebar')) {
+        console.log('the sidebar switching modes (modes.js, folders.js): as each mode has it, from the first frame');
+        const { page, issues } = await open();
+        await page.setViewportSize({ width: 1400, height: 900 });
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const bytes = await makeRealJpeg(300, 200, { color: '#777' });
+                await openProject('side', { 'a.jpg': new Blob([bytes], { type: 'image/jpeg' }) });
+                const rail = document.getElementById('folder-rail');
+                const shown = () => !rail.classList.contains('hidden') && rail.getBoundingClientRect().width > 0;
+                // Each frame while switching: is the sidebar there, and should
+                // it be, for the mode on screen then
+                const frames = async (go, want) => {
+                    const bad = [];
+                    let on = true, n = 0;
+                    const look = () => {
+                        const m = Modes.current();
+                        if (shown() !== want[m]) bad.push(`${n}:${m}:${shown()}`);
+                        n++;
+                        if (on) requestAnimationFrame(look);
+                    };
+                    requestAnimationFrame(look);
+                    await go();
+                    await sleep(300);
+                    on = false;
+                    await sleep(30);
+                    return bad;
+                };
+                const out = {};
+                // Open in Photos, closed in Adjust and Paint (the owner's flash),
+                // then the other way round, and closed everywhere
+                for (const [name, photos, modes] of [['photosOpen', true, false], ['modesOpen', false, true], ['allClosed', false, false]]) {
+                    step = name;
+                    app.uiPrefs.folderRail = photos;
+                    app.uiPrefs.railIn = { adjust: modes, paint: modes };
+                    app.openSingle(app.files[0]);
+                    Folders.render();
+                    await sleep(200);
+                    const want = { photos, adjust: modes, paint: modes };
+                    const bad = [];
+                    for (const m of ['adjust', 'paint', 'photos', 'paint', 'adjust', 'photos']) {
+                        bad.push(...(await frames(() => Modes.go(m), want)).map(b => `→${m} ${b}`));
+                        if (m !== 'photos') await until(() => (m === 'adjust' ? Adjust.ready : PaintEditor.ready));
+                    }
+                    out[name] = bad;
+                }
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message }; }
+        });
+        check('sidebar: open in Photos, closed in Adjust and Paint: never shows in them, not for a frame', r.photosOpen && r.photosOpen.length === 0, JSON.stringify(r));
+        check('sidebar: closed in Photos, open in Adjust and Paint: there from their first frame, never in Photos', r.modesOpen && r.modesOpen.length === 0, JSON.stringify(r));
+        check('sidebar: closed everywhere: never shows switching', r.allClosed && r.allClosed.length === 0, JSON.stringify(r));
+        check('sidebar: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

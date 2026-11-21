@@ -65,7 +65,7 @@ const PaintEditor = {
         strength: 50, toneRange: 'mid', sponge: 'less',
         smoothing: 0, pressure: 'size', texture: 'canvas', wet: 50, symmetry: 'off',
         font: 'system-ui, sans-serif', fontSize: 72, bold: false, italic: false, align: 'left', outline: 0,
-        snap: true,
+        snap: true, keepRatio: true,
         sizeFor: 1500   // the long side of the layers the sizes were for
     },
     BRUSHES: ['brush', 'soft-round', 'hard-round', 'pencil', 'ink', 'marker', 'airbrush', 'spray', 'charcoal', 'watercolour', 'texture', 'mixer', 'eraser', 'eraser-block', 'eraser-soft', 'pixel', 'can', 'stamp', 'custom', 'spot-heal', 'heal', 'clone', 'dodge', 'burn', 'sponge', 'blur', 'sharpen', 'smudge'],
@@ -1165,6 +1165,7 @@ const PaintEditor = {
     cursor() {
         const t = this.space || this.tool === 'hand' ? (this.drag && this.drag.kind === 'pan' ? 'grabbing' : 'grab')
             : this.crop ? (this._cropCursor || 'crosshair')
+            : this.float && this._floatCursor ? this._floatCursor
             : this.tool === 'move' ? 'move'
             : this.picking() ? 'crosshair'
             : this.tool === 'text' ? 'text'
@@ -1854,7 +1855,7 @@ const PaintEditor = {
         const d = this.drag;
         if (!d && e.altKey !== !!this.alt) { this.alt = e.altKey; this.cursor(); }
         this.hover = d && d.kind === 'size' ? d.at : p;
-        if (!d) { if (this.crop) this.cropCursor(p); this.renderSoon(); return; }
+        if (!d) { if (this.crop) this.cropCursor(p); else if (this.float) this.floatCursor(p); else if (this._floatCursor) { this._floatCursor = null; this.cursor(); } this.renderSoon(); return; }
         if (d.kind === 'size') { this.sizeBy(p.sx - d.sx, p.sy - d.sy); return; }
         if (d.kind === 'pick') { this.pick(p, d.toBg); this.renderSoon(); return; }
         if (d.kind === 'pan' && (e.shiftKey || d.turnAlways)) {
@@ -4438,7 +4439,7 @@ const PaintEditor = {
                 if (f.mesh) { this.drag.mesh = f.mesh.map(q => ({ ...q })); return; }
                 // A corner or side with Ctrl (Ctrl+Alt+Shift: perspective),
                 // or in Skew, Distort or Perspective: the corners go free
-                const how = e.ctrlKey || e.metaKey ? (e.altKey && e.shiftKey ? 'perspective' : 'distort') : f.mode;
+                const how = e.ctrlKey || e.metaKey ? (e.altKey && e.shiftKey ? 'perspective' : 'distort') : (f.mode || 'free');
                 if (hit !== 'rotate' && (f.quad || (how !== 'free' && hit !== 'move'))) {
                     if (!f.quad) f.quad = this.quadOf(f);
                     Object.assign(this.drag, { quad: f.quad.map(q => ({ ...q })), how });
@@ -4536,6 +4537,8 @@ const PaintEditor = {
         if (h.quad) return this.inQuad(h.quad, p.ox, p.oy) ? 'move' : null;
         const l = h.M.inverse().transformPoint({ x: p.ox, y: p.oy });
         if (l.x >= 0 && l.y >= 0 && l.x <= this.float.w && l.y <= this.float.h) return 'move';
+        // Just outside a corner: turn it
+        for (const [, q] of h.corners) if (Math.hypot(p.ox - q.x, p.oy - q.y) <= r * 2.8) return 'rotate';
         return null;
     },
 
@@ -4566,10 +4569,13 @@ const PaintEditor = {
             const c = Math.cos(-o.rot), s = Math.sin(-o.rot);
             const lx = c * (p.ox - cx) - s * (p.oy - cy), ly = s * (p.ox - cx) + c * (p.oy - cy);
             let sx = Math.max(0.02, Math.abs(lx) / (f.w / 2)), sy = Math.max(0.02, Math.abs(ly) / (f.h / 2));
-            // A side: that way only (Shift: both, its shape kept)
-            if (d.part === 'e' || d.part === 'w') sy = keepShape ? sx : Math.abs(o.sy);
-            else if (d.part === 'n' || d.part === 's') sx = keepShape ? sy : Math.abs(o.sx);
-            else if (keepShape) sx = sy = Math.max(sx, sy);
+            // A side: that way only (Shift: both, its shape kept). A corner
+            // keeps its proportions while the lock is on (Shift frees them),
+            // and with it off Shift keeps them
+            const ax = Math.abs(o.sx) || 1, ay = Math.abs(o.sy) || 1;
+            if (d.part === 'e' || d.part === 'w') sy = keepShape ? sx / ax * ay : ay;
+            else if (d.part === 'n' || d.part === 's') sx = keepShape ? sy / ay * ax : ax;
+            else if ((this.opts.keepRatio !== false) !== !!keepShape) { const k = Math.max(sx / ax, sy / ay); sx = ax * k; sy = ay * k; }
             t.sx = sx * Math.sign(o.sx || 1);
             t.sy = sy * Math.sign(o.sy || 1);
         }
@@ -4649,8 +4655,9 @@ const PaintEditor = {
             return;
         }
         this.tfRows = [
-            num('W', () => Math.round(Math.abs(t.sx) * 100), (v) => { t.sx = Math.sign(t.sx || 1) * v / 100; }, '%', 1, 2000),
-            num('H', () => Math.round(Math.abs(t.sy) * 100), (v) => { t.sy = Math.sign(t.sy || 1) * v / 100; }, '%', 1, 2000),
+            num('W', () => Math.round(Math.abs(t.sx) * 100), (v) => { const k = v / 100 / (Math.abs(t.sx) || 1); t.sx = Math.sign(t.sx || 1) * v / 100; if (this.opts.keepRatio !== false) t.sy *= k; }, '%', 1, 2000),
+            this.ratioLock(box),
+            num('H', () => Math.round(Math.abs(t.sy) * 100), (v) => { const k = v / 100 / (Math.abs(t.sy) || 1); t.sy = Math.sign(t.sy || 1) * v / 100; if (this.opts.keepRatio !== false) t.sx *= k; }, '%', 1, 2000),
             num('Angle', () => Math.round(((t.rot * 180 / Math.PI) % 360 + 540) % 360 - 180), (v) => { t.rot = v * Math.PI / 180; }, '°', -180, 180)
         ];
         const button = (label, title, fn, cls = 'btn ghost sm') => {
@@ -4666,12 +4673,49 @@ const PaintEditor = {
         button('Flip ↕', 'Flip upside down', () => { t.sy = -t.sy; this.renderSoon(); });
         const hint = document.createElement('span');
         hint.className = 'paint-opt paint-hint';
-        hint.textContent = 'Drag a corner to size it, a side to stretch it (Shift keeps its shape), the knob to turn it; Ctrl-drag a corner to distort it';
+        hint.textContent = 'Drag a corner to size it (Shift frees its shape), a side to stretch it, the knob or just outside a corner to turn it; Ctrl-drag a corner to distort it';
         hint.title = hint.textContent;
         box.appendChild(hint);
         button('Cancel', 'Put it back as it was (Esc)', () => this.cancelFloat(), 'btn secondary paint-tf-cancel');
         button('Done', 'Put it down (Enter)', () => this.commitFloat(), 'btn primary paint-tf-ok');
     },
+
+    // The lock between W and H: on, a corner and W or H keep the proportions
+    ratioLock(box) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'paint-toggle paint-tf-lock';
+        const draw = () => {
+            const on = this.opts.keepRatio !== false;
+            b.setAttribute('aria-pressed', String(on));
+            b.title = on ? 'Proportions kept (Shift-drag a corner to stretch it). Click to unlock' : 'Proportions free (Shift-drag a corner to keep them). Click to lock';
+            b.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="${on ? 'M8 11V8a4 4 0 0 1 8 0v3' : 'M8 11V8a4 4 0 0 1 7.5-2'}"/></svg>`;
+        };
+        b.setAttribute('aria-label', 'Keep proportions');
+        draw();
+        b.addEventListener('click', () => { this.opts.keepRatio = this.opts.keepRatio === false; draw(); this.remember(); b.blur(); });
+        box.appendChild(b);
+        return { isConnected: false, _sync() {} };
+    },
+
+    // Over Free transform's box: the cursor says what a drag does there,
+    // the resize arrows turned as the box is
+    floatCursor(p) {
+        const f = this.float, hit = f ? this.floatHit(p) : null;
+        let c = null;
+        if (hit === 'move') c = 'move';
+        else if (hit === 'rotate') c = this.ROTATE_CURSOR;
+        else if (hit && hit[0] === 'm') c = 'crosshair';
+        else if (hit) {
+            const h = this.floatHandles(), q = [...h.corners, ...h.edges].find(([id]) => id === hit)[1];
+            const pts = h.corners.map(([, v]) => v), mid = { x: pts.reduce((a, v) => a + v.x, 0) / 4, y: pts.reduce((a, v) => a + v.y, 0) / 4 };
+            const V = this.V(), a = V.transformPoint(q), m = V.transformPoint(mid);
+            const deg = ((Math.atan2(a.y - m.y, a.x - m.x) * 180 / Math.PI) % 180 + 180) % 180;
+            c = ['ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize'][Math.round(deg / 45) % 4];
+        }
+        if (c !== this._floatCursor) { this._floatCursor = c; this.cursor(); }
+    },
+    ROTATE_CURSOR: `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a7 7 0 1 0 1 6" stroke="#fff" stroke-width="4"/><path d="M19 4v4h-4" stroke="#fff" stroke-width="4"/><path d="M18 8a7 7 0 1 0 1 6" stroke="#000" stroke-width="1.6"/><path d="M19 4v4h-4" stroke="#000" stroke-width="1.6"/></g></svg>')}") 12 12, grab`,
 
     syncTransform() {
         for (const r of this.tfRows || []) if (r.isConnected) r._sync();
@@ -5203,7 +5247,7 @@ const PaintEditor = {
         // on the very pixels it came from
         const C = this.C, flip = C.a * C.d - C.b * C.c < 0;
         const t = here ? { tx: 0, ty: 0, sx: 1, sy: flip ? -1 : 1, rot: Math.atan2(C.b, C.a) } : { tx: 0, ty: 0, sx: 1, sy: 1, rot: 0 };
-        this.float = { canvas: fc, x0: at.x - c.width / 2, y0: at.y - c.height / 2, w: c.width, h: c.height, t, layer: l, sel: null };
+        this.float = { canvas: fc, x0: at.x - c.width / 2, y0: at.y - c.height / 2, w: c.width, h: c.height, t, layer: l, sel: null, mode: 'free', quad: null };
         this.dropSelection();
         this.setTool('move');
         this.renderSoon();
@@ -5282,11 +5326,11 @@ const PaintEditor = {
         const mid = this.V().inverse().transformPoint({ x: this.cssW / 2, y: this.cssH / 2 });
         mid.x = Math.max(0, Math.min(this.OW, mid.x));
         mid.y = Math.max(0, Math.min(this.OH, mid.y));
-        this.float = { canvas: fc, x0: mid.x - w / 2, y0: mid.y - h / 2, w, h, t: { tx: 0, ty: 0, sx: fit, sy: fit, rot: 0 }, layer: l, sel: null };
+        this.float = { canvas: fc, x0: mid.x - w / 2, y0: mid.y - h / 2, w, h, t: { tx: 0, ty: 0, sx: fit, sy: fit, rot: 0 }, layer: l, sel: null, mode: 'free', quad: null };
         this.dropSelection();
         this.setTool('move');
         this.renderSoon();
-        this.app.showToast('Drag it to move it, a corner to size it (Shift keeps its shape); Enter puts it down', 3500);
+        this.app.showToast('Drag it to move it, a corner to size it (Shift frees its shape); Enter puts it down', 3500);
         return true;
     },
 
