@@ -3682,6 +3682,96 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('paintdrop')) {
+        console.log('paint: an image brought in or pasted is in plain Free transform (paint-editor.js: importImage, paste)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 400; c.height = 300;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 400, 300);
+                await openProject('drop', { 'd.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                P.opts.snap = false;
+                const st = document.getElementById('paint-stage');
+                const sc = (q) => { const sp = P.V().transformPoint(q); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                const drag = (from, to) => {
+                    st.dispatchEvent(new PointerEvent('pointerdown', { ...sc(from), pointerId: 1, bubbles: true, button: 0 }));
+                    st.dispatchEvent(new PointerEvent('pointermove', { ...sc(to), pointerId: 1, bubbles: true }));
+                    st.dispatchEvent(new PointerEvent('pointerup', { ...sc(to), pointerId: 1, bubbles: true }));
+                };
+                const corner = () => P.floatHandles().corners.find(([id]) => id === 'se')[1];
+                const sized = () => { const q = corner(); drag(q, { x: q.x + 20, y: q.y + 20 }); const f = P.float; return { mode: f.mode, bent: !!f.quad || !!f.mesh, grew: f.t.sx > 1.05 || f.t.sy > 1.05, square: Math.abs(f.t.sx - f.t.sy) < 0.2 }; };
+                // Brought in (dropped, or Bring in an image)
+                step = 'import';
+                const img = document.createElement('canvas'); img.width = 100; img.height = 100;
+                img.getContext('2d').fillStyle = '#ff0000'; img.getContext('2d').fillRect(0, 0, 100, 100);
+                await P.importImage(await canvasBlob(img), 'red.png');
+                out.importMode = box().querySelector('.paint-tf-mode') && box().querySelector('.paint-tf-mode').value;
+                out.imported = sized();
+                P.commitFloat();
+                // Pasted
+                step = 'paste';
+                P.copy();
+                P.paste();
+                out.pasted = P.float && sized();
+                if (P.float) P.commitFloat();
+                // The lock: a wide image keeps its shape at a corner, Shift
+                // frees it, and a side still stretches one way
+                step = 'lock';
+                const wide = document.createElement('canvas'); wide.width = 120; wide.height = 60;
+                wide.getContext('2d').fillStyle = '#00ff00'; wide.getContext('2d').fillRect(0, 0, 120, 60);
+                await P.importImage(await canvasBlob(wide), 'wide.png');
+                const lockBtn = box().querySelector('.paint-tf-lock');
+                out.lockOn = lockBtn && lockBtn.getAttribute('aria-pressed');
+                const se = () => P.floatHandles().corners.find(([id]) => id === 'se')[1];
+                const pull = (q, dx, dy, shift) => {
+                    st.dispatchEvent(new PointerEvent('pointerdown', { ...sc(q), pointerId: 1, bubbles: true, button: 0, shiftKey: !!shift }));
+                    st.dispatchEvent(new PointerEvent('pointermove', { ...sc({ x: q.x + dx, y: q.y + dy }), pointerId: 1, bubbles: true, shiftKey: !!shift }));
+                    st.dispatchEvent(new PointerEvent('pointerup', { ...sc({ x: q.x + dx, y: q.y + dy }), pointerId: 1, bubbles: true, shiftKey: !!shift }));
+                };
+                const ratio = () => +(Math.abs(P.float.t.sx) / Math.abs(P.float.t.sy)).toFixed(2);
+                pull(se(), 40, 0);
+                out.kept = ratio();
+                pull(se(), 0, 40, true);
+                out.freed = ratio() !== 1;
+                const before = ratio(), eEdge = P.floatHandles().edges.find(([id]) => id === 'e')[1];
+                pull(eEdge, 30, 0);
+                out.stretched = ratio() > before;
+                lockBtn.click();
+                out.lockOff = box().querySelector('.paint-tf-lock').getAttribute('aria-pressed');
+                const r1 = ratio(); pull(se(), 0, 30);
+                out.offFree = ratio() !== r1;
+                lockBtn.click();
+                // The pointer over the handles
+                step = 'cursor';
+                const hover = (q) => { st.dispatchEvent(new PointerEvent('pointermove', { ...sc(q), pointerId: 1, bubbles: true })); return st.style.cursor; };
+                const h = P.floatHandles(), at = (id) => [...h.corners, ...h.edges].find(([k]) => k === id)[1];
+                out.cursors = [hover(at('se')), hover(at('ne')), hover(at('e')), hover(at('n'))].join();
+                const c0 = at('se'), mid = { x: (at('nw').x + c0.x) / 2, y: (at('nw').y + c0.y) / 2 };
+                out.inside = hover(mid);
+                const out1 = { x: c0.x + 14 / P.view.z, y: c0.y + 14 / P.view.z };
+                out.turn = hover(out1).includes('url(');
+                P.float.t.rot = Math.PI / 2;
+                out.turned = hover(P.floatHandles().corners.find(([id]) => id === 'se')[1]);
+                P.commitFloat();
+                app.cancelPaint();
+                return out;
+                function box() { return document.getElementById('paint-options'); }
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint drop: an image brought in opens in Size and turn, and a corner sizes it without bending it', r.importMode === 'free' && r.imported && r.imported.mode === 'free' && !r.imported.bent && r.imported.grew, JSON.stringify(r));
+        check('paint drop: pasted, the same', r.pasted && r.pasted.mode === 'free' && !r.pasted.bent && r.pasted.grew, JSON.stringify(r));
+        check('paint transform: the lock is on to start with; a corner keeps the shape, Shift frees it, a side stretches; unlocked, a corner is free', r.lockOn === 'true' && r.kept === 1 && r.freed && r.stretched && r.lockOff === 'false' && r.offFree, JSON.stringify(r));
+        check('paint transform: resize arrows at the corners and sides, turned with the box; move inside; turn just outside a corner', r.cursors === 'nwse-resize,nesw-resize,ew-resize,ns-resize' && r.inside === 'move' && r.turn && r.turned === 'nesw-resize', JSON.stringify(r));
+        check('paint drop: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Restore colour (develop.js: restoreAuto; script.js: restoreColour) ----
     if (wanted('restore')) {
         console.log('restore colour (develop.js, script.js, adjust.js)');
