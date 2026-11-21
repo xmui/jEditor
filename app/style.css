@@ -13118,3 +13118,77 @@ body.touring .controls.idle button { pointer-events: auto; }
     }
 }
 
+
+/* ---- What's new in 2.0 (highlights.js): seven cards, one at a time ----
+   A glass sheet over the app's scrim: a picture of the real app, the
+   area's name, a title and three lines; dots and two buttons under it */
+.hl-sheet {
+    position: relative; width: min(540px, calc(100vw - 32px)); max-height: calc(100vh - var(--top-safe) - 32px);
+    overflow: auto; padding: var(--sp-2); border-radius: calc(var(--r-xl) + var(--sp-2)); outline: none;
+    /* A thicker glass than a pill's: it's read, so the photos behind only tint it */
+    background: color-mix(in srgb, var(--bg-surface) 86%, transparent); border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-3), var(--glass-rim);
+    backdrop-filter: blur(32px) saturate(160%); -webkit-backdrop-filter: blur(32px) saturate(160%);
+    color: var(--text-1); font: var(--fs-body) / var(--lh-body) var(--font-ui);
+}
+.hl-x {
+    position: absolute; top: var(--sp-4); right: var(--sp-4); z-index: 2; width: var(--ctl-sm); height: var(--ctl-sm);
+    display: grid; place-items: center; padding: 0; border-radius: 50%; cursor: pointer;
+    color: var(--text-2); background: var(--glass-bg); border: 1px solid var(--glass-border);
+    backdrop-filter: var(--glass-filter); -webkit-backdrop-filter: var(--glass-filter);
+}
+.hl-x .i { width: var(--icon-sm); height: var(--icon-sm); }
+.hl-x:hover { color: var(--text-1); }
+.hl-art { position: relative; height: 270px; border-radius: var(--r-xl); overflow: hidden; background: var(--bg-sunken); }
+.hl-art img { display: block; user-select: none; }
+.hl-pic { width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.hl-body, .hl-more { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4) var(--sp-4) var(--sp-1); }
+.hl-body { min-height: 172px; }
+.hl-more { min-height: 442px; padding-top: var(--sp-5); }
+.hl-kicker { color: var(--accent-text); font-size: var(--fs-small); font-weight: var(--fw-semibold); }
+.hl-sheet h2 { margin: 0; font-size: var(--fs-display); line-height: 1.2; font-weight: var(--fw-semibold); letter-spacing: -0.01em; text-wrap: balance; }
+.hl-body ul { margin: var(--sp-1) 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--sp-1); color: var(--text-2); font-size: 14px; line-height: 1.45; }
+.hl-body li { position: relative; padding-left: var(--sp-4); }
+.hl-body li::before { content: ""; position: absolute; left: 2px; top: 0.6em; width: 5px; height: 5px; border-radius: 50%; background: var(--text-3); }
+.hl-more ul { margin: var(--sp-2) 0 0; padding: 0; list-style: none; }
+.hl-more li { display: grid; grid-template-columns: 1fr auto; gap: 2px var(--sp-3); padding: var(--sp-3) 0; border-top: 1px solid var(--border-subtle); }
+.hl-more b { font-size: var(--fs-title); font-weight: var(--fw-semibold); }
+.hl-more span { grid-column: 1; color: var(--text-2); }
+.hl-more i { grid-column: 2; grid-row: 1 / 3; align-self: center; font-style: normal; font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; padding: 2px 10px; border-radius: var(--r-pill); background: var(--bg-hover); }
+.hl-sheet .tour-keys { vertical-align: 0; }
+.hl-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-3) var(--sp-2) var(--sp-2) var(--sp-4); }
+.hl-dots { display: flex; gap: 6px; }
+.hl-dots button { width: 7px; height: 7px; padding: 0; border: 0; border-radius: var(--r-pill); cursor: pointer; background: var(--text-3); opacity: 0.5; transition: width var(--dur-base) var(--ease-out), opacity var(--dur-base) var(--ease-out); }
+.hl-dots button[aria-selected="true"] { width: 20px; opacity: 1; background: var(--accent); }
+.hl-acts { display: flex; gap: var(--sp-2); margin-left: auto; }
+/* The first card: the three modes fanned out, as the home page's stacks */
+.hl-fan { position: absolute; inset: 0; display: grid; place-items: center; }
+.hl-fan img { position: absolute; width: 58%; aspect-ratio: 16 / 10; border-radius: var(--r-md); box-shadow: var(--shadow-3); transition: transform var(--dur-slow) var(--ease-out); }
+.hl-fan img:nth-child(1) { transform: translate(-30%, 6%) rotate(-7deg); }
+.hl-fan img:nth-child(2) { transform: translate(30%, 6%) rotate(7deg); }
+.hl-fan img:nth-child(3) { transform: translateY(-2%); }
+.hl-sheet:hover .hl-fan img:nth-child(1) { transform: translate(-36%, 4%) rotate(-10deg); }
+.hl-sheet:hover .hl-fan img:nth-child(2) { transform: translate(36%, 4%) rotate(10deg); }
+.hl-big { position: absolute; left: var(--sp-4); bottom: var(--sp-3); font-size: 64px; font-weight: 700; letter-spacing: -0.05em; line-height: 1; color: #fff; text-shadow: 0 4px 30px rgb(0 0 0 / 0.45); }
+/* Old photos: faded and restored, a wipe going back and forth */
+.hl-ba { position: absolute; inset: 0; }
+.hl-ba img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.hl-ba .before { filter: sepia(0.75) saturate(0.55) contrast(0.78) brightness(1.12) hue-rotate(-12deg); clip-path: inset(0 50% 0 0); animation: hl-wipe 6s ease-in-out infinite alternate; }
+.hl-bar { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: #fff; box-shadow: 0 0 12px rgb(0 0 0 / 0.35); animation: hl-wipe-bar 6s ease-in-out infinite alternate; }
+.hl-ba em { position: absolute; bottom: var(--sp-3); font-style: normal; font-size: var(--fs-small); font-weight: var(--fw-semibold); color: #fff; padding: 2px 10px; border-radius: var(--r-pill); background: rgb(0 0 0 / 0.4); }
+.hl-ba .l { left: var(--sp-3); }
+.hl-ba .r { right: var(--sp-3); }
+@keyframes hl-wipe { from { clip-path: inset(0 72% 0 0); } to { clip-path: inset(0 28% 0 0); } }
+@keyframes hl-wipe-bar { from { left: 28%; } to { left: 72%; } }
+.hl-card.hl-in > * { animation: hl-in var(--dur-base) var(--ease-out) backwards; }
+@keyframes hl-in { from { opacity: 0; transform: translateX(10px); } }
+:root[data-motion="off"] :is(.hl-ba .before, .hl-bar, .hl-card.hl-in > *) { animation: none; }
+:root[data-motion="off"] :is(.hl-fan img, .hl-dots button) { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+    :is(.hl-ba .before, .hl-bar, .hl-card.hl-in > *) { animation: none; }
+    :is(.hl-fan img, .hl-dots button) { transition: none; }
+}
+@media (max-height: 640px) {
+    .hl-art { height: 200px; }
+    .hl-more { min-height: 372px; }
+}

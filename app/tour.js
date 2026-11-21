@@ -139,11 +139,12 @@ const Tour = {
     },
 
     // ---- The tour ----
-    start() {
+    // stops: the tour's own, or one stop on its own (spot)
+    start(stops = null) {
         if (typeof Guide !== 'undefined' && Guide.isOpen) Guide.close();
         if (!this.state.offered) this.dropOffer();
         if (this.running) this.end(true);
-        this.steps = this.STOPS.filter(s => (!s.needs || Host.has(s.needs)) && (!s.when || s.when()));
+        this.steps = (stops || this.STOPS).filter(s => (!s.needs || Host.has(s.needs)) && (!s.when || s.when()));
         this.was = {
             view: document.body.dataset.view,
             rail: this.seen(document.getElementById('folder-rail'))
@@ -182,6 +183,9 @@ const Tour = {
             else this.place();
         }, 300);
     },
+
+    // One place lit up, with its card and Done (What's new's Show me)
+    spot(stop) { this.start([stop]); },
 
     async go(i) {
         if (!this.running || i < 0 || i >= this.steps.length) return;
@@ -290,12 +294,13 @@ const Tour = {
         const get = gaps.length ? this.download() : null;
         let buttons;
         if (s.id === 'open') buttons = '<button type="button" class="btn primary" data-act="open">Open a folder</button>';
+        else if (n === 1) buttons = '<button type="button" class="btn primary" data-act="end">Done</button>';
         else if (s.end) buttons = `<button type="button" class="btn ${get ? 'ghost' : 'secondary'}" data-act="guide">Open the guide</button>` +
             (get ? `<a class="btn primary" href="${this.esc(get)}" rel="noopener" target="_blank">Download the full version</a>` : '<button type="button" class="btn primary" data-act="end">Done</button>');
         else buttons = (i > 0 ? '<button type="button" class="btn ghost" data-act="back">Back</button>' : '') + `<button type="button" class="btn primary" data-act="next">${i === n - 2 ? 'Finish' : 'Next'}</button>`;
         this.card.innerHTML = `<button type="button" class="tour-x" data-act="end" title="End the tour (Esc)" aria-label="End the tour">×</button>
-            <div class="tour-progress" aria-hidden="true"><i style="width:${Math.round((i + 1) / n * 100)}%"></i></div>
-            <div class="tour-step">${i + 1} of ${n}</div>
+            ${n > 1 ? `<div class="tour-progress" aria-hidden="true"><i style="width:${Math.round((i + 1) / n * 100)}%"></i></div>
+            <div class="tour-step">${i + 1} of ${n}</div>` : ''}
             <h3 id="tour-title">${this.esc(s.title)}</h3>
             <p>${this.words(s.text())}</p>
             ${gaps.length ? `<p class="tour-gaps-head">The full version, for Windows, Mac and Linux, also has:</p><ul class="tour-gaps">${gaps.map(([, what]) => `<li>${this.esc(what)}</li>`).join('')}</ul>` : ''}

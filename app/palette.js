@@ -185,7 +185,7 @@ const Palette = {
                 if (a.pasteFromMenu) out.push(this.cmd('menu.paste', 'Paste image', 'paste image from another app clipboard', this.keyOf('edit.pasteImage'), () => a.pasteFromMenu()));
             }
             if (typeof Tour !== 'undefined' && Tour.start) out.push(this.cmd('menu.tour', 'Take the tour', 'tour', '', () => Tour.start()));
-            out.push(this.cmd('menu.whatsnew', 'What\'s new', 'whats new changelog version update', '', () => a.toggleWhatsNew()));
+            out.push(this.cmd('menu.whatsnew', 'What\'s new', 'whats new changelog version update', '', () => a.openWhatsNew()));
         }
         // The other modes, from Adjust and Paint
         if ((ctx === 'adjust' || ctx === 'paint') && typeof Modes !== 'undefined') {

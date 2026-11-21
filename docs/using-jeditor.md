@@ -385,6 +385,7 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `ui.js`: the app's own alert / confirm / prompt dialogs, and focus handling for every dialog
 - `guide.js`: the guide (`F1`): cards with clips by topic, the shortcuts as they're set, and a search
 - `tour.js`: the welcome tour: a walk through the real app, offered once on the home page
+- `highlights.js`: What's new in 2.0: seven cards, one at a time, shown once after updating from 1.x and from Help → What's new; their pictures are in `whatsnew/`. Show me is one stop of the tour
 - `tokens.css`: the design tokens (colours, type, spacing, radii, shadows, motion, layers) and the theme, density, glass, surround and window background switches; `style.css` builds every component from them
 
 Building, testing and releasing are in the [README](../README.md).
