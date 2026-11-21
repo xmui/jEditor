@@ -208,7 +208,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             /^- three\n[^]*2\.1\.0 beta[^]*- two one[^]*2\.0\.0 beta[^]*- two\n$/.test(made) && !made.includes('- one'), made);
 
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
-        const r = await page.evaluate(() => {
+        const r = await page.evaluate(async () => {
             const out = {};
             out.startLink = document.getElementById('btn-whatsnew-start').textContent;
             document.getElementById('btn-whatsnew-start').click();
@@ -251,6 +251,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             delete document.documentElement.dataset.skin;
             // Show me: one stop of the tour, with Done and no "1 of 1"
             Tour.spot({ id: 'test', view: 'home', target: ['#btn-whatsnew-start'], side: 'above', title: 'Here', text: () => 'It is here.' });
+            // The card fills once the place is ready (Tour.go waits for it)
+            for (let t = 0; t < 60 && !document.querySelector('.tour-card .tour-foot'); t++) await new Promise(res => setTimeout(res, 50));
             const tc = document.querySelector('.tour-card');
             out.spot = Tour.running && !!tc && !tc.querySelector('.tour-step') && [...tc.querySelectorAll('.tour-foot button')].map(x => x.textContent).join() === 'Done';
             tc && tc.querySelector('.tour-foot [data-act="end"]').click();
