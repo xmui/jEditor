@@ -881,6 +881,9 @@
             }
         } else if (msg.type === 'toolbar') {
             onToolbar(msg.id, msg.value);
+        } else if (msg.type === 'toolbarLead') {
+            // The sidebar at least as wide as its buttons in the toolbar (style.css: --rail-lead)
+            if (Number.isFinite(msg.width) && msg.width > 0) document.documentElement.style.setProperty('--rail-lead', msg.width + 'px');
         } else if (msg.type === 'fullscreen') {
             document.documentElement.classList.toggle('fullscreen', !!msg.on);
         } else if (msg.type === 'windowState') {

@@ -667,6 +667,7 @@ async function handle(rec, type, data) {
             if (NATIVE_TOOLBAR) {
                 toolbar.update(rec.win.getNativeWindowHandle(), data);
                 centreLights(rec);
+                if (data.titleAt > 0) setTimeout(() => toolbarLead(rec), 150);
             }
             return { ok: NATIVE_TOOLBAR };
         case 'titleBar': {
@@ -1125,6 +1126,20 @@ function centreLights(rec) {
     if (key === (rec.toolbarLights || '')) return;
     rec.toolbarLights = key;
     rec.win.setWindowButtonPosition(at);
+}
+
+// The sidebar open, its buttons beside the lights can be wider than it (the
+// Mac's own are bigger than the page's): where they end, so the page makes
+// the sidebar at least that wide and the title starts at its edge
+// (bridge.js: toolbarLead; the space before the title at its narrowest)
+function toolbarLead(rec) {
+    if (rec.win.isDestroyed()) return;
+    const d = toolbar.describe(rec.win.getNativeWindowHandle()) || {};
+    if (!d.visible || !d.titleBox || !(d.titleBox.left > 0)) return;
+    const width = Math.round(d.titleBox.left - (d.spaceWidth || 1) + 1 - 12);
+    if (width === rec.toolbarLead) return;
+    rec.toolbarLead = width;
+    rec.win.webContents.send('jeditor', { type: 'toolbarLead', width });
 }
 
 // macOS 26's toolbar on a window: its items click the page's own controls

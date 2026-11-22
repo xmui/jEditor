@@ -366,7 +366,7 @@ static void Send(JEToolbar *t, NSString *ident, id value) {
     return @{ @"title": self.window.title ?: @"", @"subtitle": self.window.subtitle ?: @"", @"visible": @(self.toolbar.visible),
               @"titleBox": TitleBox(self.window), @"toolbarHeight": @(self.toolbar.visible ? ToolbarHeight(self.window) : 0),
               @"glass": @(NSProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26),
-              @"lights": LightsBox(self.window), @"items": items };
+              @"lights": LightsBox(self.window), @"spaceWidth": @(self.spaceWidth ? self.spaceWidth.constant : 0), @"items": items };
 }
 @end
 

@@ -965,8 +965,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             // edge, its list right under the toolbar and its own row not there;
             // the lights centred on the toolbar's row, open or closed
             await page.evaluate(() => { app.setView('single'); if (!Folders.railOpen()) app.keyHandlers()['folders.rail'](); });
-            await settle();
-            await settle();
+            for (let i = 0; i < 4; i++) await settle();
             {
                 const d = await describe();
                 const p = await page.evaluate(() => {
@@ -977,6 +976,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 const modes = d.items.find(i => i.id === 'modes');
                 const lights = d.lights || {};
                 const centred = Math.abs((lights.top + lights.bottom) / 2 - d.toolbarHeight / 2) <= 2;
+                // (the sidebar made as wide as its buttons there, if they're wider: the title at its edge)
                 const titleAt = d.titleBox && p.rail ? Math.abs(d.titleBox.left - (p.rail.right + 12)) <= 6 : false;
                 check('one row, the sidebar open: its buttons beside the lights (the modes, its button, Find anything), the title from its edge, the lights centred, its own row gone and its list right under the toolbar', ids[0] === 'modes' && ids[1] === 'rail' && ids[2] === 'find' && !!modes && modes.selected === 0 && !ids.includes('mode') && centred && titleAt && !p.row && !!p.first && p.first.top < d.toolbarHeight + 12, JSON.stringify([ids, modes, lights, d.toolbarHeight, d.titleBox, p]));
                 await click('modes', 1);
@@ -984,7 +984,10 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 await settle();
                 const inAdjust = await describe();
                 const am = inAdjust.items.find(i => i.id === 'modes');
-                check('... its Adjust there opens Adjust, the same buttons in the same places', await page.evaluate(() => Modes.current()) === 'adjust' && inAdjust.items[0] && inAdjust.items[0].id === 'modes' && !!am && am.selected === 1, JSON.stringify(inAdjust.items));
+                // (the sidebar shown beside Adjust: the same buttons; not shown, the mode's own button)
+                const railBeside = await page.evaluate(() => { const r = document.querySelector('.folder-rail'); return !!r && !!r.getClientRects().length; });
+                const sameButtons = railBeside ? inAdjust.items[0] && inAdjust.items[0].id === 'modes' && !!am && am.selected === 1 : inAdjust.items[0] && inAdjust.items[0].id === 'mode' && inAdjust.items[0].menu.includes('✓Adjust');
+                check('... its Adjust there opens Adjust, the same buttons in the same places (or the mode\'s own, the sidebar not beside it)', await page.evaluate(() => Modes.current()) === 'adjust' && sameButtons, JSON.stringify([railBeside, inAdjust.items]));
                 await page.evaluate(() => Modes.go('photos'));
                 await page.waitForFunction(() => Modes.current() === 'photos', null, { timeout: 15000 }).catch(() => null);
                 await page.evaluate(() => { if (Folders.railOpen()) app.keyHandlers()['folders.rail'](); });
