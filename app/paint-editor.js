@@ -6076,6 +6076,8 @@ const PaintEditor = {
             base.className = 'paint-layer paint-photo-layer';
             base.setAttribute('role', 'option');
             base.setAttribute('aria-selected', 'false');
+            // (not a layer to choose: only its lock does anything)
+            base.setAttribute('aria-disabled', 'true');
             base.title = 'The photo is locked: paint on a layer above it, or click the lock to unlock it';
             base.innerHTML = '<button type="button" class="paint-eye paint-lock" title="Unlock the photo" aria-label="Unlock the photo"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></button><canvas></canvas><span class="paint-layer-name">Photo</span>';
             // Made small once for each photo, not on every redraw of the list
