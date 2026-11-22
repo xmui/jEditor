@@ -2810,6 +2810,75 @@ const PROJECT = `
         await page.close();
     }
 
+    // ---- Paint: the photo unlocked (a layer of its own) ----
+    if (wanted('paintunlock')) {
+        console.log('paint: unlock the photo (paint-editor.js, paint.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 400; c.height = 300;
+                const g = c.getContext('2d'); g.fillStyle = '#808080'; g.fillRect(0, 0, 400, 300); g.fillStyle = '#ff0000'; g.fillRect(100, 100, 50, 50);
+                await openProject('ul', { 'u.png': await canvasBlob(c) });
+                const f = app.files[0];
+                // Adjusted: the copy is the photo as shown
+                Edits.set([{ file: f, edit: Edits.withAdj(null, { exposure: 1 }) }], 'adjustments');
+                app.openSingle(f);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                const px = (cv, x, y) => [...cv.getContext('2d').getImageData(x, y, 1, 1).data];
+                const shownGray = px(P.backdrop, 10, 10);
+                // Locked to start with, its lock a button
+                step = 'locked';
+                const lock = document.querySelector('.paint-photo-layer .paint-lock');
+                out.locked = [!P.noPhoto, !!lock && lock.tagName === 'BUTTON', !!document.querySelector('.paint-photo-layer')];
+                // Its right-click offers Unlock
+                document.querySelector('.paint-photo-layer').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 200, clientY: 200 }));
+                out.menu = [...document.querySelectorAll('#context-menu [role^="menuitem"]')].map(b => b.textContent.trim()).join('|');
+                app.closeContextMenu();
+                // Clicked: a layer named Photo at the bottom, the photo as shown; nothing under it
+                step = 'unlock';
+                const n0 = P.layers.length;
+                lock.click();
+                const l = P.layers[0];
+                out.unlocked = [P.noPhoto, P.layers.length - n0, l.name, P.cur, JSON.stringify(px(l.canvas, 10, 10)) === JSON.stringify(shownGray), shownGray[0] > 160, px(l.canvas, 120, 120)[0] > 200, px(P.backdrop, 10, 10)[3], !document.querySelector('.paint-photo-layer')];
+                // Erased in part: clear there, on screen and in what's kept
+                step = 'erase';
+                P.pushState('Erase');
+                l.canvas.getContext('2d').clearRect(0, 0, 50, 50);
+                l.changed = true;
+                P.afterState();
+                const paint = await P.keep();
+                out.kept = [paint.noPhoto === true, paint.layers[0].name, Paint.clean(paint).noPhoto === true];
+                // Undo: back to the photo, locked, under the layers
+                step = 'undo';
+                P.undo(); P.undo();
+                out.undone = [!P.noPhoto, P.layers.length === n0, P.layers[0].name !== 'Photo' || P.layers.length === n0, px(P.backdrop, 10, 10)[3] === 255, !!document.querySelector('.paint-photo-layer')];
+                P.redo(); P.redo();
+                out.redone = [P.noPhoto, P.layers[0].name];
+                // Done: kept with the photo; drawn, what's erased is clear, the rest the copy
+                step = 'done';
+                await app.savePaint();
+                await until(() => !P.isOpen);
+                const e = f._edit;
+                const pic = document.createElement('canvas'); pic.width = 400; pic.height = 300;
+                pic.getContext('2d').fillStyle = '#0000ff'; pic.getContext('2d').fillRect(0, 0, 400, 300);
+                const drawn = await Paint.onto(pic, e);
+                out.drawn = [e && e.paint && e.paint.noPhoto, px(drawn, 10, 10)[3], Math.abs(px(drawn, 200, 200)[2] - px(drawn, 200, 200)[0]) < 20, px(drawn, 200, 200)[0] > 160];
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint unlock: the photo starts locked, its lock a button; its right-click offers Unlock the photo', r.locked && r.locked.every(Boolean) && r.menu === 'Unlock the photo', JSON.stringify([r.locked, r.menu, r.error]));
+        check('paint unlock: clicking the lock makes it a layer, Photo, at the bottom, the photo as shown (adjusted); nothing under it', JSON.stringify(r.unlocked) === '[true,1,"Photo",0,true,true,true,0,true]', JSON.stringify([r.unlocked, r.error]));
+        check('paint unlock: kept with the paint (noPhoto)', JSON.stringify(r.kept) === '[true,"Photo",true]', JSON.stringify(r.kept));
+        check('paint unlock: Undo puts the photo back, locked, under the layers; Redo unlocks it again', r.undone && r.undone.every(Boolean) && JSON.stringify(r.redone) === '[true,"Photo"]', JSON.stringify([r.undone, r.redone]));
+        check('paint unlock: Done keeps it; drawn over the photo (as Export and Save over do), the photo is replaced: what\'s erased is clear, the rest is the copy', JSON.stringify(r.drawn) === '[true,0,true,true]', JSON.stringify([r.drawn, r.error]));
+        check('paint unlock: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Paint: text layers ----
     if (wanted('painttext')) {
         console.log('paint: text layers (paint-editor.js, paint.js)');

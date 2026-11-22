@@ -6606,7 +6606,12 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    cursor: default;
+}
+
+/* The photo's lock: click it to unlock the photo */
+.paint-lock:hover {
+    background: var(--bg-hover);
+    color: var(--text-1);
 }
 
 .paint-photo-layer {
