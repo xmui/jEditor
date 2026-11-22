@@ -6261,9 +6261,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
     }
 
     // ---- 7t5. The photo centered in the room it has ----
-    // At Fit, the photo's center is the free area's: below the pills (or
-    // macOS's toolbar), between the sidebar and Info's card, above the
-    // strip. With the sidebar and Info open and shut, after Left/Right and
+    // At Fit, the photo is in the middle of the free area across (between
+    // the sidebar and Info's card) and up and down has the same room above
+    // as below (above the strip), clear of the pills (or macOS's toolbar). With the sidebar and Info open and shut, after Left/Right and
     // a resize, and under the Mac's native toolbar; zoomed, the spot under
     // the pointer stays put
     console.log('photo centered');
@@ -6310,7 +6310,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                 }
                 const info = document.getElementById('main-interface').classList.contains('info-open') && document.getElementById('info-panel');
                 if (info) right = Math.min(right, info.getBoundingClientRect().left);
-                return { left: c.left, top, right, bottom: c.bottom };
+                return { left: c.left, top, right, bottom: c.bottom, ctop: c.top };
             };
             // Its center against the free area's (with the gutter kept
             // under the pills), and never over its edges
@@ -6320,10 +6320,14 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                 for (let i = 0; i < 80; i++) { await sleep(25); const ci = img(); if (ci && ci.complete && ci.offsetWidth && !ci.getAnimations().length) break; }
                 await sleep(300); // the card's slide and the photo's own easing
                 const p = img().getBoundingClientRect(), f = free();
+                // Across: the middle of the room. Up and down: the same room
+                // above (from the window's top, or macOS's toolbar) as below
+                // (the strip, or the window's bottom), clear of the pills, and
+                // never on the bottom edge (the owner, 22 November)
                 const dx = (p.left + p.right) / 2 - (f.left + f.right) / 2;
-                const dy = (p.top + p.bottom) / 2 - (f.top + gutter + f.bottom) / 2;
-                if (Math.abs(dx) > 1.5 || Math.abs(dy) > 1.5 || p.top < f.top + gutter - 1 || p.bottom > f.bottom + 1 || p.left < f.left - 1 || p.right > f.right + 1)
-                    off.push(`${label} (${app.currentFile && app.currentFile.name}): off by ${Math.round(dx)}, ${Math.round(dy)}`);
+                const above = p.top - f.ctop, below = f.bottom - p.bottom;
+                if (Math.abs(dx) > 1.5 || Math.abs(above - below) > 2 || p.top < f.top + gutter - 1 || below < gutter - 1 || p.left < f.left - 1 || p.right > f.right + 1)
+                    off.push(`${label} (${app.currentFile && app.currentFile.name}): off by ${Math.round(dx)} across; ${Math.round(above)} above, ${Math.round(below)} below`);
             };
             app.openSingle(app.files[0]);
             await measure('opened');
@@ -6362,10 +6366,12 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const p = document.getElementById('current-image').getBoundingClientRect(), vb = app.viewBox();
             const top = mac ? window.__toolbar() : document.querySelector('header .file-info').getBoundingClientRect().bottom;
             return Math.abs((p.left + p.right) / 2 - (vb.left + vb.width / 2)) < 1.5 && Math.abs((p.top + p.bottom) / 2 - (vb.top + vb.height / 2)) < 1.5
-                && vb.top - top >= 8 && vb.top - top <= 30;
+                && vb.top - top >= 8 && vb.top - top <= 30
+                // (as much room below as above)
+                && Math.abs((vb.top - document.getElementById('image-container').getBoundingClientRect().top) - (document.getElementById('image-container').getBoundingClientRect().bottom - (vb.top + vb.height))) < 1.5;
         }, mac);
         const where = mac ? 'under the Mac\'s toolbar' : 'below the pills';
-        check(`the photo is centered in the room it has, ${where}: sidebar, Info, Left/Right`, r.off.length === 0, r.off.join('; '));
+        check(`the photo is centered in the room it has, ${where}, as much room below as above: sidebar, Info, Left/Right`, r.off.length === 0, r.off.join('; '));
         check(`... after a resize too, ${where}; zoomed, the spot under the pointer stays put`, resized && r.zoomed, JSON.stringify([resized, r.zoomed]));
         check(`photo centered suite (${mac ? 'Mac' : 'Windows'}): no JS errors`, issues.errors.length === 0, issues.errors.join('; '));
         await page.close();

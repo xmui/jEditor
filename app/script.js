@@ -1588,7 +1588,15 @@ const app = {
             if (!f._dims) return 0;
             originalPerShown = Math.max(f._dims.w, f._dims.h) / Math.max(img.naturalWidth, img.naturalHeight);
         }
-        return img.naturalWidth * originalPerShown / (img.offsetWidth * this.currentFitScale());
+        return img.naturalWidth * originalPerShown / (this.layoutSize(img).w * this.currentFitScale());
+    },
+
+    // The photo's laid-out size, to the subpixel (offsetWidth is whole
+    // pixels: at 3200% a quarter pixel there is eight on screen)
+    layoutSize(img) {
+        const cs = getComputedStyle(img);
+        const w = parseFloat(cs.width), h = parseFloat(cs.height);
+        return { w: w > 0 ? w : img.offsetWidth, h: h > 0 ? h : img.offsetHeight };
     },
 
     // The original file's pixels are on screen (not a preview or thumbnail)
@@ -1619,7 +1627,8 @@ const app = {
             const cx = box.left + box.width / 2 + this.panX;
             const cy = box.top + box.height / 2 + this.panY;
             const s = this.zoom * this.currentFitScale();
-            const hw = img.offsetWidth * s / 2, hh = img.offsetHeight * s / 2;
+            const size = this.layoutSize(img);
+            const hw = size.w * s / 2, hh = size.h * s / 2;
             const dx = Math.max(-hw, Math.min(hw, x - cx)), dy = Math.max(-hh, Math.min(hh, y - cy));
             const k = target / this.zoom;
             this.panX += dx * (1 - k);
@@ -1753,12 +1762,13 @@ const app = {
     },
 
     // Where the viewer fits the photo: its box less the room left for the
-    // top pills and Info's card (style.css: padding, --head-room). A zoomed
-    // photo still fills the whole box, to the top and under the card
+    // top pills, the same below, and Info's card (style.css: padding,
+    // --head-room). A zoomed photo still fills the whole box, to the top
+    // and under the card
     viewBox() {
         const c = this.elements.imageContainer, r = c.getBoundingClientRect(), cs = getComputedStyle(c);
-        const t = parseFloat(cs.paddingTop) || 0, rt = parseFloat(cs.paddingRight) || 0;
-        return { left: r.left, top: r.top + t, width: Math.max(0, r.width - rt), height: Math.max(0, r.height - t) };
+        const t = parseFloat(cs.paddingTop) || 0, rt = parseFloat(cs.paddingRight) || 0, b = parseFloat(cs.paddingBottom) || 0;
+        return { left: r.left, top: r.top + t, width: Math.max(0, r.width - rt), height: Math.max(0, r.height - t - b) };
     },
 
     // At odd quarter-turns the CSS-rotated image would overflow the
@@ -1767,7 +1777,7 @@ const app = {
         const img = this.elements.currentImage;
         if (((r % 180) + 180) % 180 !== 90) return 1;
         const { width: cw, height: ch } = this.viewBox();
-        const w = img.offsetWidth, h = img.offsetHeight;
+        const { w, h } = this.layoutSize(img);
         return cw && ch && w && h ? Math.min(cw / h, ch / w) : 1;
     },
 

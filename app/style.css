@@ -13121,8 +13121,13 @@ body.touring .controls.idle button { pointer-events: auto; }
    zoomed in, the photo fills the window to the top, under the pills
    (the owner: "on zoom in it fills to the top"). Not in a slideshow,
    which has the whole screen ---- */
+/* The same room below as above, so the fit sits in the middle of the
+   window (above the strip, when it's showing), never on the bottom edge
+   (the owner, 22 November: "going fully to the bottom no space and a
+   space between the top bar"). Tall photos are a little smaller for it */
 :root:not([data-skin]) body[data-view="single"]:not(.slideshow) #image-container {
     padding-top: var(--head-room, 0px);
+    padding-bottom: var(--head-room, 0px);
 }
 
 /* Under macOS 26's toolbar the container already starts below it (its
@@ -13131,6 +13136,7 @@ body.touring .controls.idle button { pointer-events: auto; }
    toolbar low, off center in the room it has) */
 :root.native-toolbar:not([data-skin]) body[data-view="single"]:not(.slideshow) #image-container {
     padding-top: var(--gutter);
+    padding-bottom: var(--gutter);
 }
 
 /* ---- Adjust's and Paint's panel floats over the photo (the owner: "on
