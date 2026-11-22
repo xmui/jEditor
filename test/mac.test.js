@@ -978,7 +978,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 const centred = Math.abs((lights.top + lights.bottom) / 2 - d.toolbarHeight / 2) <= 2;
                 // (the sidebar made as wide as its buttons there, if they're wider: the title at its edge)
                 const titleAt = d.titleBox && p.rail ? Math.abs(d.titleBox.left - (p.rail.right + 12)) <= 6 : false;
-                check('one row, the sidebar open: its buttons beside the lights (the modes, its button, Find anything), the title from its edge, the lights centred, its own row gone and its list right under the toolbar', ids[0] === 'modes' && ids[1] === 'rail' && ids[2] === 'find' && !!modes && modes.selected === 0 && !ids.includes('mode') && centred && titleAt && !p.row && !!p.first && p.first.top < d.toolbarHeight + 12, JSON.stringify([ids, modes, lights, d.toolbarHeight, d.titleBox, p]));
+                check('one row, the sidebar open: its buttons beside the lights (the modes, its button, Find anything), the title from its edge, the lights centered, its own row gone and its list right under the toolbar', ids[0] === 'modes' && ids[1] === 'rail' && ids[2] === 'find' && !!modes && modes.selected === 0 && !ids.includes('mode') && centred && titleAt && !p.row && !!p.first && p.first.top < d.toolbarHeight + 12, JSON.stringify([ids, modes, lights, d.toolbarHeight, d.titleBox, p]));
                 await click('modes', 1);
                 await page.waitForFunction(() => Modes.current() === 'adjust', null, { timeout: 15000 }).catch(() => null);
                 await settle();
@@ -994,7 +994,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 await settle();
                 const shut = await describe();
                 const sl = shut.lights || {};
-                check('... the sidebar closed: the lights still centred on the row, and no space before the title', Math.abs((sl.top + sl.bottom) / 2 - shut.toolbarHeight / 2) <= 2 && !shut.items.some(i => i.id === 'space'), JSON.stringify([shut.items.map(i => i.id), sl, shut.toolbarHeight]));
+                check('... the sidebar closed: the lights still centered on the row, and no space before the title', Math.abs((sl.top + sl.bottom) / 2 - shut.toolbarHeight / 2) <= 2 && !shut.items.some(i => i.id === 'space'), JSON.stringify([shut.items.map(i => i.id), sl, shut.toolbarHeight]));
             }
 
             // (the checks below as before: the sidebar closed)
@@ -1283,7 +1283,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
     console.log('mac: the Photos library (a stand-in: JEDITOR_PHOTOS_LIBRARY)');
     {
         const lib = path.join(tmp, 'PhotosLibrary');
-        for (const [album, n] of [['Wedding', 3], ['Favourites', 1], ['Birthday', 2]]) {
+        for (const [album, n] of [['Wedding', 3], ['Favorites', 1], ['Birthday', 2]]) {
             fs.mkdirSync(path.join(lib, album), { recursive: true });
             for (let i = 1; i <= n; i++) fs.writeFileSync(path.join(lib, album, `IMG_000${i}.jpg`), JPEG);
         }
@@ -1302,7 +1302,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             return { feature: Host.has('photosLibrary'), had, albums, perm: (await JEditorNative.permissions()).rows.map(r => r.id + ':' + r.state).join() };
         });
         check('Locations has the Photos library (photosLibrary), with its own row in the permissions window', r.feature && r.had === 'Photos library' && /photos:granted/.test(r.perm), JSON.stringify(r));
-        check('... it opens out like a drive: Favourites first, then the albums by name, with how many photos', JSON.stringify(r.albums) === '[["Favourites","1"],["Birthday","2"],["Wedding","3"]]', JSON.stringify(r.albums));
+        check('... it opens out like a drive: Favorites first, then the albums by name, with how many photos', JSON.stringify(r.albums) === '[["Favorites","1"],["Birthday","2"],["Wedding","3"]]', JSON.stringify(r.albums));
         await page.click('#start-places .sb-row[data-path="photos-library:album:Wedding"] .sb-main');
         await loaded(page, 3);
         const o = await page.evaluate(async () => {
@@ -1369,7 +1369,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         });
         check('Open on the Photos library: all of it, two photos of one name both there', whole.name === 'Photos library' && whole.names === 'IMG_0001 (2).jpg,IMG_0001 (3).jpg,IMG_0001.jpg,IMG_0002 (2).jpg,IMG_0002.jpg,IMG_0003.jpg', JSON.stringify(whole));
         const others = ['IMG_0002.jpg', 'IMG_0003.jpg'].map(n => wed(n).toString('base64')).join();
-        check('... and the rest of the library is as it was: no photos or albums added, renamed or removed', before.split(',').slice(1).join() === others && fs.readdirSync(lib).filter(n => !n.startsWith('.')).sort().join() === 'Birthday,Favourites,Wedding' && fs.readdirSync(path.join(lib, 'Wedding')).sort().join() === 'IMG_0001.jpg,IMG_0002.jpg,IMG_0003.jpg');
+        check('... and the rest of the library is as it was: no photos or albums added, renamed or removed', before.split(',').slice(1).join() === others && fs.readdirSync(lib).filter(n => !n.startsWith('.')).sort().join() === 'Birthday,Favorites,Wedding' && fs.readdirSync(path.join(lib, 'Wedding')).sort().join() === 'IMG_0001.jpg,IMG_0002.jpg,IMG_0003.jpg');
         // Add to Photos library (photosAdd): a folder project's photos into an album named after it
         const order = path.join(tmp, 'Order 1207');
         fs.mkdirSync(order, { recursive: true });

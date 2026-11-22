@@ -837,8 +837,8 @@ const Adjust = {
         const r = adj.restore;
         const kind = r && Develop.RESTORE_TYPES[r.type];
         const msg = !r ? 'Restore color: nothing to restore'
-            : r.type === 'keep' ? (type === 'keep' ? 'Restore color: the colours kept, the light and any stain fixed' : 'Restore color: no colour fade found, so the colours are kept; the light and any stain are fixed')
-            : `Restore color: ${kind.name.toLowerCase()} found, its colours brought back`;
+            : r.type === 'keep' ? (type === 'keep' ? 'Restore color: the colors kept, the light and any stain fixed' : 'Restore color: no color fade found, so the colors are kept; the light and any stain are fixed')
+            : `Restore color: ${kind.name.toLowerCase()} found, its colors brought back`;
         this.app.showToast(msg + '. Restore color\'s slider sets how much', 2600, null, null, { kind: 'adjust' });
     },
 
@@ -884,8 +884,8 @@ const Adjust = {
         this.el('adj-restore-keep').setAttribute('aria-pressed', String(keep));
         const kind = Develop.RESTORE_TYPES[r.type];
         const roll = r.roll ? `, with the roll of ${r.roll} photos` : '';
-        this.el('adj-restore-found').textContent = r.grey ? 'Set from the grey you picked'
-            : keep ? (r.auto ? 'No colour fade found' + roll : '') : `Found: ${kind.name.toLowerCase()}${roll}`;
+        this.el('adj-restore-found').textContent = r.grey ? 'Set from the gray you picked'
+            : keep ? (r.auto ? 'No color fade found' + roll : '') : `Found: ${kind.name.toLowerCase()}${roll}`;
     },
 
     // White balance from the photo (W): click something that should be
@@ -901,7 +901,7 @@ const Adjust = {
         this.el('adj-restore-pick').setAttribute('aria-pressed', String(this.picking === 'restore'));
         this.el('adj-level').setAttribute('aria-pressed', String(this.picking === 'level'));
         if (!on) this.levelLine(null);
-        if (on) this.app.showToast(kind === 'level' ? 'Drag along something that should be level or upright (Esc to stop)' : kind === 'restore' ? 'Click something that should be grey (Esc to stop)' : 'Click something that should be white or grey (Esc to stop)', 2400, null, null, { kind: 'adjust' });
+        if (on) this.app.showToast(kind === 'level' ? 'Drag along something that should be level or upright (Esc to stop)' : kind === 'restore' ? 'Click something that should be gray (Esc to stop)' : 'Click something that should be white or gray (Esc to stop)', 2400, null, null, { kind: 'adjust' });
     },
 
     pickAt(e) {
@@ -921,7 +921,7 @@ const Adjust = {
         if (this.picking === 'restore') return this.pickRestore(px);
         const wb = Develop.neutralWB(px);
         if (!wb) {
-            this.app.showToast('That\'s too bright or too dark to tell: click a light grey', 2400, null, null, { kind: 'adjust' });
+            this.app.showToast('That\'s too bright or too dark to tell: click a light gray', 2400, null, null, { kind: 'adjust' });
             return;
         }
         this.pickWhite(false);
@@ -938,12 +938,12 @@ const Adjust = {
         const base = this.a.restore && this.a.restore.d ? this.result() : Develop.restoreAuto(this.sample, this.result());
         const r = Develop.restoreNeutral(base.restore, px);
         if (!r) {
-            this.app.showToast('That\'s too light or too dark to tell: click a mid grey', 2400, null, null, { kind: 'adjust' });
+            this.app.showToast('That\'s too light or too dark to tell: click a mid gray', 2400, null, null, { kind: 'adjust' });
             return;
         }
         this.pickWhite(false);
         this.setAll({ ...base, restore: r });
-        this.app.showToast('Restore color: set from that grey', 1600, null, null, { kind: 'adjust' });
+        this.app.showToast('Restore color: set from that gray', 1600, null, null, { kind: 'adjust' });
     },
 
     // Settings to put on another photo: its spots are its own
@@ -1712,7 +1712,7 @@ const Adjust = {
         }
         add('adj-look-film', 'grain', 'Grain', up, f => f.grain, (la, v) => { la.grain = v; });
         add('adj-look-film', 'grainSize', 'Grain size', up, f => f.grainSize, (la, v) => { la.grainSize = v; });
-        add('adj-look-film', 'grainColor', 'Grain colour', up, f => f.grainColor, (la, v) => { la.grainColor = v; });
+        add('adj-look-film', 'grainColor', 'Grain color', up, f => f.grainColor, (la, v) => { la.grainColor = v; });
         add('adj-look-film', 'halation', 'Halation', up, f => f.halation, (la, v) => { la.halation = v; });
         add('adj-look-film', 'vignette', 'Vignette', pct, f => f.vignette, (la, v) => { la.vignette = v; });
         this.lookRows = rows;

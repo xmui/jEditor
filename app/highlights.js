@@ -40,10 +40,10 @@ const Highlights = {
             'Perspective and lens fixes'],
           spot: { mode: 'adjust', title: 'Adjust', text: () => '{key:edit.adjust} opens Adjust on the photo you’re on. Looks are in Basic, Texture, Clarity and Dehaze in Presence, and perspective and lens fixes in Geometry.' } },
         { kicker: 'Old photos', art: 'old', title: 'Bring old prints back', lines: () => [
-            'Restore colour finds the fade and takes it off',
+            'Restore color finds the fade and takes it off',
             'Scratches and creases: drag along one and it’s gone',
             'Descreen takes the dots off a magazine or newspaper scan'],
-          spot: { mode: 'adjust', title: 'Old photos', text: () => 'Restore is the second tool under Adjust’s histogram: Restore color, dust, scratches and creases, and Descreen. In Photos, a photo’s right-click menu has Restore colour too.' } },
+          spot: { mode: 'adjust', title: 'Old photos', text: () => 'Restore is the second tool under Adjust’s histogram: Restore color, dust, scratches and creases, and Descreen. In Photos, a photo’s right-click menu has Restore color too.' } },
         { kicker: 'Photos', art: 'photos', title: 'Find it, undo it, redo it', lines: () => [
             'Find anything: {key:app.palette} for commands, photos and folders',
             'Redo for every step, even a delete: {key:edit.redo}',

@@ -75,7 +75,7 @@ for (const r of rolls) console.log('  ' + r.id.padEnd(24) + String(r.alone).padS
     const T = Develop.channelTables(Develop.full({ restore: v1 }));
     const want = Develop.levels([0.2, 1.2, 0.9, 0, 1], 128 / 255);
     if (!kept || kept.d || Math.abs(T[128 * 4] - want) > 0.002) {
-        console.log('  FAIL: an edit made with the first Restore colour is drawn differently', JSON.stringify(kept), T[128 * 4], want);
+        console.log('  FAIL: an edit made with the first Restore color is drawn differently', JSON.stringify(kept), T[128 * 4], want);
         process.exit(1);
     }
 }
@@ -97,7 +97,7 @@ for (const r of rows.concat(rolls)) {
 }
 if (mean > base.mean + MEAN_SLACK) fails.push('mean: ' + base.mean + ' → ' + mean);
 if (fails.length) {
-    console.log('  FAIL: Restore colour got worse');
+    console.log('  FAIL: Restore color got worse');
     for (const f of fails) console.log('    ' + f);
     process.exit(1);
 }

@@ -168,7 +168,7 @@ const PROJECT = `
         });
         check('spots: kept compact and in range, a spot copied from itself dropped', m.clean === '[{"t":"heal","x":0.5,"y":0.5,"r":0.25,"sx":0.6,"sy":0.5,"f":1,"o":0.05}]', m.clean);
         check('spots: kept with the adjustments but not in the tables; a spot alone is an edit', m.kept && m.notNothing, JSON.stringify(m));
-        check('spots: heal takes the colour round the speck, clone keeps the source\'s', Math.abs(m.heal[2] - m.heal[0]) <= 6 && m.heal[1] < 30 && m.heal[3] - m.heal[0] > 15, JSON.stringify(m.heal));
+        check('spots: heal takes the color round the speck, clone keeps the source\'s', Math.abs(m.heal[2] - m.heal[0]) <= 6 && m.heal[1] < 30 && m.heal[3] - m.heal[0] > 15, JSON.stringify(m.heal));
         check('spots: nothing changes outside a spot; the same spot at any size gives the same result', m.untouched && Math.abs(m.scaled[0] - m.scaled[1]) <= 4, JSON.stringify(m.scaled));
         check('spots: a source is picked nearby, off the spot, inside the photo', m.source, JSON.stringify(m));
         check('dust: specks on a scan are found (dark and light), not a real edge', m.foundSpecks >= 10 && m.falseFinds <= 1 && m.markedFound, JSON.stringify(m));
@@ -669,7 +669,7 @@ const PROJECT = `
                 return out;
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
-        check('sync: the dialog starts with masks and spot removal unticked, and greys what the source hasn\'t changed', r.defaults && r.unset, JSON.stringify(r));
+        check('sync: the dialog starts with masks and spot removal unticked, and grays what the source hasn\'t changed', r.defaults && r.unset, JSON.stringify(r));
         check('sync: the ticked groups go onto the rest; each keeps the rest of its own, and its crop', r.light && r.keptOwn && r.cropKept && r.sourceSame, JSON.stringify(r));
         check('sync: what\'s ticked is remembered', r.remembered, JSON.stringify(r));
         check('sync: one Ctrl+Z undoes it on every photo', r.oneStep && r.undone, JSON.stringify(r));
@@ -1158,7 +1158,7 @@ const PROJECT = `
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
         check('heic: .heic, .heif and .hif are photos, decoded by the codecs', r.names === 'true,true,true,false,true', JSON.stringify(r));
-        check('heic: decoded by the bundled libheif, 64 × 64, opaque, in colour', String(r.decoded) === '64,64,true,true', JSON.stringify(r));
+        check('heic: decoded by the bundled libheif, 64 × 64, opaque, in color', String(r.decoded) === '64,64,true,true', JSON.stringify(r));
         check('heic: listed with a thumbnail, and shown', r.thumb && String(r.viewer) === '64,64', JSON.stringify(r));
         check('heic: a grid thumbnail is the HEIC\'s own when it has one, turned as the photo is', String(r.ownThumb) === '240,320,true,true', JSON.stringify(r));
         check('heic: ...and made from the photo when it has none', String(r.noOwnThumb) === '64,64', JSON.stringify(r));
@@ -1231,7 +1231,7 @@ const PROJECT = `
         check('paint: layers at the photo\'s size, a very big one smaller', m.size === '[{"w":3000,"h":2000},{"w":800,"h":600}]', m.size);
         check('paint: ten tool slots, each showing its group\'s tool used last; a right-click lists the others', JSON.stringify(m.slots) === '[10,"move,lasso,pencil,eraser,spot-heal,fill,line,text,picker,hand","pencil",4]', JSON.stringify(m.slots));
         check('paint: a layer\'s locked transparency is kept (only when on)', m.lock === '[true,null]', m.lock);
-        check('paint: saved colours: + saves the brush colour (once), kept; right-click takes one off; Choose a colour…', JSON.stringify(m.saved) === '[1,true,0,true]', JSON.stringify(m.saved));
+        check('paint: saved colors: + saves the brush color (once), kept; right-click takes one off; Choose a color…', JSON.stringify(m.saved) === '[1,true,0,true]', JSON.stringify(m.saved));
 
         const r = await page.evaluate(async () => {
             let step = 'start';
@@ -1463,7 +1463,7 @@ const PROJECT = `
                 const menuNow = document.getElementById('context-menu');
                 const retroMenu = menuNow ? [...menuNow.children].map(e => e.textContent.replace(/\s+$/, '')).join('|') : '';
                 app.closeContextMenu();
-                out.retro = [cell.join(), stamped.join(), dots > 20 && soft === 0 && outside === 0, retroMenu.replace(/(Brush|Pencil)[A-Z]\|/g, "$1|") === "Brush|Soft round|Hard round|Pencil|Ink|Marker|Airbrush|Spray|Painters|Charcoal|Watercolour|Texture brush|Mixer|Retro|Pixel pencil|Spray can|Stamp|Yours|Your brush" ? 'menu' : retroMenu];
+                out.retro = [cell.join(), stamped.join(), dots > 20 && soft === 0 && outside === 0, retroMenu.replace(/(Brush|Pencil)[A-Z]\|/g, "$1|") === "Brush|Soft round|Hard round|Pencil|Ink|Marker|Airbrush|Spray|Painters|Charcoal|Watercolor|Texture brush|Mixer|Retro|Pixel pencil|Spray can|Stamp|Yours|Your brush" ? 'menu' : retroMenu];
                 P.setTool('brush'); P.opts.size = 10; P.opts.density = 40;
                 // Heal and clone (paint-heal.js): clone copies from where
                 // Alt was clicked; heal copies its texture in the colours
@@ -1831,7 +1831,7 @@ const PROJECT = `
         check('paint: copy merged takes the photo and the layers; paste in place puts it back where it came from', r.plainClip === 0 && JSON.stringify(r.inPlace) === '["255,0",255,true]', JSON.stringify([r.plainClip, r.inPlace]));
         check('paint: lock transparency paints only over what\'s on the layer', JSON.stringify(r.locked) === '[[0,255,0,255],0,true]', JSON.stringify(r.locked));
         check('paint: Ctrl-click a layer selects its paint; Alt-click an eye shows that layer alone, and again all; a layer\'s right-click menu', r.layerSel && JSON.stringify(r.solo) === '[true,false,false,false]' && r.layerMenu === 'Lock transparency|Lock the layer|Show this layer alone|Select its pixels', JSON.stringify([r.layerSel, r.solo, r.layerMenu]));
-        check('paint: Alt with the brush picks the colour under it, with the loupe, and paints nothing', JSON.stringify(r.altPick) === '["#ff0000",true,0]', JSON.stringify(r.altPick));
+        check('paint: Alt with the brush picks the color under it, with the loupe, and paints nothing', JSON.stringify(r.altPick) === '["#ff0000",true,0]', JSON.stringify(r.altPick));
         check('paint: Alt + right-drag makes the brush bigger (sideways) and softer (down), painting nothing', JSON.stringify(r.altSize) === '[true,true,0,null]', JSON.stringify(r.altSize));
         check('paint: a stroke at 50% opacity covers half, however it overlaps itself', r.half >= 120 && r.half <= 135, JSON.stringify(r));
         check('paint: a stroke shows as it\'s drawn exactly as it goes on (redone only where it reached), and the eraser too', String(r.previewOff) === '0,0', String(r.previewOff));
@@ -1840,22 +1840,22 @@ const PROJECT = `
         check('paint: Shift-click paints straight on from where the last stroke ended', String(r.shiftLine) === '0,255,0', String(r.shiftLine));
         check('paint: QuickShape: a stroke held at its end snaps to a straight line, its end following the pointer while held', JSON.stringify(r.quickLine) === '["Line",255,0,255]', JSON.stringify(r.quickLine));
         check('paint: QuickShape: a rough circle becomes a circle; off in ⋯, a held stroke stays as drawn', JSON.stringify(r.quickCircle) === '["Circle",true,true,0]' && r.quickOff, JSON.stringify([r.quickCircle, r.quickOff]));
-        check('paint: History (⋯) lists each step by name; a click on one goes back to it, the later ones greyed, and on again; off again', JSON.stringify(r.history) === '[true,false,"Brush",true,0,"true",true,255]' && r.historyHidden, JSON.stringify([r.history, r.historyHidden]));
+        check('paint: History (⋯) lists each step by name; a click on one goes back to it, the later ones grayed, and on again; off again', JSON.stringify(r.history) === '[true,false,"Brush",true,0,"true",true,255]' && r.historyHidden, JSON.stringify([r.history, r.historyHidden]));
         check('paint: on a touch screen two fingers tapped undo, three redo; a finger put down later leaves the first painting', JSON.stringify(r.taps) === '[true,0,0,true,255,255,true]', JSON.stringify(r.taps));
-        check('paint: Recolor turns the colour clicked into the brush colour, light and dark shades alike, nothing else; one undo step; G goes fill, gradient, recolor', JSON.stringify(r.recolor) === '[true,true,true,"32,160,64,255",0,"Recolor","200,32,32,255","gradient,recolor"]', JSON.stringify(r.recolor));
-        check('paint: Canvas size makes the canvas bigger than the photo (the layers too, what\'s added the background colour); what\'s painted past the photo is kept, and Export writes the bigger canvas; Crop dragged past the edge adds more; each one step of Undo',
+        check('paint: Recolor turns the color clicked into the brush color, light and dark shades alike, nothing else; one undo step; G goes fill, gradient, recolor', JSON.stringify(r.recolor) === '[true,true,true,"32,160,64,255",0,"Recolor","200,32,32,255","gradient,recolor"]', JSON.stringify(r.recolor));
+        check('paint: Canvas size makes the canvas bigger than the photo (the layers too, what\'s added the background color); what\'s painted past the photo is kept, and Export writes the bigger canvas; Crop dragged past the edge adds more; each one step of Undo',
             JSON.stringify(r.canvas) === JSON.stringify({ big: [true, 440, 320, 440, 320, 40, 20, 440, true], painted: 255, turned: ['{"l":20,"t":40,"r":0,"b":0}', 320, 440, true, '{"l":40,"t":0,"r":0,"b":20}'], record: [400, 300, '{"l":40,"t":0,"r":0,"b":20}', '{"l":40,"t":0,"r":0,"b":20}', '#ffffff'], exported: [440, 320, '0,255,0', '255,255,255', '128,128,128'], onlyPhoto: [440, 320], cropping: true, cropped: [500, 320, 60, 'Crop'], undone: [440, 400, 400, true, true] }), JSON.stringify(r.canvas));
-        check('paint: heal and clone: clone copies from the Alt-click (nothing without one); heal copies in the colours round it; spot heal fills a mark from round it; one undo each; their own slot; J and S', JSON.stringify(r.heal) === '[true,"true,0",true,"Clone stamp",true,true,"Spot heal",3,"Spot heal|Heal|Clone stamp|Dodge|Burn|Sponge|Blur|Sharpen|Smudge","spot-heal,heal,clone"]', JSON.stringify(r.heal));
-        check('paint: tone and focus: dodge lightens, burn darkens, sponge takes colour out, blur softens an edge, sharpen crisps it, smudge drags a colour; in the Heal slot under Tone and Focus; one undo each', JSON.stringify(r.tone) === '[true,true,true,true,true,true,true,"Dodge|Burn|Sponge|Blur|Sharpen|Smudge","Spot heal|Heal|Clone stamp|Tone|Dodge|Burn|Sponge|Focus|Blur|Sharpen|Smudge",true]', JSON.stringify(r.tone));
-        check('paint: more brushes: hard and soft rounds; the marker darker where it crosses; ink thinner when fast; the airbrush builds as it\'s held; the block eraser square, E through the erasers; smoothing steadies a shaky line; a pen\'s pressure as opacity; all in the Brush slot', JSON.stringify(r.brushes) === '["true,true",true,true,true,true,true,"0,0,255","eraser-block,eraser-soft,eraser",true,true,"Brush|Soft round|Hard round|Pencil|Ink|Marker|Airbrush|Spray|Painters|Charcoal|Watercolour|Texture brush|Mixer|Retro|Pixel pencil|Spray can|Stamp|Yours|Your brush"]', JSON.stringify(r.brushes));
+        check('paint: heal and clone: clone copies from the Alt-click (nothing without one); heal copies in the colors round it; spot heal fills a mark from round it; one undo each; their own slot; J and S', JSON.stringify(r.heal) === '[true,"true,0",true,"Clone stamp",true,true,"Spot heal",3,"Spot heal|Heal|Clone stamp|Dodge|Burn|Sponge|Blur|Sharpen|Smudge","spot-heal,heal,clone"]', JSON.stringify(r.heal));
+        check('paint: tone and focus: dodge lightens, burn darkens, sponge takes color out, blur softens an edge, sharpen crisps it, smudge drags a color; in the Heal slot under Tone and Focus; one undo each', JSON.stringify(r.tone) === '[true,true,true,true,true,true,true,"Dodge|Burn|Sponge|Blur|Sharpen|Smudge","Spot heal|Heal|Clone stamp|Tone|Dodge|Burn|Sponge|Focus|Blur|Sharpen|Smudge",true]', JSON.stringify(r.tone));
+        check('paint: more brushes: hard and soft rounds; the marker darker where it crosses; ink thinner when fast; the airbrush builds as it\'s held; the block eraser square, E through the erasers; smoothing steadies a shaky line; a pen\'s pressure as opacity; all in the Brush slot', JSON.stringify(r.brushes) === '["true,true",true,true,true,true,true,"0,0,255","eraser-block,eraser-soft,eraser",true,true,"Brush|Soft round|Hard round|Pencil|Ink|Marker|Airbrush|Spray|Painters|Charcoal|Watercolor|Texture brush|Mixer|Retro|Pixel pencil|Spray can|Stamp|Yours|Your brush"]', JSON.stringify(r.brushes));
         check('paint: Retro: the pixel pencil fills one square of its grid; the stamp paints our star (not its corners); the spray can sprays hard dots inside its round; listed under Retro in the brush slot', JSON.stringify(r.retro) === '["255,255,0,0,0","255,0,255,0,Stamp",true,"menu"]', JSON.stringify(r.retro));
         check('paint: a pen\'s pressure sizes the brush', r.pressure && r.pressure[0] > 200 && r.pressure[1] === 0, String(r.pressure));
         check('paint: a new layer; a filled rectangle on it', r.layers && r.rect && r.rect[0][1] === 255 && r.rect[1] === 0, JSON.stringify(r));
         check('paint: the fill takes the photo\'s blue square, not beyond it; text is drawn', r.fill && r.fill[0][0] === 255 && r.fill[0][1] === 255 && r.fill[1] === 0 && r.text > 50, JSON.stringify(r));
-        check('paint: the fill can fill the whole layer (only what\'s selected, with a selection), without the colour options; Ctrl+Z undoes it', r.wholeOpts && r.wholeSel && String(r.wholeSel[0]) === '255,0,255,255' && r.wholeSel[1] === 0 && String(r.whole) === '255,0,255,255,255,0,255,255' && r.wholeUndone, JSON.stringify([r.wholeOpts, r.wholeSel, r.whole, r.wholeUndone]));
+        check('paint: the fill can fill the whole layer (only what\'s selected, with a selection), without the color options; Ctrl+Z undoes it', r.wholeOpts && r.wholeSel && String(r.wholeSel[0]) === '255,0,255,255' && r.wholeSel[1] === 0 && String(r.whole) === '255,0,255,255,255,0,255,255' && r.wholeUndone, JSON.stringify([r.wholeOpts, r.wholeSel, r.whole, r.wholeUndone]));
         check('paint: a selection; Delete clears only inside it', r.selected && r.cleared[0] === 0 && r.cleared[1] === 255, JSON.stringify(r));
         check('paint: the ⋯ menu has Image, Select, Layer, Filter, Brushes and View (and History and QuickShape, ticked when on, Smoothing and Pen pressure); Invert, Grow and Shrink change the selection', r.menu && r.inverted && JSON.stringify(r.reshaped) === '[6,0]', JSON.stringify([r.menu, r.inverted, r.reshaped]));
-        check('paint: the wand selects by colour; Move drags it, Enter puts it down', r.wand && r.moved[0] === 0 && r.moved[1][3] === 255 && r.notDone, JSON.stringify(r));
+        check('paint: the wand selects by color; Move drags it, Enter puts it down', r.wand && r.moved[0] === 0 && r.moved[1][3] === 255 && r.notDone, JSON.stringify(r));
         check('paint: Done keeps it with the photo (layers in the project\'s folder), the file untouched', r.kept && r.files === 2 && r.fileSame, JSON.stringify(r));
         check('paint: shown painted; opened again, the layers come back', r.shown && r.shown[0][0] > 200 && r.shown[1][1] > 200 && r.shown[2][0] > 200 && r.reopened, JSON.stringify(r));
         check('paint: a crop later leaves it where it was; the crop editor keeps it; Export writes it', r.cropped && r.cropped[0] === 200 && r.cropped[1][0] > 200 && r.cropKeepsPaint && r.exported && r.exported[0] > 200 && r.undoCrop, JSON.stringify(r));
@@ -1968,7 +1968,7 @@ const PROJECT = `
         });
         check('paint: on a turned photo, shapes are drawn as they look', JSON.stringify(t.shownSize) === '[200,300]' && t.rect && t.rect[0] === 255 && t.rect[1] === 0, JSON.stringify(t));
         check('paint: the eraser takes off what it goes over', t.erased && t.erased[0] === 0 && t.erased[1] === 255, JSON.stringify(t));
-        check('paint: a gradient from the foreground colour to the background', t.gradient, JSON.stringify(t));
+        check('paint: a gradient from the foreground color to the background', t.gradient, JSON.stringify(t));
         check('paint: merging down keeps a layer\'s opacity; Ctrl+Z undoes it', t.merged && t.unmerged, JSON.stringify(t));
         check('paint: what\'s moved scales from a corner, its selection with it', t.scaled && t.afterScale && t.afterScale[0] === 255 && t.afterScale[1], JSON.stringify(t));
 
@@ -2130,7 +2130,7 @@ const PROJECT = `
         check('blank: offered on a folder\'s menu and the grid\'s background', r.folderMenu && r.gridMenu, JSON.stringify(r));
         check('blank: into the folder right-clicked, no Open a file there', r.where === 'Art' && r.noTabs, JSON.stringify(r));
         check('blank: a print size in inches at 300 dpi; turned; in pixels; too big is said', r.name === 'Untitled' && JSON.stringify(r.inches) === '["4","6","in","300"]' && JSON.stringify(r.dims) === '["1800","1200","4x6"]' && r.tooBig, JSON.stringify(r));
-        check('blank: saved as a PNG of that size and colour, in the folder, with its resolution', r.file === 'Art/Untitled.png' && JSON.stringify(r.size) === '[1800,1200]' && JSON.stringify(r.pixel) === '[51,102,153,255]' && r.ppm === 11811, JSON.stringify(r));
+        check('blank: saved as a PNG of that size and color, in the folder, with its resolution', r.file === 'Art/Untitled.png' && JSON.stringify(r.size) === '[1800,1200]' && JSON.stringify(r.pixel) === '[51,102,153,255]' && r.ppm === 11811, JSON.stringify(r));
         check('blank: opened in Paint straight away (Paint turned on for it)', r.inPaint, JSON.stringify(r));
         check('paint: an image dropped on it comes in as a layer of its own, named for it, fitted and floating', r.dropped && r.dropped[0] === 'Layer 1,logo' && r.dropped[1] === 1 && r.dropped[2] === 'move' && r.dropped[3] && r.dropped[4] === 1620, JSON.stringify(r));
         check('paint: Enter puts it down', r.putDown, JSON.stringify(r));
@@ -2380,7 +2380,7 @@ const PROJECT = `
         check('paint brushes: nothing selected, nothing made', r.noSel, JSON.stringify(r));
         check('paint brushes: made from what\'s selected, named and kept, cropped to what\'s dark; Your brush picked', r.defined && r.defined[0] && r.defined[1] === 'Name the brush' && r.defined[2] === 1 && r.defined[3] === 'Bar' && r.defined[4] === '40x10' && r.defined[5] === 'custom' && r.defined[6] && r.defined[7] === 40, JSON.stringify(r));
         check('paint brushes: listed in ⋯ → Brushes (with Make and Delete) and as the Tip along the top', r.menu === 'Save the brush as a preset…|—|Make a brush from what\'s selected…|Make a brush from a picture…|—|Bar|—|Delete a brush' && r.optTip, JSON.stringify(r));
-        check('paint brushes: it paints its shape in the brush colour', r.painted && r.painted[0] === '0,255,0,255' && r.painted[1] && r.painted[2] === 0, JSON.stringify(r));
+        check('paint brushes: it paints its shape in the brush color', r.painted && r.painted[0] === '0,255,0,255' && r.painted[1] && r.painted[2] === 0, JSON.stringify(r));
         check('paint brushes: from a see-through picture, its shape', r.fromFile && r.fromFile[0] && r.fromFile[1] === 2 && r.fromFile[2] === '40x40', JSON.stringify(r));
         check('paint brushes: deleted again', r.deleted === 'Bar', JSON.stringify(r));
         check('paint brushes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
@@ -2888,7 +2888,7 @@ const PROJECT = `
                 return out;
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
-        check('paint text: typed text is a layer of its own, named from it, keeping its words and colour', JSON.stringify(r.made) === '[1,"Hi","Hi","#ff0000",true]', JSON.stringify(r));
+        check('paint text: typed text is a layer of its own, named from it, keeping its words and color', JSON.stringify(r.made) === '[1,"Hi","Hi","#ff0000",true]', JSON.stringify(r));
         check('paint text: the words are kept with the layers (a bad one dropped)', JSON.stringify(r.kept) === '["Hi",6,false]', JSON.stringify(r));
         check('paint text: the Text tool on it opens it again with its words', r.opened && r.opened[0] && r.opened[1] === 'Hi' && r.opened[2] === 1 && r.opened[3], JSON.stringify(r));
         check('paint text: changed in place and renamed, one step to undo', JSON.stringify(r.edited) === '[1,"Hello","Hello",true]' && JSON.stringify(r.undone) === '["Hi","Hi"]', JSON.stringify(r));
@@ -3140,7 +3140,7 @@ const PROJECT = `
         });
         check('paint warp: Ctrl-drag a corner sets the corners free, with Mode along the top', r.free && r.free[0] && r.free[1] === 100 && r.free[2] && r.free[3], JSON.stringify(r));
         check('paint warp: Done distorts it; Ctrl+Z puts it back', r.distorted && r.distorted[0] === 0 && r.distorted[1] >= 250 && r.distorted[2] && JSON.stringify(r.undone) === '[255,true]', JSON.stringify(r));
-        check('paint warp: Perspective moves the neighbour along the side the other way', r.persp === '50,150,180,20', JSON.stringify(r));
+        check('paint warp: Perspective moves the neighbor along the side the other way', r.persp === '50,150,180,20', JSON.stringify(r));
         check('paint warp: transformed small then back to 100% (of what it was), it\'s as sharp as it was', JSON.stringify(r.sharp) === '[20,255,255,0,255]', JSON.stringify(r));
         check('paint warp: the original is kept with the layers; painting on it makes it plain pixels; a slide keeps no copy', r.kept && r.kept[0] === 'sx' && r.kept[1] === false && r.plain && r.slid, JSON.stringify(r));
         check('paint warp: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
@@ -3390,7 +3390,7 @@ const PROJECT = `
         check('paint filters: Motion blur smears across', r.motion && r.motion[0] > 20 && r.motion[1] === 0, JSON.stringify(r));
         check('paint filters: Unsharp mask makes an edge stand out', r.unsharp && r.unsharp[0] > 140 && r.unsharp[1] === 0 && r.unsharp[2] === 128, JSON.stringify(r));
         check('paint filters: Median takes out a speck', r.median && r.median[0] === 128, JSON.stringify(r));
-        check('paint filters: High pass leaves flat parts grey, edges not', r.highpass && r.highpass[0] === 128 && r.highpass[1] === 128 && r.highpass[2] > 140, JSON.stringify(r));
+        check('paint filters: High pass leaves flat parts gray, edges not', r.highpass && r.highpass[0] === 128 && r.highpass[1] === 128 && r.highpass[2] > 140, JSON.stringify(r));
         check('paint filters: Add noise adds grain, the same each time it\'s drawn', r.noise && r.noise[0] && r.noise[1], JSON.stringify(r));
         check('paint filters: settings kept in range', r.kept === '{"kind":"motion","a":180,"d":1}', JSON.stringify(r));
         check('paint filters: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
@@ -3460,7 +3460,7 @@ const PROJECT = `
         });
         check('paint shapes: the Shapes slot has line, arrow, rectangle, rounded rectangle, ellipse and polygon', r.slot === 'line,arrow,rect,roundrect,ellipse,polygon', JSON.stringify(r));
         check('paint shapes: the Arrow draws a line with its head', JSON.stringify(r.arrow) === '["Arrow","arrow",true,true,true]', JSON.stringify(r));
-        check('paint shapes: Style is Outline, Filled or Outline and fill; a rounded rectangle\'s corner is round, filled with the background colour', r.style && JSON.stringify(r.round) === '["roundrect",30,0,255,255]', JSON.stringify(r));
+        check('paint shapes: Style is Outline, Filled or Outline and fill; a rounded rectangle\'s corner is round, filled with the background color', r.style && JSON.stringify(r.round) === '["roundrect",30,0,255,255]', JSON.stringify(r));
         check('paint shapes: a polygon from clicks, closed with a double-click, Filled', r.open && JSON.stringify(r.poly) === '[true,"polygon",3,255,0]', JSON.stringify(r));
         check('paint shapes: Esc lets a polygon go; the first corner again closes it', r.esc && JSON.stringify(r.closed) === '[true,1]', JSON.stringify(r));
         check('paint shapes: polygons and rounded rectangles are kept with the layers', JSON.stringify(r.kept) === '[3,30]', JSON.stringify(r));
@@ -3469,7 +3469,7 @@ const PROJECT = `
     }
 
     if (wanted('painttext2')) {
-        console.log('paint: text lined up left, centre or right, with an outline (paint-editor.js, paint.js)');
+        console.log('paint: text lined up left, center or right, with an outline (paint-editor.js, paint.js)');
         const { page, issues } = await open();
         const r = await page.evaluate(async () => {
             let step = 'start';
@@ -3520,7 +3520,7 @@ const PROJECT = `
         });
         check('paint text: Align and Outline are the Text tool\'s options', r.opts === 'Align,Outline', JSON.stringify(r));
         check('paint text: the box being typed in shows the alignment and outline', JSON.stringify(r.box) === '["right",true]', JSON.stringify(r));
-        check('paint text: the text layer keeps its alignment and outline (in the background colour)', JSON.stringify(r.rec) === '["right",3,"#00ff00"]', JSON.stringify(r));
+        check('paint text: the text layer keeps its alignment and outline (in the background color)', JSON.stringify(r.rec) === '["right",3,"#00ff00"]', JSON.stringify(r));
         check('paint text: lined up right, a short line sits at the right; the outline is round the letters', r.right && r.green, JSON.stringify(r));
         check('paint text: opened again, the options are the text\'s', JSON.stringify(r.back) === '["right",3,"#00ff00"]', JSON.stringify(r));
         check('paint text: alignment and outline are kept with the layers, and bad ones dropped', JSON.stringify(r.kept) === '["right",3,"#00ff00",false,false]', JSON.stringify(r));
@@ -3672,7 +3672,7 @@ const PROJECT = `
         check('paint brushes 2: watercolour pools at its edge', r.water && r.water[1] > r.water[0] && r.water[0] > 0, R);
         check('paint brushes 2: the mixer blends its red with the blue under it, and carries the blue on into yellow', r.mixer && r.mixer[0][0] > 40 && r.mixer[0][2] > 40 && r.mixer[1][2] > 40 && r.mixer[1][1] > 40, R);
         check('paint brushes 2: a pen tilted lays the brush on its side; upright, round', r.tilt && r.tilt[0] > 0 && r.tilt[1] === 0 && r.tilt[2] > 0 && r.upright[0] === 0 && r.upright[1] > 0, R);
-        check('paint brushes 2: presets saved, listed in ⋯ → Brushes, used (tool and settings, not the colour), deleted', /^Save the brush as a preset…\|—\|Rough\|Delete a preset\|—\|/.test(r.menu || '') && JSON.stringify(r.used) === '["texture",33,"paper",40,false,true]' && r.deleted === 0, R);
+        check('paint brushes 2: presets saved, listed in ⋯ → Brushes, used (tool and settings, not the color), deleted', /^Save the brush as a preset…\|—\|Rough\|Delete a preset\|—\|/.test(r.menu || '') && JSON.stringify(r.used) === '["texture",33,"paper",40,false,true]' && r.deleted === 0, R);
         check('paint brushes 2: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -3944,7 +3944,7 @@ const PROJECT = `
         check('paint fonts: search finds it, Enter picks it and closes, the button shows it', r.found === 'Verdana' && r.picked === '"Verdana", system-ui, sans-serif' && r.closed && r.after === 'Verdana' && r.btnFace, JSON.stringify(r));
         check('paint fonts: the font used last is at the top; a press off it closes it', r.recent === 'Recent:Verdana' && r.offClosed, JSON.stringify(r));
         check('paint fonts: the text layer keeps the font, with a fallback', r.layerFont === '"Verdana", system-ui, sans-serif', JSON.stringify(r));
-        check('paint fonts: a font not on this computer is greyed and falls back to Sans', r.missing && r.fallback === '20px Futura, system-ui, sans-serif', JSON.stringify(r));
+        check('paint fonts: a font not on this computer is grayed and falls back to Sans', r.missing && r.fallback === '20px Futura, system-ui, sans-serif', JSON.stringify(r));
         check('paint fonts: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -4337,7 +4337,7 @@ const PROJECT = `
 
     // ---- Restore colour (develop.js: restoreAuto; script.js: restoreColour) ----
     if (wanted('restore')) {
-        console.log('restore colour (develop.js, script.js, adjust.js)');
+        console.log('restore color (develop.js, script.js, adjust.js)');
         const { page, issues } = await open();
         const r = await page.evaluate(async () => {
             let step = 'start';
@@ -4385,7 +4385,7 @@ const PROJECT = `
                 out.rollUndo = [a, b, c].every(f => !f._edit);
                 // In the menus: the photo's right-click and the selection bar's ⋯
                 app.selection = new Set([a, b]);
-                const rc = app.selectionMoreItems().find(it => it[0] === 'Restore colour of 2');
+                const rc = app.selectionMoreItems().find(it => it[0] === 'Restore color of 2');
                 out.menus = !!rc && Array.isArray(rc[1]) && rc[1].map(it => it[0]).join('|') === 'Restore each on its own|Restore as one roll (faded together)';
                 step = 'adjust';
                 await app.restoreColour([a]);
@@ -4415,20 +4415,20 @@ const PROJECT = `
                 const s = await app.restoreSample(a);
                 Adjust.pickRestore(s.slice(0, 4 * 64));
                 const rg = Adjust.result().restore;
-                out.grey = !Adjust.picking && !!rg && rg.grey === true && document.getElementById('adj-restore-found').textContent.includes('grey');
+                out.grey = !Adjust.picking && !!rg && rg.grey === true && document.getElementById('adj-restore-found').textContent.includes('gray');
                 await Adjust.undo();
                 out.greyUndo = !Adjust.result().restore.grey;
                 return out;
             } catch (e) { return { error: step + ': ' + e.message }; }
         });
-        check('restore: one photo\'s colour restored, kept as an Adjust setting, the others untouched', r.one, JSON.stringify(r));
+        check('restore: one photo\'s color restored, kept as an Adjust setting, the others untouched', r.one, JSON.stringify(r));
         check('restore: the red cast is taken off (the channels come out close together)', r.cast, JSON.stringify(r.means || r));
         check('restore: Ctrl+Z takes it off; a selection is restored together and undone in one step', r.undone && r.batch && r.batchUndo, JSON.stringify(r));
         check('restore: on the selection bar\'s ⋯ menu, each on its own or as one roll', r.menus, JSON.stringify(r));
         check('restore: as one roll, every photo restored the same way and marked with its roll; one undo', r.roll && r.rollUndo, JSON.stringify(r));
         check('restore: in Adjust its strength is a slider under the histogram, at 100, and half is kept', r.row && r.half, JSON.stringify(r));
-        check('restore: the Restore tool says what kind of fade it found; Keep the colours and Fix the colours switch, the strength kept', r.found && r.keep && r.fix, JSON.stringify(r));
-        check('restore: Pick grey sets it from a grey, and Ctrl+Z takes that off', r.picking && r.grey && r.greyUndo, JSON.stringify(r));
+        check('restore: the Restore tool says what kind of fade it found; Keep the colors and Fix the colors switch, the strength kept', r.found && r.keep && r.fix, JSON.stringify(r));
+        check('restore: Pick gray sets it from a gray, and Ctrl+Z takes that off', r.picking && r.grey && r.greyUndo, JSON.stringify(r));
         check('restore: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -5651,7 +5651,7 @@ const PROJECT = `
         check('themes: a variant is one stylesheet more', r.variant, JSON.stringify(r));
         check('themes: full screen has no title bar, the menu bar stays', r.fullscreen, JSON.stringify(r));
         check('themes: the theme chosen and its settings are there at the next start', r.kept, JSON.stringify(r));
-        check('themes: 1984\'s Thumbnails setting: dithered to one bit, or in colour again', r.setting && r.dithered && r.colour, JSON.stringify(r));
+        check('themes: 1984\'s Thumbnails setting: dithered to one bit, or in color again', r.setting && r.dithered && r.colour, JSON.stringify(r));
         check('themes: back to jEditor\'s look takes all of it off', r.off, JSON.stringify(r));
 
         // A narrow window, a photo selected: the selection bar and the size

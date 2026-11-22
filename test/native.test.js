@@ -1353,7 +1353,7 @@ async function newPage(context, baseUrl, host = null) {
             $('scan-device').dispatchEvent(new Event('change'));
             await wait(() => /didn't say/.test($('scan-dpi-note').textContent));
             out.broken = dpiNow();
-            // Above its optical one (made by the driver): offered, labelled
+            // Above its optical one (made by the driver): offered, labeled
             Scan.caps['Interp'] = { bedW: 8.5, bedH: 11.7, dpis: [300, 600, 1200], gray: true, flatbed: false, feeder: true, dpisSure: true, optical: 600 };
             window.__scanners.devices.push({ id: 'Interp', name: 'Interp', driver: 'twain', found: true });
             await Scan.loadDevices(true);
@@ -1435,7 +1435,7 @@ async function newPage(context, baseUrl, host = null) {
         check('... a scanner that didn\'t say: the usual ones, and the dock says so', r.unsure);
         check('... one still being asked: the usual resolutions meanwhile, and it says so', r.slow === '150,200,300,400,600,1200 true', r.slow);
         check('... one that fails to answer: the usual resolutions, never an empty list', r.broken === '150,200,300,400,600,1200', r.broken);
-        check('... above its optical resolution: offered under their own heading, labelled interpolated', r.interp === '300,600,1200 | 1200 dpi (interpolated)', r.interp);
+        check('... above its optical resolution: offered under their own heading, labeled interpolated', r.interp === '300,600,1200 | 1200 dpi (interpolated)', r.interp);
         check('... back to a scanner asked already: its own resolutions, not the last one\'s', r.backTo === '100,200,300,600 true', r.backTo);
         check('grayscale, backs and its own crop aren\'t offered when the scanner can\'t', r.gray && r.sides && r.autosize, JSON.stringify([r.gray, r.sides, r.autosize]));
         check('glass sizes: none bigger than the scanner\'s glass', r.beds === 'auto,a4,letter,epson', r.beds);
@@ -1673,7 +1673,7 @@ async function newPage(context, baseUrl, host = null) {
         check('... saying how to fill it, with Scan and Show in Explorer buttons', /Scan into this project/.test(r.message) && /ScanShow in Explorer$/.test(r.message) && r.scanOpened && /Empty Project$/.test(r.revealed || ''), JSON.stringify([r.message, r.scanOpened, r.revealed]));
         check('scanning into it shows the photos', r.names === 'Empty-001.jpg,Empty-002.jpg' && r.files === 2 && r.noMessage, JSON.stringify([r.names, r.files, r.noMessage]));
         check('deleting every photo keeps it open, empty', r.stillOpen && r.emptyAgain, JSON.stringify([r.stillOpen, r.emptyAgain]));
-        check('... Info, Crop and Adjust greyed out with no photos (with a picture), live once photos come, greyed again when they go', r.greyed && r.art && r.live && r.greyedAgain, JSON.stringify([r.greyed, r.art, r.live, r.greyedAgain]));
+        check('... Info, Crop and Adjust grayed out with no photos (with a picture), live once photos come, grayed again when they go', r.greyed && r.art && r.live && r.greyedAgain, JSON.stringify([r.greyed, r.art, r.live, r.greyedAgain]));
         check('empty project suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
