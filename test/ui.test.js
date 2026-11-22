@@ -6168,6 +6168,58 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             return { stuck, failing };
         });
         check('... looking for its project stuck or failing, a folder still opens', !!guard.stuck && !!guard.failing && guard.stuck < 3000, JSON.stringify(guard));
+        // In the apps folders are told apart by their paths (network drives:
+        // Z:, \\server\share), never by asking the folders, which on Z: in
+        // WebView2 158 never answered (the owner's log, 22 November)
+        const paths = await page.evaluate(async () => {
+            const out = {};
+            const w = (a, b) => JSON.stringify(Recents.within(a, b));
+            out.within = [
+                w('Z:\\Archive Scan Jobs', 'z:/archive scan jobs/vandenberg/Ceremony') === '["vandenberg","Ceremony"]',
+                w('Z:\\Archive Scan Jobs\\', 'Z:\\Archive Scan Jobs\\vandenberg') === '["vandenberg"]',
+                w('Z:\\', 'Z:\\Lab Temp\\11-19') === '["Lab Temp","11-19"]',
+                w('\\\\server\\share\\Jobs', '\\\\SERVER\\share\\jobs\\Smith') === '["Smith"]',
+                w('Z:\\Archive', 'Z:\\Archive2\\x') === 'null',
+                w('Z:\\Archive', 'Z:\\Archive') === 'null',
+                w('Z:\\Archive', 'Y:\\Archive\\x') === 'null',
+                w('/Users/me/Orders', '/Users/me/Orders/Smith') === '["Smith"]',
+                w(undefined, 'Z:\\x') === 'null'
+            ];
+            // The apps (a stand-in): the folders' paths from the app, and
+            // folders that never answer when asked
+            const asked = [];
+            const never = (name) => ({
+                kind: 'directory', name,
+                resolve: () => { asked.push('resolve'); return new Promise(() => { }); },
+                isSameEntry: () => { asked.push('isSameEntry'); return new Promise(() => { }); }
+            });
+            const jobs = never('Archive Scan Jobs'), lab = never('Lab Temp'), old = never('Old');
+            const van = never('vandenberg'), day = never('11-19');
+            const where = new Map([[jobs, 'Z:\\Archive Scan Jobs'], [lab, 'Z:\\Lab Temp'], [van, 'Z:\\Archive Scan Jobs\\vandenberg'], [day, 'Z:\\Lab Temp\\11-19']]);
+            const was = { native: FolderCache.native, list: Recents.list };
+            FolderCache.native = () => ({ folderPath: async (h) => where.get(h) || null });
+            Recents.list = async () => [
+                { id: '1', name: 'Archive Scan Jobs', handle: jobs, path: 'Z:\\Archive Scan Jobs', openedAt: 3 },
+                { id: '2', name: 'Old', handle: old, openedAt: 2 }, // (kept before paths were)
+                { id: '3', name: 'Lab Temp', handle: lab, path: 'Z:\\Lab Temp', openedAt: 1 }
+            ];
+            try {
+                const t = performance.now();
+                const a = await Recents.containing(van);
+                const b = await Recents.containing(day);
+                const c = await Recents.containing(jobs);
+                const same = await Recents.sameFolder({ name: 'Lab Temp', handle: lab, path: 'z:/lab temp/' }, never('Lab Temp'), 'Z:\\Lab Temp');
+                out.found = !!a && a.rec.id === '1' && a.path === 'vandenberg' && !!b && b.rec.id === '3' && b.path === '11-19' && c === null && same;
+                out.ms = Math.round(performance.now() - t);
+            } finally {
+                FolderCache.native = was.native;
+                Recents.list = was.list;
+            }
+            out.asked = asked;
+            return out;
+        });
+        check('... paths: inside a project on a mapped drive, a share or a disk, any case or slash; never a look-alike', paths.within.every(Boolean), JSON.stringify(paths.within));
+        check('... the apps: its project found by path at once, the folders never asked (they don\'t answer on a network drive)', paths.found && paths.asked.length === 0 && paths.ms < 500, JSON.stringify(paths));
         check('home suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }

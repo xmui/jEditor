@@ -421,6 +421,8 @@ const app = {
         if (scope === null && !library) {
             let order = null;
             try {
+                this._openStarted = performance.now();
+                this.openStep(this._openGen, `${dirHandle && dirHandle.name}: is it inside a project opened before?`);
                 order = await Recents.offerOrder(dirHandle);
             } catch (e) {
                 // (never a reason not to open the folder itself)
@@ -432,6 +434,7 @@ const app = {
         // A newer open (or drop) supersedes this one: it stops where it is
         const gen = this._openGen = (this._openGen || 0) + 1;
         this.isLoading = true;
+        if (scope !== null || library || !this._openStarted) this._openStarted = performance.now();
         try {
             // Flags changed just now are written to the project being left
             // (their save is on a timer, which would otherwise run here)
@@ -446,11 +449,18 @@ const app = {
             this.beginTask('scan', 'Scanning folder…');
             this.elements.dropZone.classList.add('hidden');
 
-            if (!(await this.scanDirectory(dirHandle, { ask: true }))) return this.openCancelled(gen);
+            this.openStep(gen, `listing ${dirHandle.name}`);
+            if (!(await this.scanDirectory(dirHandle, { ask: true }))) {
+                this.openStep(gen, 'not opened (asked, or nothing to open)');
+                return this.openCancelled(gen);
+            }
             if (gen !== this._openGen) return;
 
+            this.openStep(gen, `${this.files.length} photos listed; showing them`);
             const t = performance.now();
             await this.finalizeLoad();
+            this.openStep(gen, 'open');
+            this._openStarted = null;
             this.openTimes.finalize = Math.round(performance.now() - t);
             this.log(`Opened ${this.files.length} photos: listing ${this.openTimes.list} ms, sizes and dates ${this.openTimes.stat} ms, showing ${this.openTimes.finalize} ms`);
         } catch (err) {
@@ -461,6 +471,20 @@ const app = {
             this.elements.dropZone.classList.remove('hidden');
             this.endTask('scan');
         }
+    },
+
+    // Each step of an open, with how long it's been, in the debug log and
+    // the desktop apps' log: an open that stops on someone's own PC shows
+    // where (the owner's log, 22 November, had "Opening" and nothing after)
+    openStep(gen, step) {
+        if (gen !== this._openGen) return;
+        const ms = Math.round(performance.now() - (this._openStarted || performance.now()));
+        const line = `Open: ${step} (${ms} ms)`;
+        this.log(line);
+        try {
+            const n = typeof FolderCache !== 'undefined' && FolderCache.native();
+            if (n && typeof n.log === 'function') n.log('info', line);
+        } catch (e) { /* the debug log has it */ }
     },
 
     // What went wrong opening a folder: the console, and the desktop apps'
@@ -2094,6 +2118,7 @@ const app = {
                 pending.push({ entry, relPath, parentDir: l.handle });
             }
         }
+        this.openStep(gen, `${pending.length} photos found in ${this.openTimes.list} ms; reading their sizes and dates`);
         if (ask && !(await this.askHuge(pending.length))) return false;
         // Size and date, read several at a time
         t = performance.now();

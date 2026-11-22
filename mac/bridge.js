@@ -162,19 +162,29 @@
     }, true);
 
     // → the folder's path, or null if it never came through here
+    // Whether two handles are the same folder, asked for 1.5 seconds at most
+    function askedSame(a, b) {
+        let timer = null;
+        const late = new Promise(res => { timer = setTimeout(() => res(false), 1500); });
+        return Promise.race([Promise.resolve().then(() => a.isSameEntry(b)).catch(() => false), late])
+            .then((same) => { clearTimeout(timer); return !!same; });
+    }
+
     async function folderPath(handle) {
         if (!handle || handle.kind !== 'directory') return null;
         if (host && host.isOurs(handle)) return host.pathOf(handle);
         if (typeof handle.photosLibrary === 'string') return LIBRARY + handle.photosLibrary;
         const name = String(handle.name || '').toLowerCase();
         const nameOf = (p) => (p.split('/').filter(Boolean).pop() || '').toLowerCase();
+        // The very handle first (no asking); then only folders of the same
+        // name are asked, each for a moment at most: on a network drive
+        // isSameEntry can take seconds, or never answer (WebView2 158 on
+        // Z:, 22 November), which held every open up
         const look = async (list) => {
-            // Same name first: a quick check before asking each one
-            const ordered = [...list.filter(r => nameOf(r.path) === name), ...list.filter(r => nameOf(r.path) !== name)];
-            for (const r of ordered) {
-                try {
-                    if (r.handle === handle || await r.handle.isSameEntry(handle)) return r;
-                } catch (e) { /* gone */ }
+            const mine = list.find(r => r.handle === handle);
+            if (mine) return mine;
+            for (const r of list.filter(r => nameOf(r.path) === name)) {
+                if (await askedSame(r.handle, handle)) return r;
             }
             return null;
         };
@@ -383,6 +393,10 @@
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
         platform: mac.platform,
+        // A line in the app's log (app/script.js: each step of an open)
+        log(level, text) {
+            log(level === 'error' || level === 'warn' ? level : 'info', text);
+        },
         features: ['reveal', 'windows', 'places', 'folderMove', 'menuBar', 'systemFonts'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions'] : [], ['themes'], mac.platform === 'mac' && mac.photos ? ['photosLibrary', 'photosAdd'] : []),
         // jEditor's storage on this Mac: one folder per project (see
         // app/folder-cache.js), in the app's own private storage

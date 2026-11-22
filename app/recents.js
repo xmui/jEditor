@@ -129,8 +129,9 @@ const Recents = {
         let target = rec;
         if (!target && handle) {
             // (the same folder, opened by another handle)
+            const path = await this.pathOf(handle);
             for (const r of await this.list()) {
-                try { if (await r.handle.isSameEntry(handle)) { target = r; break; } } catch (e) { /* different */ }
+                if (await this.sameFolder(r, handle, path)) { target = r; break; }
             }
         }
         if (!target) return;
@@ -155,17 +156,79 @@ const Recents = {
         }
     },
 
+    // ---- Paths (the apps) ----
+    //
+    // In the apps a folder's path on disk is known (the app tells: bridge.js
+    // folderPath), so a recent folder keeps it (rec.path) and folders are
+    // told apart by their paths: no asking the files themselves, which on a
+    // network drive (Z:, \\server\share) can take seconds or, in WebView2
+    // 158, never answer at all (resolve and isSameEntry on Z:, the owner's
+    // "can't open any previously opened project", 22 November).
+
+    PATH_MS: 1500,
+
+    // → its path, or null (the web, or the app can't tell in time)
+    async pathOf(handle) {
+        const native = typeof FolderCache !== 'undefined' && FolderCache.native();
+        if (!native || typeof native.folderPath !== 'function' || !handle) return null;
+        let timer = null;
+        const late = new Promise(res => { timer = setTimeout(() => res(null), this.PATH_MS); });
+        try {
+            return await Promise.race([Promise.resolve(native.folderPath(handle)).catch(() => null), late]) || null;
+        } finally {
+            clearTimeout(timer);
+        }
+    },
+
+    // A path to compare: Windows' any case, either slash, no trailing one
+    // (but a drive's own: Z:\)
+    pathKey(p) {
+        if (typeof p !== 'string' || !p) return null;
+        const win = /^[a-z]:|^[\\/]{2}/i.test(p);
+        let k = win ? p.replace(/\//g, '\\').toLowerCase() : p;
+        const sep = win ? '\\' : '/';
+        while (k.length > 1 && k.endsWith(sep) && !(win && /^[a-z]:\\$/.test(k))) k = k.slice(0, -1);
+        return { key: k, sep };
+    },
+
+    // Inside base (not base itself) → the folders between, else null
+    within(base, path) {
+        const b = this.pathKey(base), p = this.pathKey(path);
+        if (!b || !p || b.sep !== p.sep || p.key === b.key) return null;
+        const prefix = b.key.endsWith(b.sep) ? b.key : b.key + b.sep;
+        if (!p.key.startsWith(prefix)) return null;
+        // (the real names, as the path has them)
+        return path.replace(/\//g, p.sep).slice(prefix.length).split(p.sep).filter(Boolean);
+    },
+
+    // The same folder: by path when both have one, else asked (never for
+    // long: a folder that doesn't answer isn't this one)
+    async sameFolder(rec, handle, path) {
+        if (!rec || !rec.handle) return false;
+        if (rec.handle === handle) return true;
+        const a = this.pathKey(rec.path), b = this.pathKey(path);
+        if (a && b) return a.key === b.key;
+        // (a record kept before paths were: asked, if it's even the same name)
+        if (rec.name !== handle.name) return false;
+        let timer = null;
+        const late = new Promise(res => { timer = setTimeout(() => res(false), this.PATH_MS); });
+        try {
+            return !!(await Promise.race([rec.handle.isSameEntry(handle).catch(() => false), late]));
+        } finally {
+            clearTimeout(timer);
+        }
+    },
+
     async save(handle) {
         if (!this.supported() || !handle || handle.kind !== 'directory') return;
         const list = await this.list();
+        const path = await this.pathOf(handle);
         let same = null;
         for (const rec of list) {
-            try {
-                if (rec.handle && await rec.handle.isSameEntry(handle)) { same = rec; break; }
-            } catch (e) { /* not comparable: different folder */ }
+            if (await this.sameFolder(rec, handle, path)) { same = rec; break; }
         }
         const openedAt = Math.max(Date.now(), list.length ? list[0].openedAt + 1 : 0);
-        const rec = { ...(same || {}), id: same ? same.id : `${openedAt}-${Math.random().toString(36).slice(2, 8)}`, name: handle.name, handle, openedAt };
+        const rec = { ...(same || {}), id: same ? same.id : `${openedAt}-${Math.random().toString(36).slice(2, 8)}`, name: handle.name, handle, ...(path ? { path } : {}), openedAt };
         const stale = list.filter(r => r !== same).slice(this.MAX - 1);
         await this.tx('readwrite', s => {
             s.put(rec);
@@ -330,6 +393,18 @@ const Recents = {
     async containing(handle) {
         if (!this.supported() || !handle || handle.kind !== 'directory') return null;
         const hits = [];
+        // The apps: by path, never asking the folders (see pathOf)
+        if (FolderCache.native()) {
+            const path = await this.pathOf(handle);
+            if (!path) return null;
+            for (const rec of await this.list()) {
+                const parts = rec.handle ? this.within(rec.path, path) : null;
+                if (parts && parts.length) hits.push({ rec, path: parts.join('/') });
+            }
+            if (!hits.length) return null;
+            hits.sort((a, b) => a.path.split('/').length - b.path.split('/').length);
+            return hits[0];
+        }
         for (const rec of await this.list()) {
             try {
                 if (!rec.handle || typeof rec.handle.resolve !== 'function') continue;
