@@ -6308,6 +6308,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await Promise.all(pill.getAnimations().map(an => an.finished.catch(() => { }))); // (it slides in)
             const pr = pill.getBoundingClientRect(), gc = document.getElementById('grid-controls').getBoundingClientRect();
             out.corner = pr.left < 40 && Math.abs((pr.top + pr.bottom) / 2 - (gc.top + gc.bottom) / 2) < 3;
+            // ...and its look: the size slider's pill (height, glass, shadow, type)
+            const pc = getComputedStyle(pill), cc = getComputedStyle(document.getElementById('grid-controls'));
+            out.same = ['height', 'borderRadius', 'backgroundColor', 'borderTopColor', 'boxShadow', 'backdropFilter', 'fontSize', 'fontWeight'].filter(k => pc[k] !== cc[k]);
             // Exported: not counted, the dot back to plain
             await app.exportCopies([a], { dir: outDir, where: 'a folder', maxEdge: 0 });
             await frame();
@@ -6367,6 +6370,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         const s = (x) => JSON.stringify(x);
         check('unsaved: nothing edited, nothing shown; edited, "2 unsaved" bottom left, on the bottom row with the size slider, and an amber dot',
             r.none.n === 0 && !r.none.pill && !r.none.side && r.edited.n === 2 && r.edited.pill === '2 unsaved' && r.dot && r.corner, s([r.none, r.edited, r.dot, r.corner]));
+        check('... the same height and look as the pills beside it', Array.isArray(r.same) && r.same.length === 0, s(r.same));
         check('... exported: no longer counted, its dot plain; kept with the project', r.exported.n === 1 && r.exported.pill === '1 unsaved' && r.dotPlain && s(r.reloaded) === '[false,true]', s([r.exported, r.dotPlain, r.reloaded]));
         check('... edited again: counted again; written into the file: not; Ctrl+Z of that: counted', r.again.n === 2 && r.written.n === 1 && r.undone.n === 2, s([r.again, r.written, r.undone]));
         check('... the sidebar open: at its bottom, not in the corner', r.inRail.side === '2 unsaved' && !r.inRail.pill && r.railBottom, s([r.inRail, r.railBottom]));

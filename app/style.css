@@ -10272,7 +10272,7 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
    than on a solid card (--glass-off), so it's still read as there: 3:1.
    On dark glass a soft scrim behind the words and icons (--glass-halo,
    --glass-icon-halo); none on light glass, Opaque or solid glass */
-:root:not([data-skin]) :is(.toolbar, .file-info, .mode-file, .mode-head-acts, .mode-row, .adj-zoom, .crop-zoom, .adj-panel, .paint-panel, .paint-tools, .paint-options, .paint-zoom, .picked-bar, .task-pill, .toast, .sb-picker, .popover) {
+:root:not([data-skin]) :is(.toolbar, .file-info, .mode-file, .mode-head-acts, .mode-row, .adj-zoom, .crop-zoom, .adj-panel, .paint-panel, .paint-tools, .paint-options, .paint-zoom, .picked-bar, .task-pill, .unsaved-pill, .toast, .sb-picker, .popover) {
     --text-2: var(--glass-text-2);
     --text-3: var(--glass-text-2);
     text-shadow: var(--glass-halo);
@@ -13441,20 +13441,25 @@ body.touring .controls.idle button { pointer-events: auto; }
     }
 }
 
+/* The glass toolbars' own recipe (section 4: .toolbar), so it matches the
+   selection pill and the size slider beside it: their height, glass,
+   shadow and type, and their size with Settings → Toolbar size (zoom: its
+   place divided by it, as the toolbars' are) */
 .unsaved-pill {
     position: fixed;
-    left: var(--toast-left);
-    bottom: var(--toast-bottom);
+    left: calc(var(--toast-left) / var(--ui-scale, 1));
+    bottom: calc(var(--toast-bottom) / var(--ui-scale, 1));
     z-index: var(--z-toast);
     display: inline-flex;
     align-items: center;
     gap: var(--sp-2);
-    height: 36px;
-    padding: 0 var(--sp-4) 0 var(--sp-3);
+    height: var(--ctl-lg);
+    padding: 0 var(--sp-4) 0 var(--sp-4);
     border-radius: var(--r-pill);
+    zoom: var(--ui-scale, 1);
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
-    box-shadow: var(--shadow-3), var(--glass-rim);
+    box-shadow: var(--shadow-2), var(--glass-rim);
     backdrop-filter: var(--glass-filter);
     -webkit-backdrop-filter: var(--glass-filter);
     color: var(--text-1);
@@ -13505,11 +13510,11 @@ body:is(:has(#drop-zone:not(.hidden)), :has(#crop-editor:not(.hidden)), :has(#du
 /* Where it takes their place (the single view, a narrow grid), the task
    pill and the messages stack above it */
 body.has-unsaved[data-view="single"]:not(:has(:is(#adjust-editor, #paint-editor):not(.hidden))) :is(#toast-stack, .task-pill) {
-    margin-bottom: calc(36px + var(--sp-2));
+    margin-bottom: calc(var(--ctl-lg) * var(--ui-scale, 1) + var(--sp-2));
 }
 @media (max-width: 640px) {
     body.has-unsaved[data-view="grid"] :is(#toast-stack, .task-pill) {
-        margin-bottom: calc(36px + var(--sp-2));
+        margin-bottom: calc(var(--ctl-lg) * var(--ui-scale, 1) + var(--sp-2));
     }
 }
 
