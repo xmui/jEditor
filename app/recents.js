@@ -351,10 +351,59 @@ const Recents = {
         if (empty) empty.classList.toggle('hidden', !!list.length);
     },
 
+    // A step, in the apps' log (and the debug log): a click that goes
+    // nowhere shows where it stopped
+    note(text) {
+        if (this.app && this.app.log) this.app.log(text);
+        try {
+            const n = typeof FolderCache !== 'undefined' && FolderCache.native();
+            if (n && typeof n.log === 'function') n.log('info', text);
+        } catch (e) { /* the debug log has it */ }
+    },
+
+    // A promise, or `fallback` after ms (a network drive that never answers)
+    within_(promise, ms, fallback) {
+        let timer = null;
+        const late = new Promise(res => { timer = setTimeout(() => res(fallback), ms); });
+        return Promise.race([Promise.resolve(promise).catch(() => fallback), late]).finally(() => clearTimeout(timer));
+    },
+
     async open(rec) {
         const app = this.app;
+        this.note(`Recent: ${rec && rec.name} clicked${app && app.isLoading ? ' (another folder is still opening)' : ''}`);
         if (!app || app.isLoading) return;
         const h = rec.handle;
+        // The apps: opened by its path, as Open folder does (a fresh handle
+        // from the app), never through the one kept here. On a network drive
+        // (Z:, \\server\share) in WebView2 158 the kept one's permission
+        // and listing never answered: the click did nothing (the owner's
+        // beta 154, 22 November)
+        const native = typeof FolderCache !== 'undefined' && FolderCache.native();
+        if (rec.kind !== 'photo' && native && typeof native.openPath === 'function') {
+            let path = rec.path || null;
+            // Kept before paths were: the one folder the app has seen by
+            // this name (asking the folder itself is what never answered)
+            if (!path && typeof native.pathsNamed === 'function') {
+                const seen = await this.within_(native.pathsNamed(rec.name), 3000, []);
+                if (Array.isArray(seen) && seen.length === 1) path = seen[0];
+                else this.note(`Recent: ${Array.isArray(seen) ? seen.length : 0} folders named ${rec.name} seen`);
+            }
+            if (path) {
+                // Kept with its path from now on (so Recent knows it again)
+                if (!rec.path) await this.tx('readwrite', s => s.put({ ...rec, path }));
+                if (typeof Modes !== 'undefined') Modes.next = 'photos';
+                const ok = await this.within_(native.openPath(path), 15000, 'late');
+                // (a big folder still opening, where the app waits for it: fine)
+                if (ok === 'late' && (app.isLoading || app.dirHandle)) return;
+                this.note(`Recent: ${path} ${ok === true ? 'opening' : ok === 'late' ? 'didn\'t answer in 15 s' : 'not found'}`);
+                if (ok === true) return;
+                app.showToast(ok === 'late' ? `“${rec.name}” isn't answering: is its drive connected?`
+                    : `Couldn't find “${rec.name}” — it may have been moved, renamed or deleted, or its drive isn't connected`, 6000, null,
+                    ok === 'late' ? null : { label: 'Remove', run: () => this.forget(rec.id) });
+                return;
+            }
+            this.note(`Recent: no path for ${rec.name}; opening it as kept`);
+        }
         try {
             // Asked within the click, while Chrome still allows a prompt
             if (typeof h.queryPermission === 'function' && await h.queryPermission({ mode: 'readwrite' }) !== 'granted' &&
@@ -362,9 +411,11 @@ const Recents = {
                 app.showToast(`jEditor needs permission to open ${rec.name}`, 4000);
                 return;
             }
-            // Still there? (moved, renamed or deleted since)
-            if (rec.kind === 'photo') await h.getFile();
-            else for await (const entry of h.values()) if (entry) break;
+            // Still there? (moved, renamed or deleted since; a drive that
+            // doesn't answer counts as not there)
+            const there = rec.kind === 'photo' ? h.getFile()
+                : (async () => { for await (const entry of h.values()) if (entry) break; })();
+            if (await this.within_(there.then(() => true), 10000, 'late') === 'late') throw new Error('no answer in 10 s');
         } catch (e) {
             console.warn('Recent folder unavailable:', e);
             app.showToast(`Couldn't find “${rec.name}” — it may have been moved, renamed or deleted`, 5000, null,

@@ -95,6 +95,8 @@ sealed class MainForm : Form
     // A page that doesn't hear it (closeHeard) in a few seconds doesn't hold
     // the window: closing again closes.
     bool holdClose, closeOk, closeHeard;
+    // The page said it's ready since the last navigation (WatchReady)
+    int navigations, readyAt = -1;
     DateTime closeAsked;
 
     bool HoldClose(CloseReason why)
@@ -304,7 +306,11 @@ sealed class MainForm : Form
         };
         Core.NavigationCompleted += (_, e) =>
         {
-            if (e.IsSuccess) return;
+            if (e.IsSuccess)
+            {
+                if (IsOurs(Core.Source)) WatchReady(++navigations);
+                return;
+            }
             Log.Write($"Page failed to load: {e.WebErrorStatus}");
             smoke?.Fail($"page failed to load ({e.WebErrorStatus})");
         };
@@ -317,6 +323,32 @@ sealed class MainForm : Form
             if (smoke is null && e.ProcessFailedKind == CoreWebView2ProcessFailedKind.RenderProcessExited)
                 BeginInvoke(() => { try { if (!IsDisposed) Core.Reload(); } catch (Exception ex) { Log.Write("Reload after crash: " + ex.Message); } });
         };
+    }
+
+    // The page loaded but hasn't said it's ready (bridge.js) after 10 s:
+    // what it has, in the log (the owner's beta 154: the home page drawn,
+    // nothing working, nothing logged). If it doesn't even answer, its
+    // main thread is stuck
+    async void WatchReady(int nav)
+    {
+        try
+        {
+            await Task.Delay(10000);
+            if (IsDisposed || readyAt >= nav || nav != navigations) return;
+            Log.Write("The page hasn't said it's ready after 10 s; asking it what it has");
+            var ask = Core.ExecuteScriptAsync(
+                "JSON.stringify({ state: document.readyState, app: typeof app, elements: typeof app !== 'undefined' && !!app.elements, " +
+                "native: typeof window.JEditorNative, scripts: [...document.scripts].map(s => s.src.split('/').pop()).filter(Boolean).length, " +
+                "loaded: performance.getEntriesByType('resource').filter(r => r.initiatorType === 'script').length, " +
+                "missing: [...document.scripts].map(s => s.src).filter(src => src && !performance.getEntriesByName(src).length).map(src => src.split('/').pop()) })");
+            var done = await Task.WhenAny(ask, Task.Delay(5000));
+            if (done != ask) { Log.Write("The page doesn't answer: its main thread is busy (stuck in a script)"); return; }
+            Log.Write("The page says: " + await ask);
+        }
+        catch (Exception e)
+        {
+            Log.Write("Asking the page what it has: " + e.Message);
+        }
     }
 
     static bool IsOurs(string? uri) =>
@@ -412,6 +444,7 @@ sealed class MainForm : Form
                 });
                 break;
             case "ready":
+                readyAt = navigations;
                 holdClose = closeHeard = false;
                 closeAsked = default;
                 Log.Write($"jEditor {Str(msg, "version")} ready");

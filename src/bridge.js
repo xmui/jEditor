@@ -32,6 +32,18 @@
         errors.push(text);
         log('error', `${text} (${e.filename || '?'}:${e.lineno || 0})`);
     });
+    // A script or stylesheet that didn't load (its error doesn't reach the
+    // listener above): without one jEditor never starts, and nothing said so
+    addEventListener('error', (e) => {
+        const t = e.target;
+        if (t && t !== window && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) {
+            const text = `Couldn't load ${t.src || t.href}`;
+            errors.push(text);
+            log('error', text);
+        }
+    }, true);
+    // How far the page got, in the log: parsed (every script run), then ready
+    addEventListener('DOMContentLoaded', () => log('info', `page parsed: ${document.scripts.length} scripts, jEditor ${typeof app === 'undefined' ? 'missing' : 'there'}`));
     addEventListener('unhandledrejection', (e) => {
         const r = e.reason;
         const text = 'Unhandled rejection: ' + (r && r.stack || r);
@@ -263,6 +275,17 @@
         // Back from the Recycle Bin. Per token: { ok } or { error }
         async restore(tokens) {
             return (await answer('restore', { tokens })).msg.results;
+        },
+        // The paths of folders seen with this name (newest first): for a
+        // recent folder kept before its path was (app/recents.js), found
+        // without asking the folder itself
+        async pathsNamed(name) {
+            const want = String(name || '').toLowerCase();
+            const nameOf = (p) => (String(p).split(/[\\/]/).filter(Boolean).pop() || '').toLowerCase();
+            const all = [...known, ...(await loadStored())].sort((a, b) => b.at - a.at);
+            const out = [];
+            for (const r of all) if (r && typeof r.path === 'string' && nameOf(r.path) === want && !out.some(p => p.toLowerCase() === r.path.toLowerCase())) out.push(r.path);
+            return out;
         },
         // Open a folder by its path (an order from the stored list)
         async openPath(path) {
