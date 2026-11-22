@@ -987,7 +987,7 @@ const PaintEditor = {
                 const c = this.newCanvas();
                 const src = await Paint.layerBitmap(kept.paint, l);
                 if (src) c.getContext('2d').drawImage(src, 0, 0, this.W, this.H);
-                const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: !!l.lock, canvas: c, changed: false, text: l.text || null, shape: l.shape || null, clip: !!l.clip, fixed: !!l.fixed, group: l.group || null, adj: l.adj || null };
+                const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: !!l.lock, canvas: c, changed: false, text: l.text || null, shape: l.shape || null, clip: !!l.clip, fixed: !!l.fixed, group: l.group || null, adj: l.adj || null, turn: l.turn || null };
                 if (l.mask) {
                     const m = this.newCanvas(), mb = await Paint.layerBitmap(kept.paint, Paint.maskOf(l));
                     if (mb) m.getContext('2d').drawImage(mb, 0, 0, this.W, this.H);
@@ -2005,7 +2005,7 @@ const PaintEditor = {
     },
 
     // After it: the part that changed (r), before and after
-    endPixels(l, r, { free = false, name = this.toolName(), vec = null } = {}) {
+    endPixels(l, r, { free = false, name = this.toolName(), vec = null, turn } = {}) {
         r = this.clampRect(r);
         if (!r || this._beforeOf !== l) return;
         // A locked layer (or its mask): put back, nothing kept
@@ -2031,6 +2031,8 @@ const PaintEditor = {
         }
         l.changed = true;
         const entry = { kind: 'px', name, layer: l, r, before, after, bytes: r.w * r.h * 8 };
+        // turn: the angle it's left at (Free transform), back with Undo
+        if (turn !== undefined) { Object.assign(entry, { turn0: l.turn || null, turn1: turn }); l.turn = turn; }
         // A text or shape layer painted on is pixels from then on (vec:
         // what it is after a move)
         if (v0 || vec) {
@@ -2105,6 +2107,10 @@ const PaintEditor = {
             if (entry.vec0 || entry.vec1) {
                 const k = this.layers.find(x => x.canvas === entry.layer.canvas), v = undo ? entry.vec0 : entry.vec1;
                 if (k) { k.text = v ? v.text : null; k.shape = v ? v.shape : null; k.src = v ? v.src || null : null; }
+            }
+            if ('turn1' in entry) {
+                const k = this.layers.find(x => x.canvas === entry.layer.canvas);
+                if (k) k.turn = undo ? entry.turn0 : entry.turn1;
             }
         } else if (entry.kind === 'state') {
             if (undo && entry.extra) this.apply(entry.extra, true);
@@ -4633,6 +4639,14 @@ const PaintEditor = {
         if (l.fixed) { this.fixedToast(); return false; }
         if (l.adj) { this.app.showToast('An adjustment layer has nothing to move: paint on its mask instead', 2000); return false; }
         this.beginPixels(l);
+        // The whole layer, turned: its box turned with it
+        const turned = !this.sel && this.liftTurned(l);
+        if (turned) {
+            l.canvas.getContext('2d').clearRect(0, 0, this.W, this.H);
+            this.float = turned;
+            this.buildOptions();
+            return true;
+        }
         // What's lifted, in layer space: the selection of the layer, or all of it
         const lifted = this.newCanvas();
         const lg = lifted.getContext('2d');
@@ -4664,6 +4678,67 @@ const PaintEditor = {
         this.float = { canvas: fc, x0, y0, w: x1 - x0, h: y1 - y0, t: { tx: 0, ty: 0, sx: 1, sy: 1, rot: 0 }, layer: l, sel: this.sel ? this.sel.box : null, from: { ...lb }, mode: 'free', quad: null };
         this.buildOptions();
         return true;
+    },
+
+    // A layer that's been turned, lifted in a box turned as it is, hugging
+    // it. Transformed (smart): from what it was before its first transform,
+    // its size and angle from the 3×3 to it (exact; nothing resampled). Any
+    // other: at the angle kept when it was last put down (l.turn, in layer
+    // px), what's on it in that turned frame. Null: not turned (lifted
+    // straight, as before)
+    liftTurned(l) {
+        const from = this.contentBox(l.canvas);
+        if (!from) return null;
+        const base = { layer: l, sel: null, from, mode: 'free', quad: null };
+        if (l.src && !l.text && !l.shape) {
+            const S = l.src.canvas, w = S.width, h = S.height;
+            const H = this.homMul(this.hom(this.C), l.src.h), k = H[8] || 1;
+            const [a, c, e, b, d, y] = H.slice(0, 6).map(v => v / k);
+            const sx = Math.hypot(a, b), sy = sx ? (a * d - b * c) / sx : 0;
+            const flat = Math.abs(H[6] / k) * w + Math.abs(H[7] / k) * h < 1e-6;
+            const skew = sx && sy ? Math.abs(a * c + b * d) / (sx * Math.abs(sy)) : 1;
+            // own: its px are the original's (never thrown away here)
+            const f = { ...base, canvas: S, w, h, own: true };
+            if (flat && skew < 1e-4) {
+                const cx = a * w / 2 + c * h / 2 + e, cy = b * w / 2 + d * h / 2 + y;
+                return { ...f, x0: cx - w / 2, y0: cy - h / 2, t: { tx: 0, ty: 0, sx, sy, rot: Math.atan2(b, a) } };
+            }
+            // Skewed or in perspective: its corners, free
+            return { ...f, x0: 0, y0: 0, t: { tx: 0, ty: 0, sx: 1, sy: 1, rot: 0 }, quad: [[0, 0], [w, 0], [w, h], [0, h]].map(([x, z]) => this.homAt(H, x, z)) };
+        }
+        if (!l.turn) return null;
+        // The angle in the picture as shown, within a half turn
+        const C = this.C, ct = Math.cos(l.turn), st = Math.sin(l.turn);
+        let rot = Math.atan2(C.b * ct + C.d * st, C.a * ct + C.c * st);
+        rot -= Math.PI * Math.round(rot / Math.PI);
+        const q4 = Math.PI / 2;
+        if (Math.abs(rot - q4 * Math.round(rot / q4)) < 1e-4) return null;
+        // In that frame: the bounds of what's on it, then just what's there
+        const deg = rot * 180 / Math.PI, toFrame = new DOMMatrix().rotate(-deg).multiply(C);
+        const pts = [[from.x, from.y], [from.x + from.w, from.y], [from.x, from.y + from.h], [from.x + from.w, from.y + from.h]].map(([x, z]) => toFrame.transformPoint({ x, y: z }));
+        const bx = Math.floor(Math.min(...pts.map(q => q.x))) - 1, by = Math.floor(Math.min(...pts.map(q => q.y))) - 1;
+        const wide = this.newCanvas(Math.ceil(Math.max(...pts.map(q => q.x))) + 1 - bx, Math.ceil(Math.max(...pts.map(q => q.y))) + 1 - by);
+        const wg = wide.getContext('2d');
+        wg.imageSmoothingEnabled = true;
+        wg.imageSmoothingQuality = 'high';
+        wg.setTransform(new DOMMatrix().translate(-bx, -by).multiply(toFrame));
+        wg.drawImage(l.canvas, 0, 0);
+        const cb = this.contentBox(wide);
+        if (!cb) { wide.width = wide.height = 0; return null; }
+        const fc = this.newCanvas(cb.w, cb.h);
+        fc.getContext('2d').drawImage(wide, -cb.x, -cb.y);
+        wide.width = wide.height = 0;
+        const fx = bx + cb.x, fy = by + cb.y, mid = new DOMMatrix().rotate(deg).transformPoint({ x: fx + cb.w / 2, y: fy + cb.h / 2 });
+        // What was on the layer as it was: a move alone puts that back down,
+        // not this turned copy turned back (no softening)
+        const raw = l.text || l.shape ? null : this.newCanvas();
+        if (raw) raw.getContext('2d').drawImage(l.canvas, 0, 0);
+        return {
+            ...base, canvas: fc, w: cb.w, h: cb.h, x0: mid.x - cb.w / 2, y0: mid.y - cb.h / 2,
+            t: { tx: 0, ty: 0, sx: 1, sy: 1, rot }, rot0: rot, raw,
+            // Layer px to its own px (for a text or shape layer's matrix)
+            lift: new DOMMatrix().translate(-fx, -fy).multiply(toFrame)
+        };
     },
 
     // The float's matrix in the picture as shown (its own px → output px)
@@ -4729,7 +4804,7 @@ const PaintEditor = {
             else this.snapFloat();
             // Neither turned nor sized: in whole pixels, so it stays crisp
             // and goes a pixel at a time
-            if (!t.rot && Math.abs(t.sx) === 1 && Math.abs(t.sy) === 1) {
+            if (t.rot === (f.rot0 || 0) && Math.abs(t.sx) === 1 && Math.abs(t.sy) === 1) {
                 t.tx = Math.round(t.tx);
                 t.ty = Math.round(t.ty);
             }
@@ -5046,10 +5121,22 @@ const PaintEditor = {
         const g = l.canvas.getContext('2d');
         let text = null;
         // Its own px to layer px, as a 3×3: through the quad, or the move
-        const A = this.hom(new DOMMatrix().translate(-f.x0, -f.y0).multiply(this.C));
+        const lift = f.lift || new DOMMatrix().translate(-f.x0, -f.y0).multiply(this.C);
+        const A = this.hom(lift);
         const out = f.quad ? this.homRectToQuad(f.w, f.h, f.quad) : this.hom(this.floatM.call({ float: f, view: this.view }));
         const K = this.homMul(this.hom(this.Ci), this.homMul(out, A));
-        const slid = !f.quad && !f.mesh && !l.src && f.t.rot === 0 && f.t.sx === 1 && f.t.sy === 1;
+        // Only moved: what was on the layer, slid (lifted turned: as it was)
+        const moved = !f.quad && !f.mesh && f.t.rot === (f.rot0 || 0) && f.t.sx === 1 && f.t.sy === 1;
+        const slid = moved && (f.raw || !l.src);
+        // The angle it's left at, in layer px (the whole layer, sized and
+        // turned): its box comes back turned so next time
+        let turn;
+        if (!f.sel && !f.pasted) {
+            const m = f.quad || f.mesh ? null : this.Ci.multiply(this.floatM.call({ float: f, view: this.view }));
+            turn = m ? Math.atan2(m.b, m.a) : 0;
+            turn -= Math.PI * Math.round(turn / Math.PI);
+            turn = Math.abs(turn) < 1e-4 ? null : +turn.toFixed(6);
+        }
         let warped = null;
         if (f.mesh) {
             // Warped: plain pixels from here (text and shapes too)
@@ -5072,8 +5159,8 @@ const PaintEditor = {
             // A smart layer: kept as it was before its first transform, so
             // each transform after is drawn from that, not resampled again
             // (the first time, what was lifted, from its own px)
-            const orig = l.src ? l.src.canvas : f.canvas;
-            const h = l.src ? this.homMul(K, l.src.h) : this.homMul(this.hom(this.Ci), out);
+            const orig = l.src && !f.own ? l.src.canvas : f.canvas;
+            const h = l.src && !f.own ? this.homMul(K, l.src.h) : this.homMul(this.hom(this.Ci), out);
             if (orig === f.canvas) f.kept = true;
             text = { text: null, shape: null, src: { canvas: orig, h: h.map(v => +v.toPrecision(12)) } };
             g.save();
@@ -5092,10 +5179,15 @@ const PaintEditor = {
             g.restore();
         } else if ((l.text || l.shape) && !f.sel) {
             // Its matrix taken through the move: drawn again, not resampled
-            const K = this.Ci.multiply(this.floatM.call({ float: f, view: this.view })).multiply(new DOMMatrix().translate(-f.x0, -f.y0)).multiply(this.C);
+            const K = this.Ci.multiply(this.floatM.call({ float: f, view: this.view })).multiply(lift);
             const moved = (r) => r && { ...r, m: this.textArr(this.extM().inverse().multiply(K).multiply(this.textM(r))) };
             text = { text: moved(l.text) || null, shape: moved(l.shape) || null };
             this.drawVec(text, l.canvas);
+        } else if (slid && f.raw) {
+            g.save();
+            g.setTransform(this.Ci.multiply(new DOMMatrix().translate(f.t.tx, f.t.ty)).multiply(this.C));
+            g.drawImage(f.raw, 0, 0);
+            g.restore();
         } else {
             g.save();
             g.setTransform(this.Ci.multiply(this.floatM.call({ float: f, view: this.view })));
@@ -5104,7 +5196,7 @@ const PaintEditor = {
             g.drawImage(f.canvas, 0, 0);
             g.restore();
         }
-        if (!f.kept) f.canvas.width = f.canvas.height = 0;
+        this.dropFloatCanvas(f);
         // The selection moves with it (warped: what's left where it went)
         if (warped) {
             this.dropSelection();
@@ -5119,7 +5211,7 @@ const PaintEditor = {
             this.sel = { mask: m };
             this.selectionChanged();
         }
-        this.endPixels(l, this.floatRect(f), { free: true, name: 'Move', vec: text });
+        this.endPixels(l, this.floatRect(f), { free: true, name: 'Move', vec: text, turn });
         this.buildOptions();
         this.renderSoon();
     },
@@ -5269,6 +5361,9 @@ const PaintEditor = {
         l.canvas = lifted;
         if (sel) { this.sel = { mask: sel }; this.selectionChanged(); }
         if (f.from) f.from = { ...f.from, x: f.from.x + add.l, y: f.from.y + add.t };
+        // Lifted turned: in layer px, so they move with them
+        if (f.raw) { const r = grow(f.raw); f.raw.width = f.raw.height = 0; f.raw = r; }
+        if (f.lift) f.lift = f.lift.multiply(new DOMMatrix().translate(-add.l, -add.t));
         this.float = f;
     },
 
@@ -5282,10 +5377,17 @@ const PaintEditor = {
         g.globalCompositeOperation = 'copy';
         g.drawImage(this.before, 0, 0);
         g.globalCompositeOperation = 'source-over';
-        f.canvas.width = f.canvas.height = 0;
+        this.dropFloatCanvas(f);
         this._beforeOf = null;
         this.buildOptions();
         this.renderSoon();
+    },
+
+    // Its px let go (a smart layer's original, or one kept as the layer's
+    // now, stays)
+    dropFloatCanvas(f) {
+        if (!f.kept && !f.own) f.canvas.width = f.canvas.height = 0;
+        if (f.raw) f.raw.width = f.raw.height = 0;
     },
 
     // Thrown away (Delete while moving)
@@ -5293,7 +5395,7 @@ const PaintEditor = {
         const f = this.float;
         if (!f) return;
         this.float = null;
-        f.canvas.width = f.canvas.height = 0;
+        this.dropFloatCanvas(f);
         this.endPixels(f.layer, f.from == null ? { x: 0, y: 0, w: this.W, h: this.H } : f.from || { x: 0, y: 0, w: 1, h: 1 }, { free: true, name: 'Delete' });
         this.buildOptions();
         this.renderSoon();
@@ -5346,7 +5448,7 @@ const PaintEditor = {
         this._clipLayer = {
             name: l.name, opacity: l.opacity, blend: l.blend, lock: l.lock, clip: !!l.clip, group: l.group || null,
             text: l.text ? JSON.parse(JSON.stringify(l.text)) : null, shape: l.shape ? JSON.parse(JSON.stringify(l.shape)) : null,
-            adj: l.adj ? JSON.parse(JSON.stringify(l.adj)) : null, src: l.src || null,
+            adj: l.adj ? JSON.parse(JSON.stringify(l.adj)) : null, src: l.src || null, turn: l.turn || null,
             canvas: dup(l.canvas), mask: dup(l.mask),
             W: this.W, H: this.H, PW: this.PW, PH: this.PH, ext: { ...this.ext }, from: this.layers
         };
@@ -5402,7 +5504,7 @@ const PaintEditor = {
             text: s.text ? move(JSON.parse(JSON.stringify(s.text))) : null,
             shape: s.shape ? move(JSON.parse(JSON.stringify(s.shape))) : null,
             adj: s.adj ? JSON.parse(JSON.stringify(s.adj)) : null,
-            src: same ? s.src : null
+            src: same ? s.src : null, turn: s.turn || null
         });
         if (inHere) l.name = `${s.name} copy`;
         l.canvas.getContext('2d').drawImage(s.canvas, dx, dy);
@@ -6410,7 +6512,7 @@ const PaintEditor = {
         if (this.float) this.commitFloat();
         this.pushState('Duplicate layer');
         const copy = this.makeLayer(`${l.name} copy`);
-        Object.assign(copy, { opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: l.lock, text: l.text || null, shape: l.shape || null, src: l.src || null, clip: !!l.clip, group: l.group || null, adj: l.adj || null });
+        Object.assign(copy, { opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: l.lock, text: l.text || null, shape: l.shape || null, src: l.src || null, clip: !!l.clip, group: l.group || null, adj: l.adj || null, turn: l.turn || null });
         if (l.mask) {
             copy.mask = this.newCanvas();
             copy.mask.getContext('2d').drawImage(l.mask, 0, 0);
@@ -6686,7 +6788,7 @@ const PaintEditor = {
         if (below.fixed || top.fixed) { this.fixedToast(); return; }
         if (below.adj) { this.app.showToast('Nothing can be merged onto an adjustment layer', 2000); return; }
         this.pushState('Merge down');
-        below.text = below.shape = below.src = null;
+        below.text = below.shape = below.src = below.turn = null;
         this.beginPixels(below);
         const g = below.canvas.getContext('2d');
         if (!top.hidden) {
@@ -7034,7 +7136,7 @@ const PaintEditor = {
         const paint = { id: this.paintId, w: this.PW, h: this.PH, layers: [], ext: this.ext, pad: this.pad, fill: this.fill };
         for (const l of this.layers) {
             if ((l.changed || !l.rev) && this.empty(l) && !l.adj) continue;
-            const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, ...(l.lock ? { lock: true } : {}), ...(l.text ? { text: l.text } : {}), ...(l.shape ? { shape: l.shape } : {}), ...(l.clip ? { clip: true } : {}), ...(l.fixed ? { fixed: true } : {}), ...(l.group && this.groups[l.group] ? { group: l.group } : {}), ...(l.adj ? { adj: l.adj } : {}) };
+            const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, ...(l.lock ? { lock: true } : {}), ...(l.text ? { text: l.text } : {}), ...(l.shape ? { shape: l.shape } : {}), ...(l.clip ? { clip: true } : {}), ...(l.fixed ? { fixed: true } : {}), ...(l.group && this.groups[l.group] ? { group: l.group } : {}), ...(l.adj ? { adj: l.adj } : {}), ...(l.turn ? { turn: l.turn } : {}) };
             if (l.changed || !l.rev) {
                 rec.rev = Paint.newId().slice(-10);
                 await Paint.writeLayer(paint, rec, l.canvas);
