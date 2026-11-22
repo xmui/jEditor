@@ -999,9 +999,13 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
 
             // (the checks below as before: the sidebar closed)
             // The view switch is in More in 2.0's pill: on the pill for this
-            await page.evaluate(() => { app.uiPrefs.placement.view = 'main'; app.applyUiPrefs(); app.setView('single'); app.loadIndex(0); });
-            await settle();
+            // (the toolbar follows the page at most 30ms later, but the photo
+            // loading can hold the page up on a slow Mac: wait for it to say
+            // so, rather than a set time, which once caught it still in More)
+            await page.evaluate(() => { app.uiPrefs.placement.view = 'main'; app.applyUiPrefs(); app.setView('single'); return app.loadIndex(0); });
+            await page.waitForFunction(() => !app.isLoading && !document.querySelector('#header-controls [data-hc="view"]').classList.contains('hc-extra'), null, { timeout: 15000 }).catch(() => null);
             let d = await describe();
+            for (let i = 0; i < 25 && !d.items.some(x => x.id === 'hc:view'); i++) { await settle(); d = await describe(); }
             const ids = d.items.map(i => i.id);
             check('the toolbar is the top row: in Liquid Glass, the page\'s own pills gone', d.visible && d.glass && await page.evaluate(() => getComputedStyle(document.querySelector('header')).display === 'none'), JSON.stringify(d).slice(0, 300));
             const edge = await page.evaluate(() => {
