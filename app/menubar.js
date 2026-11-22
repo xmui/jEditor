@@ -350,12 +350,64 @@ const MenuBar = {
             bar.appendChild(b);
         }
         bar.classList.remove('hidden');
+        this.place();
+        this.follow(true);
         const first = bar.querySelector(name ? `[data-menu="${name}"]` : '.menu-bar-item');
         if (first) first.focus({ preventScroll: true });
     },
 
+    // The name pill it's under, as shown now: Adjust's or Paint's, or
+    // Photos' (null on the start page, or with the name hidden)
+    namePill() {
+        const shown = (el) => !!el && el.getClientRects().length > 0 && el.getBoundingClientRect().width > 0;
+        for (const sel of ['#adjust-editor:not(.hidden) .mode-file', '#paint-editor:not(.hidden) .mode-file', '#main-interface:not(.hidden) header .file-info']) {
+            const el = document.querySelector(sel);
+            if (shown(el)) return el;
+        }
+        return null;
+    },
+
+    // Centered where the name pill is, so it's in the middle of the same
+    // room (beside the sidebar, or Adjust's or Paint's panel, and shifted
+    // as fit.js shifts the pill); without one, in the middle of the header
+    // row it would be in, or of the window
+    place() {
+        if (!this.isOpen()) return;
+        const pill = this.namePill();
+        const header = document.querySelector('#main-interface:not(.hidden) header');
+        const box = pill ? pill.getBoundingClientRect()
+            : header && header.getClientRects().length ? header.getBoundingClientRect() : { left: 0, width: innerWidth };
+        // (left is in the bar's own zoomed pixels: --ui-scale)
+        const zoom = parseFloat(getComputedStyle(this.bar).zoom) || 1;
+        const x = `${Math.round((box.left + box.width / 2) / zoom * 10) / 10}px`;
+        if (this.bar.style.left !== x) this.bar.style.left = x;
+    },
+
+    // While it's open it follows the pill: the window sized, the sidebar or
+    // a panel opened or closed (their classes), the slide's end
+    follow(on) {
+        if (this._follow) {
+            const f = this._follow;
+            removeEventListener('resize', f.soon);
+            document.removeEventListener('transitionend', f.soon, true);
+            f.mo.disconnect();
+            cancelAnimationFrame(f.raf);
+            this._follow = null;
+        }
+        if (!on) return;
+        const f = this._follow = { raf: 0 };
+        f.soon = () => { cancelAnimationFrame(f.raf); f.raf = requestAnimationFrame(() => this.place()); };
+        f.mo = new MutationObserver(f.soon);
+        for (const el of [document.documentElement, document.body, document.getElementById('main-interface'), document.getElementById('adjust-editor'), document.getElementById('paint-editor')]) {
+            if (el) f.mo.observe(el, { attributes: true, attributeFilter: ['class', 'style', 'data-fit', 'data-view'] });
+        }
+        addEventListener('resize', f.soon);
+        document.addEventListener('transitionend', f.soon, true);
+    },
+
     close() {
         if (!this.bar) return;
+        this.follow(false);
         this.closeMenu();
         this.bar.classList.add('hidden');
         this.openName = null;

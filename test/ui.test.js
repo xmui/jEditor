@@ -6462,6 +6462,48 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.keyboard.press('Escape');
         await page.keyboard.press('Escape');
         await wait(100);
+        // Centered where the name pill is (the owner: "with the sidebar up
+        // the alt menu is off center"): the sidebar open or shut, while it's
+        // shown, the window sized, and in Adjust over its own name pill
+        {
+            const mid = () => page.evaluate(() => {
+                const c = (el) => { const r = el.getBoundingClientRect(); return Math.round(r.left + r.width / 2); };
+                const pill = MenuBar.namePill();
+                return { up: MenuBar.isOpen(), bar: c(document.getElementById('menu-bar')), pill: pill ? c(pill) : null, which: pill ? (pill.closest('#adjust-editor') ? 'adjust' : 'photos') : null, rail: Folders.railOpen() };
+            });
+            const rail = (open) => page.evaluate((open) => { if (Folders.railOpen() !== open) Folders.toggleRail(); }, open);
+            await page.evaluate(() => app.setView('single'));
+            // (shut first: F10 toggles it, and the checks above can leave it up)
+            await page.evaluate(() => MenuBar.close());
+            await rail(true);
+            await wait(400);
+            await page.keyboard.press('F10');
+            await wait(100);
+            out.center = { open: await mid() };
+            // shut and opened again while the bar is up: it follows
+            await rail(false);
+            await wait(400);
+            out.center.shut = await mid();
+            await rail(true);
+            await wait(400);
+            out.center.reopened = await mid();
+            await page.setViewportSize({ width: 1100, height: 760 });
+            await wait(300);
+            out.center.sized = await mid();
+            await page.keyboard.press('Escape');
+            await wait(100);
+            // In Adjust, over Adjust's name pill
+            await page.evaluate(async () => { Modes.go('adjust'); for (let i = 0; i < 100 && !(Adjust.ready); i++) await new Promise(r => setTimeout(r, 50)); });
+            await wait(300);
+            await page.evaluate(() => MenuBar.close());
+            await page.keyboard.press('F10');
+            await wait(100);
+            out.center.adjust = await mid();
+            await page.keyboard.press('Escape');
+            await page.evaluate(async () => { Modes.go('photos'); await new Promise(r => setTimeout(r, 300)); });
+            await page.setViewportSize({ width: 1280, height: 800 });
+            await wait(200);
+        }
         // The Mac: the same menus, sent to the menu bar, and one chosen there runs
         Object.assign(out, await page.evaluate(async () => {
             let sent = null, own = null;
@@ -6483,6 +6525,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('menu bar: F10 too; each command shows its key and runs, then the bar goes; right goes to the next menu', out.keyShown && out.next && out.ran && out.submenu, JSON.stringify(out));
         check('menu bar, with the mouse: a name opens its menu and shuts it again; pointing at the next opens that one, a click shuts it', out.mouseOpen === 'Photo' && out.mouseShut === null && out.mouseNext === 'Edit' && out.mouseNextShut === null, JSON.stringify([out.mouseOpen, out.mouseShut, out.mouseNext, out.mouseNextShut]));
         check('Sort: jEditor\'s menu (the field ticked, then which way in words); picking Date taken sorts newest first; View ▸ Sort by agrees', out.sortMenu === '✓Name|Date taken|Date modified|Size|✓A to Z|Z to A' && out.sortTaken && out.sortSub === 'Date taken,Newest first', JSON.stringify([out.sortMenu, out.sortTaken, out.sortSub]));
+        check('menu bar: centered where the name pill is, the sidebar open, shut and opened again while it\'s up, the window sized, and in Adjust over its own pill',
+            !!out.center && ['open', 'shut', 'reopened', 'sized', 'adjust'].every(k => out.center[k] && out.center[k].up && out.center[k].pill !== null && Math.abs(out.center[k].bar - out.center[k].pill) <= 1) && out.center.open.rail && !out.center.shut.rail && out.center.open.bar !== out.center.shut.bar && out.center.adjust.which === 'adjust', JSON.stringify(out.center));
         check('menu bar: Settings in Edit on Windows; Alt with another key leaves it alone', out.settings && out.altCombo, JSON.stringify(out));
         check('menu bar: the Mac gets the same menus with their keys, colour labels as a menu of their own, and runs the one chosen', out.mac && out.macSub && out.macRan, JSON.stringify(out));
         check('menu bar: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
