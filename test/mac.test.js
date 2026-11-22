@@ -660,9 +660,10 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await page.waitForTimeout(300);
             const box = await page.evaluate(() => {
                 const r = document.querySelector('.file-info').getBoundingClientRect();
+                // (in the pill: its own secondary colour, --glass-text-2)
                 const probe = document.createElement('span');
-                document.body.appendChild(probe);
-                const color = (v) => { probe.style.color = `var(${v})`; return getComputedStyle(probe).color.match(/\d+/g).slice(0, 3).map(Number); };
+                document.querySelector('.file-info').appendChild(probe);
+                const color = (v) => { probe.style.setProperty('color', `var(${v})`, 'important'); return getComputedStyle(probe).color.match(/\d+/g).slice(0, 3).map(Number); };
                 const out = { x: r.x, y: r.y, w: r.width, h: r.height, dpr: devicePixelRatio, text1: color('--text-1'), text2: color('--text-2') };
                 probe.remove();
                 return out;
@@ -680,12 +681,12 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         // The default glass (Crystal) and Liquid
         for (const glass of ['crystal', 'liquid']) for (const theme of ['dark', 'light']) for (const [i, photo] of [[0, 'white'], [1, 'black']]) m[`${glass}, ${theme} over ${photo}`] = await measure(theme, i, glass);
         const worst = Object.entries(m).sort((a, b) => a[1].c1 - b[1].c1)[0];
-        // Crystal and Liquid keep their look over plain white or black, the
-        // owner's call (2026-10-29): there the halo round the letters does the
-        // rest (ui.test.js). This only keeps the glass from getting clearer
-        // than it is (both give about 2.9-3.1:1 here)
-        check('the glass alone keeps text 2.5:1 over a plain white or black photo (measured on screen)',
-            Object.values(m).every(v => v.c1 >= 2.5), JSON.stringify(m));
+        // The glass holds what's behind it in a band (tokens.css; the owner,
+        // 22 November: words on the glass over a white canvas couldn't be
+        // read), so the glass alone keeps its words and its secondary words
+        // 4.5:1, with no halo
+        check('the glass alone keeps text and secondary text 4.5:1 over a plain white or black photo (measured on screen)',
+            Object.values(m).every(v => v.c1 >= 4.5 && v.c2 >= 4.5), JSON.stringify(m));
         console.log(`        (lowest: text ${worst[1].c1}:1, ${worst[0]})`);
 
         const r = await page.evaluate(async () => {
