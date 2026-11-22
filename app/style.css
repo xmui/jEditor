@@ -13421,3 +13421,116 @@ body.touring .controls.idle button { pointer-events: auto; }
 .tip.long { padding-block: 7px; }
 :root[data-motion="off"] .tip { transition: none; }
 @media (prefers-reduced-motion: reduce) { .tip { transition: none; } }
+
+/* ---- Unsaved edits (unsaved.js): "12 unsaved" ----
+   The count of photos whose edits aren't saved over the original or
+   exported yet. A glass pill in the bottom-left corner, where the task pill
+   would be (that and the messages stack above it), while the sidebar's
+   closed; a quiet button at the bottom of the sidebar while it's open.
+   Hidden at 0. Its dot, and the unsaved photos' thumbnail dots, are amber:
+   warm enough to find, not an alarm (nothing is at risk) */
+:root {
+    --unsaved: #f5a524;
+}
+:root[data-theme="light"] {
+    --unsaved: #d97706;
+}
+@media (prefers-color-scheme: light) {
+    :root:not([data-theme]) {
+        --unsaved: #d97706;
+    }
+}
+
+.unsaved-pill {
+    position: fixed;
+    left: var(--toast-left);
+    bottom: var(--toast-bottom);
+    z-index: var(--z-toast);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    height: 36px;
+    padding: 0 var(--sp-4) 0 var(--sp-3);
+    border-radius: var(--r-pill);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-3), var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    color: var(--text-1);
+    font: inherit;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    cursor: pointer;
+    animation: toast-in var(--dur-slow) var(--ease-spring);
+    transition: bottom var(--dur-base) var(--ease-out);
+}
+body :is(.unsaved-pill) {
+    --toast-left: var(--gutter);
+    --toast-bottom: calc(var(--gutter) + var(--ctl-lg) + var(--sp-3));
+}
+body[data-view="single"] .unsaved-pill {
+    --toast-bottom: calc(var(--strip-height, 80px) + var(--gutter));
+}
+body[data-view="single"]:has(#main-interface[data-fit~="toast-up"]:not(.hidden)) .unsaved-pill {
+    --toast-bottom: calc(var(--strip-height, 80px) + var(--gutter) + var(--ctl-lg) + var(--sp-2));
+}
+/* Adjust and Paint: their own bottom edge */
+body:has(:is(#adjust-editor, #paint-editor):not(.hidden)) .unsaved-pill {
+    --toast-bottom: var(--gutter);
+}
+.unsaved-pill:hover {
+    background: var(--glass-bg-hover, var(--glass-bg));
+}
+.unsaved-pill:focus-visible,
+.unsaved-side:focus-visible {
+    outline: 2px solid var(--focus-ring, var(--accent));
+    outline-offset: 2px;
+}
+/* Not on the start page, in Crop, Duplicates or a slideshow */
+body:is(:has(#drop-zone:not(.hidden)), :has(#crop-editor:not(.hidden)), :has(#dupes-panel:not(.hidden)), .slideshow) .unsaved-pill {
+    display: none;
+}
+/* The task pill and the messages stack above it */
+body.has-unsaved :is(#toast-stack, .task-pill) {
+    margin-bottom: calc(36px + var(--sp-2));
+}
+
+.unsaved-side {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    flex: none;
+    width: calc(100% - 2 * var(--sp-2));
+    min-height: var(--ctl-md);
+    margin: var(--sp-1) var(--sp-2) var(--sp-2);
+    padding: 0 var(--sp-3);
+    border: 1px solid var(--border);
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: var(--text-1);
+    font: inherit;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-out);
+}
+.unsaved-side:hover {
+    background: var(--tb-hover);
+}
+
+.unsaved-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--unsaved);
+}
+
+/* The thumbnails' edited dot, amber while unsaved (edits.js: decorate) */
+.tile-edit.unsaved {
+    background: var(--unsaved);
+}

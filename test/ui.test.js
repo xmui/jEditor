@@ -6260,6 +6260,113 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- 7t4c. Unsaved edits (unsaved.js) ----
+    // "12 unsaved": photos edited since they were last saved over the
+    // original or exported. Edit: counted; Export: not; edit again: counted;
+    // Write edits to file: not; Ctrl+Z of it: counted. In the corner with
+    // the sidebar closed, at its bottom when it's open; Show these photos
+    // filters the grid; the exported mark is kept with the project; nothing
+    // counted when edits go into the photos as they're made
+    console.log('unsaved edits');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1280, height: 860 });
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const frame = () => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
+            const opfs = await navigator.storage.getDirectory();
+            keepEdits(true); // (test pages start with edits going into the photos)
+            try { await opfs.removeEntry('unsavedproj', { recursive: true }); } catch (e) { /* fresh */ }
+            try { await opfs.removeEntry('unsaved-out', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('unsavedproj', { create: true });
+            const outDir = await opfs.getDirectoryHandle('unsaved-out', { create: true });
+            for (const n of ['a.jpg', 'b.jpg', 'c.jpg']) {
+                const fh = await dir.getFileHandle(n, { create: true });
+                const w = await fh.createWritable(); await w.write(new Blob([await makeRealJpeg(240, 160)])); await w.close();
+            }
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            for (let i = 0; i < 60 && app.files.length < 3; i++) await sleep(50);
+            app.setView('grid');
+            await sleep(200);
+            const pill = document.getElementById('unsaved-pill'), side = document.getElementById('unsaved-side');
+            const shown = (el) => !el.classList.contains('hidden') && el.getClientRects().length > 0;
+            const state = () => ({ n: Unsaved.files().length, pill: shown(pill) ? pill.textContent : null, side: shown(side) ? side.textContent : null });
+            const turn = { q: 1, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } };
+            const [a, b] = app.files;
+            if (Folders.railOpen()) Folders.toggleRail();
+            await sleep(300);
+            out.none = state();
+            // Edited: counted, its thumbnail's dot amber
+            Edits.set([{ file: a, edit: turn }, { file: b, edit: { ...turn, q: 2 } }], 'turn');
+            await frame();
+            out.edited = state();
+            out.dot = !!(a._gridEl && a._gridEl.querySelector('.tile-edit.unsaved'));
+            // The pill: bottom left, glass, clear of the grid's bottom row
+            const pr = pill.getBoundingClientRect();
+            out.corner = pr.left < 40 && innerHeight - pr.bottom < 140;
+            // Exported: not counted, the dot back to plain
+            await app.exportCopies([a], { dir: outDir, where: 'a folder', maxEdge: 0 });
+            await frame();
+            out.exported = state();
+            out.dotPlain = !!(a._gridEl && a._gridEl.querySelector('.tile-edit:not(.unsaved)'));
+            // Kept with the project: the edits read again, a is still exported
+            await Edits.save();
+            await Edits.load();
+            await frame();
+            out.reloaded = [Unsaved.is(app.files.find(f => f.name === 'a.jpg')), Unsaved.is(app.files.find(f => f.name === 'b.jpg'))];
+            // Edited again: counted again
+            const a2 = app.files.find(f => f.name === 'a.jpg');
+            Edits.set([{ file: a2, edit: { ...turn, q: 3 } }], 'turn');
+            await frame();
+            out.again = state();
+            // Written into the file: not counted; Ctrl+Z (the original back): counted
+            await app.saveEdits([a2]);
+            await sleep(300);
+            await frame();
+            out.written = state();
+            await app.undo();
+            await sleep(300);
+            await frame();
+            out.undone = state();
+            // The sidebar open: the count at its bottom, not in the corner
+            Folders.toggleRail();
+            await sleep(400);
+            out.inRail = state();
+            const rr = document.getElementById('folder-rail').getBoundingClientRect(), sr = side.getBoundingClientRect();
+            out.railBottom = sr.left >= rr.left && sr.right <= rr.right && rr.bottom - sr.bottom < 40;
+            Folders.toggleRail();
+            await sleep(300);
+            // The menu: Save over originals · Export… · Show these photos
+            pill.click();
+            await sleep(100);
+            out.menu = [...document.querySelectorAll('#context-menu .ctx-item, #context-menu [role="menuitem"]')].map(e => e.textContent.trim()).filter(Boolean);
+            app.closeContextMenu();
+            await Unsaved.show();
+            await sleep(100);
+            out.shown = app.viewFiles().map(f => f.name).sort();
+            Flags.setFilter(null);
+            // Into the photos as they're made: nothing counted, no pill
+            keepEdits(false);
+            Unsaved.update();
+            out.off = state();
+            keepEdits(true);
+            return out;
+        });
+        const s = (x) => JSON.stringify(x);
+        check('unsaved: nothing edited, nothing shown; edited, "2 unsaved" in the corner (bottom left) and an amber dot',
+            r.none.n === 0 && !r.none.pill && !r.none.side && r.edited.n === 2 && r.edited.pill === '2 unsaved' && r.dot && r.corner, s([r.none, r.edited, r.dot, r.corner]));
+        check('... exported: no longer counted, its dot plain; kept with the project', r.exported.n === 1 && r.exported.pill === '1 unsaved' && r.dotPlain && s(r.reloaded) === '[false,true]', s([r.exported, r.dotPlain, r.reloaded]));
+        check('... edited again: counted again; written into the file: not; Ctrl+Z of that: counted', r.again.n === 2 && r.written.n === 1 && r.undone.n === 2, s([r.again, r.written, r.undone]));
+        check('... the sidebar open: at its bottom, not in the corner', r.inRail.side === '2 unsaved' && !r.inRail.pill && r.railBottom, s([r.inRail, r.railBottom]));
+        check('... its menu: Save over originals, Export…, Show these photos (the grid filtered to them)',
+            /Save over originals/.test(s(r.menu)) && /Export…/.test(s(r.menu)) && /Show these 2 photos/.test(s(r.menu)) && s(r.shown) === '["a.jpg","b.jpg"]', s([r.menu, r.shown]));
+        check('... edits going into the photos as they\'re made: nothing counted, nothing shown', r.off.n === 0 && !r.off.pill && !r.off.side, s(r.off));
+        check('unsaved suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7t5. The photo centered in the room it has ----
     // At Fit, the photo is in the middle of the free area across (between
     // the sidebar and Info's card) and up and down has the same room above

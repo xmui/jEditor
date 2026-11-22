@@ -154,12 +154,16 @@ const Edits = {
         } catch (e) { /* nothing kept */ }
         if (this._loadedFor !== app.dirHandle) return [];
         const saved = new Map(Object.entries((data && data.edits) || {}));
+        // The photos whose edit was exported as it is (unsaved.js)
+        const exported = new Set(Array.isArray(data && data.exported) ? data.exported : []);
         for (const f of app.files) {
             const rel = f.relPath || f.name;
             const e = this.clean(saved.get(rel));
             // A photo changed since (outside jEditor): its edit no longer fits
             if (e && (!e.size || e.size === f.size)) f._edit = e;
             else delete f._edit;
+            if (f._edit && exported.has(rel)) f._exportedEdit = f._edit;
+            else delete f._exportedEdit;
             saved.delete(rel);
         }
         for (const [k, v] of saved) {
@@ -258,8 +262,13 @@ const Edits = {
     collect() {
         const out = {};
         for (const [k, v] of this.orphans) out[k] = v;
-        for (const f of this.app.files) if (f._edit) out[f.relPath || f.name] = f._edit;
-        return { version: 1, edits: out };
+        const exported = [];
+        for (const f of this.app.files) {
+            if (!f._edit) continue;
+            out[f.relPath || f.name] = f._edit;
+            if (f._exportedEdit === f._edit) exported.push(f.relPath || f.name);
+        }
+        return { version: 1, edits: out, ...(exported.length ? { exported } : {}) };
     },
 
     // Written to the project's data folder (removed when there's nothing)
@@ -403,6 +412,7 @@ const Edits = {
             if (f._stripEl) this.decorate(f._stripEl, f);
         }
         this.updateHeader();
+        if (typeof Unsaved !== 'undefined') Unsaved.soon();
         if (save) this.saveSoon();
     },
 
@@ -462,7 +472,11 @@ const Edits = {
             b.className = 'tile-edit';
             el.appendChild(b);
         }
-        b.title = this.describe(f._edit);
+        // Not saved over the original or exported yet (unsaved.js): the
+        // dot that's counted
+        const unsaved = typeof Unsaved !== 'undefined' && Unsaved.is(f);
+        b.classList.toggle('unsaved', unsaved);
+        b.title = this.describe(f._edit) + (unsaved ? '\nNot saved or exported yet' : '');
     },
 
     // Beside the file name: this photo's edit isn't saved yet

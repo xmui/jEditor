@@ -295,6 +295,7 @@ const app = {
         Permissions.init(this);
         Flags.init(this);
         Edits.init(this);
+        Unsaved.init(this);
         Paint.init(this);
         Import.init(this);
         Disc.init(this);
@@ -3450,6 +3451,7 @@ const app = {
     // Grid View with Lazy Loading. sync: every tile now, so a re-render
     // after a move keeps the scroll position.
     renderGrid({ sync = false } = {}) {
+        Unsaved.soon(); // (the photos shown changed: opened, deleted, filtered)
         // Read before the tiles go: a windowed grid keeps its place
         const scrollWas = this._gridWin ? this.elements.gridView.scrollTop : null;
         this.elements.gridView.innerHTML = '';
@@ -8189,6 +8191,7 @@ const app = {
             dir = dir || await this.dirHandle.getDirectoryHandle('jEditor Export', { create: true });
             this.beginTask('export', `Exporting 0/${list.length}`);
             let done = 0, failed = 0, skipped = 0, stopped = false;
+            const exported = [];
             const written = new Set(); // names used by this export (lower case)
             const there = (name) => written.has(name.toLowerCase()) ? true : dir.getFileHandle(name).then(() => true, () => false);
             for (const [i, f] of list.entries()) {
@@ -8261,6 +8264,8 @@ const app = {
                     await w.write(out);
                     await w.close();
                     done++;
+                    // Exported with its edit as it is: no longer unsaved
+                    if (f._edit) exported.push(f);
                 } catch (e) {
                     failed++;
                     console.error('Export failed:', f.name, e);
@@ -8268,6 +8273,7 @@ const app = {
                 this.updateTask('export', `Exporting ${done + failed + skipped}/${list.length}`);
             }
             this.endTask('export');
+            if (exported.length) Unsaved.exported(exported);
             const left = skipped ? `, ${skipped} skipped (already there)` : '';
             const rest = list.length - done - failed - skipped;
             this.showToast(

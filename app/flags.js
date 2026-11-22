@@ -84,6 +84,8 @@ const Flags = {
         return f && f._flags;
     },
     has(f, kind) {
+        // (not a flag: the photos with unsaved edits, unsaved.js)
+        if (kind === 'unsaved') return typeof Unsaved !== 'undefined' && Unsaved.is(f);
         const fl = f && f._flags;
         if (kind === 'none') return !fl || (!fl.star && !fl.reject && !fl.rescan && !fl.color);
         if (!fl) return false;
@@ -101,6 +103,7 @@ const Flags = {
         if (kind === 'reject') return 'Rejected';
         if (kind === 'rescan') return 'Needs rescan';
         if (kind === 'none') return 'No flag';
+        if (kind === 'unsaved') return 'Unsaved edits';
         return kind.charAt(0).toUpperCase() + kind.slice(1);
     },
 
