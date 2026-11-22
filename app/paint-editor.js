@@ -4289,8 +4289,17 @@ const PaintEditor = {
         const q = pop.querySelector('input'), list = pop.querySelector('.paint-fonts-list');
         const r = btn.getBoundingClientRect();
         pop.style.left = `${Math.max(8, Math.min(r.left, innerWidth - 268))}px`;
-        pop.style.top = `${r.bottom + 6}px`;
-        pop.style.maxHeight = `${Math.max(160, innerHeight - r.bottom - 20)}px`;
+        // Below its button if there's room, as at the top; the options at
+        // the bottom (2.0): above it, over the photo, clear of the bar and
+        // the film strip, and never past the window's top (UI.topSafe)
+        const below = innerHeight - r.bottom - 14, above = r.top - (UI.topSafe() + 8) - 6;
+        if (below >= Math.min(360, above)) {
+            pop.style.top = `${r.bottom + 6}px`;
+            pop.style.maxHeight = `${Math.max(120, below)}px`;
+        } else {
+            pop.style.bottom = `${innerHeight - r.top + 6}px`;
+            pop.style.maxHeight = `${Math.max(120, Math.min(480, above))}px`;
+        }
         document.body.appendChild(pop);
         this._fontPop = pop;
         pop._off = (e) => { if (!pop.contains(e.target) && e.target !== btn) this.closeFonts(); };
