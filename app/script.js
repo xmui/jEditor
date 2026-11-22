@@ -671,8 +671,6 @@ const app = {
                 if (['photos', 'adjust', 'paint'].includes(saved.startIn)) this.uiPrefs.startIn = saved.startIn;
                 // The home page's Settings menu (start.js)
                 if (typeof saved.keepEdits === 'boolean') this.uiPrefs.keepEdits = saved.keepEdits;
-                // A project's first time: ask how it saves edits (first-open.js)
-                if (typeof saved.askSaving === 'boolean') this.uiPrefs.askSaving = saved.askSaving;
                 if (['ask', 'originals', 'copies'].includes(saved.writeEdits)) this.uiPrefs.writeEdits = saved.writeEdits;
                 if (['home', 'last', 'pick'].includes(saved.onOpen)) this.uiPrefs.onOpen = saved.onOpen;
                 if (typeof saved.onOpenId === 'string') this.uiPrefs.onOpenId = saved.onOpenId;
@@ -1002,7 +1000,7 @@ const app = {
         // Folder
         $('cust-on-open').addEventListener('change', (e) => Start.onOpenChanged(e.target.value));
         $('cust-keep-edits').addEventListener('change', (e) => Edits.setKeeping(e.target.checked));
-        $('cust-ask-saving').addEventListener('change', (e) => { this.uiPrefs.askSaving = e.target.checked; this.saveUiPrefs(); });
+        $('cust-ask-saving').addEventListener('change', (e) => FirstOpen.setAsking(e.target.checked));
         $('cust-write-edits').addEventListener('change', (e) => { this.uiPrefs.writeEdits = e.target.value; this.saveUiPrefs(); });
         $('set-edits-clear').addEventListener('click', async () => { await Edits.clearStored(); this.renderCustomizePanel(); });
         $('cust-auto-check').addEventListener('change', (e) => {

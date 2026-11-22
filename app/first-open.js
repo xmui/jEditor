@@ -7,8 +7,9 @@
 // keep its edits in jEditor, or save them into the photos as you go. The
 // answer is the project's (edits.js), so it's asked once each; its ⋯
 // changes it later. "Don't ask again" makes it the default for new
-// projects too, and stops the question (uiPrefs.askSaving; both are in
-// Settings → Projects → Saving).
+// projects too (uiPrefs.keepEdits), and stops the question (askSaving:
+// false, kept with the welcome's, jeditor.firstOpen); both are in Settings →
+// Projects → Saving.
 
 const FirstOpen = {
     el(id) { return document.getElementById(id); },
@@ -95,8 +96,11 @@ const FirstOpen = {
 
     // Settings → Saving: ask a project that hasn't chosen (on unless turned off)
     asking() {
-        const p = this.app.uiPrefs;
-        return !(p && p.askSaving === false);
+        return this.get().askSaving !== false;
+    },
+
+    setAsking(on) {
+        this.set({ askSaving: !!on });
     },
 
     // A project's first time: keep its edits in jEditor, or into the photos
@@ -122,8 +126,8 @@ const FirstOpen = {
         Edits.setProjectKeeping(on, { quiet: true });
         if (a.checked) {
             app.uiPrefs.keepEdits = on;
-            app.uiPrefs.askSaving = false;
             app.saveUiPrefs();
+            this.setAsking(false);
         }
         app.showToast(on ? 'Edits are kept in jEditor for this project; the photos stay as they are' : 'Edits go into the photos as you make them, for this project', 3500, null, null, { type: 'success' });
         return on ? 'keep' : 'write';

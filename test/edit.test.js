@@ -596,7 +596,7 @@ const PROJECT = `
                 const shown = () => !$('ui-dialog').classList.contains('hidden');
                 const dialog = () => [$('uid-title').textContent, $('uid-ok').textContent, $('uid-alt').textContent, $('uid-cancel').textContent, $('uid-check-label').textContent];
                 // (the tests turn the question off: on, as it starts)
-                app.uiPrefs.askSaving = true;
+                FirstOpen.setAsking(true);
                 app.uiPrefs.keepEdits = true;
                 step = 'first';
                 const a = await openProject('Wedding', { 'a.png': await blob('#806040') });
@@ -607,7 +607,7 @@ const PROJECT = `
                 await until(() => !shown());
                 await Edits.flush();
                 const ej = await (await (await (await FolderCache.root(app, false)).getFileHandle('edits.json')).getFile()).text();
-                out.chose = [Edits.chosen(), Edits.keeping(), JSON.parse(ej).keep, app.uiPrefs.keepEdits, app.uiPrefs.askSaving];
+                out.chose = [Edits.chosen(), Edits.keeping(), JSON.parse(ej).keep, app.uiPrefs.keepEdits, FirstOpen.asking()];
                 // The project's ⋯ says so, and changes it back
                 const items = app.contextItemsFor(null, false).map(it => it[0]);
                 out.menu = items.includes('Keep edits in jEditor');
@@ -621,7 +621,7 @@ const PROJECT = `
                 $('uid-ok').click();
                 await until(() => !shown());
                 await Edits.flush();
-                out.dontAsk = [Edits.keeping(), app.uiPrefs.keepEdits, app.uiPrefs.askSaving];
+                out.dontAsk = [Edits.keeping(), app.uiPrefs.keepEdits, FirstOpen.asking()];
                 step = 'back';
                 window.showDirectoryPicker = async () => a;
                 await app.browseFolder();
