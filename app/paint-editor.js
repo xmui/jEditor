@@ -453,6 +453,23 @@ const PaintEditor = {
             this.zoomAt(this.view.z * k, e.clientX - r.left, e.clientY - r.top);
         }, { passive: false });
         st.addEventListener('dblclick', (e) => { if (this.tool === 'hand') this.fit(); else if (this.poly) this.endPoly(true); });
+        // Typing a text layer: its keys are the words, never shortcuts. An
+        // option clicked meanwhile (Bold, the font, a colour) takes the
+        // keyboard from the box though it's still open, and the next letter
+        // was a tool's key (M: Rectangle select, Shift+M: Copy to…). So a
+        // key without Ctrl/⌘/Alt goes back into the box (focused now, the
+        // letter lands in it), unless it's for a box of its own (the size)
+        // or a dialog or menu that's open
+        window.addEventListener('keydown', (e) => {
+            if (!this.isOpen || !this.text || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+            const ta = this.el('paint-text'), a = document.activeElement;
+            if (e.target === ta || ta.classList.contains('hidden') || ['Shift', 'CapsLock', 'Tab', 'Control', 'Meta', 'Alt'].includes(e.key)) return;
+            if (this.app.isTypingTarget(e.target) || (a && a !== document.body && a.closest && a.closest('[role="dialog"], [role="alertdialog"], [role="menu"], .dialog-overlay, #context-menu'))) return;
+            if (document.querySelector('#context-menu, .dialog-overlay:not(.hidden)')) return;
+            e.stopImmediatePropagation();
+            if (e.key === 'Escape') { e.preventDefault(); this.endText(false); return; }
+            ta.focus();
+        }, true);
         // Space held: the hand
         window.addEventListener('keydown', (e) => {
             if (!this.isOpen || e.code !== 'Space' || this.app.isTypingTarget(e.target)) return;
