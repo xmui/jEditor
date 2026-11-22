@@ -13467,9 +13467,17 @@ body.touring .controls.idle button { pointer-events: auto; }
     animation: toast-in var(--dur-slow) var(--ease-spring);
     transition: bottom var(--dur-base) var(--ease-out);
 }
+/* On the bottom row, beside the selection pill and the size slider (the
+   owner's arrow, 22 November); the messages keep their place above it */
 body :is(.unsaved-pill) {
     --toast-left: var(--gutter);
-    --toast-bottom: calc(var(--gutter) + var(--ctl-lg) + var(--sp-3));
+    --toast-bottom: var(--gutter);
+}
+/* (a narrow window: the selection pill needs that row, so above it) */
+@media (max-width: 640px) {
+    body[data-view="grid"] .unsaved-pill {
+        --toast-bottom: calc(var(--gutter) + var(--ctl-lg) + var(--sp-3));
+    }
 }
 body[data-view="single"] .unsaved-pill {
     --toast-bottom: calc(var(--strip-height, 80px) + var(--gutter));
@@ -13477,9 +13485,10 @@ body[data-view="single"] .unsaved-pill {
 body[data-view="single"]:has(#main-interface[data-fit~="toast-up"]:not(.hidden)) .unsaved-pill {
     --toast-bottom: calc(var(--strip-height, 80px) + var(--gutter) + var(--ctl-lg) + var(--sp-2));
 }
-/* Adjust and Paint: their own bottom edge */
+/* Adjust and Paint have Done: the count is only in the sidebar there (the
+   owner: "the pill will be hidden in adjust and paint if sidebar hidden") */
 body:has(:is(#adjust-editor, #paint-editor):not(.hidden)) .unsaved-pill {
-    --toast-bottom: var(--gutter);
+    display: none;
 }
 .unsaved-pill:hover {
     background: var(--glass-bg-hover, var(--glass-bg));
@@ -13493,9 +13502,15 @@ body:has(:is(#adjust-editor, #paint-editor):not(.hidden)) .unsaved-pill {
 body:is(:has(#drop-zone:not(.hidden)), :has(#crop-editor:not(.hidden)), :has(#dupes-panel:not(.hidden)), .slideshow) .unsaved-pill {
     display: none;
 }
-/* The task pill and the messages stack above it */
-body.has-unsaved :is(#toast-stack, .task-pill) {
+/* Where it takes their place (the single view, a narrow grid), the task
+   pill and the messages stack above it */
+body.has-unsaved[data-view="single"]:not(:has(:is(#adjust-editor, #paint-editor):not(.hidden))) :is(#toast-stack, .task-pill) {
     margin-bottom: calc(36px + var(--sp-2));
+}
+@media (max-width: 640px) {
+    body.has-unsaved[data-view="grid"] :is(#toast-stack, .task-pill) {
+        margin-bottom: calc(36px + var(--sp-2));
+    }
 }
 
 .unsaved-side {

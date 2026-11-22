@@ -6303,9 +6303,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await frame();
             out.edited = state();
             out.dot = !!(a._gridEl && a._gridEl.querySelector('.tile-edit.unsaved'));
-            // The pill: bottom left, glass, clear of the grid's bottom row
-            const pr = pill.getBoundingClientRect();
-            out.corner = pr.left < 40 && innerHeight - pr.bottom < 140;
+            // The pill: bottom left, on the bottom row with the selection
+            // pill (the owner's arrow), not over it
+            await Promise.all(pill.getAnimations().map(an => an.finished.catch(() => { }))); // (it slides in)
+            const pr = pill.getBoundingClientRect(), gc = document.getElementById('grid-controls').getBoundingClientRect();
+            out.corner = pr.left < 40 && Math.abs((pr.top + pr.bottom) / 2 - (gc.top + gc.bottom) / 2) < 3;
             // Exported: not counted, the dot back to plain
             await app.exportCopies([a], { dir: outDir, where: 'a folder', maxEdge: 0 });
             await frame();
@@ -6338,6 +6340,14 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.railBottom = sr.left >= rr.left && sr.right <= rr.right && rr.bottom - sr.bottom < 40;
             Folders.toggleRail();
             await sleep(300);
+            // Adjust and Paint have Done: no pill there, the sidebar closed
+            await app.enterAdjust(app.files.find(f => f.name === 'b.jpg'));
+            await sleep(500);
+            out.adjust = shown(pill);
+            await Modes.go('photos');
+            await sleep(400);
+            if (app.viewMode !== 'grid') app.setView('grid');
+            await sleep(200);
             // The menu: Save over originals · Export… · Show these photos
             pill.click();
             await sleep(100);
@@ -6355,11 +6365,12 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             return out;
         });
         const s = (x) => JSON.stringify(x);
-        check('unsaved: nothing edited, nothing shown; edited, "2 unsaved" in the corner (bottom left) and an amber dot',
+        check('unsaved: nothing edited, nothing shown; edited, "2 unsaved" bottom left, on the bottom row with the size slider, and an amber dot',
             r.none.n === 0 && !r.none.pill && !r.none.side && r.edited.n === 2 && r.edited.pill === '2 unsaved' && r.dot && r.corner, s([r.none, r.edited, r.dot, r.corner]));
         check('... exported: no longer counted, its dot plain; kept with the project', r.exported.n === 1 && r.exported.pill === '1 unsaved' && r.dotPlain && s(r.reloaded) === '[false,true]', s([r.exported, r.dotPlain, r.reloaded]));
         check('... edited again: counted again; written into the file: not; Ctrl+Z of that: counted', r.again.n === 2 && r.written.n === 1 && r.undone.n === 2, s([r.again, r.written, r.undone]));
         check('... the sidebar open: at its bottom, not in the corner', r.inRail.side === '2 unsaved' && !r.inRail.pill && r.railBottom, s([r.inRail, r.railBottom]));
+        check('... no pill in Adjust (it has Done)', r.adjust === false, s(r.adjust));
         check('... its menu: Save over originals, Export…, Show these photos (the grid filtered to them)',
             /Save over originals/.test(s(r.menu)) && /Export…/.test(s(r.menu)) && /Show these 2 photos/.test(s(r.menu)) && s(r.shown) === '["a.jpg","b.jpg"]', s([r.menu, r.shown]));
         check('... edits going into the photos as they\'re made: nothing counted, nothing shown', r.off.n === 0 && !r.off.pill && !r.off.side, s(r.off));
