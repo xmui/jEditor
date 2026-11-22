@@ -6320,9 +6320,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
     }
 
     // ---- 7t5. The photo centered in the room it has ----
-    // At Fit, the photo's center is the free area's: below the pills (or
-    // macOS's toolbar), between the sidebar and Info's card, above the
-    // strip. With the sidebar and Info open and shut, after Left/Right and
+    // At Fit, the photo is in the middle of the free area across (between
+    // the sidebar and Info's card) and up and down has the same room above
+    // as below (above the strip), clear of the pills (or macOS's toolbar). With the sidebar and Info open and shut, after Left/Right and
     // a resize, and under the Mac's native toolbar; zoomed, the spot under
     // the pointer stays put
     console.log('photo centered');
@@ -6369,7 +6369,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                 }
                 const info = document.getElementById('main-interface').classList.contains('info-open') && document.getElementById('info-panel');
                 if (info) right = Math.min(right, info.getBoundingClientRect().left);
-                return { left: c.left, top, right, bottom: c.bottom };
+                return { left: c.left, top, right, bottom: c.bottom, ctop: c.top };
             };
             // Its center against the free area's (with the gutter kept
             // under the pills), and never over its edges
@@ -6379,10 +6379,14 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                 for (let i = 0; i < 80; i++) { await sleep(25); const ci = img(); if (ci && ci.complete && ci.offsetWidth && !ci.getAnimations().length) break; }
                 await sleep(300); // the card's slide and the photo's own easing
                 const p = img().getBoundingClientRect(), f = free();
+                // Across: the middle of the room. Up and down: the same room
+                // above (from the window's top, or macOS's toolbar) as below
+                // (the strip, or the window's bottom), clear of the pills, and
+                // never on the bottom edge (the owner, 22 November)
                 const dx = (p.left + p.right) / 2 - (f.left + f.right) / 2;
-                const dy = (p.top + p.bottom) / 2 - (f.top + gutter + f.bottom) / 2;
-                if (Math.abs(dx) > 1.5 || Math.abs(dy) > 1.5 || p.top < f.top + gutter - 1 || p.bottom > f.bottom + 1 || p.left < f.left - 1 || p.right > f.right + 1)
-                    off.push(`${label} (${app.currentFile && app.currentFile.name}): off by ${Math.round(dx)}, ${Math.round(dy)}`);
+                const above = p.top - f.ctop, below = f.bottom - p.bottom;
+                if (Math.abs(dx) > 1.5 || Math.abs(above - below) > 2 || p.top < f.top + gutter - 1 || below < gutter - 1 || p.left < f.left - 1 || p.right > f.right + 1)
+                    off.push(`${label} (${app.currentFile && app.currentFile.name}): off by ${Math.round(dx)} across; ${Math.round(above)} above, ${Math.round(below)} below`);
             };
             app.openSingle(app.files[0]);
             await measure('opened');
@@ -6410,10 +6414,56 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await sleep(60);
             const p1 = ci.getBoundingClientRect();
             const zoomed = Math.abs(p1.left + fx * p1.width - x) < 1.5 && Math.abs(p1.top + fy * p1.height - y) < 1.5;
-            app.zoomTo(1);
+            app.zoomTo(1, null, null, { reset: true });
             ci.classList.remove('follow');
             await measure('back at Fit');
-            return { off, zoomed };
+
+            // Moved by hand at Fit (the owner: "move it around with a hand
+            // no matter what zoom"): it stays where it's put, through a
+            // wheel zoom too, and goes back to the middle at Fit (0) and on
+            // the next photo
+            const hand = {};
+            const at = () => { const r = img().getBoundingClientRect(); return { x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2 }; };
+            const c0 = at();
+            hand.cursor = getComputedStyle(ic).cursor === 'grab';
+            img().classList.add('follow');
+            ic.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientX: c0.x, clientY: c0.y }));
+            document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: c0.x + 120, clientY: c0.y - 40 }));
+            document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+            await sleep(250); // (the photo's own short easing)
+            const c1 = at();
+            hand.moved = Math.abs(c1.x - c0.x - 120) < 1.5 && Math.abs(c1.y - c0.y + 40) < 1.5 && app.zoom === 1;
+            // a little zoom about the photo's middle: still there
+            app.zoomTo(1.2, c1.x, c1.y);
+            await sleep(250); // (the photo's own short easing)
+            const c2 = at();
+            hand.kept = Math.abs(c2.x - c1.x) < 1.5 && Math.abs(c2.y - c1.y) < 1.5;
+            app.zoomBy(0);
+            await sleep(250); // (the photo's own short easing)
+            const c3 = at();
+            hand.fit = Math.abs(c3.x - c0.x) < 1.5 && Math.abs(c3.y - c0.y) < 1.5 && app.zoom === 1;
+            ic.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientX: c0.x, clientY: c0.y }));
+            document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: c0.x - 90, clientY: c0.y }));
+            document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+            await measure('the next photo, after moving one by hand');
+            hand.next = app.panX === 0 && app.panY === 0 && app.zoom === 1;
+            img().classList.remove('follow');
+
+            // Settings → Photo fills the window height: top to the strip,
+            // the pills over the photo
+            const box = document.getElementById('cust-fill-height');
+            box.checked = true;
+            box.dispatchEvent(new Event('change'));
+            await sleep(350);
+            const fr = img().getBoundingClientRect(), cr = ic.getBoundingClientRect();
+            const tall = fr.height >= fr.width;
+            hand.fill = document.documentElement.classList.contains('fit-fill') && (tall ? Math.abs(fr.top - cr.top) < 1.5 && Math.abs(fr.bottom - cr.bottom) < 1.5 : Math.abs((fr.top + fr.bottom) / 2 - (cr.top + cr.bottom) / 2) < 1.5);
+            box.checked = false;
+            box.dispatchEvent(new Event('change'));
+            await sleep(350);
+            await measure('Photo fills the window height off again');
+            return { off, zoomed, hand };
         }, mac);
         await page.setViewportSize({ width: 900, height: 640 });
         const resized = await page.evaluate(async (mac) => {
@@ -6421,11 +6471,15 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const p = document.getElementById('current-image').getBoundingClientRect(), vb = app.viewBox();
             const top = mac ? window.__toolbar() : document.querySelector('header .file-info').getBoundingClientRect().bottom;
             return Math.abs((p.left + p.right) / 2 - (vb.left + vb.width / 2)) < 1.5 && Math.abs((p.top + p.bottom) / 2 - (vb.top + vb.height / 2)) < 1.5
-                && vb.top - top >= 8 && vb.top - top <= 30;
+                && vb.top - top >= 8 && vb.top - top <= 30
+                // (as much room below as above)
+                && Math.abs((vb.top - document.getElementById('image-container').getBoundingClientRect().top) - (document.getElementById('image-container').getBoundingClientRect().bottom - (vb.top + vb.height))) < 1.5;
         }, mac);
         const where = mac ? 'under the Mac\'s toolbar' : 'below the pills';
-        check(`the photo is centered in the room it has, ${where}: sidebar, Info, Left/Right`, r.off.length === 0, r.off.join('; '));
+        check(`the photo is centered in the room it has, ${where}, as much room below as above: sidebar, Info, Left/Right`, r.off.length === 0, r.off.join('; '));
         check(`... after a resize too, ${where}; zoomed, the spot under the pointer stays put`, resized && r.zoomed, JSON.stringify([resized, r.zoomed]));
+        check(`... moved by hand at Fit it stays (a zoom too), back in the middle at Fit and on the next photo; the hand cursor (${mac ? 'Mac' : 'Windows'})`, r.hand.cursor && r.hand.moved && r.hand.kept && r.hand.fit && r.hand.next, JSON.stringify(r.hand));
+        check(`... Photo fills the window height: top to the strip, under the pills (${mac ? 'Mac' : 'Windows'})`, r.hand.fill, JSON.stringify(r.hand));
         check(`photo centered suite (${mac ? 'Mac' : 'Windows'}): no JS errors`, issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
