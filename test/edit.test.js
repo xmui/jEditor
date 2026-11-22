@@ -2810,6 +2810,53 @@ const PROJECT = `
         await page.close();
     }
 
+    // ---- Paint: typing text, every capital letter (real keys) ----
+    if (wanted('painttextkeys')) {
+        console.log('paint: typing text is never shortcuts (paint-editor.js)');
+        const { page, issues } = await open();
+        await page.evaluate(async () => {
+            const c = document.createElement('canvas'); c.width = 400; c.height = 300;
+            const g = c.getContext('2d'); g.fillStyle = '#808080'; g.fillRect(0, 0, 400, 300);
+            await openProject('tk', { 't.png': await canvasBlob(c) });
+            app.openSingle(app.files[0]);
+            await app.enterPaint();
+            await until(() => PaintEditor.ready);
+            PaintEditor.setTool('text');
+        });
+        const at = await page.evaluate(() => { const r = PaintEditor.canvas.getBoundingClientRect(); return { x: r.left + r.width / 3, y: r.top + r.height / 3 }; });
+        const state = () => page.evaluate(() => ({
+            v: document.getElementById('paint-text').value,
+            tool: PaintEditor.tool,
+            open: !!PaintEditor.text,
+            dialogs: Folders.isModalOpen() || Palette.isOpen() || !!document.querySelector('#context-menu') || [...document.querySelectorAll('.dialog-overlay, [role="dialog"], [role="alertdialog"]')].some(d => d.getBoundingClientRect().height > 0)
+        }));
+        const ABC = 'abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789';
+        await page.mouse.click(at.x, at.y);
+        await page.waitForFunction(() => document.activeElement === document.getElementById('paint-text'));
+        await page.keyboard.type(`${ABC} Mom`);
+        const typed = await state();
+        // An option clicked while typing (Bold) took the keyboard from the
+        // box: the letters still go in it, not to M's tool or Shift+M's Copy to
+        await page.click('#paint-options button[title*="old" i], #paint-options button[aria-label*="old" i]');
+        await page.keyboard.type(` ${ABC}`);
+        const after = await state();
+        await page.keyboard.press('Control+Enter');
+        const done = await page.evaluate(() => [!PaintEditor.text, PaintEditor.layer().text && PaintEditor.layer().text.v]);
+        check('paint text: every letter, lower and upper case, and digit typed goes in the text, no tool changes, no dialog opens', typed.v === `${ABC} Mom` && typed.tool === 'text' && typed.open && !typed.dialogs, JSON.stringify(typed));
+        check('paint text: after an option is clicked (Bold), the letters still go in the text, not to the shortcuts', after.v === `${ABC} Mom ${ABC}` && after.tool === 'text' && after.open && !after.dialogs, JSON.stringify(after));
+        check('paint text: Ctrl+Enter still finishes it, with all the words', done[0] && done[1] === `${ABC} Mom ${ABC}`, JSON.stringify(done));
+        // The font list, from the options at the bottom: above them, all of it on screen
+        await page.click('#paint-options .paint-font-btn');
+        const fonts = await page.evaluate(() => {
+            const p = document.querySelector('.paint-fonts').getBoundingClientRect(), o = document.getElementById('paint-options').getBoundingClientRect();
+            const atBottom = o.top > innerHeight / 2;
+            return { p: [p.top, p.bottom].map(Math.round), o: Math.round(o.top), atBottom, ok: p.top >= 0 && p.bottom <= innerHeight && p.height >= 120 && (!atBottom || p.bottom <= o.top) };
+        });
+        check('paint text: the font list opens above the options at the bottom, all of it on screen', fonts.ok, JSON.stringify(fonts));
+        check('paint text keys: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Paint: the photo unlocked (a layer of its own) ----
     if (wanted('paintunlock')) {
         console.log('paint: unlock the photo (paint-editor.js, paint.js)');
