@@ -32,6 +32,18 @@
         errors.push(text);
         log('error', `${text} (${e.filename || '?'}:${e.lineno || 0})`);
     });
+    // A script or stylesheet that didn't load (its error doesn't reach the
+    // listener above): without one jEditor never starts, and nothing said so
+    addEventListener('error', (e) => {
+        const t = e.target;
+        if (t && t !== window && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) {
+            const text = `Couldn't load ${t.src || t.href}`;
+            errors.push(text);
+            log('error', text);
+        }
+    }, true);
+    // How far the page got, in the log: parsed (every script run), then ready
+    addEventListener('DOMContentLoaded', () => log('info', `page parsed: ${document.scripts.length} scripts, jEditor ${typeof app === 'undefined' ? 'missing' : 'there'}`));
     addEventListener('unhandledrejection', (e) => {
         const r = e.reason;
         const text = 'Unhandled rejection: ' + (r && r.stack || r);
