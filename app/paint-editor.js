@@ -226,7 +226,7 @@ const PaintEditor = {
         ['airbrush', 'Airbrush: soft, builds up as it\'s held', '<path d="M3 17l8-8 4 4-8 8H3z"/><path d="M15 5h.01M18 4h.01M19 7h.01M17 9h.01M21 9h.01"/>'],
         ['spray', 'Spray', '<path d="M9 3h3v4H9zM8 7h5v14H8z"/><path d="M16 6h.01M19 4h.01M19 8h.01M17 10h.01M21 6h.01"/>'],
         ['charcoal', 'Charcoal: grainy, as on rough paper', '<path d="M14.5 3.5l6 6-9 9-6-6z"/><path d="M5.5 12.5 3 21l8.5-2.5"/><path d="M4 18h.01M6 20h.01M7 17h.01"/>'],
-        ['watercolour', 'Watercolour: see-through, darker at its edges', '<path d="M12 3c3 4 6 7.5 6 11a6 6 0 0 1-12 0c0-3.5 3-7 6-11z" stroke-dasharray="3 1.5"/><path d="M9 15a3 3 0 0 0 3 3"/>'],
+        ['watercolour', 'Watercolor: see-through, darker at its edges', '<path d="M12 3c3 4 6 7.5 6 11a6 6 0 0 1-12 0c0-3.5 3-7 6-11z" stroke-dasharray="3 1.5"/><path d="M9 15a3 3 0 0 0 3 3"/>'],
         ['texture', 'Texture brush: paints through canvas, paper or sand', '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8h.01M12 8h.01M16 8h.01M10 12h.01M14 12h.01M8 16h.01M12 16h.01M16 16h.01"/>'],
         ['mixer', 'Mixer: blends its color with the colors it goes over', '<circle cx="9" cy="10" r="5"/><circle cx="15" cy="14" r="5"/>'],
         ['pixel', 'Pixel pencil: square pixels on a grid', '<path d="M3 3h6v6H3zM9 9h6v6H9zM15 15h6v6h-6z"/>'],
