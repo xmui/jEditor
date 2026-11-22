@@ -6099,6 +6099,131 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- 7t4b. Home: a project clicked opens ----
+    // A project opened once lies on the home page as a stack; jEditor
+    // opened again, a real click on it (the mouse, so whatever lies over
+    // it would take the click instead) opens it in the viewer
+    console.log('home: a project clicked opens');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1280, height: 860 });
+        await page.evaluate(async () => {
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('homeclick', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('homeclick', { create: true });
+            const fh = await dir.getFileHandle('a.jpg', { create: true });
+            const w = await fh.createWritable(); await w.write(new Blob([await makeRealJpeg(400, 300)])); await w.close();
+            // (and two for the guard below: the page's helpers are gone after the reload)
+            for (const name of ['guard-stuck', 'guard-failing']) {
+                try { await opfs.removeEntry(name, { recursive: true }); } catch (e) { /* fresh */ }
+                const d = await opfs.getDirectoryHandle(name, { create: true });
+                const gh = await d.getFileHandle('x.jpg', { create: true });
+                const gw = await gh.createWritable(); await gw.write(new Blob([await makeRealJpeg(200, 150)])); await gw.close();
+            }
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            for (let i = 0; i < 60 && app.files.length < 1; i++) await sleep(50);
+            await sleep(400); // (kept in Recent)
+        });
+        await page.reload();
+        await page.waitForFunction(() => typeof app !== 'undefined' && !!document.querySelector('#recent-list .recent-open'), null, { timeout: 10000 }).catch(() => null);
+        await page.waitForTimeout(300);
+        const at = await page.evaluate(() => {
+            const b = document.querySelector('#recent-list .recent-open');
+            if (!b) return null;
+            const r = b.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+            const top = document.elementFromPoint(x, y);
+            return { x, y, onTop: !!top && b.contains(top), top: top ? `${top.tagName}#${top.id}.${[...top.classList].join('.')}` : '' };
+        });
+        if (at) await page.mouse.click(at.x, at.y);
+        const opened = at && await page.waitForFunction(() => !app.isLoading && app.files.length === 1 && document.body.dataset.view === 'single'
+            && !document.getElementById('main-interface').classList.contains('hidden'), null, { timeout: 10000 }).then(() => true).catch(() => false);
+        check('home: the project is a stack on the page, nothing over it', !!at && at.onTop, JSON.stringify(at));
+        check('... clicked, it opens in the viewer', !!opened, JSON.stringify(await page.evaluate(() => ({ files: app.files.length, view: document.body.dataset.view, loading: app.isLoading }))));
+        // Looking for the project a folder is in can't hold an open up: stuck
+        // for ever, or failing (something an older jEditor kept), the folder
+        // still opens on its own
+        const guard = await page.evaluate(async () => {
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const opfs = await navigator.storage.getDirectory();
+            const mk = (name) => opfs.getDirectoryHandle(name);
+            const was = { containing: Recents.containing, ms: Recents.CONTAINING_MS };
+            const opened = async (d) => {
+                window.showDirectoryPicker = async () => d;
+                const t = performance.now();
+                // (not awaited: stuck, it would never come back)
+                app.browseFolder();
+                for (let i = 0; i < 60 && !(app.dirHandle === d && !app.isLoading && app.files.length === 1); i++) await sleep(50);
+                return app.dirHandle === d && app.files.length === 1 && Math.round(performance.now() - t);
+            };
+            Recents.CONTAINING_MS = 300;
+            Recents.containing = () => new Promise(() => { });
+            const stuck = await opened(await mk('guard-stuck'));
+            Recents.containing = async () => { throw new Error('an old record'); };
+            const failing = await opened(await mk('guard-failing'));
+            Recents.containing = was.containing;
+            Recents.CONTAINING_MS = was.ms;
+            app._openGen = (app._openGen || 0) + 1; // (one left stuck, without the guard, stops)
+            return { stuck, failing };
+        });
+        check('... looking for its project stuck or failing, a folder still opens', !!guard.stuck && !!guard.failing && guard.stuck < 3000, JSON.stringify(guard));
+        // In the apps folders are told apart by their paths (network drives:
+        // Z:, \\server\share), never by asking the folders, which on Z: in
+        // WebView2 158 never answered (the owner's log, 22 November)
+        const paths = await page.evaluate(async () => {
+            const out = {};
+            const w = (a, b) => JSON.stringify(Recents.within(a, b));
+            out.within = [
+                w('Z:\\Archive Scan Jobs', 'z:/archive scan jobs/vandenberg/Ceremony') === '["vandenberg","Ceremony"]',
+                w('Z:\\Archive Scan Jobs\\', 'Z:\\Archive Scan Jobs\\vandenberg') === '["vandenberg"]',
+                w('Z:\\', 'Z:\\Lab Temp\\11-19') === '["Lab Temp","11-19"]',
+                w('\\\\server\\share\\Jobs', '\\\\SERVER\\share\\jobs\\Smith') === '["Smith"]',
+                w('Z:\\Archive', 'Z:\\Archive2\\x') === 'null',
+                w('Z:\\Archive', 'Z:\\Archive') === 'null',
+                w('Z:\\Archive', 'Y:\\Archive\\x') === 'null',
+                w('/Users/me/Orders', '/Users/me/Orders/Smith') === '["Smith"]',
+                w(undefined, 'Z:\\x') === 'null'
+            ];
+            // The apps (a stand-in): the folders' paths from the app, and
+            // folders that never answer when asked
+            const asked = [];
+            const never = (name) => ({
+                kind: 'directory', name,
+                resolve: () => { asked.push('resolve'); return new Promise(() => { }); },
+                isSameEntry: () => { asked.push('isSameEntry'); return new Promise(() => { }); }
+            });
+            const jobs = never('Archive Scan Jobs'), lab = never('Lab Temp'), old = never('Old');
+            const van = never('vandenberg'), day = never('11-19');
+            const where = new Map([[jobs, 'Z:\\Archive Scan Jobs'], [lab, 'Z:\\Lab Temp'], [van, 'Z:\\Archive Scan Jobs\\vandenberg'], [day, 'Z:\\Lab Temp\\11-19']]);
+            const was = { native: FolderCache.native, list: Recents.list };
+            FolderCache.native = () => ({ folderPath: async (h) => where.get(h) || null });
+            Recents.list = async () => [
+                { id: '1', name: 'Archive Scan Jobs', handle: jobs, path: 'Z:\\Archive Scan Jobs', openedAt: 3 },
+                { id: '2', name: 'Old', handle: old, openedAt: 2 }, // (kept before paths were)
+                { id: '3', name: 'Lab Temp', handle: lab, path: 'Z:\\Lab Temp', openedAt: 1 }
+            ];
+            try {
+                const t = performance.now();
+                const a = await Recents.containing(van);
+                const b = await Recents.containing(day);
+                const c = await Recents.containing(jobs);
+                const same = await Recents.sameFolder({ name: 'Lab Temp', handle: lab, path: 'z:/lab temp/' }, never('Lab Temp'), 'Z:\\Lab Temp');
+                out.found = !!a && a.rec.id === '1' && a.path === 'vandenberg' && !!b && b.rec.id === '3' && b.path === '11-19' && c === null && same;
+                out.ms = Math.round(performance.now() - t);
+            } finally {
+                FolderCache.native = was.native;
+                Recents.list = was.list;
+            }
+            out.asked = asked;
+            return out;
+        });
+        check('... paths: inside a project on a mapped drive, a share or a disk, any case or slash; never a look-alike', paths.within.every(Boolean), JSON.stringify(paths.within));
+        check('... the apps: its project found by path at once, the folders never asked (they don\'t answer on a network drive)', paths.found && paths.asked.length === 0 && paths.ms < 500, JSON.stringify(paths));
+        check('home suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7t5. The photo centered in the room it has ----
     // At Fit, the photo's center is the free area's: below the pills (or
     // macOS's toolbar), between the sidebar and Info's card, above the

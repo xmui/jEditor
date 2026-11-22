@@ -167,18 +167,29 @@
     }, true);
 
     // → the folder's path, or null if the app never sent it
+    // Whether two handles are the same folder, asked for 1.5 seconds at most
+    function askedSame(a, b) {
+        let timer = null;
+        const late = new Promise(res => { timer = setTimeout(() => res(false), 1500); });
+        return Promise.race([Promise.resolve().then(() => a.isSameEntry(b)).catch(() => false), late])
+            .then((same) => { clearTimeout(timer); return !!same; });
+    }
+
     async function folderPath(handle) {
         if (!handle || handle.kind !== 'directory') return null;
-        await dropping;
+        // (a drop's paths, if one's being asked: never waited on for long)
+        await Promise.race([dropping, new Promise(res => setTimeout(res, 3000))]);
         const name = String(handle.name || '').toLowerCase();
         const nameOf = (p) => (p.split(/[\\/]/).filter(Boolean).pop() || '').toLowerCase();
+        // The very handle first (no asking); then only folders of the same
+        // name are asked, each for a moment at most: on a network drive
+        // isSameEntry can take seconds, or never answer (WebView2 158 on
+        // Z:, 22 November), which held every open up
         const look = async (list) => {
-            // Same name first: a quick check before asking each one
-            const ordered = [...list.filter(r => nameOf(r.path) === name), ...list.filter(r => nameOf(r.path) !== name)];
-            for (const r of ordered) {
-                try {
-                    if (r.handle === handle || await r.handle.isSameEntry(handle)) return r;
-                } catch (e) { /* gone */ }
+            const mine = list.find(r => r.handle === handle);
+            if (mine) return mine;
+            for (const r of list.filter(r => nameOf(r.path) === name)) {
+                if (await askedSame(r.handle, handle)) return r;
             }
             return null;
         };
@@ -518,6 +529,10 @@
             post({ type: 'window', action });
         },
         // Shows jEditor's log in Explorer
+        // A line in the app's log (app/script.js: each step of an open)
+        log(level, text) {
+            log(level === 'error' || level === 'warn' ? level : 'info', text);
+        },
         async showLog() {
             return (await answer('showLog')).msg.ok;
         },
