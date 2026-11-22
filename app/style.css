@@ -13139,6 +13139,14 @@ body.touring .controls.idle button { pointer-events: auto; }
     padding-bottom: var(--gutter);
 }
 
+/* Settings → Photo fills the window height (off to start with): the whole
+   height, top to the strip, the pills over the photo (the owner, for those
+   who "don't care about the pill covering") */
+:root.fit-fill:not([data-skin]) body[data-view="single"]:not(.slideshow) #image-container {
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
 /* ---- Adjust's and Paint's panel floats over the photo (the owner: "on
    zoom in it fills to the top" and "it should also go behind the right
    pane", in every mode). The stage runs the whole width, under the panel
