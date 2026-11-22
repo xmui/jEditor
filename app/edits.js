@@ -19,8 +19,11 @@
 //
 // Without a project (a photo opened on its own, read-only folders) there's
 // nowhere to keep them, so a turn or a crop is written straight away.
-// Settings → Projects → Saving can turn keeping off (uiPrefs.keepEdits:
-// false): then a turn or a crop is written straight away in a project too,
+// Each project chooses, the first time it's opened (first-open.js asks:
+// keep, in edits.json beside the edits), and its ⋯ changes it later.
+// Settings → Projects → Saving holds the default for a project that hasn't
+// chosen (uiPrefs.keepEdits). Not keeping: a turn or a crop is written
+// straight away in a project too,
 // except on a photo that already has an edit kept (it stays kept until
 // it's saved over or discarded; adjustments and paint are always kept).
 // It also clears the open project's edits (clearStored).
@@ -29,6 +32,7 @@ const Edits = {
     FILE: 'edits.json',
 
     orphans: new Map(), // path → edit of photos not in the folder now
+    choice: null,       // this project's own: true keeps, false writes as you go; null: the default
 
     ICON: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/></svg>',
 
@@ -53,7 +57,9 @@ const Edits = {
         }
         this._dirty = false;
         this.orphans = new Map();
+        this.choice = null;
         this._loadedFor = null;
+        this.loaded = null;
     },
 
     // Edits are kept in the open project (not written into the photos)
@@ -61,12 +67,36 @@ const Edits = {
         return this.keeping() && this.canKeep();
     },
 
-    // Settings → Saving: Keep edits in jEditor (on unless turned off)
+    // This project keeps its edits in jEditor: as it chose, or the default
     keeping() {
+        if (this.choice !== null && this.canKeep()) return this.choice;
+        return this.defaultKeeping();
+    },
+
+    // Settings → Saving: Keep edits in jEditor, for a project that hasn't
+    // chosen (on unless turned off)
+    defaultKeeping() {
         const p = this.app && this.app.uiPrefs;
         return !(p && p.keepEdits === false);
     },
 
+    // This project has chosen (first-open.js asks the ones that haven't)
+    chosen() {
+        return this.choice !== null;
+    },
+
+    // The open project's own choice, kept with its edits; quiet: no message
+    setProjectKeeping(on, { quiet = false } = {}) {
+        if (!this.canKeep()) return;
+        on = !!on;
+        const was = this.keeping();
+        this.choice = on;
+        this._dirty = true;
+        this.saveSoon();
+        if (!quiet && was !== on) this.app.showToast(on ? 'This project keeps its edits in jEditor; the photos stay as they are' : 'This project saves edits into the photos as you go', 3000);
+    },
+
+    // The default (Settings → Saving)
     setKeeping(on) {
         const app = this.app;
         on = !!on;
@@ -129,7 +159,7 @@ const Edits = {
     async loadFor(ms) {
         let late = false;
         const dir = this.app.dirHandle;
-        const p = this.load().then(files => {
+        const p = this.loaded = this.load().then(files => {
             if (late && files.length && this.app.dirHandle === dir) this.changed(files, { save: false });
         }).catch(() => { });
         await Promise.race([p, new Promise(r => setTimeout(() => { late = true; r(); }, ms))]);
@@ -153,6 +183,9 @@ const Edits = {
             data = fh && JSON.parse(await (await fh.getFile()).text());
         } catch (e) { /* nothing kept */ }
         if (this._loadedFor !== app.dirHandle) return [];
+        // Its own choice (only `keep`: the old `defer` was written for every
+        // project, asked or not, so it says nothing about a choice)
+        this.choice = data && typeof data.keep === 'boolean' ? data.keep : null;
         const saved = new Map(Object.entries((data && data.edits) || {}));
         for (const f of app.files) {
             const rel = f.relPath || f.name;
@@ -251,7 +284,7 @@ const Edits = {
 
     // Nothing to keep
     isEmpty(data) {
-        return !Object.keys(data.edits).length;
+        return !Object.keys(data.edits).length && typeof data.keep !== 'boolean';
     },
 
     // Every edit, as edits.json holds them
@@ -259,7 +292,7 @@ const Edits = {
         const out = {};
         for (const [k, v] of this.orphans) out[k] = v;
         for (const f of this.app.files) if (f._edit) out[f.relPath || f.name] = f._edit;
-        return { version: 1, edits: out };
+        return this.choice === null ? { version: 1, edits: out } : { version: 1, keep: this.choice, edits: out };
     },
 
     // Written to the project's data folder (removed when there's nothing)

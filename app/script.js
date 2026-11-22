@@ -1004,6 +1004,7 @@ const app = {
         // Folder
         $('cust-on-open').addEventListener('change', (e) => Start.onOpenChanged(e.target.value));
         $('cust-keep-edits').addEventListener('change', (e) => Edits.setKeeping(e.target.checked));
+        $('cust-ask-saving').addEventListener('change', (e) => FirstOpen.setAsking(e.target.checked));
         $('cust-write-edits').addEventListener('change', (e) => { this.uiPrefs.writeEdits = e.target.value; this.saveUiPrefs(); });
         $('set-edits-clear').addEventListener('click', async () => { await Edits.clearStored(); this.renderCustomizePanel(); });
         $('cust-auto-check').addEventListener('change', (e) => {
@@ -1140,7 +1141,8 @@ const app = {
         $('cust-debug').checked = !!this.uiPrefs.debugConsole;
         $('cust-folder-cache').checked = this.uiPrefs.folderCache !== false;
         $('cust-auto-check').checked = this.uiPrefs.autoCheck !== false;
-        $('cust-keep-edits').checked = Edits.keeping();
+        $('cust-keep-edits').checked = Edits.defaultKeeping();
+        $('cust-ask-saving').checked = FirstOpen.asking();
         $('cust-write-edits').value = this.uiPrefs.writeEdits || 'ask';
         {
             // The open project's stored edits (edits.js)
@@ -8672,6 +8674,8 @@ const app = {
             ['Start slideshow', () => this.startSlideshow(), false, undefined, 'view.slideshow'],
             ['Full screen', () => this.toggleFullscreen(), false, undefined, 'view.fullscreen'],
             ['—'],
+            // How this project saves edits (edits.js: its own choice; first-open.js asks once)
+            ...(Edits.canKeep() ? [[Edits.keeping() ? 'Save edits into the photos as you go' : 'Keep edits in jEditor', () => Edits.setProjectKeeping(!Edits.keeping())]] : []),
             ...(this.dirHandle && !this.readOnlyMode && Edits.count() ? [
                 [`Write edits to file${Edits.count() === 1 ? '' : 's'} (${Edits.count().toLocaleString()} edited)`, () => this.saveOverOriginal(Edits.edited())]
             ] : []),
