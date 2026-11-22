@@ -6099,6 +6099,117 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- 7t5. The photo centered in the room it has ----
+    // At Fit, the photo's center is the free area's: below the pills (or
+    // macOS's toolbar), between the sidebar and Info's card, above the
+    // strip. With the sidebar and Info open and shut, after Left/Right and
+    // a resize, and under the Mac's native toolbar; zoomed, the spot under
+    // the pointer stays put
+    console.log('photo centered');
+    for (const mac of [false, true]) {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1400, height: 900 });
+        if (mac) await page.evaluate(() => { document.documentElement.dataset.platform = 'mac'; document.documentElement.classList.add('native-toolbar'); });
+        const r = await page.evaluate(async (mac) => {
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('centered', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('centered', { create: true });
+            const put = async (name, data) => {
+                const fh = await dir.getFileHandle(name, { create: true });
+                const w = await fh.createWritable(); await w.write(new Blob([data])); await w.close();
+            };
+            await put('a.jpg', await makeRealJpeg(1200, 800));
+            await put('b.jpg', await makeRealJpeg(600, 900));
+            await put('c.png', await makeRealPng(1600, 400, 300));
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            for (let i = 0; i < 50 && app.files.length < 3; i++) await sleep(50);
+            // (the photo's element is swapped as photos change: looked up each time)
+            const img = () => document.getElementById('current-image'), ic = document.getElementById('image-container');
+            // How tall macOS's toolbar is (--top-row is a calc: resolved
+            // on a probe)
+            const toolbar = () => {
+                const d = document.createElement('div');
+                d.style.cssText = 'position:fixed;visibility:hidden;height:var(--top-row)';
+                document.body.appendChild(d);
+                const h = d.getBoundingClientRect().height;
+                d.remove();
+                return h;
+            };
+            window.__toolbar = toolbar;
+            // The free area, from what's round it, not from viewBox
+            const free = () => {
+                const c = ic.getBoundingClientRect();
+                let top = c.top, right = c.right;
+                if (mac) top = Math.max(top, toolbar());
+                else {
+                    const pill = document.querySelector('header .file-info');
+                    if (pill && pill.offsetParent) top = Math.max(top, pill.getBoundingClientRect().bottom);
+                }
+                const info = document.getElementById('main-interface').classList.contains('info-open') && document.getElementById('info-panel');
+                if (info) right = Math.min(right, info.getBoundingClientRect().left);
+                return { left: c.left, top, right, bottom: c.bottom };
+            };
+            // Its center against the free area's (with the gutter kept
+            // under the pills), and never over its edges
+            const gutter = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gutter')) || 20;
+            const off = [];
+            const measure = async (label) => {
+                for (let i = 0; i < 80; i++) { await sleep(25); const ci = img(); if (ci && ci.complete && ci.offsetWidth && !ci.getAnimations().length) break; }
+                await sleep(300); // the card's slide and the photo's own easing
+                const p = img().getBoundingClientRect(), f = free();
+                const dx = (p.left + p.right) / 2 - (f.left + f.right) / 2;
+                const dy = (p.top + p.bottom) / 2 - (f.top + gutter + f.bottom) / 2;
+                if (Math.abs(dx) > 1.5 || Math.abs(dy) > 1.5 || p.top < f.top + gutter - 1 || p.bottom > f.bottom + 1 || p.left < f.left - 1 || p.right > f.right + 1)
+                    off.push(`${label} (${app.currentFile && app.currentFile.name}): off by ${Math.round(dx)}, ${Math.round(dy)}`);
+            };
+            app.openSingle(app.files[0]);
+            await measure('opened');
+            Folders.toggleRail();
+            await measure('sidebar toggled');
+            Folders.toggleRail();
+            await measure('sidebar back');
+            app.toggleInfoPanel(true);
+            await measure('Info open');
+            for (let k = 0; k < 2; k++) {
+                window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+                await measure(`Right ${k + 1}, Info open`);
+            }
+            app.toggleInfoPanel(false);
+            await measure('Info shut');
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+            await measure('Left');
+            // Zoomed on a spot: what's under it stays there
+            const ci = img();
+            ci.classList.add('follow');
+            const p0 = ci.getBoundingClientRect();
+            const x = p0.left + p0.width * 0.3, y = p0.top + p0.height * 0.7;
+            const fx = (x - p0.left) / p0.width, fy = (y - p0.top) / p0.height;
+            app.zoomTo(3, x, y);
+            await sleep(60);
+            const p1 = ci.getBoundingClientRect();
+            const zoomed = Math.abs(p1.left + fx * p1.width - x) < 1.5 && Math.abs(p1.top + fy * p1.height - y) < 1.5;
+            app.zoomTo(1);
+            ci.classList.remove('follow');
+            await measure('back at Fit');
+            return { off, zoomed };
+        }, mac);
+        await page.setViewportSize({ width: 900, height: 640 });
+        const resized = await page.evaluate(async (mac) => {
+            await new Promise(res => setTimeout(res, 500));
+            const p = document.getElementById('current-image').getBoundingClientRect(), vb = app.viewBox();
+            const top = mac ? window.__toolbar() : document.querySelector('header .file-info').getBoundingClientRect().bottom;
+            return Math.abs((p.left + p.right) / 2 - (vb.left + vb.width / 2)) < 1.5 && Math.abs((p.top + p.bottom) / 2 - (vb.top + vb.height / 2)) < 1.5
+                && vb.top - top >= 8 && vb.top - top <= 30;
+        }, mac);
+        const where = mac ? 'under the Mac\'s toolbar' : 'below the pills';
+        check(`the photo is centered in the room it has, ${where}: sidebar, Info, Left/Right`, r.off.length === 0, r.off.join('; '));
+        check(`... after a resize too, ${where}; zoomed, the spot under the pointer stays put`, resized && r.zoomed, JSON.stringify([resized, r.zoomed]));
+        check(`photo centered suite (${mac ? 'Mac' : 'Windows'}): no JS errors`, issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7u. Accent color ----
     console.log('accent color');
     {

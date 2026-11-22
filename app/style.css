@@ -13120,9 +13120,12 @@ body.touring .controls.idle button { pointer-events: auto; }
     padding-top: var(--head-room, 0px);
 }
 
-/* Under macOS 26's toolbar, at least its height, as before */
+/* Under macOS 26's toolbar the container already starts below it (its
+   margin, above), and the pills are in the toolbar: just the gutter under
+   it. (It was the toolbar's height again, which put the photo a whole
+   toolbar low, off center in the room it has) */
 :root.native-toolbar:not([data-skin]) body[data-view="single"]:not(.slideshow) #image-container {
-    padding-top: max(var(--top-row), var(--head-room, 0px));
+    padding-top: var(--gutter);
 }
 
 /* ---- Adjust's and Paint's panel floats over the photo (the owner: "on
