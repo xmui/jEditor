@@ -353,6 +353,8 @@ const Paint = {
                 // In a group (paint.groups)
                 ...(id(l.group) && Array.isArray(v.groups) && v.groups.some(g => g && g.id === l.group) ? { group: l.group } : {}),
                 ...(l.fixed ? { fixed: true } : {}),
+                // Turned (radians, in layer px): Free transform's box turned so
+                ...(typeof l.turn === 'number' && isFinite(l.turn) && l.turn && Math.abs(l.turn) <= Math.PI ? { turn: +l.turn.toFixed(6) } : {}),
                 // Its mask's rev (a file of its own, maskFile): what shows
                 ...(id(l.mask) ? { mask: l.mask } : {}),
                 // A text layer: its words and how they're set, to change

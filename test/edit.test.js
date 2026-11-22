@@ -2653,6 +2653,163 @@ const PROJECT = `
         await page.close();
     }
 
+    // ---- Paint: Free transform's box keeps the layer's angle ----
+    if (wanted('paintturnbox')) {
+        console.log('paint: a turned layer\'s transform box is turned with it (paint-editor.js: liftTurned, commitFloat)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 200; c.height = 200;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 200, 200);
+                await openProject('tb', { 't.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                P.opts.snap = false;
+                P.opts.keepRatio = true;
+                P.addLayer();
+                const l = P.layer(), g = () => l.canvas.getContext('2d', { willReadFrequently: true });
+                g().fillStyle = '#ff0000'; g().fillRect(70, 85, 60, 30);
+                const st = document.getElementById('paint-stage');
+                const sc = (q) => { const sp = P.V().transformPoint(q); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                const drag = (from, to, e = {}) => {
+                    st.dispatchEvent(new PointerEvent('pointerdown', { ...sc(from), ...e, pointerId: 1, bubbles: true, button: 0 }));
+                    st.dispatchEvent(new PointerEvent('pointermove', { ...sc(to), ...e, pointerId: 1, bubbles: true }));
+                    out.mid = out.mid || [];
+                    const h = P.floatHandles();
+                    out.mid.push(Math.round(P.float.t.rot * 180 / Math.PI), Math.round(Math.atan2(h.corners[1][1].y - h.corners[0][1].y, h.corners[1][1].x - h.corners[0][1].x) * 180 / Math.PI));
+                    st.dispatchEvent(new PointerEvent('pointerup', { ...sc(to), ...e, pointerId: 1, bubbles: true }));
+                };
+                const deg = () => Math.round(P.float.t.rot * 180 / Math.PI);
+                const size = () => [Math.round(P.float.w * Math.abs(P.float.t.sx)), Math.round(P.float.h * Math.abs(P.float.t.sy))];
+                // The box hugs it: just inside each corner is the layer's,
+                // just outside isn't (the box's corners, onto the layer)
+                const hugs = () => {
+                    const h = P.floatHandles(), cs = h.corners.map(([, q]) => q);
+                    const m = { x: cs.reduce((s, q) => s + q.x, 0) / 4, y: cs.reduce((s, q) => s + q.y, 0) / 4 };
+                    const at = (q, k) => P.Ci.transformPoint({ x: m.x + (q.x - m.x) * k, y: m.y + (q.y - m.y) * k });
+                    P.commitFloat();
+                    const alpha = (p) => g().getImageData(Math.round(p.x), Math.round(p.y), 1, 1).data[3];
+                    const res = cs.map(q => [alpha(at(q, 0.9)) > 200, alpha(at(q, 1.1)) < 30]).flat().every(Boolean);
+                    pressKey('t', { ctrlKey: true });
+                    return res;
+                };
+                // Turned with the knob: the box turns with it as it's dragged
+                step = 'turn';
+                pressKey('t', { ctrlKey: true });
+                const h0 = P.floatHandles(), mid0 = { x: 100, y: 100 };
+                const kn = h0.knob, r0 = Math.hypot(kn.x - mid0.x, kn.y - mid0.y);
+                const to = (a) => ({ x: mid0.x + r0 * Math.sin(a * Math.PI / 180), y: mid0.y - r0 * Math.cos(a * Math.PI / 180) });
+                drag(kn, to(30));
+                out.dragged = deg();
+                P.commitFloat();
+                out.kept = Math.round(l.turn * 180 / Math.PI);
+                // Ctrl+T again: turned, the size it was (not a bigger straight box)
+                step = 'reopen';
+                pressKey('t', { ctrlKey: true });
+                out.reopen = [deg(), ...size(), !!P.float.own];
+                out.hugs1 = hugs();
+                // Turned on from there, with Shift (in steps): from its angle
+                step = 'again';
+                const k2 = P.floatHandles().knob;
+                drag(k2, to(47), { shiftKey: true });
+                out.again = deg();
+                P.commitFloat();
+                pressKey('t', { ctrlKey: true });
+                out.again2 = [deg(), ...size()];
+                // A side stretches it along its own turned side only
+                step = 'edge';
+                const he = P.floatHandles(), e = he.edges.find(x => x[0] === 'e')[1];
+                out.cursor = (P.floatCursor({ ox: e.x, oy: e.y }), P._floatCursor);
+                const dir = { x: Math.cos(P.float.t.rot), y: Math.sin(P.float.t.rot) };
+                drag(e, { x: e.x + dir.x * 15, y: e.y + dir.y * 15 });
+                out.edge = [deg(), ...size()];
+                // A corner keeps its proportions while the lock is on; Shift frees them
+                step = 'corner';
+                const se = P.floatHandles().corners.find(x => x[0] === 'se')[1];
+                const ratio0 = P.float.t.sx / P.float.t.sy;
+                drag(se, { x: se.x + 12, y: se.y + 4 });
+                out.locked = [deg(), Math.abs(P.float.t.sx / P.float.t.sy - ratio0) < 1e-6];
+                const se2 = P.floatHandles().corners.find(x => x[0] === 'se')[1];
+                drag(se2, { x: se2.x + 12, y: se2.y - 10 }, { shiftKey: true });
+                out.freed = [deg(), Math.abs(P.float.t.sx / P.float.t.sy - ratio0) > 0.01];
+                out.hugs2 = hugs();
+                // Undo puts the angle back with the pixels
+                step = 'undo';
+                P.float.t.rot = 80 * Math.PI / 180;
+                P.commitFloat();
+                pressKey('t', { ctrlKey: true });
+                out.at80 = deg();
+                P.cancelFloat();
+                pressKey('z', { ctrlKey: true });
+                pressKey('t', { ctrlKey: true });
+                out.undone = deg();
+                P.cancelFloat();
+                // Made plain pixels: still lifted turned, from the angle kept, hugging it
+                step = 'pixels';
+                P.rasterize(P.cur);
+                pressKey('t', { ctrlKey: true });
+                out.pixels = [deg(), !P.float.own, !!P.float.raw];
+                const s0 = size();
+                out.pixelSize = s0;
+                // Only moved: put back as it was, slid (not turned back and forth, softened)
+                const count = () => { const d = g().getImageData(0, 0, 200, 200).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] === 255) n++; return n; };
+                P.cancelFloat();
+                const n0 = count();
+                pressKey('t', { ctrlKey: true });
+                P.float.t.tx = 5; P.float.t.ty = -3;
+                P.commitFloat();
+                out.slid = [n0, count(), Math.round(l.turn * 180 / Math.PI)];
+                // A text layer turned: lifted turned too, and still text when put
+                // down again, its words at the same angle
+                step = 'text';
+                P.setTool('text');
+                Object.assign(P.opts, { fontSize: 30, bold: false, italic: false, opacity: 100 });
+                const ta = document.getElementById('paint-text');
+                st.dispatchEvent(new PointerEvent('pointerdown', { ...sc({ x: 40, y: 140 }), pointerId: 1, bubbles: true, button: 0 }));
+                st.dispatchEvent(new PointerEvent('pointerup', { ...sc({ x: 40, y: 140 }), pointerId: 1, bubbles: true }));
+                await sleep(20);
+                ta.value = 'Hey'; ta.dispatchEvent(new Event('input'));
+                ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
+                const tl = P.layer();
+                pressKey('t', { ctrlKey: true });
+                P.float.t.rot = 20 * Math.PI / 180;
+                P.commitFloat();
+                const ang = (m) => Math.round(Math.atan2(m[1], m[0]) * 180 / Math.PI);
+                pressKey('t', { ctrlKey: true });
+                out.text = [deg(), !P.float.raw];
+                P.float.t.tx = 4;
+                P.commitFloat();
+                out.text.push(!!tl.text, tl.text && ang(tl.text.m));
+                // Kept with the project
+                const kept = Paint.clean({ id: 'p', w: 10, h: 10, layers: [{ id: 'l', rev: 'r', turn: 0.5 }] });
+                out.saved = kept.layers[0].turn;
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        if (r.error) console.log(r.error);
+        const near = (a, b, d = 1) => Math.abs(a - b) <= d;
+        check('paint turned box: while the knob is dragged the box turns with the layer', r.mid && r.mid[0] === r.mid[1] && near(r.dragged, 30), JSON.stringify(r));
+        check('paint turned box: put down, the layer keeps its angle', near(r.kept, 30), JSON.stringify(r));
+        check('paint turned box: Ctrl+T again lifts it turned, at its own size (not a bigger straight box)', r.reopen && near(r.reopen[0], 30) && r.reopen[1] === 60 && r.reopen[2] === 30 && r.reopen[3], JSON.stringify(r.reopen));
+        check('paint turned box: the box hugs its edges after it\'s put down and lifted again', r.hugs1 && r.hugs2, JSON.stringify(r));
+        check('paint turned box: turned on from there (Shift, in steps), it comes back at that angle', r.again === 45 && r.again2 && r.again2[0] === 45 && r.again2[1] === 60 && r.again2[2] === 30, JSON.stringify(r));
+        check('paint turned box: a side\'s cursor is turned with the box', r.cursor === 'nwse-resize', JSON.stringify(r.cursor));
+        check('paint turned box: a side stretches it along its turned side only', r.edge && r.edge[0] === 45 && r.edge[1] > 70 && r.edge[2] === 30, JSON.stringify(r.edge));
+        check('paint turned box: a corner keeps its proportions with the lock on, Shift frees them; the angle stays', r.locked && r.locked[0] === 45 && r.locked[1] && r.freed && r.freed[0] === 45 && r.freed[1], JSON.stringify(r));
+        check('paint turned box: Undo puts the angle back', r.at80 === 80 && r.undone === 45, JSON.stringify(r));
+        check('paint turned box: made pixels, it\'s still lifted at its angle, hugging it', r.pixels && r.pixels[0] === 45 && r.pixels[1] && r.pixels[2] && r.hugs2, JSON.stringify(r));
+        check('paint turned box: only moved, it\'s put down as it was, not softened', r.slid && r.slid[0] === r.slid[1] && r.slid[2] === 45, JSON.stringify(r.slid));
+        check('paint turned box: a turned text layer is lifted turned, and stays text at that angle', r.text && r.text.join() === '20,true,true,20', JSON.stringify(r.text));
+        check('paint turned box: the angle is kept with the project', r.saved === 0.5, JSON.stringify(r.saved));
+        check('paint turned box: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Paint: text layers ----
     if (wanted('painttext')) {
         console.log('paint: text layers (paint-editor.js, paint.js)');
