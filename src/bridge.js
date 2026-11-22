@@ -276,6 +276,17 @@
         async restore(tokens) {
             return (await answer('restore', { tokens })).msg.results;
         },
+        // The paths of folders seen with this name (newest first): for a
+        // recent folder kept before its path was (app/recents.js), found
+        // without asking the folder itself
+        async pathsNamed(name) {
+            const want = String(name || '').toLowerCase();
+            const nameOf = (p) => (String(p).split(/[\\/]/).filter(Boolean).pop() || '').toLowerCase();
+            const all = [...known, ...(await loadStored())].sort((a, b) => b.at - a.at);
+            const out = [];
+            for (const r of all) if (r && typeof r.path === 'string' && nameOf(r.path) === want && !out.some(p => p.toLowerCase() === r.path.toLowerCase())) out.push(r.path);
+            return out;
+        },
         // Open a folder by its path (an order from the stored list)
         async openPath(path) {
             return (await answer('openPath', { path })).msg.ok;

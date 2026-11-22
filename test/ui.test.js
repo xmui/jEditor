@@ -6220,6 +6220,42 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         });
         check('... paths: inside a project on a mapped drive, a share or a disk, any case or slash; never a look-alike', paths.within.every(Boolean), JSON.stringify(paths.within));
         check('... the apps: its project found by path at once, the folders never asked (they don\'t answer on a network drive)', paths.found && paths.asked.length === 0 && paths.ms < 500, JSON.stringify(paths));
+        // A Recent project clicked in the apps opens by its path, as Open
+        // folder does: the handle kept for it is never asked (its permission
+        // and listing never answered on Z: in WebView2 158: the owner's
+        // beta 154, a click that did nothing). One kept before paths were
+        // finds its path from the folders the app has seen by that name
+        const recent = await page.evaluate(async () => {
+            const asked = [], opened = [], lines = [];
+            const never = (name) => ({
+                kind: 'directory', name,
+                queryPermission: () => { asked.push('queryPermission'); return new Promise(() => { }); },
+                requestPermission: () => { asked.push('requestPermission'); return new Promise(() => { }); },
+                values: () => { asked.push('values'); return { [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => { }) }) }; },
+                isSameEntry: () => { asked.push('isSameEntry'); return new Promise(() => { }); },
+                resolve: () => { asked.push('resolve'); return new Promise(() => { }); }
+            });
+            const was = { native: FolderCache.native, tx: Recents.tx };
+            const saved = [];
+            FolderCache.native = () => ({
+                openPath: async (p) => { opened.push(p); return true; },
+                pathsNamed: async (n) => n === 'vandenberg' ? ['Z:\\Archive Scan Jobs\\vandenberg'] : n === 'Twice' ? ['Z:\\a\\Twice', 'Y:\\Twice'] : [],
+                folderPath: async () => null,
+                log: (level, text) => lines.push(text)
+            });
+            Recents.tx = async (mode, fn) => { fn({ put: (r) => saved.push(r.path) }); return true; };
+            try {
+                await Recents.open({ id: 'a', name: 'Smith', handle: never('Smith'), path: '\\\\mc-S1-labnas1\\general\\Smith' });
+                await Recents.open({ id: 'b', name: 'vandenberg', handle: never('vandenberg') });
+            } finally {
+                FolderCache.native = was.native;
+                Recents.tx = was.tx;
+            }
+            return { asked, opened, saved, clicked: lines.filter(l => /clicked/.test(l)).length };
+        });
+        check('... the apps: a Recent project opens by its path (a share, or found for one kept before), its kept handle never asked', recent.asked.length === 0
+            && JSON.stringify(recent.opened) === JSON.stringify(['\\\\mc-S1-labnas1\\general\\Smith', 'Z:\\Archive Scan Jobs\\vandenberg'])
+            && JSON.stringify(recent.saved) === JSON.stringify(['Z:\\Archive Scan Jobs\\vandenberg']) && recent.clicked === 2, JSON.stringify(recent));
         check('home suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
