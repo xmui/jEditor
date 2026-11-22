@@ -6099,6 +6099,45 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- 7t4b. Home: a project clicked opens ----
+    // A project opened once lies on the home page as a stack; jEditor
+    // opened again, a real click on it (the mouse, so whatever lies over
+    // it would take the click instead) opens it in the viewer
+    console.log('home: a project clicked opens');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1280, height: 860 });
+        await page.evaluate(async () => {
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('homeclick', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('homeclick', { create: true });
+            const fh = await dir.getFileHandle('a.jpg', { create: true });
+            const w = await fh.createWritable(); await w.write(new Blob([await makeRealJpeg(400, 300)])); await w.close();
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            for (let i = 0; i < 60 && app.files.length < 1; i++) await sleep(50);
+            await sleep(400); // (kept in Recent)
+        });
+        await page.reload();
+        await page.waitForFunction(() => typeof app !== 'undefined' && !!document.querySelector('#recent-list .recent-open'), null, { timeout: 10000 }).catch(() => null);
+        await page.waitForTimeout(300);
+        const at = await page.evaluate(() => {
+            const b = document.querySelector('#recent-list .recent-open');
+            if (!b) return null;
+            const r = b.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+            const top = document.elementFromPoint(x, y);
+            return { x, y, onTop: !!top && b.contains(top), top: top ? `${top.tagName}#${top.id}.${[...top.classList].join('.')}` : '' };
+        });
+        if (at) await page.mouse.click(at.x, at.y);
+        const opened = at && await page.waitForFunction(() => !app.isLoading && app.files.length === 1 && document.body.dataset.view === 'single'
+            && !document.getElementById('main-interface').classList.contains('hidden'), null, { timeout: 10000 }).then(() => true).catch(() => false);
+        check('home: the project is a stack on the page, nothing over it', !!at && at.onTop, JSON.stringify(at));
+        check('... clicked, it opens in the viewer', !!opened, JSON.stringify(await page.evaluate(() => ({ files: app.files.length, view: document.body.dataset.view, loading: app.isLoading }))));
+        check('home suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7t5. The photo centered in the room it has ----
     // At Fit, the photo's center is the free area's: below the pills (or
     // macOS's toolbar), between the sidebar and Info's card, above the
