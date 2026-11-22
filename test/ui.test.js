@@ -4255,9 +4255,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                 return d;
             };
             const openIt = async (d) => { window.showDirectoryPicker = async () => d; await app.browseFolder(); await wait(() => app.dirHandle === d && !app.isLoading); };
-            localStorage.removeItem('jeditor.firstOpen');
-            // No question about saving: in a browser (no projects folder to
-            // ask about) the first Open a folder goes straight to the card
+            // (the welcome not asked yet; a project's own question about
+            // saving stays off here: edit.test.js savequestion has it)
+            localStorage.setItem('jeditor.firstOpen', JSON.stringify({ askSaving: false }));
+            // No welcome: in a browser (no projects folder to ask about)
+            // the first Open a folder goes straight to the card
             document.getElementById('btn-browse-folder').click();
             await wait(() => shown('open-card'));
             out.noQuestion = !document.getElementById('first-open') && shown('open-card');
