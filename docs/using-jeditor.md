@@ -314,7 +314,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `Ctrl+Shift+S` | Sync: the outlined photo's adjustments onto the rest of the selection, choosing which groups go |
 | `Ctrl+Alt+Shift+S` | Auto Sync, in Adjust: what you change goes onto the others selected in the strip too |
 | `Ctrl+C` / `Ctrl+V` | Copy the photo as it looks (crop, adjustments and paint), to paste into another app / paste a picture from another app: saved as `Pasted.png` in the folder you're in and opened in Paint (with no project open, you choose where it's saved) |
-| `+` `-` `0` | Zoom in, zoom out, fit. The mouse wheel zooms on the pointer, up to 3200% (past 100% the pixels show as sharp squares, with no smoothing). Double-click the photo: in to 100% on that spot, again to fit. On a Mac's trackpad, pinch to zoom and move a zoomed photo with two fingers. |
+| `+` `-` `0` | Zoom in, zoom out, fit. The mouse wheel zooms on the pointer, up to 3200% (past 100% the pixels show as sharp squares, with no smoothing). Double-click the photo: in to 100% on that spot, again to fit. Drag the photo to move it, at any zoom, Fit too: it stays where you put it until you go to another photo, or press `0` or double-click back to fit. On a Mac's trackpad, pinch to zoom and move the photo with two fingers. At Fit the photo sits in the middle, with as much room below as above; **Settings → Toolbar & keys → Photo fills the window height** uses the whole height instead, with the top buttons over the photo. |
 | `I` | Info: the photo in single view; in the grid, the folder you're in (photos, total size, types, dates, flags, room taken by `.jeditor`), or the selection |
 | `F` | Full screen |
 | `F2` | Rename (the selected photos in grid view) |
