@@ -1360,7 +1360,12 @@ const Picker = {
         document.addEventListener('mousedown', (e) => {
             if (this.isOpen() && !el.contains(e.target) && !(this.anchor && this.anchor.contains(e.target)) && !e.target.closest('#context-menu')) this.close();
         }, true);
-        window.addEventListener('resize', () => this.close());
+        // The window made another size closes it (it was placed for the
+        // last one); a resize event that leaves the size as it was doesn't
+        // (the Mac's toolbar, redrawn, can send one)
+        window.addEventListener('resize', () => {
+            if (this.isOpen() && (innerWidth !== this._w || innerHeight !== this._h)) this.close();
+        });
     },
 
     isOpen() { return !!this.el && !this.el.hidden; },
@@ -1379,6 +1384,8 @@ const Picker = {
         this.input.value = '';
         if (anchor) anchor.setAttribute('aria-expanded', 'true');
         this.el.hidden = false;
+        this._w = innerWidth;
+        this._h = innerHeight;
         this.place();
         this.input.focus({ preventScroll: true });
         await this.load();

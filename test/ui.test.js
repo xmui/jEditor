@@ -448,6 +448,17 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('current photo follows sort', r.current === 'b.png', r.current);
         check('selection follows sort', r.selection === 'b.png,c.png', r.selection);
         check('grid classes track files', r.gridClasses === 'c.png:S- b.png:SA a.png:--', r.gridClasses);
+        // A tie (scans saved in the same second): by name, whatever the
+        // last sort left
+        const tie = await page.evaluate(async () => {
+            const png = new Uint8Array(await (await new Promise(res => { const c = document.createElement('canvas'); c.width = c.height = 1; c.toBlob(res, 'image/png'); })).arrayBuffer());
+            app.files = ['s3.png', 's1.png', 's10.png', 's2.png'].map((n, i) => makeFakeFile(n, png, 'image/png', 400 - i * 100, 5000));
+            const sel = document.getElementById('sort-mode');
+            const sortBy = (v) => { sel.value = v; sel.dispatchEvent(new Event('change')); return app.files.map(f => f.name).join(); };
+            sortBy('size_asc');
+            return [sortBy('date_asc'), sortBy('date_desc')];
+        });
+        check('tied dates sort by name, not the last sort', tie[0] === 's1.png,s2.png,s3.png,s10.png' && tie[1] === tie[0], tie.join(' | '));
         await page.close();
     }
 
@@ -1481,6 +1492,45 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    console.log('motion: the mode switch shows one chip; Animations off stops every transition; nothing eases its layout (style.css)');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const files = Array.from({ length: 12 }, (_, i) => makeFakeFile(`c${i}.jpg`, makeJpegBytes(), 'image/jpeg'));
+            app.files = files;
+            app.dirHandle = null;
+            app.setView('grid');
+            app.renderGrid({ sync: true });
+            await new Promise(r => setTimeout(r, 200));
+            const root = document.documentElement;
+            // Gliding, the chip is the glide alone, not the button under it too
+            const seg = document.querySelector('.mode-row .mode-seg.glides');
+            const on = seg && seg.querySelector('button.on');
+            out.glides = !!on;
+            out.onClear = !!on && getComputedStyle(on).backgroundColor === 'rgba(0, 0, 0, 0)';
+            // Info: the grid makes room at once, not over the frames of a slide
+            app.toggleInfoPanel(true);
+            out.gridEased = getComputedStyle(app.elements.gridView).transitionProperty.includes('margin');
+            app.toggleInfoPanel(false);
+            // Adjust's and Paint's screen moves beside the sidebar at once
+            const screen = document.querySelector('.mode-screen');
+            out.screenEased = !!screen && getComputedStyle(screen).transitionProperty.includes('left');
+            // Animations off: the durations every transition is built on are 0
+            root.dataset.motion = 'off';
+            const s = getComputedStyle(root);
+            out.off = ['--dur-fast', '--dur-base', '--dur-slow'].map(v => s.getPropertyValue(v).trim());
+            root.dataset.motion = 'on';
+            return out;
+        });
+        check('the floating mode switch shows one chip as it glides, not the button lit under it too', r.glides && r.onClear, JSON.stringify(r));
+        check('Info and the sidebar move the grid, Adjust and Paint at once, not by easing their layout', !r.gridEased && !r.screenEased, JSON.stringify(r));
+        check('Animations off sets every duration to 0', r.off.every(v => v === '0ms'), JSON.stringify(r));
+        check('mode switch chip: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7a. Lossless rotation for scanner JPEGs (EXIF without Orientation) ----
     console.log('lossless rotation: EXIF without orientation');
     {
@@ -2470,6 +2520,69 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('debug console is off until turned on in Settings', r.debugOff);
         check('debug console shows a performance readout', r.perf && r.perfShown);
         check('viewer suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7d2. Review fixes: the ends of a folder, a folder left mid-thumbnail, redo ----
+    console.log('viewer & thumbnails: folder ends, folder switch, redo');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const png = new Uint8Array(await (await new Promise(res => { const c = document.createElement('canvas'); c.width = c.height = 1; c.toBlob(res, 'image/png'); })).arrayBuffer());
+            // On the first photo, the last is its neighbour (Left wraps to
+            // it): its decode is kept, one in the middle goes
+            app.files = Array.from({ length: 12 }, (_, i) => makeFakeFile(`p${i}.png`, png, 'image/png'));
+            for (const f of app.files) { f.fullImageUrl = URL.createObjectURL(new Blob([png])); f._decodedEl = { _decoded: true }; }
+            app.currentFile = app.files[0];
+            app.cleanupObjectURLs();
+            const kept = (i) => !!app.files[i].fullImageUrl && !!app.files[i]._decodedEl;
+            out.ends = [kept(1), kept(11), kept(8), kept(7), kept(5)];
+
+            // A thumbnail still being made when another folder opens: not
+            // asked of that folder, nor cached as this photo's
+            // Noise, so it's over the size that serves as its own thumbnail
+            const nc = document.createElement('canvas'); nc.width = nc.height = 200;
+            const nd = nc.getContext('2d').createImageData(200, 200);
+            for (let i = 0; i < nd.data.length; i++) nd.data[i] = (i % 4 === 3) ? 255 : Math.random() * 256;
+            nc.getContext('2d').putImageData(nd, 0, 0);
+            const big = new Uint8Array(await (await new Promise(res => nc.toBlob(res, 'image/png'))).arrayBuffer());
+            out.bigEnough = big.length > app.THUMB_FAST_PATH_BYTES;
+            const fe = makeFakeFile('scan0001.png', big, 'image/png');
+            app.files = [fe];
+            const was = app.dirHandle, idbGet = app.idbGetThumb, idbPut = app.idbPutThumb, fcGet = FolderCache.getThumb, fcPut = FolderCache.putThumb;
+            let release, puts = 0, asked = 0;
+            const gate = new Promise(res => { release = res; });
+            app.dirHandle = makeDir('Order A');
+            app.idbGetThumb = async () => { await gate; return null; };
+            app.idbPutThumb = () => { puts++; };
+            FolderCache.getThumb = async () => { asked++; return null; };
+            FolderCache.putThumb = () => { puts++; };
+            const made = app.makeThumbnail(fe);
+            await new Promise(res => setTimeout(res, 20));
+            app.dirHandle = makeDir('Order B');
+            release();
+            await made;
+            out.switched = [puts, asked, !!fe.thumbnailUrl];
+            // ...and made as usual when nothing changed
+            app.idbGetThumb = async () => null;
+            await app.makeThumbnail(fe);
+            out.same = [puts > 0, !!fe.thumbnailUrl];
+            Object.assign(app, { dirHandle: was, idbGetThumb: idbGet, idbPutThumb: idbPut });
+            Object.assign(FolderCache, { getThumb: fcGet, putThumb: fcPut });
+
+            // Redo's "still here": those open, in their order
+            const a = makeFakeFile('a.png', png, 'image/png'), b = makeFakeFile('b.png', png, 'image/png'), gone = makeFakeFile('c.png', png, 'image/png');
+            app.files = [b, a];
+            out.still = app.stillHere([a, gone, b]).map(f => f.name).join();
+            app.files = [];
+            return out;
+        });
+        check('the first photo keeps the last one decoded (its neighbour round the end)', r.ends.join() === 'true,true,true,false,false', r.ends.join());
+        check('a thumbnail from a folder just left isn\'t cached or asked of the new one', r.switched.join() === '0,0,false', r.switched.join());
+        check('...and is made and cached when the folder stays', r.bigEnough && r.same.join() === 'true,true', JSON.stringify([r.bigEnough, r.same]));
+        check('redo finds the photos still open', r.still === 'a.png,b.png', r.still);
+        check('review fixes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

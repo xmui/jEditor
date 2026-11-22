@@ -509,6 +509,81 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('adjustfix')) {
+        console.log('Adjust: opening one photo over another, 1:1 after a failed read, the RAW preview read once (adjust.js, raw.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const photo = async (w, h, color) => {
+                const c = document.createElement('canvas'); c.width = w; c.height = h;
+                const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, w, h);
+                return canvasBlob(c);
+            };
+            await openProject('adjfix', { 'a.png': await photo(300, 200, '#c33'), 'b.png': await photo(160, 240, '#33c') });
+            const [A, B] = ['a.png', 'b.png'].map(n => app.files.find(f => f.name === n));
+            // A opens slowly; Adjust is closed and B opened before A loads
+            const real = app.getDisplaySource.bind(app);
+            let freeA;
+            const heldA = new Promise(res => { freeA = res; });
+            app.getDisplaySource = async (file, o) => {
+                const src = await real(file, o);
+                if (file === A) await heldA;
+                return src;
+            };
+            const first = Adjust.open(app, A);
+            await sleep(50);
+            Adjust.close();
+            await Adjust.open(app, B);
+            const before = [Adjust.file === B, Adjust.base && Adjust.base.width, Adjust.PW, Adjust.PH];
+            freeA();
+            await first;
+            await sleep(50);
+            app.getDisplaySource = real;
+            Adjust.draw();
+            out.race = [...before, Adjust.file === B, Adjust.base && Adjust.base.width, Adjust.base && Adjust.base.height, Adjust.PW, Adjust.PH, Adjust.w, Adjust.h];
+            // The full-size photo for 1:1: a failed read is tried again
+            const read = app.readImage.bind(app);
+            let fails = 1;
+            app.readImage = async (f) => { if (fails-- > 0) throw new Error('not yet'); return read(f); };
+            const c1 = await Adjust.loadFull();
+            const c2 = await Adjust.loadFull();
+            app.readImage = read;
+            out.full = [c1 === null, !!c2 && c2.width, !!c2 && c2.height];
+            // Redrawn with nothing changed: the histogram isn't made again
+            Adjust.draw();
+            const h1 = Adjust.hist;
+            Adjust.draw();
+            const same = Adjust.hist === h1;
+            Adjust.a.exposure = 1;
+            Adjust.draw();
+            out.hist = [same, Adjust.hist !== h1];
+            // Halation's glow: made once per change
+            Adjust.a.halation = 50;
+            Adjust.draw();
+            const g1 = Adjust.glow;
+            Adjust.draw();
+            out.glow = [!!g1, Adjust.glow === g1];
+            Adjust.close();
+            // A RAW's preview asked for twice at once: the file searched once
+            const findReal = Raw.find.bind(Raw);
+            let finds = 0;
+            Raw.find = async (b) => { finds++; await sleep(20); return findReal(b); };
+            const raw = new File([new Uint8Array(64)], 'x.dng', { lastModified: 1 });
+            const [p1, p2] = await Promise.all([Raw.preview(raw), Raw.preview(raw)]);
+            Raw.find = findReal;
+            out.raw = [finds, p1 === p2];
+            return out;
+        });
+        check('adjust: a photo that loads after another was opened leaves the other\'s picture and size alone',
+            JSON.stringify(r.race) === JSON.stringify([true, 160, 160, 240, true, 160, 240, 160, 240, 160, 240]), JSON.stringify(r.race));
+        check('adjust: 1:1\'s full-size photo is read again after a failed read', r.full[0] && r.full[1] === 160 && r.full[2] === 240, JSON.stringify(r.full));
+        check('adjust: the histogram is made again only when the settings change', r.hist[0] && r.hist[1], JSON.stringify(r.hist));
+        check('adjust: halation\'s glow is made once per change, not on every redraw', r.glow[0] && r.glow[1], JSON.stringify(r.glow));
+        check('raw: a preview asked for twice at once reads the file once', r.raw[0] === 1 && r.raw[1], JSON.stringify(r.raw));
+        check('adjustfix: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     if (wanted('sync')) {
         console.log('sync (adjust-sync.js)');
         const { page, issues } = await open();
@@ -3966,6 +4041,137 @@ const PROJECT = `
         check('paint lag: none with Animations off', r.off, JSON.stringify(r));
         check('paint lag: Blur softens the edge on the canvas\'s own blur; nothing is read back but the step kept when it ends (its before and after)', r.gpu && r.blurReads <= 2 && r.soft[0] < 128 && r.soft[0] > 10 && r.soft[1] > 10 && r.soft[1] < 128 && r.soft[2] === 0 && r.soft[3] === 0, JSON.stringify(r));
         check('paint lag: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- Paint: the review's fixes (undo, history size, compositing) ----
+    if (wanted('paintreview')) {
+        console.log('paint: feathered edges undone, moves and nudges kept small, pastes keep the layer, strokes composite once (paint-editor.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 400; c.height = 300;
+                const cg = c.getContext('2d'); cg.fillStyle = '#808080'; cg.fillRect(0, 0, 400, 300);
+                await openProject('review', { 'r.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                const all = (l) => l.canvas.getContext('2d').getImageData(0, 0, P.W, P.H).data;
+                const same = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+                const rect = (x, y, w, h) => { const p = new Path2D(); p.rect(x, y, w, h); return p; };
+                const at = (l, x, y) => { const q = P.Ci.transformPoint({ x, y }); return [...l.canvas.getContext('2d').getImageData(Math.floor(q.x), Math.floor(q.y), 1, 1).data]; };
+                const fill = (l, colour, x, y, w, h) => { const g = l.canvas.getContext('2d'); g.save(); g.setTransform(P.Ci); g.fillStyle = colour; g.fillRect(x, y, w, h); g.restore(); };
+                const last = () => P.history[P.history.length - 1];
+                // A feathered selection deleted: Undo puts back its faint edge too
+                step = 'feather';
+                P.addLayer();
+                const l = P.layer();
+                fill(l, '#ff0000', 0, 0, 400, 300);
+                const full = all(l);
+                P.setTool('rect-select');
+                P.selectPath(rect(100, 100, 100, 80), 'new');
+                await P.featherSelection(12);
+                const b = P.sel.box;
+                out.boxFringe = b.x < 95 && b.y < 95 && b.x + b.w > 205;
+                P.clearSelected();
+                out.cleared = at(l, 150, 140)[3] === 0 && at(l, 93, 140)[3] < 255 && at(l, 93, 140)[3] > 0;
+                P.undo();
+                out.featherUndone = same(all(l), full);
+                // A locked layer: a nudge moves neither the pixels nor the selection
+                step = 'nudge';
+                P.toggleFixed();
+                const box0 = JSON.stringify(P.sel.box), n0 = P.history.length;
+                P.setTool('move');
+                P.nudge(5, 0);
+                out.lockedStill = JSON.stringify(P.sel.box) === box0 && P.history.length === n0 && same(all(l), full);
+                P.toggleFixed();
+                // Nudges of a selection: one step, its part only, undone exactly
+                const n1 = P.history.length;
+                P.nudge(5, 0); P.nudge(5, 0); P.nudge(0, 3);
+                const e = last();
+                out.nudgeOne = P.history.length === n1 + 1 && e.name === 'Nudge';
+                out.nudgeSmall = e.r.w * e.r.h < P.W * P.H / 2 && e.r.w >= P.sel.box.w + 10;
+                P.undo();
+                out.nudgeUndone = same(all(l), full);
+                // Moved with the Move tool: the step is where it was and where it went
+                step = 'move';
+                P.deselect();
+                P.setTool('rect-select');
+                P.selectPath(rect(20, 20, 40, 40), 'new');
+                P.liftFloat();
+                P.float.t.tx = 60;
+                P.commitFloat();
+                const m = last();
+                out.moveSmall = m.name === 'Move' && m.r.w < 140 && m.r.h < 50;
+                out.moved = at(l, 100, 40)[0] === 255 && at(l, 40, 40)[3] === 0;
+                P.undo();
+                out.moveUndone = same(all(l), full);
+                P.deselect();
+                // Pasted onto a layer that has paint, made bigger: the rest stays
+                step = 'paste';
+                const l2 = P.layer();
+                l2.canvas.getContext('2d').clearRect(0, 0, P.W, P.H);
+                fill(l2, '#0000ff', 300, 200, 40, 40);
+                fill(l2, '#00ff00', 10, 10, 30, 30);
+                const had = all(l2);
+                P.setTool('rect-select');
+                P.selectPath(rect(10, 10, 30, 30), 'new');
+                P.copy();
+                P.deselect();
+                P.paste();
+                P.float.t.sx = P.float.t.sy = 1.5;
+                P.commitFloat();
+                out.pasteKeeps = at(l2, 320, 220)[2] === 255 && at(l2, 20, 20)[1] === 255;
+                out.pasteSmall = last().r.w * last().r.h < P.W * P.H / 4;
+                P.undo();
+                out.pasteUndone = same(all(l2), had);
+                // A layer added, duplicated or deleted counts toward the history's limit
+                step = 'bytes';
+                P.duplicateLayer();
+                out.dupBytes = last().bytes >= P.W * P.H * 4;
+                P.deleteLayer();
+                out.delBytes = last().bytes >= P.W * P.H * 4;
+                P.undo(); P.undo();
+                // A stroke: the layers under it composited once, not every frame
+                step = 'stroke';
+                P.addLayer(); P.addLayer();
+                const under = new Set(P.layers.slice(0, P.cur).map(k => k.canvas));
+                const draws = { under: 0 }, real = CanvasRenderingContext2D.prototype.drawImage;
+                CanvasRenderingContext2D.prototype.drawImage = function (src, ...a) { if (this.canvas === P.canvas && under.has(src)) draws.under++; return real.call(this, src, ...a); };
+                P.setTool('brush'); P.opts.size = 20; P.opts.opacity = 100; P.fg = '#000000';
+                const st = document.getElementById('paint-stage');
+                const sc = (q) => { const sp = P.V().transformPoint(q); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                st.dispatchEvent(new PointerEvent('pointerdown', { ...sc({ x: 50, y: 250 }), pointerId: 1, bubbles: true, button: 0, buttons: 1 }));
+                P.render({ quick: true });
+                draws.under = 0;
+                for (const x of [80, 110, 140]) {
+                    st.dispatchEvent(new PointerEvent('pointermove', { ...sc({ x, y: 250 }), pointerId: 1, bubbles: true, buttons: 1 }));
+                    P.render({ quick: true });
+                }
+                out.underOnce = draws.under === 0;
+                const sg = P.canvas.getContext('2d');
+                const shot = () => sg.getImageData(0, 0, P.canvas.width, P.canvas.height).data;
+                const kept = shot();
+                P._below = null;
+                P.render({ quick: true });
+                out.looksSame = same(kept, shot());
+                CanvasRenderingContext2D.prototype.drawImage = real;
+                st.dispatchEvent(new PointerEvent('pointerup', { ...sc({ x: 140, y: 250 }), pointerId: 1, bubbles: true }));
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint review: a feathered selection\'s box holds its faint edge; Delete then Undo puts all of it back', r.boxFringe && r.cleared && r.featherUndone, JSON.stringify(r));
+        check('paint review: a nudge on a locked layer moves nothing, not even the selection', r.lockedStill, JSON.stringify(r));
+        check('paint review: nudges of a selection are one step, of its part only, undone exactly', r.nudgeOne && r.nudgeSmall && r.nudgeUndone, JSON.stringify(r));
+        check('paint review: a move keeps only where it was and where it went, undone exactly', r.moveSmall && r.moved && r.moveUndone, JSON.stringify(r));
+        check('paint review: a paste made bigger keeps what else the layer has; its step is small, undone exactly', r.pasteKeeps && r.pasteSmall && r.pasteUndone, JSON.stringify(r));
+        check('paint review: a layer duplicated or deleted counts toward the history\'s limit', r.dupBytes && r.delBytes, JSON.stringify(r));
+        check('paint review: while a stroke is made the layers under it are drawn once, and it looks the same', r.underOnce && r.looksSame, JSON.stringify(r));
+        check('paint review: no JS errors', !r.error && issues.errors.length === 0, (r.error || '') + issues.errors.join('; '));
         await page.close();
     }
 

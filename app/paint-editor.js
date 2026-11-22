@@ -1036,10 +1036,10 @@ const PaintEditor = {
     },
 
     dropCanvases() {
-        const all = [this.photo, this.photo0, this.backdrop, this.stroke, this.before, this.sel && this.sel.mask, this.sel && this.sel.edge, this.float && this.float.canvas, this._scratch, this._shown && this._shown.canvas];
+        const all = [this.photo, this.photo0, this.backdrop, this.stroke, this.before, this.sel && this.sel.mask, this.sel && this.sel.edge, this.float && this.float.canvas, this._scratch, this._shown && this._shown.canvas, this._below && this._below.canvas];
         for (const l of this.layers || []) all.push(l.canvas);
         for (const c of all) if (c) c.width = c.height = 0;
-        this.photo = this.photo0 = this.backdrop = this.stroke = this.before = this._scratch = this._shown = this._photoThumb = null;
+        this.photo = this.photo0 = this.backdrop = this.stroke = this.before = this._scratch = this._shown = this._below = this._photoThumb = null;
         this.layers = [];
         this.sel = this.float = null;
     },
@@ -1630,9 +1630,15 @@ const PaintEditor = {
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         const VD = new DOMMatrix([dpr, 0, 0, dpr, 0, 0]).multiply(this.V());
+        // While a stroke is made only its layer changes: the photo and the
+        // layers under it, as shown, are kept from its first frame and
+        // drawn as one (not each layer again every frame)
+        const d = this.drag, kept = this._below;
+        const belowKey = d && d.stroke && this.cur > 0 ? [VD.a, VD.b, VD.c, VD.d, VD.e, VD.f, this.canvas.width, this.canvas.height, this.cur, this.layers.length].join() : null;
+        const fromBelow = !!(belowKey && kept && kept.drag === d && kept.key === belowKey);
         // The photo, drawn at screen size once for this view (a fine
         // downscale of a big photo every frame is what made strokes lag)
-        ctx.drawImage(this.shown(VD), 0, 0);
+        ctx.drawImage(fromBelow ? kept.canvas : this.shown(VD), 0, 0);
         ctx.setTransform(VD);
         this.showZoom();
         ctx.imageSmoothingEnabled = this.view.z < 2;
@@ -1645,6 +1651,8 @@ const PaintEditor = {
         ctx.clip();
         const LD = VD.multiply(this.C);
         this.layers.forEach((l, i) => {
+            if (fromBelow && i < this.cur) return;
+            if (belowKey && !fromBelow && i === this.cur) this.keepBelow(belowKey, d);
             if (!this.isShown(l) || (this.text && this.text.layer === l)) return;
             if (l.adj) {
                 // What's under it, as shown, adjusted (through its mask,
@@ -2058,6 +2066,19 @@ const PaintEditor = {
         return { layers: this.layers.map(l => ({ ...l })), cur: this.cur, groups: JSON.parse(JSON.stringify(this.groups || {})) };
     },
 
+    // What a step of the layer list keeps alive on its own: the pictures
+    // (layers and masks) on one side of it only, a layer added, taken
+    // away or given a mask (counted toward the history's limit, as a
+    // step of pixels is)
+    heldBytes(a, b) {
+        const of = (s) => new Set(s.layers.flatMap(l => [l.canvas, l.mask, l.src && l.src.canvas]).filter(Boolean));
+        const A = of(a), B = of(b);
+        let n = 0;
+        for (const c of A) if (!B.has(c)) n += c.width * c.height * 4;
+        for (const c of B) if (!A.has(c)) n += c.width * c.height * 4;
+        return n;
+    },
+
     // name: the step, as the history lists it
     pushState(name = 'Layers') {
         this._state = this.snapshot();
@@ -2068,7 +2089,8 @@ const PaintEditor = {
         const before = this._state;
         this._state = null;
         if (!before) return;
-        const entry = { kind: 'state', name: before.name, before, after: this.snapshot(), extra, bytes: extra ? extra.bytes : 0 };
+        const after = this.snapshot();
+        const entry = { kind: 'state', name: before.name, before, after, extra, bytes: (extra ? extra.bytes : 0) + this.heldBytes(before, after) };
         this.record(entry);
         this.drawLayers();
         this.renderSoon();
@@ -2122,6 +2144,18 @@ const PaintEditor = {
         this.puff(was, e);
         this.renderSoon();
         return true;
+    },
+
+    // The screen as drawn so far (the photo and the layers under the one
+    // being painted), for the rest of the stroke
+    keepBelow(key, drag) {
+        const s = this.canvas, k = this._below;
+        const c = k && k.canvas.width === s.width && k.canvas.height === s.height ? k.canvas : this.newCanvas(s.width, s.height);
+        const g = c.getContext('2d');
+        g.globalCompositeOperation = 'copy';
+        g.drawImage(s, 0, 0);
+        g.globalCompositeOperation = 'source-over';
+        this._below = { key, drag, canvas: c };
     },
 
     // ---- The puff ----
@@ -3616,11 +3650,16 @@ const PaintEditor = {
         const m = this.sel.mask;
         const d = m.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, this.W, this.H).data;
         const W = this.W, H = this.H;
-        let x0 = W, y0 = H, x1 = -1, y1 = -1;
+        // The box holds all of it, a feathered edge's faintest pixels too:
+        // Delete, Fill, Recolor and Move change them, and Undo puts back
+        // only what's in the box. (Less than half selected is not shown as
+        // selected, or kept when that's all there is)
+        let x0 = W, y0 = H, x1 = -1, y1 = -1, half = false;
         for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-            if (d[(y * W + x) * 4 + 3] > 127) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+            const a = d[(y * W + x) * 4 + 3];
+            if (a) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; if (a > 127) half = true; }
         }
-        if (x1 < 0) { this.dropSelection(); this.buildOptions(); this.renderSoon(); return; }
+        if (!half) { this.dropSelection(); this.buildOptions(); this.renderSoon(); return; }
         this.sel.box = { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
         // The edge: selected pixels next to unselected ones
         const e = this.newCanvas();
@@ -4622,7 +4661,7 @@ const PaintEditor = {
         fg.setTransform(new DOMMatrix().translate(-x0, -y0).multiply(this.C));
         fg.drawImage(lifted, 0, 0);
         lifted.width = lifted.height = 0;
-        this.float = { canvas: fc, x0, y0, w: x1 - x0, h: y1 - y0, t: { tx: 0, ty: 0, sx: 1, sy: 1, rot: 0 }, layer: l, sel: this.sel ? this.sel.box : null, mode: 'free', quad: null };
+        this.float = { canvas: fc, x0, y0, w: x1 - x0, h: y1 - y0, t: { tx: 0, ty: 0, sx: 1, sy: 1, rot: 0 }, layer: l, sel: this.sel ? this.sel.box : null, from: { ...lb }, mode: 'free', quad: null };
         this.buildOptions();
         return true;
     },
@@ -5027,7 +5066,9 @@ const PaintEditor = {
                 wg.setTransform(this.Ci);
                 this.drawMap(wg, f.canvas, at, f.w, f.h, 32);
             }
-        } else if (!f.sel && !l.text && !l.shape && !slid) {
+        } else if (!f.sel && !f.pasted && !l.text && !l.shape && !slid) {
+            // (pasted: on top of what the layer has, so not this, which
+            // draws the layer again from what's floating alone)
             // A smart layer: kept as it was before its first transform, so
             // each transform after is drawn from that, not resampled again
             // (the first time, what was lifted, from its own px)
@@ -5078,7 +5119,7 @@ const PaintEditor = {
             this.sel = { mask: m };
             this.selectionChanged();
         }
-        this.endPixels(l, { x: 0, y: 0, w: this.W, h: this.H }, { free: true, name: 'Move', vec: text });
+        this.endPixels(l, this.floatRect(f), { free: true, name: 'Move', vec: text });
         this.buildOptions();
         this.renderSoon();
     },
@@ -5162,9 +5203,25 @@ const PaintEditor = {
 
     // How far past the layers' edges what's floating reaches (layer px,
     // each side), or null: inside them
-    reachOf(f) {
+    // Where it reaches, in layer px (a warp stays inside its 16 points)
+    floatPts(f) {
         const pts = f.mesh ? f.mesh : f.quad ? f.quad : (() => { const M = this.floatM.call({ float: f, view: this.view }); return [[0, 0], [f.w, 0], [0, f.h], [f.w, f.h]].map(([x, y]) => M.transformPoint({ x, y })); })();
-        const q = pts.map(p => this.Ci.transformPoint(p)), xs = q.map(p => p.x), ys = q.map(p => p.y);
+        return pts.map(p => this.Ci.transformPoint(p));
+    },
+
+    // The part of the layer a move changes: where it was lifted from and
+    // where it's put (a little more, for the smoothing at its edges)
+    floatRect(f) {
+        const q = this.floatPts(f), xs = q.map(p => p.x), ys = q.map(p => p.y), pad = 2;
+        // (from: false, nothing was lifted: pasted or brought in)
+        if (f.from == null) return { x: 0, y: 0, w: this.W, h: this.H };
+        const a = f.from || { x: xs[0], y: ys[0], w: 0, h: 0 };
+        const x0 = Math.min(a.x, ...xs) - pad, y0 = Math.min(a.y, ...ys) - pad;
+        return { x: x0, y: y0, w: Math.max(a.x + a.w, ...xs) + pad - x0, h: Math.max(a.y + a.h, ...ys) + pad - y0 };
+    },
+
+    reachOf(f) {
+        const q = this.floatPts(f), xs = q.map(p => p.x), ys = q.map(p => p.y);
         const out = (v) => Math.max(0, Math.ceil(v - 0.01));
         const r = { l: out(-Math.min(...xs)), t: out(-Math.min(...ys)), r: out(Math.max(...xs) - this.W), b: out(Math.max(...ys) - this.H) };
         return r.l || r.t || r.r || r.b ? r : null;
@@ -5211,6 +5268,7 @@ const PaintEditor = {
         this.beginPixels(l);
         l.canvas = lifted;
         if (sel) { this.sel = { mask: sel }; this.selectionChanged(); }
+        if (f.from) f.from = { ...f.from, x: f.from.x + add.l, y: f.from.y + add.t };
         this.float = f;
     },
 
@@ -5236,7 +5294,7 @@ const PaintEditor = {
         if (!f) return;
         this.float = null;
         f.canvas.width = f.canvas.height = 0;
-        this.endPixels(f.layer, { x: 0, y: 0, w: this.W, h: this.H }, { free: true, name: 'Delete' });
+        this.endPixels(f.layer, f.from == null ? { x: 0, y: 0, w: this.W, h: this.H } : f.from || { x: 0, y: 0, w: 1, h: 1 }, { free: true, name: 'Delete' });
         this.buildOptions();
         this.renderSoon();
     },
@@ -5382,7 +5440,7 @@ const PaintEditor = {
         // on the very pixels it came from
         const C = this.C, flip = C.a * C.d - C.b * C.c < 0;
         const t = here ? { tx: 0, ty: 0, sx: 1, sy: flip ? -1 : 1, rot: Math.atan2(C.b, C.a) } : { tx: 0, ty: 0, sx: 1, sy: 1, rot: 0 };
-        this.float = { canvas: fc, x0: at.x - c.width / 2, y0: at.y - c.height / 2, w: c.width, h: c.height, t, layer: l, sel: null, mode: 'free', quad: null };
+        this.float = { canvas: fc, x0: at.x - c.width / 2, y0: at.y - c.height / 2, w: c.width, h: c.height, t, layer: l, sel: null, from: false, pasted: true, mode: 'free', quad: null };
         this.dropSelection();
         this.setTool('move');
         this.renderSoon();
@@ -5461,7 +5519,7 @@ const PaintEditor = {
         const mid = this.V().inverse().transformPoint(this.mid());
         mid.x = Math.max(0, Math.min(this.OW, mid.x));
         mid.y = Math.max(0, Math.min(this.OH, mid.y));
-        this.float = { canvas: fc, x0: mid.x - w / 2, y0: mid.y - h / 2, w, h, t: { tx: 0, ty: 0, sx: fit, sy: fit, rot: 0 }, layer: l, sel: null, mode: 'free', quad: null };
+        this.float = { canvas: fc, x0: mid.x - w / 2, y0: mid.y - h / 2, w, h, t: { tx: 0, ty: 0, sx: fit, sy: fit, rot: 0 }, layer: l, sel: null, from: false, mode: 'free', quad: null };
         this.dropSelection();
         this.setTool('move');
         this.renderSoon();
@@ -6164,7 +6222,10 @@ const PaintEditor = {
         g.globalCompositeOperation = 'copy';
         g.drawImage(src, 0, 0);
         g.globalCompositeOperation = 'destination-in';
-        g.drawImage(this.shownOf(base), 0, 0);
+        g.drawImage(base.canvas, 0, 0);
+        // (through the base's mask too: drawn on the same canvas, not a
+        // new one each frame)
+        if (base.mask) g.drawImage(base.mask, 0, 0);
         g.globalCompositeOperation = 'source-over';
         return c;
     },
@@ -6570,16 +6631,24 @@ const PaintEditor = {
         if (this.tool !== 'move') return false;
         const l = this.layer();
         if (!l) return false;
+        // A locked layer: nothing moves (nor the selection, without it)
+        if (l.fixed) { this.fixedToast(); return true; }
         // Nudges one after another are one step to undo
         const last = this.history[this.history.length - 1];
         const going = this._nudged && this._nudged.entry === last && last && last.layer === l && performance.now() - this._nudged.at < 1500;
+        // What changes: with a selection, its box where it was and where it
+        // goes (the steps before too), not the whole layer
+        const b = this.sel && this.sel.box;
+        let r = b ? { x: Math.min(b.x, b.x + vx), y: Math.min(b.y, b.y + vy), w: b.w + Math.abs(vx), h: b.h + Math.abs(vy) } : { x: 0, y: 0, w: this.W, h: this.H };
+        this.beginPixels(l);
         if (going) {
             this.history.pop();
             this.historyBytes -= last.bytes || 0;
-            this.before.getContext('2d').putImageData(last.before, 0, 0);
-            this._beforeOf = l;
-        } else {
-            this.beginPixels(l);
+            // (the layer as it was before the first: what's outside the
+            // last step's part hasn't changed since)
+            this.before.getContext('2d').putImageData(last.before, last.r.x, last.r.y);
+            const q = last.r, x0 = Math.min(r.x, q.x), y0 = Math.min(r.y, q.y);
+            r = { x: x0, y: y0, w: Math.max(r.x + r.w, q.x + q.w) - x0, h: Math.max(r.y + r.h, q.y + q.h) - y0 };
         }
         const g = l.canvas.getContext('2d');
         const part = this.newCanvas();
@@ -6604,7 +6673,7 @@ const PaintEditor = {
             this.sel.mask = m;
             this.selectionChanged();
         }
-        this.endPixels(l, { x: 0, y: 0, w: this.W, h: this.H }, { free: true, name: 'Nudge' });
+        this.endPixels(l, r, { free: true, name: 'Nudge' });
         this._nudged = { entry: this.history[this.history.length - 1], at: performance.now() };
         this.renderSoon();
         return true;
