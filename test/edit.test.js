@@ -4255,7 +4255,7 @@ const PROJECT = `
                 const s = await app.restoreSample(a);
                 Adjust.pickRestore(s.slice(0, 4 * 64));
                 const rg = Adjust.result().restore;
-                out.grey = !Adjust.picking && !!rg && rg.grey === true && document.getElementById('adj-restore-found').textContent.includes('grey');
+                out.grey = !Adjust.picking && !!rg && rg.grey === true && document.getElementById('adj-restore-found').textContent.includes('gray');
                 await Adjust.undo();
                 out.greyUndo = !Adjust.result().restore.grey;
                 return out;
