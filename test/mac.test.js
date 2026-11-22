@@ -1589,6 +1589,46 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await app.close();
     }
 
+    console.log('mac: Recent kept on disk (the page\'s storage cleared)');
+    {
+        // The owner, 22 November: clearing the cache lost every project
+        // ("we never want our users to have to re add their projects").
+        // Recent is kept in recent.json in the app's storage as well: the
+        // page's own storage wiped, it comes back at the next start, on the
+        // home page, and opens by its path
+        const prof = path.join(tmp, 'profile-recent');
+        const kept = makeOrder(tmp, 'Kept Order', 2);
+        let { app, page, errors } = await launch(prof);
+        await page.evaluate((p) => JEditorNative.openPath(p), kept);
+        await loaded(page, 3);
+        await page.waitForFunction(async () => {
+            try { return /Kept Order/.test(await (await (await (await FolderCache.native().dataDir()).getFileHandle('recent.json')).getFile()).text()); } catch (e) { return false; }
+        }, null, { timeout: 10000 }).catch(() => null);
+        const onDisk = await page.evaluate(async () => {
+            try { return JSON.parse(await (await (await (await FolderCache.native().dataDir()).getFileHandle('recent.json')).getFile()).text()).folders; } catch (e) { return null; }
+        });
+        // The page's storage wiped
+        await page.evaluate(async () => { const all = await Recents.all(); await Recents.tx('readwrite', s => all.forEach(r => s.delete(r.id))); });
+        await app.close();
+        ({ app, page, errors } = await launch(prof));
+        await page.evaluate(() => Recents.restored);
+        await page.waitForFunction(() => !!document.querySelector('#recent-list .recent-open'), null, { timeout: 10000 }).catch(() => null);
+        const back = await page.evaluate(async () => (await Recents.list()).map(r => ({ name: r.name, path: r.path, handle: !!r.handle })));
+        const at = await page.evaluate(() => {
+            const b = document.querySelector('#recent-list .recent-open');
+            if (!b) return null;
+            const r = b.getBoundingClientRect();
+            return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        });
+        if (at) await page.mouse.click(at.x, at.y);
+        const opened = at && await loaded(page, 3).then(() => true).catch(() => false);
+        check('Recent is kept on disk too, with each project\'s path', Array.isArray(onDisk) && onDisk.length === 1 && onDisk[0].path === kept, JSON.stringify(onDisk));
+        check('... the page\'s storage wiped, it\'s back on the home page at the next start, and opens by its path', back.length === 1 && back[0].path === kept && !back[0].handle && opened,
+            JSON.stringify({ back, at, opened }));
+        check('no JS errors', errors.length === 0, errors.join('; '));
+        await app.close();
+    }
+
     console.log('linux: the same app, with Linux\'s words, and an AppImage that updates itself');
     {
         const port = releaseServer.address().port;
