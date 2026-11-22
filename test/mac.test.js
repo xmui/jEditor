@@ -978,7 +978,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 const centred = Math.abs((lights.top + lights.bottom) / 2 - d.toolbarHeight / 2) <= 2;
                 // (the sidebar made as wide as its buttons there, if they're wider: the title at its edge)
                 const titleAt = d.titleBox && p.rail ? Math.abs(d.titleBox.left - (p.rail.right + 12)) <= 6 : false;
-                check('one row, the sidebar open: its buttons beside the lights (the modes, its button, Find anything), the title from its edge, the lights centred, its own row gone and its list right under the toolbar', ids[0] === 'modes' && ids[1] === 'rail' && ids[2] === 'find' && !!modes && modes.selected === 0 && !ids.includes('mode') && centred && titleAt && !p.row && !!p.first && p.first.top < d.toolbarHeight + 12, JSON.stringify([ids, modes, lights, d.toolbarHeight, d.titleBox, p]));
+                check('one row, the sidebar open: its buttons beside the lights (the modes, its button, Find anything), the title from its edge, the lights centered, its own row gone and its list right under the toolbar', ids[0] === 'modes' && ids[1] === 'rail' && ids[2] === 'find' && !!modes && modes.selected === 0 && !ids.includes('mode') && centred && titleAt && !p.row && !!p.first && p.first.top < d.toolbarHeight + 12, JSON.stringify([ids, modes, lights, d.toolbarHeight, d.titleBox, p]));
                 await click('modes', 1);
                 await page.waitForFunction(() => Modes.current() === 'adjust', null, { timeout: 15000 }).catch(() => null);
                 await settle();
@@ -994,7 +994,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 await settle();
                 const shut = await describe();
                 const sl = shut.lights || {};
-                check('... the sidebar closed: the lights still centred on the row, and no space before the title', Math.abs((sl.top + sl.bottom) / 2 - shut.toolbarHeight / 2) <= 2 && !shut.items.some(i => i.id === 'space'), JSON.stringify([shut.items.map(i => i.id), sl, shut.toolbarHeight]));
+                check('... the sidebar closed: the lights still centered on the row, and no space before the title', Math.abs((sl.top + sl.bottom) / 2 - shut.toolbarHeight / 2) <= 2 && !shut.items.some(i => i.id === 'space'), JSON.stringify([shut.items.map(i => i.id), sl, shut.toolbarHeight]));
             }
 
             // (the checks below as before: the sidebar closed)
