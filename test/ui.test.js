@@ -408,6 +408,55 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- 1d. Hints show once (tips.js: Hints) ----
+    // The owner (22 November): no hints that state the obvious; the ones
+    // kept teach something hidden and show once, then never again
+    console.log('hints: only what is hidden, once');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            // The window's edges and the sidebar's grip: no hint popping up as the pointer passes
+            out.edgeTitles = document.querySelectorAll('.side-edge[title], .side-grip[title]').length;
+            localStorage.removeItem('jeditor.hintsSeen');
+            Hints.now.clear();
+            // Shown the first time, and while that moment lasts; then never again
+            out.first = Hints.show('t.key');
+            out.during = Hints.show('t.key');
+            Hints.end('t.');
+            out.after = Hints.show('t.key');
+            // A panel's line with data-hint-once: remembered once it's been on screen
+            const p = document.createElement('p');
+            p.dataset.hintOnce = 't.line';
+            p.textContent = 'Something hidden';
+            p.style.cssText = 'position: fixed; left: 40px; top: 40px; z-index: 9999';
+            document.body.appendChild(p);
+            Hints.watch();
+            for (let i = 0; i < 40 && !Hints.seen().has('t.line'); i++) await new Promise(res => setTimeout(res, 25));
+            out.lineSeen = Hints.seen().has('t.line');
+            Hints.now.clear();
+            const q = document.createElement('p');
+            q.dataset.hintOnce = 't.line';
+            q.textContent = 'Something hidden';
+            q.style.cssText = p.style.cssText;
+            document.body.appendChild(q);
+            Hints.watch();
+            out.lineHidden = getComputedStyle(q).display === 'none';
+            // Settings → Messages → Show tips again
+            document.getElementById('hints-reset').click();
+            out.reset = !Hints.seen().has('t.key') && Hints.show('t.key') && getComputedStyle(q).display !== 'none';
+            p.remove(); q.remove();
+            localStorage.removeItem('jeditor.hintsSeen');
+            return out;
+        });
+        check('no hint on the window\'s edges or the sidebar\'s grip (the sidebar-drag one)', r.edgeTitles === 0, JSON.stringify(r));
+        check('a hint shows the first time, stays for that moment, then never again', r.first && r.during && !r.after, JSON.stringify(r));
+        check('a panel\'s line that shows once: remembered once on screen, hidden from then on', r.lineSeen && r.lineHidden, JSON.stringify(r));
+        check('Settings → Messages → Show tips again brings them back', r.reset, JSON.stringify(r));
+        check('hints: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 2. Sort + selection identity ----
     console.log('sort & selection identity');
     {
