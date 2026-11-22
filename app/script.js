@@ -582,6 +582,7 @@ const app = {
             hugeFolder: 2000, // ask before opening a folder of more photos than this; 0: never ask
             accent: null, // the accent colour (#rrggbb); null is the standard blue
             singleControls: true, // previous / rotate / next above the film strip in single view
+            fillHeight: false, // Fit uses the whole height, under the pills (style.css: fit-fill)
             startIn: 'photos', // the landing page's Start in (modes.js): photos, adjust or paint
             writeEdits: 'ask', // Write edits to file: ask, 'originals' or 'copies' (askWriteEdits; Settings → Projects → Saving)
             modes: 1, // 1.43: Adjust and Paint are modes (modes.js), off the toolbar's main row
@@ -664,6 +665,7 @@ const app = {
                 }
                 if (typeof saved.accent === 'string' && /^#[0-9a-f]{6}$/i.test(saved.accent)) this.uiPrefs.accent = saved.accent;
                 if (typeof saved.singleControls === 'boolean') this.uiPrefs.singleControls = saved.singleControls;
+                if (typeof saved.fillHeight === 'boolean') this.uiPrefs.fillHeight = saved.fillHeight;
                 if (typeof saved.folderRail === 'boolean') this.uiPrefs.folderRail = saved.folderRail;
                 if (saved.railIn && typeof saved.railIn === 'object') {
                     this.uiPrefs.railIn = {};
@@ -798,6 +800,7 @@ const app = {
         this.applyAccent(p.accent);
         const controls = this.singleControls();
         if (controls) controls.classList.toggle('off', p.singleControls === false);
+        document.documentElement.classList.toggle('fit-fill', !!p.fillHeight);
         this.applyAppearance();
         this.applyExperiments({ panel: false });
         Themes.apply();
@@ -1045,6 +1048,12 @@ const app = {
             this.applyUiPrefs();
             if (e.target.checked && this.viewMode === 'single') this.showControls(false);
         });
+        $('cust-fill-height').addEventListener('change', (e) => {
+            this.uiPrefs.fillHeight = e.target.checked;
+            this.saveUiPrefs();
+            this.applyUiPrefs();
+            if (this.viewMode === 'single') this.updateImageTransform();
+        });
         $('cust-vertical').addEventListener('change', (e) => {
             this.uiPrefs.vertical = e.target.checked;
             this.saveUiPrefs();
@@ -1150,6 +1159,7 @@ const app = {
         Themes.render();
         CropLog.refresh();
         $('cust-single-controls').checked = this.uiPrefs.singleControls !== false;
+        $('cust-fill-height').checked = !!this.uiPrefs.fillHeight;
         this.syncAccentPicker();
         $('cust-scale').value = this.uiPrefs.scale;
         $('cust-scale-out').textContent = `${Math.round(this.uiPrefs.scale * 100)}%`;
@@ -1545,7 +1555,7 @@ const app = {
                 return;
             }
             if (kind === 'trackpad') {
-                if (this.zoom <= 1 || !this.currentFile) return;
+                if (!this.currentFile) return;
                 this.followFingers();
                 this.panX -= e.deltaX;
                 this.panY -= e.deltaY;
@@ -1589,7 +1599,15 @@ const app = {
             if (!f._dims) return 0;
             originalPerShown = Math.max(f._dims.w, f._dims.h) / Math.max(img.naturalWidth, img.naturalHeight);
         }
-        return img.naturalWidth * originalPerShown / (img.offsetWidth * this.currentFitScale());
+        return img.naturalWidth * originalPerShown / (this.layoutSize(img).w * this.currentFitScale());
+    },
+
+    // The photo's laid-out size, to the subpixel (offsetWidth is whole
+    // pixels: at 3200% a quarter pixel there is eight on screen)
+    layoutSize(img) {
+        const cs = getComputedStyle(img);
+        const w = parseFloat(cs.width), h = parseFloat(cs.height);
+        return { w: w > 0 ? w : img.offsetWidth, h: h > 0 ? h : img.offsetHeight };
     },
 
     // The original file's pixels are on screen (not a preview or thumbnail)
@@ -1602,32 +1620,36 @@ const app = {
     },
 
     // Zoom to `target`, keeping the screen point (x, y) where it is; the
-    // middle of the view when no point is given
-    zoomTo(target, x = null, y = null) {
+    // middle of the view when no point is given. At every zoom, Fit too: a
+    // photo moved by hand stays where it was put (the owner: "it should
+    // stay where u move it then reset when u leave the photo"). Fit itself
+    // (0, or double-click back) puts it back in the middle: reset
+    zoomTo(target, x = null, y = null, { reset = false } = {}) {
         if (this.viewMode !== 'single' || this.cropState.active || !this.currentFile) return;
         const img = this.elements.currentImage;
         const box = this.viewBox();
         if (x === null) { x = box.left + box.width / 2; y = box.top + box.height / 2; }
         target = Math.max(0.1, Math.min(this.maxZoom(), target));
-        if (target <= 1) {
+        if (reset || !img.offsetWidth) {
             this.zoom = target;
             this.panX = 0;
             this.panY = 0;
-        } else if (img.offsetWidth) {
+        } else {
             // Where the photo's center is: the container centers it, plus the
             // pan. Worked out rather than measured, so a zoom still animating
             // can't throw the anchor off (and exact to the subpixel)
             const cx = box.left + box.width / 2 + this.panX;
             const cy = box.top + box.height / 2 + this.panY;
             const s = this.zoom * this.currentFitScale();
-            const hw = img.offsetWidth * s / 2, hh = img.offsetHeight * s / 2;
+            const size = this.layoutSize(img);
+            const hw = size.w * s / 2, hh = size.h * s / 2;
             const dx = Math.max(-hw, Math.min(hw, x - cx)), dy = Math.max(-hh, Math.min(hh, y - cy));
             const k = target / this.zoom;
             this.panX += dx * (1 - k);
             this.panY += dy * (1 - k);
             this.zoom = target;
         }
-        this.elements.imageContainer.style.cursor = this.zoom > 1 ? 'grab' : 'default';
+        this.elements.imageContainer.style.cursor = 'grab';
         this.updateImageTransform();
         if (this.zoom > 1) this.ensureFullRes();
         this.showZoomLevel();
@@ -1662,7 +1684,7 @@ const app = {
         img.classList.add('zoom-animate');
         clearTimeout(this._zoomAnimTimer);
         this._zoomAnimTimer = setTimeout(() => img.classList.remove('zoom-animate'), 260);
-        this.zoomTo(target, e.clientX, e.clientY);
+        this.zoomTo(target, e.clientX, e.clientY, { reset: target === 1 });
     },
 
     // CSS rotation on the photo: rotation saved to disk after these pixels
@@ -1754,12 +1776,13 @@ const app = {
     },
 
     // Where the viewer fits the photo: its box less the room left for the
-    // top pills and Info's card (style.css: padding, --head-room). A zoomed
-    // photo still fills the whole box, to the top and under the card
+    // top pills, the same below, and Info's card (style.css: padding,
+    // --head-room). A zoomed photo still fills the whole box, to the top
+    // and under the card
     viewBox() {
         const c = this.elements.imageContainer, r = c.getBoundingClientRect(), cs = getComputedStyle(c);
-        const t = parseFloat(cs.paddingTop) || 0, rt = parseFloat(cs.paddingRight) || 0;
-        return { left: r.left, top: r.top + t, width: Math.max(0, r.width - rt), height: Math.max(0, r.height - t) };
+        const t = parseFloat(cs.paddingTop) || 0, rt = parseFloat(cs.paddingRight) || 0, b = parseFloat(cs.paddingBottom) || 0;
+        return { left: r.left, top: r.top + t, width: Math.max(0, r.width - rt), height: Math.max(0, r.height - t - b) };
     },
 
     // At odd quarter-turns the CSS-rotated image would overflow the
@@ -1768,7 +1791,7 @@ const app = {
         const img = this.elements.currentImage;
         if (((r % 180) + 180) % 180 !== 90) return 1;
         const { width: cw, height: ch } = this.viewBox();
-        const w = img.offsetWidth, h = img.offsetHeight;
+        const { w, h } = this.layoutSize(img);
         return cw && ch && w && h ? Math.min(cw / h, ch / w) : 1;
     },
 
@@ -1787,9 +1810,14 @@ const app = {
     handlePanStart(e) {
         if (this.viewMode !== 'single') return;
         if (this.cropState.active) return;
-        if (this.zoom <= 1) return; // Only pan when zoomed in
+        // At any zoom, Fit too (the owner: "u should be able to move it
+        // around with a hand no matter what zoom"): the left button, on the
+        // photo's stage, not on its buttons. (Dragging the photo at Fit only
+        // started the browser's own image drag, which went nowhere)
+        if (e.button !== 0 || !this.currentFile) return;
+        if (e.target.closest && e.target.closest('button, input, select, a, .controls')) return;
 
-        // Prevent default to avoid text selection
+        // Prevent default to avoid text selection and the image drag
         e.preventDefault();
 
         this.isPanning = true;
@@ -1811,7 +1839,7 @@ const app = {
         if (!this.isPanning) return;
         this.isPanning = false;
         this.elements.currentImage.classList.remove('follow');
-        this.elements.imageContainer.style.cursor = this.zoom > 1 ? 'grab' : 'default';
+        this.elements.imageContainer.style.cursor = 'grab';
     },
 
     async handleDrop(e) {
@@ -4848,7 +4876,7 @@ const app = {
         this.zoom = 1;
         this.panX = 0;
         this.panY = 0;
-        this.elements.imageContainer.style.cursor = 'default';
+        this.elements.imageContainer.style.cursor = 'grab';
 
         const ready = file._decodedEl;
         const loadStart = performance.now();
@@ -6069,7 +6097,7 @@ const app = {
 
     zoomBy(factor) {
         if (this.viewMode !== 'single' || this.cropState.active) return false;
-        this.zoomTo(factor === 0 ? 1 : this.zoom * factor);
+        this.zoomTo(factor === 0 ? 1 : this.zoom * factor, null, null, { reset: factor === 0 });
     },
 
     // ---- What's New (changelog.js) ----
