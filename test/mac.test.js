@@ -1238,7 +1238,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
     console.log('mac: the Photos library (a stand-in: JEDITOR_PHOTOS_LIBRARY)');
     {
         const lib = path.join(tmp, 'PhotosLibrary');
-        for (const [album, n] of [['Wedding', 3], ['Favourites', 1], ['Birthday', 2]]) {
+        for (const [album, n] of [['Wedding', 3], ['Favorites', 1], ['Birthday', 2]]) {
             fs.mkdirSync(path.join(lib, album), { recursive: true });
             for (let i = 1; i <= n; i++) fs.writeFileSync(path.join(lib, album, `IMG_000${i}.jpg`), JPEG);
         }
@@ -1257,7 +1257,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             return { feature: Host.has('photosLibrary'), had, albums, perm: (await JEditorNative.permissions()).rows.map(r => r.id + ':' + r.state).join() };
         });
         check('Locations has the Photos library (photosLibrary), with its own row in the permissions window', r.feature && r.had === 'Photos library' && /photos:granted/.test(r.perm), JSON.stringify(r));
-        check('... it opens out like a drive: Favourites first, then the albums by name, with how many photos', JSON.stringify(r.albums) === '[["Favourites","1"],["Birthday","2"],["Wedding","3"]]', JSON.stringify(r.albums));
+        check('... it opens out like a drive: Favorites first, then the albums by name, with how many photos', JSON.stringify(r.albums) === '[["Favorites","1"],["Birthday","2"],["Wedding","3"]]', JSON.stringify(r.albums));
         await page.click('#start-places .sb-row[data-path="photos-library:album:Wedding"] .sb-main');
         await loaded(page, 3);
         const o = await page.evaluate(async () => {
@@ -1324,7 +1324,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         });
         check('Open on the Photos library: all of it, two photos of one name both there', whole.name === 'Photos library' && whole.names === 'IMG_0001 (2).jpg,IMG_0001 (3).jpg,IMG_0001.jpg,IMG_0002 (2).jpg,IMG_0002.jpg,IMG_0003.jpg', JSON.stringify(whole));
         const others = ['IMG_0002.jpg', 'IMG_0003.jpg'].map(n => wed(n).toString('base64')).join();
-        check('... and the rest of the library is as it was: no photos or albums added, renamed or removed', before.split(',').slice(1).join() === others && fs.readdirSync(lib).filter(n => !n.startsWith('.')).sort().join() === 'Birthday,Favourites,Wedding' && fs.readdirSync(path.join(lib, 'Wedding')).sort().join() === 'IMG_0001.jpg,IMG_0002.jpg,IMG_0003.jpg');
+        check('... and the rest of the library is as it was: no photos or albums added, renamed or removed', before.split(',').slice(1).join() === others && fs.readdirSync(lib).filter(n => !n.startsWith('.')).sort().join() === 'Birthday,Favorites,Wedding' && fs.readdirSync(path.join(lib, 'Wedding')).sort().join() === 'IMG_0001.jpg,IMG_0002.jpg,IMG_0003.jpg');
         // Add to Photos library (photosAdd): a folder project's photos into an album named after it
         const order = path.join(tmp, 'Order 1207');
         fs.mkdirSync(order, { recursive: true });

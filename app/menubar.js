@@ -67,7 +67,7 @@ const MenuBar = {
         Photo: [
             ['Star', 'flag.star', { project: true }],
             ['Needs rescan', 'flag.rescan', { project: true }],
-            ['Colour label', [
+            ['Color label', [
                 ['Red', 'flag.red'], ['Yellow', 'flag.yellow'], ['Green', 'flag.green'], ['Blue', 'flag.blue'], ['Purple', 'flag.purple']
             ], { project: true }],
             ['Clear flags', 'flag.clear', { project: true }],

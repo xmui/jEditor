@@ -105,14 +105,14 @@ const Develop = {
     //   B&W   each film's own sensitivity to red, green and blue (`mono`,
     //         on linear light), its contrast and grain
     // Grain follows speed: fine at 50–100, coarse at 800–3200.
-    PROCESSES: [['C-41', 'Negative', 'Colour negative film (C-41)'], ['E-6', 'Slide', 'Colour slide film (E-6)'], ['ECN-2', 'Cinema', 'Motion-picture film (ECN-2)'], ['B&W', 'B&W', 'Black-and-white film'], ['Creative', 'Creative', 'Darkroom and print looks']],
+    PROCESSES: [['C-41', 'Negative', 'Color negative film (C-41)'], ['E-6', 'Slide', 'Color slide film (E-6)'], ['ECN-2', 'Cinema', 'Motion-picture film (ECN-2)'], ['B&W', 'B&W', 'Black-and-white film'], ['Creative', 'Creative', 'Darkroom and print looks']],
     LOOKS: [
         // ---- C-41 colour negative ----
         { id: 'portra160', process: 'C-41', name: 'Portra 160', maker: 'Kodak', note: 'Low contrast, natural skin, very fine grain; a touch cooler than 400',
             adj: { contrast: -16, saturation: -10, curve: { rgb: [[0, 0.035], [0.25, 0.265], [0.5, 0.505], [0.75, 0.75], [1, 0.975]] }, hsl: { hue: [3, 4, -6, -14, -4, 0, 0, 0], sat: [-6, -4, -12, -22, -12, -8, 0, -6], lum: [0, 4, 2, -4, 0, 0, 0, 0] }, grade: { h: [40, 6, 0] }, grain: 8, grainSize: 14, grainColor: 25 } },
         { id: 'portra400', process: 'C-41', name: 'Portra 400', maker: 'Kodak', note: 'Warm, glowing skin, olive greens, soft highlights, wide latitude',
             adj: { contrast: -10, temp: 4, curve: { rgb: [[0, 0.04], [0.25, 0.26], [0.75, 0.765], [1, 0.97]], r: [[0, 0], [0.5, 0.51], [1, 1]] }, hsl: { hue: [4, 6, -8, -20, -6, -6, 0, 0], sat: [-2, 0, -10, -24, -14, -10, 0, -4], lum: [0, 6, 4, -2, 0, -4, 0, 0] }, grade: { s: [195, 8, 0], h: [42, 10, 0] }, grain: 14, grainSize: 22, grainColor: 30 } },
-        { id: 'portra800', process: 'C-41', name: 'Portra 800', maker: 'Kodak', note: 'Warmer and richer than 400, deeper colour, more grain',
+        { id: 'portra800', process: 'C-41', name: 'Portra 800', maker: 'Kodak', note: 'Warmer and richer than 400, deeper color, more grain',
             adj: { contrast: -4, temp: 7, saturation: 6, curve: { rgb: [[0, 0.05], [0.3, 0.31], [0.75, 0.77], [1, 0.97]] }, hsl: { hue: [5, 8, -6, -16, 0, -4, 0, 0], sat: [6, 6, -4, -14, -6, 0, 0, 0], lum: [0, 6, 2, 0, 0, -6, 0, 0] }, grade: { s: [200, 10, -2], h: [40, 14, 0] }, grain: 22, grainSize: 32, grainColor: 35 } },
         { id: 'ektar', process: 'C-41', name: 'Ektar 100', maker: 'Kodak', note: 'The most saturated negative: punchy reds, deep blues, cool, finest grain',
             adj: { contrast: 18, temp: -4, vibrance: 26, saturation: 10, curve: { rgb: [[0, 0.01], [0.25, 0.22], [0.75, 0.79], [1, 0.99]] }, hsl: { hue: [-2, -6, -6, 6, 4, -6, 0, 0], sat: [20, 14, 4, 10, 12, 22, 6, 6], lum: [-6, -2, 0, -6, 0, -12, 0, 0] }, grain: 6, grainSize: 10, grainColor: 20 } },
@@ -124,10 +124,10 @@ const Develop = {
             adj: { contrast: 10, temp: -6, tint: -6, saturation: 6, curve: { rgb: [[0, 0.03], [0.25, 0.24], [0.75, 0.77], [1, 0.98]], g: [[0, 0.02], [0.5, 0.515], [1, 1]] }, hsl: { hue: [-6, -4, 6, 10, 6, -6, 0, 4], sat: [6, 0, -4, 14, 10, 8, 0, 0], lum: [0, 0, 0, -4, 0, -6, 0, 0] }, grade: { s: [165, 14, -2], h: [55, 6, 0] }, grain: 22, grainSize: 32, grainColor: 40 } },
         { id: 'pro400h', process: 'C-41', name: 'Pro 400H', maker: 'Fujifilm', note: 'Pastel and airy: minty greens, a cyan cast, lifted shadows',
             adj: { exposure: 0.15, contrast: -22, tint: -4, saturation: -14, curve: { rgb: [[0, 0.07], [0.25, 0.29], [0.75, 0.78], [1, 0.97]] }, hsl: { hue: [0, 4, 10, 24, 6, -4, 0, 0], sat: [-8, -10, -20, -14, -6, -14, 0, 0], lum: [0, 6, 8, 6, 4, 4, 0, 0] }, grade: { s: [175, 14, 2], h: [60, 6, 0] }, grain: 14, grainSize: 24, grainColor: 30 } },
-        { id: 'c200', process: 'C-41', name: 'C200', maker: 'Fujifilm', note: 'Cool and greenish, muted, plain everyday colour',
+        { id: 'c200', process: 'C-41', name: 'C200', maker: 'Fujifilm', note: 'Cool and greenish, muted, plain everyday color',
             adj: { contrast: 4, temp: -8, tint: -8, saturation: -8, curve: { rgb: [[0, 0.03], [1, 0.97]] }, hsl: { hue: [-4, 0, 8, 10, 0, -4, 0, 0], sat: [-4, -6, -8, 4, 0, 0, 0, 0] }, grade: { s: [160, 12, 0] }, grain: 18, grainSize: 28, grainColor: 35 } },
         // ---- E-6 colour slide ----
-        { id: 'velvia50', process: 'E-6', name: 'Velvia 50', maker: 'Fujifilm', note: 'Intense colour, vivid greens and blues, high contrast, magenta shadows',
+        { id: 'velvia50', process: 'E-6', name: 'Velvia 50', maker: 'Fujifilm', note: 'Intense color, vivid greens and blues, high contrast, magenta shadows',
             adj: { contrast: 30, blacks: -14, tint: 6, vibrance: 24, saturation: 12, curve: { rgb: [[0, 0], [0.25, 0.19], [0.5, 0.49], [0.75, 0.8], [1, 1]] }, hsl: { hue: [-4, -4, -6, -10, -6, -8, 0, -6], sat: [16, 8, 14, 16, 20, 26, 10, 10], lum: [-6, 0, 0, -16, -6, -16, 0, 0] }, grade: { s: [290, 10, -4] }, grain: 4, grainSize: 8, grainColor: 15 } },
         { id: 'velvia100', process: 'E-6', name: 'Velvia 100', maker: 'Fujifilm', note: 'Like 50, a little cooler and gentler, magenta-blue skies',
             adj: { contrast: 26, blacks: -10, temp: -4, tint: 8, vibrance: 24, saturation: 14, curve: { rgb: [[0, 0], [0.25, 0.2], [0.75, 0.79], [1, 1]] }, hsl: { hue: [-6, -4, -4, -8, -4, -6, 0, -6], sat: [14, 6, 10, 12, 16, 22, 8, 10], lum: [-4, 0, 0, -12, -4, -12, 0, 0] }, grade: { s: [300, 10, -4] }, grain: 5, grainSize: 9, grainColor: 15 } },
@@ -172,7 +172,7 @@ const Develop = {
             adj: { contrast: 24, saturation: 14, curve: { r: [[0, 0], [0.25, 0.19], [0.75, 0.84], [1, 1]], g: [[0, 0.03], [0.5, 0.56], [1, 1]], b: [[0, 0.14], [0.5, 0.44], [1, 0.82]] }, grain: 10, grainSize: 16, grainColor: 25 } },
         { id: 'instant', process: 'Creative', name: 'Instant', maker: 'Integral film', note: 'Soft, warm, faded edges, cyan-green shadows',
             adj: { contrast: -8, temp: 12, tint: -6, saturation: -10, curve: { rgb: [[0, 0.08], [0.5, 0.52], [1, 0.94]] }, grade: { s: [160, 16, 0], h: [50, 16, 4] }, vignette: -22, vigMid: 40, grain: 10 } },
-        { id: 'faded', process: 'Creative', name: 'Faded print', maker: 'An old colour print', note: 'Washed out, lifted blacks, blue shadows',
+        { id: 'faded', process: 'Creative', name: 'Faded print', maker: 'An old color print', note: 'Washed out, lifted blacks, blue shadows',
             adj: { contrast: -18, saturation: -22, curve: { rgb: [[0, 0.12], [0.3, 0.32], [0.75, 0.74], [1, 0.92]] }, grade: { s: [215, 14, 0], h: [50, 8, 0] } } },
         { id: 'teal', process: 'Creative', name: 'Teal and orange', maker: 'Film grade', note: 'Teal shadows, orange skin and highlights',
             adj: { contrast: 14, vibrance: 10, grade: { s: [190, 28, 0], m: [30, 6, 0], h: [35, 22, 0] }, hsl: { hue: [0, -4, -10, 30, 6, -8, 0, 0], sat: [0, 8, -10, -30, 0, 10, 0, 0] } } },
@@ -379,7 +379,7 @@ const Develop = {
     // they are and only the light and any stain are fixed, so a scene with
     // one strong colour (grass, a sunset) isn't spoilt; you can choose that.
     RESTORE_TYPES: {
-        keep: { name: 'Keep the colours', dyes: '', stain: true },
+        keep: { name: 'Keep the colors', dyes: '', stain: true },
         print: { name: 'Faded print', dyes: 'rgb', stain: true },
         slide: { name: 'Red or magenta slide', dyes: 'rgb', stain: true },
         cyan: { name: 'Red or orange cast', dyes: 'rgb', stain: true },
@@ -528,7 +528,7 @@ const Develop = {
         { id: 'effects', name: 'Effects', keys: ['vignette', 'vigMid', 'vigFeather', 'vigRound', 'grain', 'grainSize', 'grainColor', 'halation'] },
         { id: 'masks', name: 'Masks', keys: ['masks'], off: true, note: 'Sky and subject masks are found in each photo, so each keeps its own' },
         { id: 'spots', name: 'Spot removal', keys: ['spots'], off: true },
-        { id: 'restore', name: 'Color restoration', keys: ['restore'], off: true, note: 'Worked out from each photo: Restore colour on the others finds their own' }
+        { id: 'restore', name: 'Color restoration', keys: ['restore'], off: true, note: 'Worked out from each photo: Restore color on the others finds their own' }
     ],
 
     // target's settings with source's for these groups (ids from SYNC): a

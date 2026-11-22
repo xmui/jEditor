@@ -377,7 +377,7 @@ const Export = {
 
     // The settings as they stand, kept under a name of your own
     async savePreset() {
-        const name = await UI.prompt({ title: 'Save as preset', message: 'These settings (format, size, metadata, colour and file naming) are kept under this name, to pick again.', input: { label: 'Name', placeholder: 'Client proofs', value: this.preset || '' }, ok: 'Save' });
+        const name = await UI.prompt({ title: 'Save as preset', message: 'These settings (format, size, metadata, color and file naming) are kept under this name, to pick again.', input: { label: 'Name', placeholder: 'Client proofs', value: this.preset || '' }, ok: 'Save' });
         const n = typeof name === 'string' ? name.trim().slice(0, 40) : '';
         if (!n) return;
         const set = {};
@@ -499,7 +499,7 @@ const Export = {
                 `<p class="ex-eg">${this.patternProblem() ? this.esc(this.patternProblem()) : `For example ${eg}${list.length > 2 ? ' …' : ''}`}</p>`;
         }
         if (k === 'format') return sel('ex-format', 'Image format', formats, this.format) + (this.lossy() ? sel('ex-quality', 'Quality', this.QUALITIES.map(q => [q, `${q}%`]), this.quality) : '') +
-            sel('ex-colour', 'Colour space', this.COLOURS, this.colour);
+            sel('ex-colour', 'Color space', this.COLOURS, this.colour);
         if (k === 'size') {
             const sizes = this.SIZES.some(([v]) => v === this.size) ? this.SIZES : this.SIZES.concat([[this.size, `${this.size.toLocaleString()} px`]]);
             return sel('ex-size', 'Resize to fit', sizes.map(([v, l]) => [v, v ? `Long edge: ${l}` : l]).concat([['other', 'Long edge: other…']]), this.size) + '<p class="ex-eg">Not enlarged: a photo smaller than this is left at its own size.</p>';

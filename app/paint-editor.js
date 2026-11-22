@@ -215,7 +215,7 @@ const PaintEditor = {
         ['rect-select', 'Rectangle select (M)', '<rect x="4" y="4" width="16" height="16" rx="1" stroke-dasharray="3 2"/>'],
         ['ellipse-select', 'Ellipse select', '<ellipse cx="12" cy="12" rx="9" ry="7" stroke-dasharray="3 2"/>'],
         ['lasso', 'Lasso (L)', '<path d="M7 18c-2-1-4-3-4-6 0-4 4-8 9-8s9 3 9 7-4 7-9 7c-1 0-2 0-3-.3" stroke-dasharray="3 2"/><path d="M7 18c-1 1-1 3 1 3"/>'],
-        ['wand', 'Magic wand: select by colour (W)', '<path d="m15 4 .8 2.2L18 7l-2.2.8L15 10l-.8-2.2L12 7l2.2-.8z"/><path d="M3 21 13 11"/>'],
+        ['wand', 'Magic wand: select by color (W)', '<path d="m15 4 .8 2.2L18 7l-2.2.8L15 10l-.8-2.2L12 7l2.2-.8z"/><path d="M3 21 13 11"/>'],
         ['sep'],
         ['brush', 'Brush (B)', '<path d="M18.4 2.6a2 2 0 0 1 2.9 2.9L12 14.8 9.2 12z"/><path d="M9.2 12c-2.5 0-4.2 1.6-4.2 4 0 1.5-.8 2.6-2.4 3.4C4.4 21 6.3 21.5 8 21.5c3 0 5-1.9 4.9-4.6z"/>'],
         ['soft-round', 'Soft round', '<circle cx="12" cy="12" r="8" stroke-dasharray="2 2"/><circle cx="12" cy="12" r="3"/>'],
@@ -228,7 +228,7 @@ const PaintEditor = {
         ['charcoal', 'Charcoal: grainy, as on rough paper', '<path d="M14.5 3.5l6 6-9 9-6-6z"/><path d="M5.5 12.5 3 21l8.5-2.5"/><path d="M4 18h.01M6 20h.01M7 17h.01"/>'],
         ['watercolour', 'Watercolour: see-through, darker at its edges', '<path d="M12 3c3 4 6 7.5 6 11a6 6 0 0 1-12 0c0-3.5 3-7 6-11z" stroke-dasharray="3 1.5"/><path d="M9 15a3 3 0 0 0 3 3"/>'],
         ['texture', 'Texture brush: paints through canvas, paper or sand', '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8h.01M12 8h.01M16 8h.01M10 12h.01M14 12h.01M8 16h.01M12 16h.01M16 16h.01"/>'],
-        ['mixer', 'Mixer: blends its colour with the colours it goes over', '<circle cx="9" cy="10" r="5"/><circle cx="15" cy="14" r="5"/>'],
+        ['mixer', 'Mixer: blends its color with the colors it goes over', '<circle cx="9" cy="10" r="5"/><circle cx="15" cy="14" r="5"/>'],
         ['pixel', 'Pixel pencil: square pixels on a grid', '<path d="M3 3h6v6H3zM9 9h6v6H9zM15 15h6v6h-6z"/>'],
         ['can', 'Spray can: dots as it\'s held', '<path d="M6 9h6v12H6zM7 6h4v3H7zM12 7h2"/><path d="M17 5h.01M20 4h.01M19 8h.01M22 7h.01M18 11h.01M21 10h.01"/>'],
         ['stamp', 'Stamp: a little picture with each click', '<path d="M12 3l1.8 3.7 4 .6-2.9 2.8.7 4L12 12.2 8.4 14.1l.7-4-2.9-2.8 4-.6z"/><path d="M5 18h14v3H5z"/>'],
@@ -237,18 +237,18 @@ const PaintEditor = {
         ['eraser-block', 'Block eraser: a hard square (E)', '<rect x="5" y="5" width="14" height="14" rx="1"/><path d="M5 12h14" opacity=".5"/>'],
         ['eraser-soft', 'Soft eraser: takes off more as it\'s held (E)', '<circle cx="12" cy="12" r="8" stroke-dasharray="2 2"/><path d="M8 12h8"/>'],
         ['spot-heal', 'Spot heal: paint over a mark, and it\'s filled from what\'s round it (J)', '<rect x="2.5" y="8" width="19" height="8" rx="4" transform="rotate(-45 12 12)"/><path d="M10 12h.01M12 10h.01M14 12h.01M12 14h.01"/><path d="M19 2.5v3M17.5 4h3"/>'],
-        ['heal', 'Heal: Alt-click where to copy from, then paint; it takes on the colours round it (J)', '<rect x="2.5" y="8" width="19" height="8" rx="4" transform="rotate(-45 12 12)"/><path d="M10.5 12h3M12 10.5v3"/>'],
+        ['heal', 'Heal: Alt-click where to copy from, then paint; it takes on the colors round it (J)', '<rect x="2.5" y="8" width="19" height="8" rx="4" transform="rotate(-45 12 12)"/><path d="M10.5 12h3M12 10.5v3"/>'],
         ['clone', 'Clone stamp: Alt-click where to copy from, then paint (S)', '<path d="M9.5 3h5v5l-1 2.5h4.5a2 2 0 0 1 2 2V16H4v-3.5a2 2 0 0 1 2-2h4.5l-1-2.5z"/><path d="M5 20h14"/>'],
         ['dodge', 'Dodge: lighter where you paint', '<circle cx="9" cy="9" r="5"/><path d="M12.6 12.6 20 20"/>'],
         ['burn', 'Burn: darker where you paint', '<path d="M7 21v-7a2 2 0 0 1 4 0V8a2 2 0 0 1 4 0v8M15 12a2 2 0 0 1 4 0v4a5 5 0 0 1-5 5h-2"/><path d="M5 4.5 7 6M12 2v2.5M19 4.5 17 6"/>'],
-        ['sponge', 'Sponge: more or less colour where you paint', '<rect x="4" y="7" width="16" height="11" rx="3"/><path d="M8 11h.01M12 13h.01M16 11h.01M10 15h.01M14 15h.01"/>'],
+        ['sponge', 'Sponge: more or less color where you paint', '<rect x="4" y="7" width="16" height="11" rx="3"/><path d="M8 11h.01M12 13h.01M16 11h.01M10 15h.01M14 15h.01"/>'],
         ['blur', 'Blur: softer where you paint', '<path d="M12 3c3 4 6 7.5 6 11a6 6 0 0 1-12 0c0-3.5 3-7 6-11z"/>'],
         ['sharpen', 'Sharpen: crisper where you paint', '<path d="M12 3 21 20H3z"/>'],
-        ['smudge', 'Smudge: drag the colours along', '<path d="M9 21v-9a2 2 0 0 1 4 0v4M13 12a2 2 0 0 1 4 0v4a5 5 0 0 1-5 5"/><path d="M4 7c2-1 4 1 6 0s4-1 6 0"/>'],
+        ['smudge', 'Smudge: drag the colors along', '<path d="M9 21v-9a2 2 0 0 1 4 0v4M13 12a2 2 0 0 1 4 0v4a5 5 0 0 1-5 5"/><path d="M4 7c2-1 4 1 6 0s4-1 6 0"/>'],
         ['sep'],
         ['fill', 'Fill (G)', '<path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2a2 2 0 0 0 2.8 0z"/><path d="m5 2 5 5M2 13h15M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4z"/>'],
         ['gradient', 'Gradient', '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18" opacity=".5"/>'],
-        ['recolor', 'Recolor: click a colour to change it to the brush colour', '<path d="M7 3c2.5 3 4 5.2 4 7a4 4 0 0 1-8 0c0-1.8 1.5-4 4-7z"/><path d="M14 14h6M17 11l3 3-3 3"/><path d="M17 21c-1.5 0-2.5-1-2.5-2.3"/>'],
+        ['recolor', 'Recolor: click a color to change it to the brush color', '<path d="M7 3c2.5 3 4 5.2 4 7a4 4 0 0 1-8 0c0-1.8 1.5-4 4-7z"/><path d="M14 14h6M17 11l3 3-3 3"/><path d="M17 21c-1.5 0-2.5-1-2.5-2.3"/>'],
         ['sep'],
         ['line', 'Line (U)', '<path d="M5 19 19 5"/>'],
         ['arrow', 'Arrow', '<path d="M5 19 19 5M10 5h9v9"/>'],
@@ -258,7 +258,7 @@ const PaintEditor = {
         ['polygon', 'Polygon: click each corner; double-click, Enter or the first corner closes it', '<path d="M12 3l8 6-3 10H7L4 9z"/>'],
         ['text', 'Text (T)', '<path d="M4 7V4h16v3M9 20h6M12 4v16"/>'],
         ['sep'],
-        ['picker', 'Colour picker (I)', '<path d="m2 22 1-1h3l9-9M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3z"/>'],
+        ['picker', 'Color picker (I)', '<path d="m2 22 1-1h3l9-9M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3z"/>'],
         ['hand', 'Hand: move about (H, or hold Space)', '<path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v2M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/>']
     ],
     // The ten slots down the left (the plan: nine, and Heal in phase 2): tools of a kind share one,
@@ -1281,7 +1281,7 @@ const PaintEditor = {
         const wholeFill = this.tool === 'fill' && o.fillWhat === 'layer';
         for (const k of this.OPTIONS[this.tool]) {
             if (wholeFill && ['tolerance', 'gaps', 'contiguous', 'sampleAll'].includes(k)) continue;
-            if (k === 'fillWhat') choose('Fill', 'fillWhat', [['match', 'Matching colour'], ['layer', 'Whole layer']]).querySelector('select').addEventListener('change', () => this.buildOptions());
+            if (k === 'fillWhat') choose('Fill', 'fillWhat', [['match', 'Matching color'], ['layer', 'Whole layer']]).querySelector('select').addEventListener('change', () => this.buildOptions());
             if (k === 'size') {
                 // (Said on hover, not along the top: the bar stays one line)
                 num('Size', 'size', 1, this.sizeMax(), 1, true).title = Host.keys(this.tool === 'spray'
@@ -1293,7 +1293,7 @@ const PaintEditor = {
             if (k === 'flow') num('Flow', 'flow', 1, 100);
             if (k === 'density') num('Density', 'density', 1, 100);
             if (k === 'tolerance') num('Tolerance', 'tolerance', 0, 255);
-            if (k === 'range') num('Range', 'range', 1, 100).title = 'How far from the colour clicked a colour can be and still change (its lighter and darker shades are caught first)';
+            if (k === 'range') num('Range', 'range', 1, 100).title = 'How far from the color clicked a color can be and still change (its lighter and darker shades are caught first)';
             if (k === 'lineWidth') num('Line', 'lineWidth', 0, 200);
             if (k === 'fontSize') num('Size', 'fontSize', 6, 600, 1, true);
             if (k === 'gaps') choose('Close gaps', 'gaps', [[0, 'Off'], [2, 'Small'], [5, 'Medium'], [10, 'Large']]).title = 'A line drawing with small gaps in its lines still fills one area, not the whole picture';
@@ -1303,10 +1303,10 @@ const PaintEditor = {
                 if ((this.RETOUCH.includes(this.tool) || this.TONE.includes(this.tool)) && c) c.title = 'Copy from the picture as it looks (this layer and those under it), not just this layer';
             }
             if (k === 'strength') num('Strength', 'strength', 1, 100);
-            if (k === 'wet') num('Wet', 'wet', 0, 100).title = 'How much of the colours it goes over it picks up and blends with its own';
+            if (k === 'wet') num('Wet', 'wet', 0, 100).title = 'How much of the colors it goes over it picks up and blends with its own';
             if (k === 'texture') choose('Texture', 'texture', this.TEXTURES);
             if (k === 'toneRange') choose('Range', 'toneRange', [['shadows', 'Shadows'], ['mid', 'Midtones'], ['highlights', 'Highlights']]);
-            if (k === 'sponge') choose('Colour', 'sponge', [['less', 'Less'], ['more', 'More']]);
+            if (k === 'sponge') choose('Color', 'sponge', [['less', 'Less'], ['more', 'More']]);
             if (k === 'aligned') {
                 const c = check('Aligned', 'aligned');
                 if (c) c.title = 'On: each stroke goes on copying from the same distance away. Off: each stroke starts again from where you Alt-clicked';
@@ -1320,22 +1320,22 @@ const PaintEditor = {
             if (k === 'italic') toggle('Italic', 'italic', '<i>I</i>');
             if (k === 'align') segment('Align', 'align', [
                 ['left', 'Left', lines('<path d="M4 6h16M4 12h10M4 18h13"/>')],
-                ['center', 'Centre', lines('<path d="M4 6h16M7 12h10M5.5 18h13"/>')],
+                ['center', 'Center', lines('<path d="M4 6h16M7 12h10M5.5 18h13"/>')],
                 ['right', 'Right', lines('<path d="M4 6h16M10 12h10M7 18h13"/>')]
             ]);
             if (k === 'outline') {
                 const c = num('Outline', 'outline', 0, 50);
-                if (c) c.title = 'An outline round the letters, in the background colour';
+                if (c) c.title = 'An outline round the letters, in the background color';
             }
             if (k === 'shapeFill') {
                 // As MS Paint has them: the outline in the brush colour, the
                 // fill in it too (Filled) or in the background colour
                 const c = choose('Style', 'shapeFill', [['none', 'Outline'], ['fg', 'Filled'], ['bg', 'Outline and fill']]);
-                if (c) c.title = 'Outline: the brush colour. Filled: all the brush colour. Outline and fill: filled with the background colour';
+                if (c) c.title = 'Outline: the brush color. Filled: all the brush color. Outline and fill: filled with the background color';
             }
             if (k === 'corner') num('Corners', 'corner', 0, 200, 1);
             if (k === 'gradient') choose('Shape', 'gradient', [['linear', 'Linear'], ['radial', 'Radial']]);
-            if (k === 'gradTo') choose('To', 'gradTo', [['bg', 'Background colour'], ['clear', 'Nothing']]);
+            if (k === 'gradTo') choose('To', 'gradTo', [['bg', 'Background color'], ['clear', 'Nothing']]);
             if (k === 'font') this.fontChoice(add, save);
             if (k === 'stamp') choose('Stamp', 'stamp', Object.entries(this.STAMP_NAMES));
             if (k === 'tip') {
@@ -1353,23 +1353,23 @@ const PaintEditor = {
             'rect-select': 'Drag a rectangle. Shift adds, Alt takes away; Ctrl+D selects nothing',
             'ellipse-select': 'Drag an ellipse. Shift adds, Alt takes away',
             lasso: 'Draw round what to select. Shift adds, Alt takes away',
-            wand: 'Click a colour to select it. Shift adds, Alt takes away',
-            picker: 'Click or drag for the foreground colour, Alt for the background. With a brush, hold Alt to pick',
+            wand: 'Click a color to select it. Shift adds, Alt takes away',
+            picker: 'Click or drag for the foreground color, Alt for the background. With a brush, hold Alt to pick',
             hand: 'Drag to move about; Shift-drag turns the view; the wheel zooms; double-click fits',
             text: 'Click where the text goes; Ctrl+Enter puts it down',
-            fill: wholeFill ? 'Click to fill the whole layer (or what\'s selected) with the foreground colour' : 'Click to fill with the foreground colour',
+            fill: wholeFill ? 'Click to fill the whole layer (or what\'s selected) with the foreground color' : 'Click to fill with the foreground color',
             gradient: 'Drag from where it starts to where it ends',
-            recolor: 'Click a colour: it becomes the foreground colour everywhere, its shading kept',
+            recolor: 'Click a color: it becomes the foreground color everywhere, its shading kept',
             pixel: 'Square pixels on a grid the brush\'s size, crisp at any zoom',
             can: 'Hold to spray: the longer it\'s held, the more dots',
             stamp: 'Click for a stamp; drag for a row of them',
             charcoal: 'Grainy, as on rough paper; with a pen, tilt it for a broad side',
             watercolour: 'See-through: it pools at its edges, and darkens where strokes cross',
             texture: 'Paints through the texture; go over it again to fill it in',
-            mixer: 'Starts with the brush colour and blends in the colours it goes over',
+            mixer: 'Starts with the brush color and blends in the colors it goes over',
             custom: this.ownBrushes().length ? 'One of your own brushes; ⋯ → Brushes makes more' : 'Make one first: select part of the picture, then ⋯ → Brushes',
             'spot-heal': 'Paint over a mark or a speck: it\'s filled from what\'s round it',
-            heal: this.healSrc ? 'Paint over what to hide: copied from the + mark, in the colours round it. Alt-click to copy from elsewhere' : 'Alt-click where to copy from, then paint over what to hide',
+            heal: this.healSrc ? 'Paint over what to hide: copied from the + mark, in the colors round it. Alt-click to copy from elsewhere' : 'Alt-click where to copy from, then paint over what to hide',
             ink: 'Thin when you go fast, thick when slow; with a pen, as hard as you press',
             marker: 'See-through, like a felt pen: where strokes cross, it\'s darker',
             airbrush: 'Soft: hold still or go over it again to build it up',
@@ -1377,10 +1377,10 @@ const PaintEditor = {
             'eraser-block': 'A hard square, like the pencil',
             dodge: 'Paint to lighten; again over it for more',
             burn: 'Paint to darken; again over it for more',
-            sponge: 'Paint to take colour out, or (More) to put it in',
+            sponge: 'Paint to take color out, or (More) to put it in',
             blur: 'Paint to soften; again over it for more',
             sharpen: 'Paint to make it crisper; a little goes a long way',
-            smudge: 'Drag: the colours under the brush go with it',
+            smudge: 'Drag: the colors under the brush go with it',
             clone: this.healSrc ? 'Paint: copied from the + mark. Alt-click to copy from elsewhere' : 'Alt-click where to copy from, then paint'
         }[this.tool] || '';
         // On a mask: what the colours do there
@@ -1416,8 +1416,8 @@ const PaintEditor = {
     saveColour(c = this.fg) {
         const list = this.savedColours();
         c = c.toLowerCase();
-        if (list.includes(c)) { this.app.showToast('That colour is saved already', 1400); return; }
-        if (list.length >= this.PALETTE_MAX) { this.app.showToast(`Up to ${this.PALETTE_MAX} saved colours: right-click one to take it off`, 2200); return; }
+        if (list.includes(c)) { this.app.showToast('That color is saved already', 1400); return; }
+        if (list.length >= this.PALETTE_MAX) { this.app.showToast(`Up to ${this.PALETTE_MAX} saved colors: right-click one to take it off`, 2200); return; }
         this.setSavedColours([...list, c]);
     },
 
@@ -1444,8 +1444,8 @@ const PaintEditor = {
         }
         const add = document.createElement('button');
         add.className = 'paint-palette-add';
-        add.title = 'Save the brush colour';
-        add.setAttribute('aria-label', 'Save the brush colour');
+        add.title = 'Save the brush color';
+        add.setAttribute('aria-label', 'Save the brush color');
         add.innerHTML = '<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v12M6 12h12"/></svg>';
         add.addEventListener('click', () => { add.blur(); this.saveColour(); });
         pal.appendChild(add);
@@ -5819,7 +5819,7 @@ const PaintEditor = {
                 const m = document.createElement('span');
                 m.className = 'paint-layer-kind';
                 m.innerHTML = '<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="11" height="11" rx="1"/><circle cx="15" cy="15" r="6"/></svg>';
-                m.title = 'Shape: with its tool out, the line, fill and colours change it; double-click for its tool';
+                m.title = 'Shape: with its tool out, the line, fill and colors change it; double-click for its tool';
                 row.appendChild(m);
                 row.addEventListener('dblclick', (e) => { e.preventDefault(); this.cur = i; this.onMask = false; this.setTool(l.shape.kind); this.drawLayers(); });
             }
@@ -6854,7 +6854,7 @@ const PaintEditor = {
         const k = this.fullW / this.PW;
         const v = await UI.prompt({
             title: 'Canvas size',
-            message: 'The picture stays in the middle; what\'s added is the background colour, and can be painted on. Crop (C) adds on one side only.',
+            message: 'The picture stays in the middle; what\'s added is the background color, and can be painted on. Crop (C) adds on one side only.',
             input: { label: 'Width × height, in pixels', value: `${Math.round(this.OW * k)} × ${Math.round(this.OH * k)}` },
             ok: 'Set'
         });

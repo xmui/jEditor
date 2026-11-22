@@ -2473,7 +2473,7 @@ const app = {
         const fl = [];
         if (st.flags.star) fl.push(`★ ${st.flags.star}`);
         if (st.flags.rescan) fl.push(`rescan ${st.flags.rescan}`);
-        if (st.flags.color) fl.push(`labelled ${st.flags.color}`);
+        if (st.flags.color) fl.push(`labeled ${st.flags.color}`);
         if (fl.length) rows.push(['Flags', fl.join(' · ')]);
         return rows;
     },
@@ -5274,7 +5274,7 @@ const app = {
         ['adjust.before', 'adjust', 'Adjust', 'Before and after', ['\\']],
         ['adjust.auto', 'adjust', 'Adjust', 'Auto (levels from the photo)', ['Shift+A']],
         ['adjust.autoColor', 'adjust', 'Adjust', 'Auto color (each channel)', ['Shift+C']],
-        ['adjust.whiteBalance', 'adjust', 'Adjust', 'White balance: click something grey', ['W']],
+        ['adjust.whiteBalance', 'adjust', 'Adjust', 'White balance: click something gray', ['W']],
         ['adjust.reset', 'adjust', 'Adjust', 'Reset everything', ['R']],
         ['adjust.clip', 'adjust', 'Adjust', 'Show clipping: lost highlights red, lost shadows blue', ['J']],
         ['adjust.copy', 'adjust', 'Adjust', 'Copy the adjustments', ['Ctrl+Shift+C']],
@@ -5308,7 +5308,7 @@ const app = {
         ['paint.rect', 'paint', 'Paint', 'Rectangle', ['R']],
         ['paint.ellipse', 'paint', 'Paint', 'Ellipse', ['O']],
         ['paint.text', 'paint', 'Paint', 'Text', ['T']],
-        ['paint.picker', 'paint', 'Paint', 'Colour picker', ['I']],
+        ['paint.picker', 'paint', 'Paint', 'Color picker', ['I']],
         ['paint.hand', 'paint', 'Paint', 'Hand', ['H']],
         ['paint.crop', 'paint', 'Paint', 'Crop: drag past the picture for more canvas', ['C']],
         ['paint.smaller', 'paint', 'Paint', 'Brush (or line, or text) smaller', ['[']],
@@ -5327,7 +5327,7 @@ const app = {
         ['paint.layerBelow', 'paint', 'Paint', 'The layer below', ['Alt+[']],
         ['paint.layerUp', 'paint', 'Paint', 'Move the layer up', ['Ctrl+]']],
         ['paint.layerDown', 'paint', 'Paint', 'Move the layer down', ['Ctrl+[']],
-        ['paint.swap', 'paint', 'Paint', 'Swap the colours', ['X']],
+        ['paint.swap', 'paint', 'Paint', 'Swap the colors', ['X']],
         ['paint.colours', 'paint', 'Paint', 'Black and white', ['D']],
         ['paint.selectAll', 'paint', 'Paint', 'Select all', ['Ctrl+A']],
         ['paint.deselect', 'paint', 'Paint', 'Select nothing', ['Ctrl+D']],
@@ -8425,7 +8425,7 @@ const app = {
                 ['—'],
                 ...row('Auto', 'adjust.auto'),
                 ...row('Auto color', 'adjust.autoColor'),
-                ...row('White balance: click something grey', 'adjust.whiteBalance'),
+                ...row('White balance: click something gray', 'adjust.whiteBalance'),
                 ['—'],
                 ...row('Copy adjustments', 'adjust.copy'),
                 ...row('Paste adjustments', 'adjust.paste'),
@@ -8538,7 +8538,7 @@ const app = {
                 ['Crop and straighten', () => { this.openSingle(file); this.enterCrop(); }, false, undefined, 'edit.crop'],
                 ...(this.getLastCrop() ? [['Crop like the last crop', () => this.cropLike([file]), false, undefined, 'edit.cropLike']] : []),
                 ['Adjust…', () => this.enterAdjust(file), false, undefined, 'edit.adjust'],
-                ['Restore colour', () => this.restoreColour([file])],
+                ['Restore color', () => this.restoreColour([file])],
                 ...(file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file), false, undefined, 'edit.copyAdjust']] : []),
                 ...(Adjust.clipboard() ? [['Paste adjustments', () => this.pasteAdjust([file]), false, undefined, 'edit.pasteAdjust']] : []),
                 ['Paint…', () => this.enterPaint(file), false, undefined, 'edit.paint'],
@@ -8564,7 +8564,7 @@ const app = {
                 ['Turn and flip', this.turnItems(file)],
                 ['Crop and straighten', () => this.enterCrop(), false, undefined, 'edit.crop'],
                 ['Adjust…', () => this.enterAdjust(), false, undefined, 'edit.adjust'],
-                ...(file ? [['Restore colour', () => this.restoreColour([file])]] : []),
+                ...(file ? [['Restore color', () => this.restoreColour([file])]] : []),
                 ...(file && file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file), false, undefined, 'edit.copyAdjust']] : []),
                 ...(Adjust.clipboard() ? [['Paste adjustments', () => this.pasteAdjust([file]), false, undefined, 'edit.pasteAdjust']] : []),
                 ['Paint…', () => this.enterPaint(), false, undefined, 'edit.paint'],
@@ -8686,11 +8686,11 @@ const app = {
             const now = (f._edit && f._edit.adj) || null;
             return { file: f, edit: Edits.withAdj(f._edit || null, Develop.restoreAuto(px, now, 100, 'auto', shared), f._edit || null) };
         });
-        Edits.set(items, 'restore colour');
+        Edits.set(items, 'restore color');
         const kind = shared && Develop.RESTORE_TYPES[shared.type];
-        const msg = one ? `Colour restored: ${files[0].name}`
-            : shared ? `Colour restored on ${items.length.toLocaleString()} photos as one roll` + (shared.type === 'keep' ? '' : ` (${kind.name.toLowerCase()})`)
-            : `Colour restored on ${items.length.toLocaleString()} photos`;
+        const msg = one ? `Color restored: ${files[0].name}`
+            : shared ? `Color restored on ${items.length.toLocaleString()} photos as one roll` + (shared.type === 'keep' ? '' : ` (${kind.name.toLowerCase()})`)
+            : `Color restored on ${items.length.toLocaleString()} photos`;
         this.showToast(msg, 4000, null, one ? { label: 'Adjust it…', run: () => this.enterAdjust(files[0]) } : null, { kind: 'adjust' });
     },
 
@@ -8722,7 +8722,7 @@ const app = {
             ...(own && sel.length > 1 ? [['Sync adjustments…', () => this.syncAdjust(), false, undefined, 'edit.syncAdjust']] : []),
             // With Adjust's: each on its own, or as a roll: photos faded together (a film,
             // a box of prints) restored the same way
-            [`Restore colour of ${n}`, [
+            [`Restore color of ${n}`, [
                 ['Restore each on its own', () => this.restoreColour(sel)],
                 ['Restore as one roll (faded together)', () => this.restoreColour(sel, { roll: true })]
             ]],
