@@ -1638,7 +1638,12 @@ const PaintEditor = {
         const fromBelow = !!(belowKey && kept && kept.drag === d && kept.key === belowKey);
         // The photo, drawn at screen size once for this view (a fine
         // downscale of a big photo every frame is what made strokes lag)
-        ctx.drawImage(fromBelow ? kept.canvas : this.shown(VD), 0, 0);
+        // (Moving about, the view's new every frame: the photo straight onto
+        // the canvas, at the quick downscale, not into a copy kept for a view
+        // that's gone the next frame; the fine one once it stops)
+        if (fromBelow) ctx.drawImage(kept.canvas, 0, 0);
+        else if (d && d.kind === 'pan') this.drawPhoto(ctx, VD, 'low');
+        else ctx.drawImage(this.shown(VD), 0, 0);
         ctx.setTransform(VD);
         this.showZoom();
         ctx.imageSmoothingEnabled = this.view.z < 2;
@@ -1772,14 +1777,33 @@ const PaintEditor = {
         const g = out.getContext('2d');
         g.setTransform(1, 0, 0, 1, 0, 0);
         g.clearRect(0, 0, out.width, out.height);
-        g.setTransform(VD);
-        g.imageSmoothingEnabled = this.view.z < 2;
-        g.imageSmoothingQuality = 'high';
-        g.shadowColor = 'rgba(0,0,0,0.35)';
-        g.shadowBlur = 12;
-        g.drawImage(this.backdrop, 0, 0);
+        this.drawPhoto(g, VD, 'high');
         this._shown = { key, src: this.backdrop, canvas: out };
         return out;
+    },
+
+    // The photo with its shadow, for the view VD, onto g (cleared, at no
+    // transform): the shadow a soft rectangle drawn only outside the
+    // picture. (Made from the photo's own pixels it was blurred again every
+    // frame of a pan, which is most of what made moving about lag)
+    drawPhoto(g, VD, quality) {
+        g.save();
+        g.beginPath();
+        g.rect(0, 0, g.canvas.width, g.canvas.height);
+        g.setTransform(VD);
+        g.rect(0, 0, this.OW, this.OH);
+        g.clip('evenodd');
+        g.shadowColor = 'rgba(0,0,0,0.35)';
+        g.shadowBlur = 12;
+        g.fillStyle = '#000';
+        g.fillRect(0, 0, this.OW, this.OH);
+        g.restore();
+        g.save();
+        g.setTransform(VD);
+        g.imageSmoothingEnabled = this.view.z < 2;
+        g.imageSmoothingQuality = quality;
+        g.drawImage(this.backdrop, 0, 0);
+        g.restore();
     },
 
     // The layer with the stroke so far on it, to show: kept from frame to

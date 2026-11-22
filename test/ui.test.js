@@ -1153,8 +1153,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const contrast = () => {
                 const cs = getComputedStyle(pill);
                 const lum = (c) => { const m = c.match(/[\d.]+/g).map(Number); return 0.299 * m[0] + 0.587 * m[1] + 0.114 * m[2]; };
-                // See-through glass keeps its words readable with a halo instead (tokens.css)
-                if (Number((cs.backgroundColor.match(/[\d.]+/g) || [])[3] ?? 1) < 0.5) return cs.textShadow !== 'none' ? 255 : 0;
+                // See-through glass: its band keeps the words readable (6b measures it on screen)
+                if (Number((cs.backgroundColor.match(/[\d.]+/g) || [])[3] ?? 1) < 0.5) return /contrast\(/.test(cs.backdropFilter) && /brightness\(/.test(cs.backdropFilter) ? 255 : 0;
                 return Math.abs(lum(cs.backgroundColor) - lum(cs.color));
             };
             document.documentElement.dataset.theme = 'light';
@@ -1528,6 +1528,87 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('Info and the sidebar move the grid, Adjust and Paint at once, not by easing their layout', !r.gridEased && !r.screenEased, JSON.stringify(r));
         check('Animations off sets every duration to 0', r.off.every(v => v === '0ms'), JSON.stringify(r));
         check('mode switch chip: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 6b. Words on glass: readable over any photo (tokens.css) ----
+    // The glass holds what's behind it in a band, so its words keep 4.5:1
+    // and a dimmed control 3:1 over a white photo or a black one, light and
+    // dark, without a halo (2.0, the owner: Paint's pills and Layers over a
+    // white canvas couldn't be read). Measured on screen: the glass drawn
+    // with the words hidden, against each one's own colour
+    console.log('words on glass, over white and black');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.evaluate(async () => {
+            const dir = makeDir('Glass');
+            for (const [name, color] of [['1-white.png', '#fff'], ['2-black.png', '#000']]) {
+                const c = document.createElement('canvas'); c.width = 1600; c.height = 1000;
+                const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, c.width, c.height);
+                const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+                const h = makeHandle(name, new Uint8Array(await blob.arrayBuffer()), 'image/png');
+                dir._files.set(h.name, h);
+            }
+            dir.values = async function* () { yield* dir._files.values(); };
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+        });
+        const PARTS = { 'the name': '#paint-file', 'the size': '#paint-dims', 'the hint': '#paint-options .paint-hint', 'Layers': '.paint-layers-sec .paint-sec-head > span', 'Move up (dimmed)': '#paint-layer-up', 'Undo (dimmed)': '#paint-undo', 'the zoom': '#paint-zoom-1' };
+        const lows = [];
+        for (const glass of ['crystal', 'liquid']) for (const theme of ['light', 'dark']) for (const i of [0, 1]) {
+            const boxes = await page.evaluate(async ([glass, theme, i, PARTS]) => {
+                app.uiPrefs.glass = glass; app.uiPrefs.theme = theme; app.applyUiPrefs();
+                if (Modes.current() !== 'photos') { Modes.go('photos'); for (let k = 0; k < 100 && Modes.current() !== 'photos'; k++) await new Promise(r => setTimeout(r, 50)); }
+                app.setView('single'); app.loadIndex(i);
+                await new Promise(r => setTimeout(r, 400));
+                Modes.go('paint');
+                for (let k = 0; k < 200 && !(Modes.current() === 'paint' && PaintEditor.ready); k++) await new Promise(r => setTimeout(r, 50));
+                PaintEditor.setTool('hand'); PaintEditor.zoomTo(2);
+                await new Promise(r => setTimeout(r, 700));
+                const out = {};
+                for (const [name, sel] of Object.entries(PARTS)) {
+                    const el = document.querySelector(sel);
+                    if (!el || !el.getClientRects().length) continue;
+                    const r = el.getBoundingClientRect();
+                    let o = 1; for (let e = el; e; e = e.parentElement) o *= +getComputedStyle(e).opacity;
+                    const m = getComputedStyle(el).color.match(/[\d.]+/g).map(Number);
+                    out[name] = { x: r.x, y: r.y, w: r.width, h: r.height, rgb: m.slice(0, 3), a: (m[3] ?? 1) * o, icon: !!el.querySelector('svg') && !el.textContent.trim(), dimmed: el.disabled };
+                }
+                const st = document.createElement('style'); st.id = 'hide-words';
+                st.textContent = '#paint-editor *, .mode-row * { color: transparent !important; transition: none !important; } #paint-editor svg, .mode-row svg { visibility: hidden !important; }';
+                document.head.appendChild(st);
+                return out;
+            }, [glass, theme, i, PARTS]);
+            await page.waitForTimeout(120);
+            const shot = (await page.screenshot()).toString('base64');
+            const res = await page.evaluate(async ([b64, boxes]) => {
+                document.getElementById('hide-words').remove();
+                const bm = await createImageBitmap(await (await fetch('data:image/png;base64,' + b64)).blob());
+                const c = new OffscreenCanvas(bm.width, bm.height); const g = c.getContext('2d'); g.drawImage(bm, 0, 0);
+                const k = bm.width / innerWidth;
+                const lin = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+                const L = (p) => 0.2126 * lin(p[0]) + 0.7152 * lin(p[1]) + 0.0722 * lin(p[2]);
+                const out = {};
+                for (const [name, b] of Object.entries(boxes)) {
+                    // The glass right behind it: the worst of the middle of its box (a
+                    // round button's corners are off the pill, in a pill's rounded end)
+                    const d = g.getImageData(Math.round((b.x + b.w * 0.25) * k), Math.round((b.y + b.h * 0.25) * k), Math.max(1, Math.round(b.w * 0.5 * k)), Math.max(1, Math.round(b.h * 0.5 * k))).data;
+                    let worst = Infinity;
+                    for (let j = 0; j < d.length; j += 16) {
+                        const bg = [d[j], d[j + 1], d[j + 2]];
+                        const fg = b.rgb.map((v, n) => v * b.a + bg[n] * (1 - b.a));
+                        const l1 = L(fg), l2 = L(bg);
+                        worst = Math.min(worst, (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05));
+                    }
+                    out[name] = { cr: +worst.toFixed(2), need: b.icon || b.dimmed ? 3 : 4.5 };
+                }
+                return out;
+            }, [shot, boxes]);
+            for (const [name, v] of Object.entries(res)) if (v.cr < v.need) lows.push(`${name} ${v.cr}:1 (${glass}, ${theme}, over ${i ? 'black' : 'white'})`);
+            if (!Object.keys(res).length) lows.push(`nothing measured (${glass}, ${theme}, ${i})`);
+        }
+        check('words on glass keep 4.5:1, icons and dimmed controls 3:1, over a white and a black photo (Crystal and Liquid, light and dark)', lows.length === 0, lows.join('; '));
+        check('words on glass: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

@@ -10244,10 +10244,27 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 /* Adjust's and Paint's gear: a theme has Settings in its own menus */
 :root[data-skin] .mode-settings { display: none; }
 
-/* Lens, Clear, Crystal and Liquid glass are too light to keep words
-   readable on their own over a bright photo: a halo behind them does
-   (--glass-halo, tokens.css; none on Opaque). Buttons and fields too,
-   which the browser gives no shadow of their own */
+/* Words on glass. The glass keeps what's behind it in a band (tokens.css),
+   so the words are readable over any photo; secondary words take the
+   band's own grey (--glass-text-2), and a dimmed control is dimmed less
+   than on a solid card (--glass-off), so it's still read as there: 3:1.
+   On dark glass a soft scrim behind the words and icons (--glass-halo,
+   --glass-icon-halo); none on light glass, Opaque or solid glass */
+:root:not([data-skin]) :is(.toolbar, .file-info, .mode-file, .mode-head-acts, .mode-row, .adj-zoom, .crop-zoom, .adj-panel, .paint-panel, .paint-tools, .paint-options, .paint-zoom, .picked-bar, .task-pill, .toast, .sb-picker, .popover) {
+    --text-2: var(--glass-text-2);
+    --text-3: var(--glass-text-2);
+    text-shadow: var(--glass-halo);
+}
+:root:not([data-skin]) :is(.toolbar, .file-info, .mode-file, .mode-head-acts, .mode-row, .adj-zoom, .crop-zoom, .adj-panel, .paint-panel, .paint-tools, .paint-options, .paint-zoom, .picked-bar, .task-pill, .toast, .sb-picker, .popover) :is(button, input, select) {
+    text-shadow: var(--glass-halo);
+}
+:root:not([data-skin]) :is(.toolbar, .file-info, .mode-file, .mode-head-acts, .mode-row, .adj-zoom, .crop-zoom, .adj-panel, .paint-panel, .paint-tools, .paint-options, .paint-zoom, .picked-bar, .task-pill, .toast, .sb-picker, .popover) button svg {
+    filter: var(--glass-icon-halo);
+}
+:root:not([data-skin]) :is(.toolbar, .file-info, .mode-file, .mode-head-acts, .mode-row, .adj-zoom, .crop-zoom, .adj-panel, .paint-panel, .paint-tools, .paint-options, .paint-zoom, .picked-bar, .task-pill, .toast, .sb-picker, .popover) :is(.btn, .tb-btn):is(:disabled, [aria-disabled="true"]) {
+    opacity: var(--glass-off);
+}
+
 :root:not([data-skin]) :is(.toolbar, .file-info, #context-menu, .sb-picker, .task-pill, .toast, .picked-bar, .paint-tools, .paint-options),
 :root:not([data-skin]) :is(.toolbar, .file-info, #context-menu, .sb-picker, .task-pill, .toast, .picked-bar, .paint-tools, .paint-options) :is(button, input, select) {
     text-shadow: var(--glass-halo);
@@ -12269,10 +12286,12 @@ body.touring .controls.idle button { pointer-events: auto; }
     border-radius: var(--r-md);
 }
 
+/* The tool in hand: filled with the accent, its icon white (a tint of
+   the accent on glass over a bright photo was too faint to see) */
 :root:not([data-skin]) .paint-tool[aria-pressed="true"] {
     border-color: transparent;
-    background: var(--accent-soft);
-    color: var(--accent-text);
+    background: var(--accent);
+    color: var(--on-accent);
 }
 
 /* The tools: an upright glass pill over the photo at the left (the plan:
@@ -12305,8 +12324,11 @@ body.touring .controls.idle button { pointer-events: auto; }
     color: var(--text-1);
 }
 
-:root:not([data-skin]) .paint-tool:hover {
+:root:not([data-skin]) .paint-tool:hover:not([aria-pressed="true"]) {
     background: var(--tb-hover);
+}
+:root:not([data-skin]) .paint-tool[aria-pressed="true"]:hover {
+    background: var(--accent-hover);
 }
 
 /* A slot holding more tools: a small mark in its corner */
