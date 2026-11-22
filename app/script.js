@@ -419,7 +419,13 @@ const app = {
     // read-only for now, never in Recent and not watched for changes.
     async openDirectory(dirHandle, { scope = null, library = false } = {}) {
         if (scope === null && !library) {
-            const order = await Recents.offerOrder(dirHandle);
+            let order = null;
+            try {
+                order = await Recents.offerOrder(dirHandle);
+            } catch (e) {
+                // (never a reason not to open the folder itself)
+                this.reportOpenProblem('offering the whole project', e);
+            }
             if (order) return this.openDirectory(order.handle, { scope: order.path });
         }
         this._openScope = scope;
@@ -450,11 +456,22 @@ const app = {
         } catch (err) {
             if (gen !== this._openGen) return;
             this.isLoading = false;
-            console.error('Open folder error:', err);
+            this.reportOpenProblem('opening the folder', err);
             UI.alert({ title: 'Couldn\'t open the folder', message: err.message });
             this.elements.dropZone.classList.remove('hidden');
             this.endTask('scan');
         }
+    },
+
+    // What went wrong opening a folder: the console, and the desktop apps'
+    // log (their bridge.js writes what reportError raises), so an open that
+    // fails on someone's own PC can be traced from their log
+    reportOpenProblem(step, err) {
+        console.error(`Open folder error (${step}):`, err);
+        try {
+            const e = err instanceof Error ? err : new Error(String(err));
+            if (typeof reportError === 'function') reportError(Object.assign(new Error(`Open folder (${step}): ${e.message}`), { stack: e.stack }));
+        } catch (e) { /* the console has it */ }
     },
 
     log(msg) {

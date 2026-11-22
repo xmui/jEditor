@@ -6114,6 +6114,13 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const dir = await opfs.getDirectoryHandle('homeclick', { create: true });
             const fh = await dir.getFileHandle('a.jpg', { create: true });
             const w = await fh.createWritable(); await w.write(new Blob([await makeRealJpeg(400, 300)])); await w.close();
+            // (and two for the guard below: the page's helpers are gone after the reload)
+            for (const name of ['guard-stuck', 'guard-failing']) {
+                try { await opfs.removeEntry(name, { recursive: true }); } catch (e) { /* fresh */ }
+                const d = await opfs.getDirectoryHandle(name, { create: true });
+                const gh = await d.getFileHandle('x.jpg', { create: true });
+                const gw = await gh.createWritable(); await gw.write(new Blob([await makeRealJpeg(200, 150)])); await gw.close();
+            }
             window.showDirectoryPicker = async () => dir;
             await app.browseFolder();
             for (let i = 0; i < 60 && app.files.length < 1; i++) await sleep(50);
@@ -6134,6 +6141,33 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             && !document.getElementById('main-interface').classList.contains('hidden'), null, { timeout: 10000 }).then(() => true).catch(() => false);
         check('home: the project is a stack on the page, nothing over it', !!at && at.onTop, JSON.stringify(at));
         check('... clicked, it opens in the viewer', !!opened, JSON.stringify(await page.evaluate(() => ({ files: app.files.length, view: document.body.dataset.view, loading: app.isLoading }))));
+        // Looking for the project a folder is in can't hold an open up: stuck
+        // for ever, or failing (something an older jEditor kept), the folder
+        // still opens on its own
+        const guard = await page.evaluate(async () => {
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const opfs = await navigator.storage.getDirectory();
+            const mk = (name) => opfs.getDirectoryHandle(name);
+            const was = { containing: Recents.containing, ms: Recents.CONTAINING_MS };
+            const opened = async (d) => {
+                window.showDirectoryPicker = async () => d;
+                const t = performance.now();
+                // (not awaited: stuck, it would never come back)
+                app.browseFolder();
+                for (let i = 0; i < 60 && !(app.dirHandle === d && !app.isLoading && app.files.length === 1); i++) await sleep(50);
+                return app.dirHandle === d && app.files.length === 1 && Math.round(performance.now() - t);
+            };
+            Recents.CONTAINING_MS = 300;
+            Recents.containing = () => new Promise(() => { });
+            const stuck = await opened(await mk('guard-stuck'));
+            Recents.containing = async () => { throw new Error('an old record'); };
+            const failing = await opened(await mk('guard-failing'));
+            Recents.containing = was.containing;
+            Recents.CONTAINING_MS = was.ms;
+            app._openGen = (app._openGen || 0) + 1; // (one left stuck, without the guard, stops)
+            return { stuck, failing };
+        });
+        check('... looking for its project stuck or failing, a folder still opens', !!guard.stuck && !!guard.failing && guard.stuck < 3000, JSON.stringify(guard));
         check('home suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }

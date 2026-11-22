@@ -325,6 +325,8 @@ const Recents = {
 
     // → { rec, path } or null. The closest order that already has a
     // .jeditor, else the outermost one.
+    CONTAINING_MS: 4000,
+
     async containing(handle) {
         if (!this.supported() || !handle || handle.kind !== 'directory') return null;
         const hits = [];
@@ -351,7 +353,20 @@ const Recents = {
     // Ask; → { handle, path } to open the order at the folder, or null to
     // open just the folder
     async offerOrder(handle) {
-        const hit = await this.containing(handle);
+        // Looking through what was opened before never holds an open up: if
+        // it fails (something kept by an older jEditor it can't read) or
+        // takes more than a few seconds, the folder opens on its own
+        let timer = null;
+        const late = new Promise(res => { timer = setTimeout(() => res('late'), this.CONTAINING_MS); });
+        const hit = await Promise.race([this.containing(handle).catch((e) => {
+            console.warn('Recents: couldn\'t look for the project a folder is in', e);
+            return null;
+        }), late]);
+        clearTimeout(timer);
+        if (hit === 'late') {
+            console.warn('Recents: looking for the project a folder is in took too long; opening just the folder');
+            return null;
+        }
         if (!hit) return null;
         const label = hit.path.split('/').join(' / ');
         this.el('op-text').textContent = `“${handle.name}” is inside “${hit.rec.name}”, which you've opened before. ` +
