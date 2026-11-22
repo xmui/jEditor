@@ -703,7 +703,25 @@
         // button as in Photos, and their head starts below it (style.css).
         // (Stepped aside, the toolbar's title bar still took the press on
         // the page's own chip there: hard to press, Needs fixing 2026-11-05)
-        if (typeof Modes !== 'undefined' && Modes.current() !== 'photos') return { visible: true, title: $('file-name-text').textContent || a.dirHandle.name, subtitle: '', items: [modeItem(), { kind: 'flexible' }] };
+        // The sidebar open (the owner's pick A, 21 November): its own row's
+        // buttons are the toolbar's, beside the lights, on the one row (Photos
+        // · Adjust · Paint as icons, its button, Find anything), and the title
+        // starts at its edge (a space before it, fitted: titleAt). Its own
+        // row doesn't show under the toolbar (style.css)
+        const railEl = document.querySelector('.folder-rail');
+        const side = typeof Folders !== 'undefined' && Folders.railOpen() && !!railEl && !!railEl.getClientRects().length;
+        const lead = () => {
+            const shownModes = Modes.shown();
+            return [
+                { id: 'modes', kind: 'segment', segments: shownModes.map(([, l]) => l), symbols: shownModes.map(([m]) => MODE_SYMBOLS[m] || 'circle'), selected: shownModes.findIndex(([m]) => m === Modes.current()), navigational: true },
+                { id: 'rail', kind: 'button', symbol: 'sidebar.left', label: 'Sidebar', tooltip: said($('fb-rail').title), navigational: true },
+                ...(typeof Palette !== 'undefined' ? [{ id: 'find', kind: 'button', symbol: 'magnifyingglass', label: 'Find anything', tooltip: 'Find a photo or folder (⌘F)', navigational: true }] : []),
+                { id: 'space', kind: 'space', navigational: true }
+            ];
+        };
+        const titleAt = side ? Math.round(railEl.getBoundingClientRect().right + 12) : 0;
+        if (typeof Modes !== 'undefined' && Modes.current() !== 'photos') return { visible: true, title: $('file-name-text').textContent || a.dirHandle.name, subtitle: '', titleAt, items: side ? [...lead(), { kind: 'flexible' }] : [modeItem(), { kind: 'flexible' }] };
+        if (side && typeof Modes !== 'undefined') return sideModel(a, [...lead(), { kind: 'flexible' }], titleAt);
         const items = [];
         const bar = $('folder-bar');
         const browsing = shown(bar);
@@ -749,6 +767,38 @@
         };
     }
 
+    // The sidebar open: the right-hand items as always (sort, the page's
+    // own buttons, More), after the sidebar's own at the left
+    function sideModel(a, items, titleAt) {
+        const chip = $('fb-filter-chip');
+        if (shown(chip)) items.push({ id: 'filter', kind: 'button', symbol: 'line.3.horizontal.decrease.circle.fill', label: chip.textContent.trim(), tooltip: chip.title });
+        const sort = $('sort-mode');
+        items.push({
+            id: 'sort', kind: 'menu', symbol: 'arrow.up.arrow.down', label: sort.selectedOptions[0] ? sort.selectedOptions[0].textContent : 'Sort', tooltip: 'Sort by',
+            menu: [...sort.options].map(o => ({ id: o.value, label: o.textContent, checked: o.selected }))
+        });
+        const more = [{ id: 'rename', label: 'Rename…', symbol: 'pencil' }, { separator: true }];
+        for (const b of $('header-controls').querySelectorAll('button[data-hc]')) {
+            if (!shown(b)) continue;
+            const key = b.dataset.hc;
+            const on = b.getAttribute('aria-pressed') === 'true' || b.classList.contains('active');
+            const symbol = key === 'view' ? (shown(b.querySelector('.icon-grid')) ? 'square.grid.2x2' : 'photo') : (on && PRESSED[key]) || SYMBOLS[key] || 'circle';
+            const entry = { id: 'hc:' + key, label: b.getAttribute('aria-label') || b.title, symbol, enabled: !b.disabled };
+            if (b.classList.contains('hc-extra')) more.push(entry);
+            else items.push({ ...entry, kind: 'button', tooltip: said(b.title) });
+        }
+        items.push({ id: 'more', kind: 'menu', symbol: 'ellipsis.circle', label: 'More', menu: more });
+        const crumbs = $('fb-crumbs');
+        const where = shown($('folder-bar')) && crumbs ? crumbs.textContent.replace(/\s+/g, ' ').trim() : '';
+        return {
+            visible: true,
+            title: $('file-name-text').textContent || a.dirHandle.name,
+            subtitle: [a.dirHandle.name, where, $('file-count').textContent].filter(Boolean).join(' · '),
+            titleAt,
+            items
+        };
+    }
+
     let lastToolbar = '';
     let toolbarTimer = null;
     // At most every 30ms, never later: put off at each change, it waited
@@ -770,6 +820,7 @@
         const click = (el) => el && el.click();
         if (id === 'rail') click($('fb-rail'));
         else if (id === 'mode') Modes.go(String(value));
+        else if (id === 'modes') { const m = Modes.shown()[Number(value)]; if (m) Modes.go(m[0]); }
         else if (id === 'scope') click(Number(value) === 0 ? $('fb-all') : $('fb-folders'));
         else if (id === 'filter') click($('fb-filter-chip'));
         else if (id === 'sort') {
@@ -797,6 +848,9 @@
             // comes back then, not when something else on the page changes
             for (const el of [$('adjust-editor'), $('paint-editor')].filter(Boolean)) watch.observe(el, { attributes: true, attributeFilter: ['class'] });
             $('sort-mode').addEventListener('change', sendToolbar);
+            // The sidebar's width: where the title starts (titleAt)
+            const railEl = document.querySelector('.folder-rail');
+            if (railEl && typeof ResizeObserver === 'function') new ResizeObserver(sendToolbar).observe(railEl);
             sendToolbar();
         });
     }
@@ -827,6 +881,9 @@
             }
         } else if (msg.type === 'toolbar') {
             onToolbar(msg.id, msg.value);
+        } else if (msg.type === 'toolbarLead') {
+            // The sidebar at least as wide as its buttons in the toolbar (style.css: --rail-lead)
+            if (Number.isFinite(msg.width) && msg.width > 0) document.documentElement.style.setProperty('--rail-lead', msg.width + 'px');
         } else if (msg.type === 'fullscreen') {
             document.documentElement.classList.toggle('fullscreen', !!msg.on);
         } else if (msg.type === 'windowState') {
