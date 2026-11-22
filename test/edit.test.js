@@ -3114,9 +3114,12 @@ const PROJECT = `
                 P.float.t.sx = P.float.t.sy = 0.2;
                 P.commitFloat();
                 pressKey('t', { ctrlKey: true });
-                P.float.t.sx = P.float.t.sy = 5;
+                // Lifted again: its W and H are of what it was before (20%),
+                // so 100% is back to its size
+                out.sharp = [Math.round(P.float.t.sx * 100)];
+                P.float.t.sx = P.float.t.sy = 1;
                 P.commitFloat();
-                out.sharp = [a(100, 100), a(148, 100), a(152, 100), a(53, 53)];
+                out.sharp.push(a(100, 100), a(148, 100), a(152, 100), a(53, 53));
                 // Kept with the layers; painting on it makes it plain pixels
                 const kept = Paint.clean({ id: 'abc', w: 200, h: 200, layers: [{ id: 'l1', rev: 'r1', src: { rev: 'sx', w: 200, h0: 200, h: [1, 0, 0, 0, 1, 0, 0, 0, 1] } }, { id: 'l2', rev: 'r2', src: { rev: 'sy', h: [1] } }] });
                 out.kept = [!!kept.layers[0].src && kept.layers[0].src.rev, 'src' in kept.layers[1]];
@@ -3138,7 +3141,7 @@ const PROJECT = `
         check('paint warp: Ctrl-drag a corner sets the corners free, with Mode along the top', r.free && r.free[0] && r.free[1] === 100 && r.free[2] && r.free[3], JSON.stringify(r));
         check('paint warp: Done distorts it; Ctrl+Z puts it back', r.distorted && r.distorted[0] === 0 && r.distorted[1] >= 250 && r.distorted[2] && JSON.stringify(r.undone) === '[255,true]', JSON.stringify(r));
         check('paint warp: Perspective moves the neighbour along the side the other way', r.persp === '50,150,180,20', JSON.stringify(r));
-        check('paint warp: transformed small then big again, it\'s as sharp as it was', JSON.stringify(r.sharp) === '[255,255,0,255]', JSON.stringify(r));
+        check('paint warp: transformed small then back to 100% (of what it was), it\'s as sharp as it was', JSON.stringify(r.sharp) === '[20,255,255,0,255]', JSON.stringify(r));
         check('paint warp: the original is kept with the layers; painting on it makes it plain pixels; a slide keeps no copy', r.kept && r.kept[0] === 'sx' && r.kept[1] === false && r.plain && r.slid, JSON.stringify(r));
         check('paint warp: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
