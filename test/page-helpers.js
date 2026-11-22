@@ -203,7 +203,8 @@ const QUIET_FIRST_OPEN = () => {
     try { if (!localStorage.getItem('jeditor.firstOpen')) localStorage.setItem('jeditor.firstOpen', JSON.stringify({ asked: true })); } catch (e) { /* no storage */ }
     try {
         const ui = JSON.parse(localStorage.getItem('jeditor.ui') || '{}') || {};
-        if (typeof ui.keepEdits !== 'boolean') localStorage.setItem('jeditor.ui', JSON.stringify({ ...ui, keepEdits: false }));
+        // (and no question about saving when a project opens: first-open.js)
+        if (typeof ui.keepEdits !== 'boolean' || typeof ui.askSaving !== 'boolean') localStorage.setItem('jeditor.ui', JSON.stringify({ keepEdits: false, askSaving: false, ...ui }));
     } catch (e) { /* no storage */ }
 };
 

@@ -1,8 +1,14 @@
 // The first time a folder is opened: in the apps with places, one dialog,
 // asked once ever (jeditor.firstOpen: { asked }), for where your projects
 // are kept (Settings → Projects and the Open a folder card's foot change
-// it later). Edits are kept in jEditor (edits.js; Settings → Saving
-// turns it off), so there's nothing to ask about saving.
+// it later).
+//
+// And each project's first time (one that hasn't chosen: Edits.chosen):
+// keep its edits in jEditor, or save them into the photos as you go. The
+// answer is the project's (edits.js), so it's asked once each; its ⋯
+// changes it later. "Don't ask again" makes it the default for new
+// projects too, and stops the question (uiPrefs.askSaving; both are in
+// Settings → Projects → Saving).
 
 const FirstOpen = {
     el(id) { return document.getElementById(id); },
@@ -83,7 +89,43 @@ const FirstOpen = {
     async afterLoad() {
         const app = this.app;
         const dir = app.dirHandle;
-        if (!dir || app.readOnlyMode || app.library || this.asked() || !this.places()) return;
-        await this.welcome({ folder: dir.name });
+        if (dir && !app.readOnlyMode && !app.library && !this.asked() && this.places()) await this.welcome({ folder: dir.name });
+        await this.askSaving();
+    },
+
+    // Settings → Saving: ask a project that hasn't chosen (on unless turned off)
+    asking() {
+        const p = this.app.uiPrefs;
+        return !(p && p.askSaving === false);
+    },
+
+    // A project's first time: keep its edits in jEditor, or into the photos
+    // → 'keep', 'write', or null (not asked, or Not now: asked next time)
+    async askSaving() {
+        const app = this.app;
+        const dir = app.dirHandle;
+        if (!dir || app.readOnlyMode || app.library || !this.asking() || !Edits.canKeep()) return null;
+        // (what the project chose comes with its edits: they may be late)
+        if (Edits.loaded) await Edits.loaded;
+        if (app.dirHandle !== dir || Edits.chosen() || UI.isOpen()) return null;
+        const keep = Edits.defaultKeeping();
+        const a = await UI.choose({
+            title: `How should ${dir.name} save edits?`,
+            message: `Keep in jEditor: your photos stay as they are, and Save over the original (${Host.say('Ctrl+S')}) writes an edit in when you want it. Into the photos: turns and crops are written into the files as you go.`,
+            ok: keep ? 'Keep in jEditor' : 'Into the photos',
+            alt: keep ? 'Into the photos' : 'Keep in jEditor',
+            cancel: 'Not now',
+            check: { label: 'Don\'t ask again', note: 'New projects do the same. Change it in Settings → Projects → Saving.', value: false }
+        });
+        if (!a || app.dirHandle !== dir) return null;
+        const on = (a.answer === 'ok') === keep;
+        Edits.setProjectKeeping(on, { quiet: true });
+        if (a.checked) {
+            app.uiPrefs.keepEdits = on;
+            app.uiPrefs.askSaving = false;
+            app.saveUiPrefs();
+        }
+        app.showToast(on ? 'Edits are kept in jEditor for this project; the photos stay as they are' : 'Edits go into the photos as you make them, for this project', 3500, null, null, { type: 'success' });
+        return on ? 'keep' : 'write';
     }
 };
