@@ -950,8 +950,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
 
     console.log('mac: the native toolbar (macOS 26)');
     {
-        // (off unless asked for, for now: main.js)
-        const { app, page, errors } = await launch(profile, [path.join(tmp, 'Glass')], { JEDITOR_NATIVE_TOOLBAR: '1' });
+        const { app, page, errors } = await launch(profile, [path.join(tmp, 'Glass')]);
         const native = await page.evaluate(() => !!window.jeditorMac.nativeToolbar);
         if (!native) {
             console.log('        (skipped: needs macOS 26 and the native module, native/build.js)');
@@ -960,10 +959,54 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             const describe = () => app.evaluate(({ BrowserWindow }) => global.jeditorToolbar.describe(BrowserWindow.getAllWindows()[0].getNativeWindowHandle()));
             const click = (id, value) => app.evaluate(({ BrowserWindow }, [id, value]) => global.jeditorToolbar.click(BrowserWindow.getAllWindows()[0].getNativeWindowHandle(), id, value), [id, value]);
             const settle = () => page.waitForTimeout(400);
+
+            // One row, as the Mac's own windows (the owner's pick A, 21 November):
+            // the sidebar open, its own buttons (Photos · Adjust · Paint as icons,
+            // its button, Find anything) beside the lights, the title from its
+            // edge, its list right under the toolbar and its own row not there;
+            // the lights centred on the toolbar's row, open or closed
+            await page.evaluate(() => { app.setView('single'); if (!Folders.railOpen()) app.keyHandlers()['folders.rail'](); });
+            for (let i = 0; i < 4; i++) await settle();
+            {
+                const d = await describe();
+                const p = await page.evaluate(() => {
+                    const r = (e) => { const x = document.querySelector(e); return x && x.getClientRects().length ? x.getBoundingClientRect().toJSON() : null; };
+                    return { rail: r('.folder-rail'), row: r('.folder-rail #mode-row'), first: r('.folder-rail .sb-card') };
+                });
+                const ids = d.items.map(i => i.id);
+                const modes = d.items.find(i => i.id === 'modes');
+                const lights = d.lights || {};
+                const centred = Math.abs((lights.top + lights.bottom) / 2 - d.toolbarHeight / 2) <= 2;
+                // (the sidebar made as wide as its buttons there, if they're wider: the title at its edge)
+                const titleAt = d.titleBox && p.rail ? Math.abs(d.titleBox.left - (p.rail.right + 12)) <= 6 : false;
+                check('one row, the sidebar open: its buttons beside the lights (the modes, its button, Find anything), the title from its edge, the lights centered, its own row gone and its list right under the toolbar', ids[0] === 'modes' && ids[1] === 'rail' && ids[2] === 'find' && !!modes && modes.selected === 0 && !ids.includes('mode') && centred && titleAt && !p.row && !!p.first && p.first.top < d.toolbarHeight + 12, JSON.stringify([ids, modes, lights, d.toolbarHeight, d.titleBox, p]));
+                await click('modes', 1);
+                await page.waitForFunction(() => Modes.current() === 'adjust', null, { timeout: 15000 }).catch(() => null);
+                await settle();
+                const inAdjust = await describe();
+                const am = inAdjust.items.find(i => i.id === 'modes');
+                // (the sidebar shown beside Adjust: the same buttons; not shown, the mode's own button)
+                const railBeside = await page.evaluate(() => { const r = document.querySelector('.folder-rail'); return !!r && !!r.getClientRects().length; });
+                const sameButtons = railBeside ? inAdjust.items[0] && inAdjust.items[0].id === 'modes' && !!am && am.selected === 1 : inAdjust.items[0] && inAdjust.items[0].id === 'mode' && inAdjust.items[0].menu.includes('✓Adjust');
+                check('... its Adjust there opens Adjust, the same buttons in the same places (or the mode\'s own, the sidebar not beside it)', await page.evaluate(() => Modes.current()) === 'adjust' && sameButtons, JSON.stringify([railBeside, inAdjust.items]));
+                await page.evaluate(() => Modes.go('photos'));
+                await page.waitForFunction(() => Modes.current() === 'photos', null, { timeout: 15000 }).catch(() => null);
+                await page.evaluate(() => { if (Folders.railOpen()) app.keyHandlers()['folders.rail'](); });
+                await settle();
+                const shut = await describe();
+                const sl = shut.lights || {};
+                check('... the sidebar closed: the lights still centered on the row, and no space before the title', Math.abs((sl.top + sl.bottom) / 2 - shut.toolbarHeight / 2) <= 2 && !shut.items.some(i => i.id === 'space'), JSON.stringify([shut.items.map(i => i.id), sl, shut.toolbarHeight]));
+            }
+
+            // (the checks below as before: the sidebar closed)
             // The view switch is in More in 2.0's pill: on the pill for this
-            await page.evaluate(() => { app.uiPrefs.placement.view = 'main'; app.applyUiPrefs(); app.setView('single'); app.loadIndex(0); });
-            await settle();
+            // (the toolbar follows the page at most 30ms later, but the photo
+            // loading can hold the page up on a slow Mac: wait for it to say
+            // so, rather than a set time, which once caught it still in More)
+            await page.evaluate(() => { app.uiPrefs.placement.view = 'main'; app.applyUiPrefs(); app.setView('single'); return app.loadIndex(0); });
+            await page.waitForFunction(() => !app.isLoading && !document.querySelector('#header-controls [data-hc="view"]').classList.contains('hc-extra'), null, { timeout: 15000 }).catch(() => null);
             let d = await describe();
+            for (let i = 0; i < 25 && !d.items.some(x => x.id === 'hc:view'); i++) { await settle(); d = await describe(); }
             const ids = d.items.map(i => i.id);
             check('the toolbar is the top row: in Liquid Glass, the page\'s own pills gone', d.visible && d.glass && await page.evaluate(() => getComputedStyle(document.querySelector('header')).display === 'none'), JSON.stringify(d).slice(0, 300));
             const edge = await page.evaluate(() => {
@@ -1043,8 +1086,11 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                             }, [scale, rail, where]);
                             d = await describe();
                             const name = `${where} at ${scale * 100}%${rail ? ', sidebar open' : ''}${fs_ ? ', full screen' : ''}`;
+                            // (the sidebar open: Photos · Adjust · Paint as its icons, the mode's chosen)
                             const item = d.items[0];
-                            if (!d.visible || !item || item.id !== 'mode' || !item.menu.includes('✓' + where[0].toUpperCase() + where.slice(1))) modeMiss.push(`${name}: no mode button in the toolbar ${JSON.stringify([d.visible, d.items])}`);
+                            const label = where[0].toUpperCase() + where.slice(1);
+                            const ok = !!item && (item.id === 'mode' ? item.menu.includes('✓' + label) : item.id === 'modes' && item.selected === (where === 'adjust' ? 1 : 2));
+                            if (!d.visible || !ok) modeMiss.push(`${name}: no mode button in the toolbar ${JSON.stringify([d.visible, d.items])}`);
                             if (c.float) modeMiss.push(`${name}: the page's own chip shows too`);
                             if (c.firstControl !== null && c.firstControl < d.toolbarHeight) modeMiss.push(`${name}: the head's buttons (${Math.round(c.firstControl)}) under the toolbar (${d.toolbarHeight}px)`);
                         }
@@ -1060,7 +1106,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             d = await describe();
             // (its mode button, or, with the sidebar open, the sidebar's own row of modes under it)
             const railRow = await page.evaluate(() => { const r = document.querySelector('.folder-rail:not(.hidden) #mode-row'); return !!r && !!r.getClientRects().length && r.getBoundingClientRect().top >= 52; });
-            check('... and back in Photos, the toolbar is back', d.visible && (d.items.some(i => i.id === 'mode') || railRow), JSON.stringify([railRow, d]).slice(0, 300));
+            check('... and back in Photos, the toolbar is back', d.visible && (d.items.some(i => i.id === 'mode' || i.id === 'modes') || railRow), JSON.stringify([railRow, d]).slice(0, 300));
 
             // The toolbar's empty space moves the window: pressed there, it's the
             // window's (the drag view), not the page's under it
@@ -1179,11 +1225,10 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
 
     console.log('mac: the window\'s top bar, kept clear');
     {
-        // The page's own top row (macOS 26's toolbar is off for now), and on a
-        // Mac again with that toolbar on: the traffic lights, for real
+        // On a Mac, again without macOS 26's toolbar (as before macOS 26, or
+        // when it's off): the traffic lights in the page's top row, for real
         const passes = [{ env: {}, themes: ['', 'snow/finder', 'mac84/finder'], tag: '' }];
-        // (macOS 26's toolbar is off unless asked for, for now: main.js)
-        if (process.platform === 'darwin') passes.push({ env: { JEDITOR_NATIVE_TOOLBAR: '1' }, themes: [''], tag: ', with macOS 26\'s toolbar' });
+        if (process.platform === 'darwin') passes.push({ env: { JEDITOR_NATIVE_TOOLBAR: '0' }, themes: [''], tag: ', without macOS 26\'s toolbar' });
         for (const pass of passes) {
             const { app, page, errors } = await launch(profile, [path.join(tmp, 'Glass')], pass.env);
             await loaded(page, 2);
@@ -1239,7 +1284,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
     console.log('mac: the Photos library (a stand-in: JEDITOR_PHOTOS_LIBRARY)');
     {
         const lib = path.join(tmp, 'PhotosLibrary');
-        for (const [album, n] of [['Wedding', 3], ['Favourites', 1], ['Birthday', 2]]) {
+        for (const [album, n] of [['Wedding', 3], ['Favorites', 1], ['Birthday', 2]]) {
             fs.mkdirSync(path.join(lib, album), { recursive: true });
             for (let i = 1; i <= n; i++) fs.writeFileSync(path.join(lib, album, `IMG_000${i}.jpg`), JPEG);
         }
@@ -1258,7 +1303,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             return { feature: Host.has('photosLibrary'), had, albums, perm: (await JEditorNative.permissions()).rows.map(r => r.id + ':' + r.state).join() };
         });
         check('Locations has the Photos library (photosLibrary), with its own row in the permissions window', r.feature && r.had === 'Photos library' && /photos:granted/.test(r.perm), JSON.stringify(r));
-        check('... it opens out like a drive: Favourites first, then the albums by name, with how many photos', JSON.stringify(r.albums) === '[["Favourites","1"],["Birthday","2"],["Wedding","3"]]', JSON.stringify(r.albums));
+        check('... it opens out like a drive: Favorites first, then the albums by name, with how many photos', JSON.stringify(r.albums) === '[["Favorites","1"],["Birthday","2"],["Wedding","3"]]', JSON.stringify(r.albums));
         await page.click('#start-places .sb-row[data-path="photos-library:album:Wedding"] .sb-main');
         await loaded(page, 3);
         const o = await page.evaluate(async () => {
@@ -1325,7 +1370,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         });
         check('Open on the Photos library: all of it, two photos of one name both there', whole.name === 'Photos library' && whole.names === 'IMG_0001 (2).jpg,IMG_0001 (3).jpg,IMG_0001.jpg,IMG_0002 (2).jpg,IMG_0002.jpg,IMG_0003.jpg', JSON.stringify(whole));
         const others = ['IMG_0002.jpg', 'IMG_0003.jpg'].map(n => wed(n).toString('base64')).join();
-        check('... and the rest of the library is as it was: no photos or albums added, renamed or removed', before.split(',').slice(1).join() === others && fs.readdirSync(lib).filter(n => !n.startsWith('.')).sort().join() === 'Birthday,Favourites,Wedding' && fs.readdirSync(path.join(lib, 'Wedding')).sort().join() === 'IMG_0001.jpg,IMG_0002.jpg,IMG_0003.jpg');
+        check('... and the rest of the library is as it was: no photos or albums added, renamed or removed', before.split(',').slice(1).join() === others && fs.readdirSync(lib).filter(n => !n.startsWith('.')).sort().join() === 'Birthday,Favorites,Wedding' && fs.readdirSync(path.join(lib, 'Wedding')).sort().join() === 'IMG_0001.jpg,IMG_0002.jpg,IMG_0003.jpg');
         // Add to Photos library (photosAdd): a folder project's photos into an album named after it
         const order = path.join(tmp, 'Order 1207');
         fs.mkdirSync(order, { recursive: true });

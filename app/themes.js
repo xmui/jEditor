@@ -48,8 +48,8 @@ const Themes = {
             settings: [
                 {
                     id: 'thumbs', label: 'Thumbnails', default: 'dither',
-                    help: 'The photo you open is always in colour',
-                    options: [['dither', 'One bit'], ['grey', 'Black and white'], ['colour', 'Colour']]
+                    help: 'The photo you open is always in color',
+                    options: [['dither', 'One bit'], ['grey', 'Black and white'], ['colour', 'Color']]
                 }
             ]
         }
@@ -268,8 +268,8 @@ const Themes = {
         const bar = document.createElement('div');
         bar.id = 'th-titlebar';
         bar.innerHTML = '<span class="th-grip"></span><span class="th-appicon"></span><span class="th-title"></span>'
-            + '<span class="th-caps"><button type="button" class="th-min" aria-label="Minimise"></button>'
-            + '<button type="button" class="th-max" aria-label="Maximise"></button>'
+            + '<span class="th-caps"><button type="button" class="th-min" aria-label="Minimize"></button>'
+            + '<button type="button" class="th-max" aria-label="Maximize"></button>'
             + '<button type="button" class="th-close" aria-label="Close"></button></span>';
         bar.querySelector('.th-min').addEventListener('click', () => this.window('minimize'));
         bar.querySelector('.th-max').addEventListener('click', () => this.window('maximize'));

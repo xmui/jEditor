@@ -10037,6 +10037,23 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     display: none !important;
 }
 
+/* The sidebar open, its own row's buttons are the toolbar's, beside the
+   lights (bridge.js; the owner's pick A, 21 November): its own row doesn't
+   show, and its list starts right under the toolbar */
+:root.native-toolbar:not([data-skin]) .folder-rail #mode-row {
+    display: none !important;
+}
+
+:root[data-platform="mac"].native-toolbar:not([data-skin]) .folder-rail {
+    padding-top: calc(var(--top-row) + var(--sp-1));
+}
+
+/* ...at least as wide as its buttons there, which are the Mac's own size,
+   so the title starts at its edge (main.js: toolbarLead) */
+:root[data-platform="mac"].native-toolbar:not([data-skin]) {
+    --rail-now: max(min(var(--side-rail, var(--rail-w)), 50vw), var(--rail-lead, 0px));
+}
+
 :root.native-toolbar :is(.adjust-editor, .paint-editor) {
     padding-top: var(--top-row);
 }

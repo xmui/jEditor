@@ -2659,7 +2659,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.files = [];
             return out;
         });
-        check('the first photo keeps the last one decoded (its neighbour round the end)', r.ends.join() === 'true,true,true,false,false', r.ends.join());
+        check('the first photo keeps the last one decoded (its neighbor round the end)', r.ends.join() === 'true,true,true,false,false', r.ends.join());
         check('a thumbnail from a folder just left isn\'t cached or asked of the new one', r.switched.join() === '0,0,false', r.switched.join());
         check('...and is made and cached when the folder stays', r.bigEnough && r.same.join() === 'true,true', JSON.stringify([r.bigEnough, r.same]));
         check('redo finds the photos still open', r.still === 'a.png,b.png', r.still);
@@ -6434,7 +6434,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         });
         check('a beta says which ("1.42.0 beta 3"); a re-release, its version', r.labels === '1.42.0 beta 3|1.41.0|1.41.0|nonsense', r.labels);
         check('Settings → Experimental: Adjust and Paint no longer listed; one being made is on to start with in a beta', r.listed && r.betaOn, JSON.stringify(r));
-        check('Settings → Experimental: Themes is coming soon, greyed out and off (betas too); only the tests turn it on', Object.values(r.soon).every(Boolean), JSON.stringify(r.soon));
+        check('Settings → Experimental: Themes is coming soon, grayed out and off (betas too); only the tests turn it on', Object.values(r.soon).every(Boolean), JSON.stringify(r.soon));
         check('an experiment is off until turned on; on, it says so and stays on', !r.off && r.heard && r.heard.id === 'trial' && r.heard.on && r.kept && !r.unknown, JSON.stringify(r));
         check('no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
@@ -6493,7 +6493,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             // Right goes to the next menu
             document.getElementById('context-menu').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
             r.next = MenuBar.openName === 'Photo';
-            const label = [...document.querySelectorAll('#context-menu button')].find(b => b.textContent.startsWith('Colour label'));
+            const label = [...document.querySelectorAll('#context-menu button')].find(b => b.textContent.startsWith('Color label'));
             r.submenu = !!label && label.classList.contains('ctx-more');
             MenuBar.openMenu('View');
             [...document.querySelectorAll('#context-menu button')].find(b => b.textContent.startsWith('Single photo')).click();
@@ -6543,6 +6543,48 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.keyboard.press('Escape');
         await page.keyboard.press('Escape');
         await wait(100);
+        // Centered where the name pill is (the owner: "with the sidebar up
+        // the alt menu is off center"): the sidebar open or shut, while it's
+        // shown, the window sized, and in Adjust over its own name pill
+        {
+            const mid = () => page.evaluate(() => {
+                const c = (el) => { const r = el.getBoundingClientRect(); return Math.round(r.left + r.width / 2); };
+                const pill = MenuBar.namePill();
+                return { up: MenuBar.isOpen(), bar: c(document.getElementById('menu-bar')), pill: pill ? c(pill) : null, which: pill ? (pill.closest('#adjust-editor') ? 'adjust' : 'photos') : null, rail: Folders.railOpen() };
+            });
+            const rail = (open) => page.evaluate((open) => { if (Folders.railOpen() !== open) Folders.toggleRail(); }, open);
+            await page.evaluate(() => app.setView('single'));
+            // (shut first: F10 toggles it, and the checks above can leave it up)
+            await page.evaluate(() => MenuBar.close());
+            await rail(true);
+            await wait(400);
+            await page.keyboard.press('F10');
+            await wait(100);
+            out.center = { open: await mid() };
+            // shut and opened again while the bar is up: it follows
+            await rail(false);
+            await wait(400);
+            out.center.shut = await mid();
+            await rail(true);
+            await wait(400);
+            out.center.reopened = await mid();
+            await page.setViewportSize({ width: 1100, height: 760 });
+            await wait(300);
+            out.center.sized = await mid();
+            await page.keyboard.press('Escape');
+            await wait(100);
+            // In Adjust, over Adjust's name pill
+            await page.evaluate(async () => { Modes.go('adjust'); for (let i = 0; i < 100 && !(Adjust.ready); i++) await new Promise(r => setTimeout(r, 50)); });
+            await wait(300);
+            await page.evaluate(() => MenuBar.close());
+            await page.keyboard.press('F10');
+            await wait(100);
+            out.center.adjust = await mid();
+            await page.keyboard.press('Escape');
+            await page.evaluate(async () => { Modes.go('photos'); await new Promise(r => setTimeout(r, 300)); });
+            await page.setViewportSize({ width: 1280, height: 800 });
+            await wait(200);
+        }
         // The Mac: the same menus, sent to the menu bar, and one chosen there runs
         Object.assign(out, await page.evaluate(async () => {
             let sent = null, own = null;
@@ -6551,7 +6593,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const ok = MenuBar.system();
             const photo = sent && sent.find(m => m.label === 'Photo');
             const grid = sent && sent.find(m => m.label === 'View').items.find(it => it.label === 'Grid');
-            const label = photo && photo.items.find(it => it.label === 'Colour label');
+            const label = photo && photo.items.find(it => it.label === 'Color label');
             if (grid) Themes.runMenu(grid.id);
             await new Promise(res => setTimeout(res, 300));
             delete window.JEditorNative.setMenus;
@@ -6560,12 +6602,14 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         }));
         check('menu bar: the pill Alt shows is made as the name pill is, and slides in', out.likeName && out.likeName.same.length === 0 && out.likeName.anim === 'menu-bar-in', JSON.stringify(out.likeName));
         check('menu bar: hidden until Alt is tapped; File, Edit, View, Photo and Help', out.hidden && out.shown && out.names === 'File,Edit,View,Photo,Help' && out.focused, JSON.stringify(out));
-        check('menu bar: with no project, what needs one is there but greyed out; Esc closes the menu, then the bar', out.greyed && out.closed, JSON.stringify(out));
+        check('menu bar: with no project, what needs one is there but grayed out; Esc closes the menu, then the bar', out.greyed && out.closed, JSON.stringify(out));
         check('menu bar: F10 too; each command shows its key and runs, then the bar goes; right goes to the next menu', out.keyShown && out.next && out.ran && out.submenu, JSON.stringify(out));
         check('menu bar, with the mouse: a name opens its menu and shuts it again; pointing at the next opens that one, a click shuts it', out.mouseOpen === 'Photo' && out.mouseShut === null && out.mouseNext === 'Edit' && out.mouseNextShut === null, JSON.stringify([out.mouseOpen, out.mouseShut, out.mouseNext, out.mouseNextShut]));
         check('Sort: jEditor\'s menu (the field ticked, then which way in words); picking Date taken sorts newest first; View ▸ Sort by agrees', out.sortMenu === '✓Name|Date taken|Date modified|Size|✓A to Z|Z to A' && out.sortTaken && out.sortSub === 'Date taken,Newest first', JSON.stringify([out.sortMenu, out.sortTaken, out.sortSub]));
+        check('menu bar: centered where the name pill is, the sidebar open, shut and opened again while it\'s up, the window sized, and in Adjust over its own pill',
+            !!out.center && ['open', 'shut', 'reopened', 'sized', 'adjust'].every(k => out.center[k] && out.center[k].up && out.center[k].pill !== null && Math.abs(out.center[k].bar - out.center[k].pill) <= 1) && out.center.open.rail && !out.center.shut.rail && out.center.open.bar !== out.center.shut.bar && out.center.adjust.which === 'adjust', JSON.stringify(out.center));
         check('menu bar: Settings in Edit on Windows; Alt with another key leaves it alone', out.settings && out.altCombo, JSON.stringify(out));
-        check('menu bar: the Mac gets the same menus with their keys, colour labels as a menu of their own, and runs the one chosen', out.mac && out.macSub && out.macRan, JSON.stringify(out));
+        check('menu bar: the Mac gets the same menus with their keys, color labels as a menu of their own, and runs the one chosen', out.mac && out.macSub && out.macRan, JSON.stringify(out));
         check('menu bar: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -6819,21 +6863,21 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             lc.done();
             return out;
         });
-        check('adjust: the colour table is made once for its colour settings (dragging Exposure, a tab of looks drawn again)',
+        check('adjust: the color table is made once for its color settings (dragging Exposure, a tab of looks drawn again)',
             String(m.lutKept) === `2,true,true,true,${m.lutKept[4]},0` && m.lutKept[4] >= 5, JSON.stringify(m.lutKept));
         check('adjust: settings kept compact, nothing left is none, out of range brought in',
             m.compact === '{"exposure":0.5,"levels":{"r":[0.1,1,0.9,0,1]}}' && m.none && m.clamped === '{"exposure":5,"tint":-100,"levels":{"rgb":[0.8,9.99,0.81,0,1]}}', JSON.stringify(m));
         check('adjust: no settings change nothing; +1 EV doubles the light; curves never turn back', m.identity && m.exposure && m.monotone, JSON.stringify(m));
         check('adjust: the GPU and the CPU agree (within a level), in tiles too', m.hasGpu && m.gpuCpu <= 1 && m.tiles, JSON.stringify(m));
         check('adjust: Auto color takes the cast off a faded print', m.cast[0] > 40 && m.cast[1] < 8, JSON.stringify(m.cast));
-        check('adjust: white balance picked from a warm grey makes it grey; a clipped or black patch is left alone', m.wbPick[0] < 0 && m.wbPick[2] <= 2 && m.wbPick[3] === null && m.wbPick[4] === null, JSON.stringify(m.wbPick));
+        check('adjust: white balance picked from a warm gray makes it gray; a clipped or black patch is left alone', m.wbPick[0] < 0 && m.wbPick[2] <= 2 && m.wbPick[3] === null && m.wbPick[4] === null, JSON.stringify(m.wbPick));
         check('adjust: grading, looks, vignette and grain agree on the GPU and the CPU, in tiles', m.fxWorst <= 1, JSON.stringify(m.fxWorst));
         check('adjust: settings at their defaults, an unknown look and an empty wheel aren\'t kept', m.defaults === '{"grade":{"h":[10,20,0]}}', m.defaults);
         check('adjust: a vignette darkens the corners and leaves the middle', m.vignette[0] === 128 && m.vignette[1] < 60, JSON.stringify(m.vignette));
         check('adjust: films by process (C-41, E-6, ECN-2, B&W), every one\'s settings kept whole', m.looksWhole && m.processes === 'C-41,E-6,ECN-2,B&W,Creative', JSON.stringify([m.looksWhole, m.processes]));
-        check('adjust: black-and-white films see colour their own way (Acros darkens reds, SFX lightens them)', m.mono, JSON.stringify(m.mono));
+        check('adjust: black-and-white films see color their own way (Acros darkens reds, SFX lightens them)', m.mono, JSON.stringify(m.mono));
         check('adjust: sharpening adds contrast at an edge, not on flat ground', m.sharpen[0] < 80 && m.sharpen[1] > 170 && m.sharpen[2] === 80, JSON.stringify(m.sharpen));
-        check('adjust: noise reduction smooths a noisy patch and keeps the edge; color noise takes out colour blotches', m.noise[1] < m.noise[0] / 2 && m.noise[2] && m.colorNoise[1] < m.colorNoise[0] / 2, JSON.stringify([m.noise, m.colorNoise]));
+        check('adjust: noise reduction smooths a noisy patch and keeps the edge; color noise takes out color blotches', m.noise[1] < m.noise[0] / 2 && m.noise[2] && m.colorNoise[1] < m.colorNoise[0] / 2, JSON.stringify([m.noise, m.colorNoise]));
         check('adjust: detail in blocks is the same as all at once, and left out of small previews', m.detailTiles <= 1 && m.previewSkips, JSON.stringify([m.detailTiles, m.previewSkips]));
         check('adjust: masks (linear, radial, brush with erase) agree on the GPU and the CPU, in tiles', m.maskWorst <= 1, JSON.stringify(m.maskWorst));
         check('adjust: a mask stays on its spot of the photo when it\'s cropped', m.maskCrop[0] > 150 && Math.abs(m.maskCrop[0] - m.maskCrop[1]) <= 1 && m.maskCrop[2] === 96 && m.maskCrop[3] === 96, JSON.stringify(m.maskCrop));
@@ -7196,7 +7240,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('adjust: Texture, Clarity and Dehaze are in Presence above Vibrance, and set their own settings; undo takes them off', r.presence, JSON.stringify(r.presence));
         check('adjust: in Restore, a drag along a scratch puts a line there; undo takes it off', r.scratchLine && r.scratchUndone, JSON.stringify([r.scratchLine, r.scratchUndone]));
         check('adjust: Descreen finds no dots in a photo that isn\'t printed; on, its sliders show; undo takes it off', r.descreenOff && r.descreenOn && r.descreenUndone, JSON.stringify([r.descreenOff, r.descreenOn, r.descreenUndone]));
-        check('adjust: Pick grey (W) sets the white balance from a click on the photo, one Ctrl+Z; Esc stops picking', r.pickOn && r.pickEsc && r.picked && r.pickUndone, JSON.stringify(r));
+        check('adjust: Pick gray (W) sets the white balance from a click on the photo, one Ctrl+Z; Esc stops picking', r.pickOn && r.pickEsc && r.picked && r.pickUndone, JSON.stringify(r));
         check('adjust: masks drawn and painted on the photo, with their own sliders', r.linearDrawn && r.brushPainted && r.maskList && r.masksReset, JSON.stringify(r));
         check('adjust: Done keeps it with the photo (edits.json), the file untouched, no Save bar', r.kept && r.noBar, JSON.stringify(r));
         check('adjust: the viewer and the thumbnail show it adjusted, with the pencil', r.shownBrighter && r.thumbBrighter && r.pencil, JSON.stringify(r));

@@ -215,7 +215,7 @@ const PaintEditor = {
         ['rect-select', 'Rectangle select (M)', '<rect x="4" y="4" width="16" height="16" rx="1" stroke-dasharray="3 2"/>'],
         ['ellipse-select', 'Ellipse select', '<ellipse cx="12" cy="12" rx="9" ry="7" stroke-dasharray="3 2"/>'],
         ['lasso', 'Lasso (L)', '<path d="M7 18c-2-1-4-3-4-6 0-4 4-8 9-8s9 3 9 7-4 7-9 7c-1 0-2 0-3-.3" stroke-dasharray="3 2"/><path d="M7 18c-1 1-1 3 1 3"/>'],
-        ['wand', 'Magic wand: select by colour (W)', '<path d="m15 4 .8 2.2L18 7l-2.2.8L15 10l-.8-2.2L12 7l2.2-.8z"/><path d="M3 21 13 11"/>'],
+        ['wand', 'Magic wand: select by color (W)', '<path d="m15 4 .8 2.2L18 7l-2.2.8L15 10l-.8-2.2L12 7l2.2-.8z"/><path d="M3 21 13 11"/>'],
         ['sep'],
         ['brush', 'Brush (B)', '<path d="M18.4 2.6a2 2 0 0 1 2.9 2.9L12 14.8 9.2 12z"/><path d="M9.2 12c-2.5 0-4.2 1.6-4.2 4 0 1.5-.8 2.6-2.4 3.4C4.4 21 6.3 21.5 8 21.5c3 0 5-1.9 4.9-4.6z"/>'],
         ['soft-round', 'Soft round', '<circle cx="12" cy="12" r="8" stroke-dasharray="2 2"/><circle cx="12" cy="12" r="3"/>'],
@@ -226,9 +226,9 @@ const PaintEditor = {
         ['airbrush', 'Airbrush: soft, builds up as it\'s held', '<path d="M3 17l8-8 4 4-8 8H3z"/><path d="M15 5h.01M18 4h.01M19 7h.01M17 9h.01M21 9h.01"/>'],
         ['spray', 'Spray', '<path d="M9 3h3v4H9zM8 7h5v14H8z"/><path d="M16 6h.01M19 4h.01M19 8h.01M17 10h.01M21 6h.01"/>'],
         ['charcoal', 'Charcoal: grainy, as on rough paper', '<path d="M14.5 3.5l6 6-9 9-6-6z"/><path d="M5.5 12.5 3 21l8.5-2.5"/><path d="M4 18h.01M6 20h.01M7 17h.01"/>'],
-        ['watercolour', 'Watercolour: see-through, darker at its edges', '<path d="M12 3c3 4 6 7.5 6 11a6 6 0 0 1-12 0c0-3.5 3-7 6-11z" stroke-dasharray="3 1.5"/><path d="M9 15a3 3 0 0 0 3 3"/>'],
+        ['watercolour', 'Watercolor: see-through, darker at its edges', '<path d="M12 3c3 4 6 7.5 6 11a6 6 0 0 1-12 0c0-3.5 3-7 6-11z" stroke-dasharray="3 1.5"/><path d="M9 15a3 3 0 0 0 3 3"/>'],
         ['texture', 'Texture brush: paints through canvas, paper or sand', '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8h.01M12 8h.01M16 8h.01M10 12h.01M14 12h.01M8 16h.01M12 16h.01M16 16h.01"/>'],
-        ['mixer', 'Mixer: blends its colour with the colours it goes over', '<circle cx="9" cy="10" r="5"/><circle cx="15" cy="14" r="5"/>'],
+        ['mixer', 'Mixer: blends its color with the colors it goes over', '<circle cx="9" cy="10" r="5"/><circle cx="15" cy="14" r="5"/>'],
         ['pixel', 'Pixel pencil: square pixels on a grid', '<path d="M3 3h6v6H3zM9 9h6v6H9zM15 15h6v6h-6z"/>'],
         ['can', 'Spray can: dots as it\'s held', '<path d="M6 9h6v12H6zM7 6h4v3H7zM12 7h2"/><path d="M17 5h.01M20 4h.01M19 8h.01M22 7h.01M18 11h.01M21 10h.01"/>'],
         ['stamp', 'Stamp: a little picture with each click', '<path d="M12 3l1.8 3.7 4 .6-2.9 2.8.7 4L12 12.2 8.4 14.1l.7-4-2.9-2.8 4-.6z"/><path d="M5 18h14v3H5z"/>'],
@@ -237,18 +237,18 @@ const PaintEditor = {
         ['eraser-block', 'Block eraser: a hard square (E)', '<rect x="5" y="5" width="14" height="14" rx="1"/><path d="M5 12h14" opacity=".5"/>'],
         ['eraser-soft', 'Soft eraser: takes off more as it\'s held (E)', '<circle cx="12" cy="12" r="8" stroke-dasharray="2 2"/><path d="M8 12h8"/>'],
         ['spot-heal', 'Spot heal: paint over a mark, and it\'s filled from what\'s round it (J)', '<rect x="2.5" y="8" width="19" height="8" rx="4" transform="rotate(-45 12 12)"/><path d="M10 12h.01M12 10h.01M14 12h.01M12 14h.01"/><path d="M19 2.5v3M17.5 4h3"/>'],
-        ['heal', 'Heal: Alt-click where to copy from, then paint; it takes on the colours round it (J)', '<rect x="2.5" y="8" width="19" height="8" rx="4" transform="rotate(-45 12 12)"/><path d="M10.5 12h3M12 10.5v3"/>'],
+        ['heal', 'Heal: Alt-click where to copy from, then paint; it takes on the colors round it (J)', '<rect x="2.5" y="8" width="19" height="8" rx="4" transform="rotate(-45 12 12)"/><path d="M10.5 12h3M12 10.5v3"/>'],
         ['clone', 'Clone stamp: Alt-click where to copy from, then paint (S)', '<path d="M9.5 3h5v5l-1 2.5h4.5a2 2 0 0 1 2 2V16H4v-3.5a2 2 0 0 1 2-2h4.5l-1-2.5z"/><path d="M5 20h14"/>'],
         ['dodge', 'Dodge: lighter where you paint', '<circle cx="9" cy="9" r="5"/><path d="M12.6 12.6 20 20"/>'],
         ['burn', 'Burn: darker where you paint', '<path d="M7 21v-7a2 2 0 0 1 4 0V8a2 2 0 0 1 4 0v8M15 12a2 2 0 0 1 4 0v4a5 5 0 0 1-5 5h-2"/><path d="M5 4.5 7 6M12 2v2.5M19 4.5 17 6"/>'],
-        ['sponge', 'Sponge: more or less colour where you paint', '<rect x="4" y="7" width="16" height="11" rx="3"/><path d="M8 11h.01M12 13h.01M16 11h.01M10 15h.01M14 15h.01"/>'],
+        ['sponge', 'Sponge: more or less color where you paint', '<rect x="4" y="7" width="16" height="11" rx="3"/><path d="M8 11h.01M12 13h.01M16 11h.01M10 15h.01M14 15h.01"/>'],
         ['blur', 'Blur: softer where you paint', '<path d="M12 3c3 4 6 7.5 6 11a6 6 0 0 1-12 0c0-3.5 3-7 6-11z"/>'],
         ['sharpen', 'Sharpen: crisper where you paint', '<path d="M12 3 21 20H3z"/>'],
-        ['smudge', 'Smudge: drag the colours along', '<path d="M9 21v-9a2 2 0 0 1 4 0v4M13 12a2 2 0 0 1 4 0v4a5 5 0 0 1-5 5"/><path d="M4 7c2-1 4 1 6 0s4-1 6 0"/>'],
+        ['smudge', 'Smudge: drag the colors along', '<path d="M9 21v-9a2 2 0 0 1 4 0v4M13 12a2 2 0 0 1 4 0v4a5 5 0 0 1-5 5"/><path d="M4 7c2-1 4 1 6 0s4-1 6 0"/>'],
         ['sep'],
         ['fill', 'Fill (G)', '<path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2a2 2 0 0 0 2.8 0z"/><path d="m5 2 5 5M2 13h15M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4z"/>'],
         ['gradient', 'Gradient', '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18" opacity=".5"/>'],
-        ['recolor', 'Recolor: click a colour to change it to the brush colour', '<path d="M7 3c2.5 3 4 5.2 4 7a4 4 0 0 1-8 0c0-1.8 1.5-4 4-7z"/><path d="M14 14h6M17 11l3 3-3 3"/><path d="M17 21c-1.5 0-2.5-1-2.5-2.3"/>'],
+        ['recolor', 'Recolor: click a color to change it to the brush color', '<path d="M7 3c2.5 3 4 5.2 4 7a4 4 0 0 1-8 0c0-1.8 1.5-4 4-7z"/><path d="M14 14h6M17 11l3 3-3 3"/><path d="M17 21c-1.5 0-2.5-1-2.5-2.3"/>'],
         ['sep'],
         ['line', 'Line (U)', '<path d="M5 19 19 5"/>'],
         ['arrow', 'Arrow', '<path d="M5 19 19 5M10 5h9v9"/>'],
@@ -258,7 +258,7 @@ const PaintEditor = {
         ['polygon', 'Polygon: click each corner; double-click, Enter or the first corner closes it', '<path d="M12 3l8 6-3 10H7L4 9z"/>'],
         ['text', 'Text (T)', '<path d="M4 7V4h16v3M9 20h6M12 4v16"/>'],
         ['sep'],
-        ['picker', 'Colour picker (I)', '<path d="m2 22 1-1h3l9-9M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3z"/>'],
+        ['picker', 'Color picker (I)', '<path d="m2 22 1-1h3l9-9M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3z"/>'],
         ['hand', 'Hand: move about (H, or hold Space)', '<path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v2M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/>']
     ],
     // The ten slots down the left (the plan: nine, and Heal in phase 2): tools of a kind share one,
@@ -987,7 +987,7 @@ const PaintEditor = {
                 const c = this.newCanvas();
                 const src = await Paint.layerBitmap(kept.paint, l);
                 if (src) c.getContext('2d').drawImage(src, 0, 0, this.W, this.H);
-                const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: !!l.lock, canvas: c, changed: false, text: l.text || null, shape: l.shape || null, clip: !!l.clip, fixed: !!l.fixed, group: l.group || null, adj: l.adj || null };
+                const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: !!l.lock, canvas: c, changed: false, text: l.text || null, shape: l.shape || null, clip: !!l.clip, fixed: !!l.fixed, group: l.group || null, adj: l.adj || null, turn: l.turn || null };
                 if (l.mask) {
                     const m = this.newCanvas(), mb = await Paint.layerBitmap(kept.paint, Paint.maskOf(l));
                     if (mb) m.getContext('2d').drawImage(mb, 0, 0, this.W, this.H);
@@ -1281,7 +1281,7 @@ const PaintEditor = {
         const wholeFill = this.tool === 'fill' && o.fillWhat === 'layer';
         for (const k of this.OPTIONS[this.tool]) {
             if (wholeFill && ['tolerance', 'gaps', 'contiguous', 'sampleAll'].includes(k)) continue;
-            if (k === 'fillWhat') choose('Fill', 'fillWhat', [['match', 'Matching colour'], ['layer', 'Whole layer']]).querySelector('select').addEventListener('change', () => this.buildOptions());
+            if (k === 'fillWhat') choose('Fill', 'fillWhat', [['match', 'Matching color'], ['layer', 'Whole layer']]).querySelector('select').addEventListener('change', () => this.buildOptions());
             if (k === 'size') {
                 // (Said on hover, not along the top: the bar stays one line)
                 num('Size', 'size', 1, this.sizeMax(), 1, true).title = Host.keys(this.tool === 'spray'
@@ -1293,7 +1293,7 @@ const PaintEditor = {
             if (k === 'flow') num('Flow', 'flow', 1, 100);
             if (k === 'density') num('Density', 'density', 1, 100);
             if (k === 'tolerance') num('Tolerance', 'tolerance', 0, 255);
-            if (k === 'range') num('Range', 'range', 1, 100).title = 'How far from the colour clicked a colour can be and still change (its lighter and darker shades are caught first)';
+            if (k === 'range') num('Range', 'range', 1, 100).title = 'How far from the color clicked a color can be and still change (its lighter and darker shades are caught first)';
             if (k === 'lineWidth') num('Line', 'lineWidth', 0, 200);
             if (k === 'fontSize') num('Size', 'fontSize', 6, 600, 1, true);
             if (k === 'gaps') choose('Close gaps', 'gaps', [[0, 'Off'], [2, 'Small'], [5, 'Medium'], [10, 'Large']]).title = 'A line drawing with small gaps in its lines still fills one area, not the whole picture';
@@ -1303,10 +1303,10 @@ const PaintEditor = {
                 if ((this.RETOUCH.includes(this.tool) || this.TONE.includes(this.tool)) && c) c.title = 'Copy from the picture as it looks (this layer and those under it), not just this layer';
             }
             if (k === 'strength') num('Strength', 'strength', 1, 100);
-            if (k === 'wet') num('Wet', 'wet', 0, 100).title = 'How much of the colours it goes over it picks up and blends with its own';
+            if (k === 'wet') num('Wet', 'wet', 0, 100).title = 'How much of the colors it goes over it picks up and blends with its own';
             if (k === 'texture') choose('Texture', 'texture', this.TEXTURES);
             if (k === 'toneRange') choose('Range', 'toneRange', [['shadows', 'Shadows'], ['mid', 'Midtones'], ['highlights', 'Highlights']]);
-            if (k === 'sponge') choose('Colour', 'sponge', [['less', 'Less'], ['more', 'More']]);
+            if (k === 'sponge') choose('Color', 'sponge', [['less', 'Less'], ['more', 'More']]);
             if (k === 'aligned') {
                 const c = check('Aligned', 'aligned');
                 if (c) c.title = 'On: each stroke goes on copying from the same distance away. Off: each stroke starts again from where you Alt-clicked';
@@ -1320,22 +1320,22 @@ const PaintEditor = {
             if (k === 'italic') toggle('Italic', 'italic', '<i>I</i>');
             if (k === 'align') segment('Align', 'align', [
                 ['left', 'Left', lines('<path d="M4 6h16M4 12h10M4 18h13"/>')],
-                ['center', 'Centre', lines('<path d="M4 6h16M7 12h10M5.5 18h13"/>')],
+                ['center', 'Center', lines('<path d="M4 6h16M7 12h10M5.5 18h13"/>')],
                 ['right', 'Right', lines('<path d="M4 6h16M10 12h10M7 18h13"/>')]
             ]);
             if (k === 'outline') {
                 const c = num('Outline', 'outline', 0, 50);
-                if (c) c.title = 'An outline round the letters, in the background colour';
+                if (c) c.title = 'An outline round the letters, in the background color';
             }
             if (k === 'shapeFill') {
                 // As MS Paint has them: the outline in the brush colour, the
                 // fill in it too (Filled) or in the background colour
                 const c = choose('Style', 'shapeFill', [['none', 'Outline'], ['fg', 'Filled'], ['bg', 'Outline and fill']]);
-                if (c) c.title = 'Outline: the brush colour. Filled: all the brush colour. Outline and fill: filled with the background colour';
+                if (c) c.title = 'Outline: the brush color. Filled: all the brush color. Outline and fill: filled with the background color';
             }
             if (k === 'corner') num('Corners', 'corner', 0, 200, 1);
             if (k === 'gradient') choose('Shape', 'gradient', [['linear', 'Linear'], ['radial', 'Radial']]);
-            if (k === 'gradTo') choose('To', 'gradTo', [['bg', 'Background colour'], ['clear', 'Nothing']]);
+            if (k === 'gradTo') choose('To', 'gradTo', [['bg', 'Background color'], ['clear', 'Nothing']]);
             if (k === 'font') this.fontChoice(add, save);
             if (k === 'stamp') choose('Stamp', 'stamp', Object.entries(this.STAMP_NAMES));
             if (k === 'tip') {
@@ -1353,23 +1353,23 @@ const PaintEditor = {
             'rect-select': 'Drag a rectangle. Shift adds, Alt takes away; Ctrl+D selects nothing',
             'ellipse-select': 'Drag an ellipse. Shift adds, Alt takes away',
             lasso: 'Draw round what to select. Shift adds, Alt takes away',
-            wand: 'Click a colour to select it. Shift adds, Alt takes away',
-            picker: 'Click or drag for the foreground colour, Alt for the background. With a brush, hold Alt to pick',
+            wand: 'Click a color to select it. Shift adds, Alt takes away',
+            picker: 'Click or drag for the foreground color, Alt for the background. With a brush, hold Alt to pick',
             hand: 'Drag to move about; Shift-drag turns the view; the wheel zooms; double-click fits',
             text: 'Click where the text goes; Ctrl+Enter puts it down',
-            fill: wholeFill ? 'Click to fill the whole layer (or what\'s selected) with the foreground colour' : 'Click to fill with the foreground colour',
+            fill: wholeFill ? 'Click to fill the whole layer (or what\'s selected) with the foreground color' : 'Click to fill with the foreground color',
             gradient: 'Drag from where it starts to where it ends',
-            recolor: 'Click a colour: it becomes the foreground colour everywhere, its shading kept',
+            recolor: 'Click a color: it becomes the foreground color everywhere, its shading kept',
             pixel: 'Square pixels on a grid the brush\'s size, crisp at any zoom',
             can: 'Hold to spray: the longer it\'s held, the more dots',
             stamp: 'Click for a stamp; drag for a row of them',
             charcoal: 'Grainy, as on rough paper; with a pen, tilt it for a broad side',
             watercolour: 'See-through: it pools at its edges, and darkens where strokes cross',
             texture: 'Paints through the texture; go over it again to fill it in',
-            mixer: 'Starts with the brush colour and blends in the colours it goes over',
+            mixer: 'Starts with the brush color and blends in the colors it goes over',
             custom: this.ownBrushes().length ? 'One of your own brushes; ⋯ → Brushes makes more' : 'Make one first: select part of the picture, then ⋯ → Brushes',
             'spot-heal': 'Paint over a mark or a speck: it\'s filled from what\'s round it',
-            heal: this.healSrc ? 'Paint over what to hide: copied from the + mark, in the colours round it. Alt-click to copy from elsewhere' : 'Alt-click where to copy from, then paint over what to hide',
+            heal: this.healSrc ? 'Paint over what to hide: copied from the + mark, in the colors round it. Alt-click to copy from elsewhere' : 'Alt-click where to copy from, then paint over what to hide',
             ink: 'Thin when you go fast, thick when slow; with a pen, as hard as you press',
             marker: 'See-through, like a felt pen: where strokes cross, it\'s darker',
             airbrush: 'Soft: hold still or go over it again to build it up',
@@ -1377,10 +1377,10 @@ const PaintEditor = {
             'eraser-block': 'A hard square, like the pencil',
             dodge: 'Paint to lighten; again over it for more',
             burn: 'Paint to darken; again over it for more',
-            sponge: 'Paint to take colour out, or (More) to put it in',
+            sponge: 'Paint to take color out, or (More) to put it in',
             blur: 'Paint to soften; again over it for more',
             sharpen: 'Paint to make it crisper; a little goes a long way',
-            smudge: 'Drag: the colours under the brush go with it',
+            smudge: 'Drag: the colors under the brush go with it',
             clone: this.healSrc ? 'Paint: copied from the + mark. Alt-click to copy from elsewhere' : 'Alt-click where to copy from, then paint'
         }[this.tool] || '';
         // On a mask: what the colours do there
@@ -1416,8 +1416,8 @@ const PaintEditor = {
     saveColour(c = this.fg) {
         const list = this.savedColours();
         c = c.toLowerCase();
-        if (list.includes(c)) { this.app.showToast('That colour is saved already', 1400); return; }
-        if (list.length >= this.PALETTE_MAX) { this.app.showToast(`Up to ${this.PALETTE_MAX} saved colours: right-click one to take it off`, 2200); return; }
+        if (list.includes(c)) { this.app.showToast('That color is saved already', 1400); return; }
+        if (list.length >= this.PALETTE_MAX) { this.app.showToast(`Up to ${this.PALETTE_MAX} saved colors: right-click one to take it off`, 2200); return; }
         this.setSavedColours([...list, c]);
     },
 
@@ -1444,8 +1444,8 @@ const PaintEditor = {
         }
         const add = document.createElement('button');
         add.className = 'paint-palette-add';
-        add.title = 'Save the brush colour';
-        add.setAttribute('aria-label', 'Save the brush colour');
+        add.title = 'Save the brush color';
+        add.setAttribute('aria-label', 'Save the brush color');
         add.innerHTML = '<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v12M6 12h12"/></svg>';
         add.addEventListener('click', () => { add.blur(); this.saveColour(); });
         pal.appendChild(add);
@@ -2029,7 +2029,7 @@ const PaintEditor = {
     },
 
     // After it: the part that changed (r), before and after
-    endPixels(l, r, { free = false, name = this.toolName(), vec = null } = {}) {
+    endPixels(l, r, { free = false, name = this.toolName(), vec = null, turn } = {}) {
         r = this.clampRect(r);
         if (!r || this._beforeOf !== l) return;
         // A locked layer (or its mask): put back, nothing kept
@@ -2055,6 +2055,8 @@ const PaintEditor = {
         }
         l.changed = true;
         const entry = { kind: 'px', name, layer: l, r, before, after, bytes: r.w * r.h * 8 };
+        // turn: the angle it's left at (Free transform), back with Undo
+        if (turn !== undefined) { Object.assign(entry, { turn0: l.turn || null, turn1: turn }); l.turn = turn; }
         // A text or shape layer painted on is pixels from then on (vec:
         // what it is after a move)
         if (v0 || vec) {
@@ -2129,6 +2131,10 @@ const PaintEditor = {
             if (entry.vec0 || entry.vec1) {
                 const k = this.layers.find(x => x.canvas === entry.layer.canvas), v = undo ? entry.vec0 : entry.vec1;
                 if (k) { k.text = v ? v.text : null; k.shape = v ? v.shape : null; k.src = v ? v.src || null : null; }
+            }
+            if ('turn1' in entry) {
+                const k = this.layers.find(x => x.canvas === entry.layer.canvas);
+                if (k) k.turn = undo ? entry.turn0 : entry.turn1;
             }
         } else if (entry.kind === 'state') {
             if (undo && entry.extra) this.apply(entry.extra, true);
@@ -4657,6 +4663,14 @@ const PaintEditor = {
         if (l.fixed) { this.fixedToast(); return false; }
         if (l.adj) { this.app.showToast('An adjustment layer has nothing to move: paint on its mask instead', 2000); return false; }
         this.beginPixels(l);
+        // The whole layer, turned: its box turned with it
+        const turned = !this.sel && this.liftTurned(l);
+        if (turned) {
+            l.canvas.getContext('2d').clearRect(0, 0, this.W, this.H);
+            this.float = turned;
+            this.buildOptions();
+            return true;
+        }
         // What's lifted, in layer space: the selection of the layer, or all of it
         const lifted = this.newCanvas();
         const lg = lifted.getContext('2d');
@@ -4688,6 +4702,67 @@ const PaintEditor = {
         this.float = { canvas: fc, x0, y0, w: x1 - x0, h: y1 - y0, t: { tx: 0, ty: 0, sx: 1, sy: 1, rot: 0 }, layer: l, sel: this.sel ? this.sel.box : null, from: { ...lb }, mode: 'free', quad: null };
         this.buildOptions();
         return true;
+    },
+
+    // A layer that's been turned, lifted in a box turned as it is, hugging
+    // it. Transformed (smart): from what it was before its first transform,
+    // its size and angle from the 3×3 to it (exact; nothing resampled). Any
+    // other: at the angle kept when it was last put down (l.turn, in layer
+    // px), what's on it in that turned frame. Null: not turned (lifted
+    // straight, as before)
+    liftTurned(l) {
+        const from = this.contentBox(l.canvas);
+        if (!from) return null;
+        const base = { layer: l, sel: null, from, mode: 'free', quad: null };
+        if (l.src && !l.text && !l.shape) {
+            const S = l.src.canvas, w = S.width, h = S.height;
+            const H = this.homMul(this.hom(this.C), l.src.h), k = H[8] || 1;
+            const [a, c, e, b, d, y] = H.slice(0, 6).map(v => v / k);
+            const sx = Math.hypot(a, b), sy = sx ? (a * d - b * c) / sx : 0;
+            const flat = Math.abs(H[6] / k) * w + Math.abs(H[7] / k) * h < 1e-6;
+            const skew = sx && sy ? Math.abs(a * c + b * d) / (sx * Math.abs(sy)) : 1;
+            // own: its px are the original's (never thrown away here)
+            const f = { ...base, canvas: S, w, h, own: true };
+            if (flat && skew < 1e-4) {
+                const cx = a * w / 2 + c * h / 2 + e, cy = b * w / 2 + d * h / 2 + y;
+                return { ...f, x0: cx - w / 2, y0: cy - h / 2, t: { tx: 0, ty: 0, sx, sy, rot: Math.atan2(b, a) } };
+            }
+            // Skewed or in perspective: its corners, free
+            return { ...f, x0: 0, y0: 0, t: { tx: 0, ty: 0, sx: 1, sy: 1, rot: 0 }, quad: [[0, 0], [w, 0], [w, h], [0, h]].map(([x, z]) => this.homAt(H, x, z)) };
+        }
+        if (!l.turn) return null;
+        // The angle in the picture as shown, within a half turn
+        const C = this.C, ct = Math.cos(l.turn), st = Math.sin(l.turn);
+        let rot = Math.atan2(C.b * ct + C.d * st, C.a * ct + C.c * st);
+        rot -= Math.PI * Math.round(rot / Math.PI);
+        const q4 = Math.PI / 2;
+        if (Math.abs(rot - q4 * Math.round(rot / q4)) < 1e-4) return null;
+        // In that frame: the bounds of what's on it, then just what's there
+        const deg = rot * 180 / Math.PI, toFrame = new DOMMatrix().rotate(-deg).multiply(C);
+        const pts = [[from.x, from.y], [from.x + from.w, from.y], [from.x, from.y + from.h], [from.x + from.w, from.y + from.h]].map(([x, z]) => toFrame.transformPoint({ x, y: z }));
+        const bx = Math.floor(Math.min(...pts.map(q => q.x))) - 1, by = Math.floor(Math.min(...pts.map(q => q.y))) - 1;
+        const wide = this.newCanvas(Math.ceil(Math.max(...pts.map(q => q.x))) + 1 - bx, Math.ceil(Math.max(...pts.map(q => q.y))) + 1 - by);
+        const wg = wide.getContext('2d');
+        wg.imageSmoothingEnabled = true;
+        wg.imageSmoothingQuality = 'high';
+        wg.setTransform(new DOMMatrix().translate(-bx, -by).multiply(toFrame));
+        wg.drawImage(l.canvas, 0, 0);
+        const cb = this.contentBox(wide);
+        if (!cb) { wide.width = wide.height = 0; return null; }
+        const fc = this.newCanvas(cb.w, cb.h);
+        fc.getContext('2d').drawImage(wide, -cb.x, -cb.y);
+        wide.width = wide.height = 0;
+        const fx = bx + cb.x, fy = by + cb.y, mid = new DOMMatrix().rotate(deg).transformPoint({ x: fx + cb.w / 2, y: fy + cb.h / 2 });
+        // What was on the layer as it was: a move alone puts that back down,
+        // not this turned copy turned back (no softening)
+        const raw = l.text || l.shape ? null : this.newCanvas();
+        if (raw) raw.getContext('2d').drawImage(l.canvas, 0, 0);
+        return {
+            ...base, canvas: fc, w: cb.w, h: cb.h, x0: mid.x - cb.w / 2, y0: mid.y - cb.h / 2,
+            t: { tx: 0, ty: 0, sx: 1, sy: 1, rot }, rot0: rot, raw,
+            // Layer px to its own px (for a text or shape layer's matrix)
+            lift: new DOMMatrix().translate(-fx, -fy).multiply(toFrame)
+        };
     },
 
     // The float's matrix in the picture as shown (its own px → output px)
@@ -4753,7 +4828,7 @@ const PaintEditor = {
             else this.snapFloat();
             // Neither turned nor sized: in whole pixels, so it stays crisp
             // and goes a pixel at a time
-            if (!t.rot && Math.abs(t.sx) === 1 && Math.abs(t.sy) === 1) {
+            if (t.rot === (f.rot0 || 0) && Math.abs(t.sx) === 1 && Math.abs(t.sy) === 1) {
                 t.tx = Math.round(t.tx);
                 t.ty = Math.round(t.ty);
             }
@@ -5070,10 +5145,22 @@ const PaintEditor = {
         const g = l.canvas.getContext('2d');
         let text = null;
         // Its own px to layer px, as a 3×3: through the quad, or the move
-        const A = this.hom(new DOMMatrix().translate(-f.x0, -f.y0).multiply(this.C));
+        const lift = f.lift || new DOMMatrix().translate(-f.x0, -f.y0).multiply(this.C);
+        const A = this.hom(lift);
         const out = f.quad ? this.homRectToQuad(f.w, f.h, f.quad) : this.hom(this.floatM.call({ float: f, view: this.view }));
         const K = this.homMul(this.hom(this.Ci), this.homMul(out, A));
-        const slid = !f.quad && !f.mesh && !l.src && f.t.rot === 0 && f.t.sx === 1 && f.t.sy === 1;
+        // Only moved: what was on the layer, slid (lifted turned: as it was)
+        const moved = !f.quad && !f.mesh && f.t.rot === (f.rot0 || 0) && f.t.sx === 1 && f.t.sy === 1;
+        const slid = moved && (f.raw || !l.src);
+        // The angle it's left at, in layer px (the whole layer, sized and
+        // turned): its box comes back turned so next time
+        let turn;
+        if (!f.sel && !f.pasted) {
+            const m = f.quad || f.mesh ? null : this.Ci.multiply(this.floatM.call({ float: f, view: this.view }));
+            turn = m ? Math.atan2(m.b, m.a) : 0;
+            turn -= Math.PI * Math.round(turn / Math.PI);
+            turn = Math.abs(turn) < 1e-4 ? null : +turn.toFixed(6);
+        }
         let warped = null;
         if (f.mesh) {
             // Warped: plain pixels from here (text and shapes too)
@@ -5096,8 +5183,8 @@ const PaintEditor = {
             // A smart layer: kept as it was before its first transform, so
             // each transform after is drawn from that, not resampled again
             // (the first time, what was lifted, from its own px)
-            const orig = l.src ? l.src.canvas : f.canvas;
-            const h = l.src ? this.homMul(K, l.src.h) : this.homMul(this.hom(this.Ci), out);
+            const orig = l.src && !f.own ? l.src.canvas : f.canvas;
+            const h = l.src && !f.own ? this.homMul(K, l.src.h) : this.homMul(this.hom(this.Ci), out);
             if (orig === f.canvas) f.kept = true;
             text = { text: null, shape: null, src: { canvas: orig, h: h.map(v => +v.toPrecision(12)) } };
             g.save();
@@ -5116,10 +5203,15 @@ const PaintEditor = {
             g.restore();
         } else if ((l.text || l.shape) && !f.sel) {
             // Its matrix taken through the move: drawn again, not resampled
-            const K = this.Ci.multiply(this.floatM.call({ float: f, view: this.view })).multiply(new DOMMatrix().translate(-f.x0, -f.y0)).multiply(this.C);
+            const K = this.Ci.multiply(this.floatM.call({ float: f, view: this.view })).multiply(lift);
             const moved = (r) => r && { ...r, m: this.textArr(this.extM().inverse().multiply(K).multiply(this.textM(r))) };
             text = { text: moved(l.text) || null, shape: moved(l.shape) || null };
             this.drawVec(text, l.canvas);
+        } else if (slid && f.raw) {
+            g.save();
+            g.setTransform(this.Ci.multiply(new DOMMatrix().translate(f.t.tx, f.t.ty)).multiply(this.C));
+            g.drawImage(f.raw, 0, 0);
+            g.restore();
         } else {
             g.save();
             g.setTransform(this.Ci.multiply(this.floatM.call({ float: f, view: this.view })));
@@ -5128,7 +5220,7 @@ const PaintEditor = {
             g.drawImage(f.canvas, 0, 0);
             g.restore();
         }
-        if (!f.kept) f.canvas.width = f.canvas.height = 0;
+        this.dropFloatCanvas(f);
         // The selection moves with it (warped: what's left where it went)
         if (warped) {
             this.dropSelection();
@@ -5143,7 +5235,7 @@ const PaintEditor = {
             this.sel = { mask: m };
             this.selectionChanged();
         }
-        this.endPixels(l, this.floatRect(f), { free: true, name: 'Move', vec: text });
+        this.endPixels(l, this.floatRect(f), { free: true, name: 'Move', vec: text, turn });
         this.buildOptions();
         this.renderSoon();
     },
@@ -5293,6 +5385,9 @@ const PaintEditor = {
         l.canvas = lifted;
         if (sel) { this.sel = { mask: sel }; this.selectionChanged(); }
         if (f.from) f.from = { ...f.from, x: f.from.x + add.l, y: f.from.y + add.t };
+        // Lifted turned: in layer px, so they move with them
+        if (f.raw) { const r = grow(f.raw); f.raw.width = f.raw.height = 0; f.raw = r; }
+        if (f.lift) f.lift = f.lift.multiply(new DOMMatrix().translate(-add.l, -add.t));
         this.float = f;
     },
 
@@ -5306,10 +5401,17 @@ const PaintEditor = {
         g.globalCompositeOperation = 'copy';
         g.drawImage(this.before, 0, 0);
         g.globalCompositeOperation = 'source-over';
-        f.canvas.width = f.canvas.height = 0;
+        this.dropFloatCanvas(f);
         this._beforeOf = null;
         this.buildOptions();
         this.renderSoon();
+    },
+
+    // Its px let go (a smart layer's original, or one kept as the layer's
+    // now, stays)
+    dropFloatCanvas(f) {
+        if (!f.kept && !f.own) f.canvas.width = f.canvas.height = 0;
+        if (f.raw) f.raw.width = f.raw.height = 0;
     },
 
     // Thrown away (Delete while moving)
@@ -5317,7 +5419,7 @@ const PaintEditor = {
         const f = this.float;
         if (!f) return;
         this.float = null;
-        f.canvas.width = f.canvas.height = 0;
+        this.dropFloatCanvas(f);
         this.endPixels(f.layer, f.from == null ? { x: 0, y: 0, w: this.W, h: this.H } : f.from || { x: 0, y: 0, w: 1, h: 1 }, { free: true, name: 'Delete' });
         this.buildOptions();
         this.renderSoon();
@@ -5370,7 +5472,7 @@ const PaintEditor = {
         this._clipLayer = {
             name: l.name, opacity: l.opacity, blend: l.blend, lock: l.lock, clip: !!l.clip, group: l.group || null,
             text: l.text ? JSON.parse(JSON.stringify(l.text)) : null, shape: l.shape ? JSON.parse(JSON.stringify(l.shape)) : null,
-            adj: l.adj ? JSON.parse(JSON.stringify(l.adj)) : null, src: l.src || null,
+            adj: l.adj ? JSON.parse(JSON.stringify(l.adj)) : null, src: l.src || null, turn: l.turn || null,
             canvas: dup(l.canvas), mask: dup(l.mask),
             W: this.W, H: this.H, PW: this.PW, PH: this.PH, ext: { ...this.ext }, from: this.layers
         };
@@ -5426,7 +5528,7 @@ const PaintEditor = {
             text: s.text ? move(JSON.parse(JSON.stringify(s.text))) : null,
             shape: s.shape ? move(JSON.parse(JSON.stringify(s.shape))) : null,
             adj: s.adj ? JSON.parse(JSON.stringify(s.adj)) : null,
-            src: same ? s.src : null
+            src: same ? s.src : null, turn: s.turn || null
         });
         if (inHere) l.name = `${s.name} copy`;
         l.canvas.getContext('2d').drawImage(s.canvas, dx, dy);
@@ -5843,7 +5945,7 @@ const PaintEditor = {
                 const m = document.createElement('span');
                 m.className = 'paint-layer-kind';
                 m.innerHTML = '<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="11" height="11" rx="1"/><circle cx="15" cy="15" r="6"/></svg>';
-                m.title = 'Shape: with its tool out, the line, fill and colours change it; double-click for its tool';
+                m.title = 'Shape: with its tool out, the line, fill and colors change it; double-click for its tool';
                 row.appendChild(m);
                 row.addEventListener('dblclick', (e) => { e.preventDefault(); this.cur = i; this.onMask = false; this.setTool(l.shape.kind); this.drawLayers(); });
             }
@@ -6434,7 +6536,7 @@ const PaintEditor = {
         if (this.float) this.commitFloat();
         this.pushState('Duplicate layer');
         const copy = this.makeLayer(`${l.name} copy`);
-        Object.assign(copy, { opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: l.lock, text: l.text || null, shape: l.shape || null, src: l.src || null, clip: !!l.clip, group: l.group || null, adj: l.adj || null });
+        Object.assign(copy, { opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: l.lock, text: l.text || null, shape: l.shape || null, src: l.src || null, clip: !!l.clip, group: l.group || null, adj: l.adj || null, turn: l.turn || null });
         if (l.mask) {
             copy.mask = this.newCanvas();
             copy.mask.getContext('2d').drawImage(l.mask, 0, 0);
@@ -6710,7 +6812,7 @@ const PaintEditor = {
         if (below.fixed || top.fixed) { this.fixedToast(); return; }
         if (below.adj) { this.app.showToast('Nothing can be merged onto an adjustment layer', 2000); return; }
         this.pushState('Merge down');
-        below.text = below.shape = below.src = null;
+        below.text = below.shape = below.src = below.turn = null;
         this.beginPixels(below);
         const g = below.canvas.getContext('2d');
         if (!top.hidden) {
@@ -6878,7 +6980,7 @@ const PaintEditor = {
         const k = this.fullW / this.PW;
         const v = await UI.prompt({
             title: 'Canvas size',
-            message: 'The picture stays in the middle; what\'s added is the background colour, and can be painted on. Crop (C) adds on one side only.',
+            message: 'The picture stays in the middle; what\'s added is the background color, and can be painted on. Crop (C) adds on one side only.',
             input: { label: 'Width × height, in pixels', value: `${Math.round(this.OW * k)} × ${Math.round(this.OH * k)}` },
             ok: 'Set'
         });
@@ -7058,7 +7160,7 @@ const PaintEditor = {
         const paint = { id: this.paintId, w: this.PW, h: this.PH, layers: [], ext: this.ext, pad: this.pad, fill: this.fill };
         for (const l of this.layers) {
             if ((l.changed || !l.rev) && this.empty(l) && !l.adj) continue;
-            const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, ...(l.lock ? { lock: true } : {}), ...(l.text ? { text: l.text } : {}), ...(l.shape ? { shape: l.shape } : {}), ...(l.clip ? { clip: true } : {}), ...(l.fixed ? { fixed: true } : {}), ...(l.group && this.groups[l.group] ? { group: l.group } : {}), ...(l.adj ? { adj: l.adj } : {}) };
+            const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, ...(l.lock ? { lock: true } : {}), ...(l.text ? { text: l.text } : {}), ...(l.shape ? { shape: l.shape } : {}), ...(l.clip ? { clip: true } : {}), ...(l.fixed ? { fixed: true } : {}), ...(l.group && this.groups[l.group] ? { group: l.group } : {}), ...(l.adj ? { adj: l.adj } : {}), ...(l.turn ? { turn: l.turn } : {}) };
             if (l.changed || !l.rev) {
                 rec.rev = Paint.newId().slice(-10);
                 await Paint.writeLayer(paint, rec, l.canvas);

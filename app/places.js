@@ -456,7 +456,7 @@ const Places = {
         if (!this.libraryList) {
             try { this.libraryList = await native.photosCollections(); } catch (e) { this.libraryList = []; }
         }
-        const names = { favourites: 'Favourites', recent: 'Recently added' };
+        const names = { favourites: 'Favorites', recent: 'Recently added' };
         const icons = { favourites: this.icons.heart, recent: this.icons.clock };
         for (const c of this.libraryList) {
             html += this.row({
@@ -472,7 +472,7 @@ const Places = {
     async openLibrary(path) {
         const id = path.slice(this.LIBRARY.length);
         const c = (this.libraryList || []).find(x => x.id === id);
-        const name = !id ? 'Photos library' : c ? ({ favourites: 'Favourites', recent: 'Recently added' }[c.kind] || c.name) : 'Album';
+        const name = !id ? 'Photos library' : c ? ({ favourites: 'Favorites', recent: 'Recently added' }[c.kind] || c.name) : 'Album';
         try {
             await this.app.openDirectory(await this.native().photosAlbum(id, name), { library: true });
         } catch (e) {
