@@ -30,6 +30,7 @@ Checked by `test/parity.test.js`: each ✓ must match the app's `features` list,
 | `burn` | Burning a project onto a CD or DVD | ✓ | | | | not yet on Mac and Linux; browser |
 | `themes` | Themes in Settings → Appearance, with their own title bar (paused: an experiment, off to start with) | ✓ | ✓ | ✓ | | browser (by choice: the web keeps today's look) |
 | `menuBar` | A menu bar with every command and its key: the Mac's along the top of the screen, Linux's in the window, Windows' shown when Alt is tapped | ✓ | ✓ | ✓ | | browser (Alt and F10 belong to the browser) |
+| `appReset` | Settings → Troubleshooting's Clear cache and Reset jEditor clear the app's own browser caches and, for a reset, its own files (window place, last folder), then restart it | ✓ | ✓ | ✓ | reloads | browser (the web clears what the page keeps and reloads; it has no files of its own or a restart) |
 | `backdrop` | Mica or Acrylic behind the window | ✓ | | | | system |
 | `folderMove` | Changing the projects folder moves the projects there (copied, checked, then removed) | ✓ | ✓ | ✓ | | browser |
 | `cacheFolder` | Choosing where the cache is kept, in Settings → Projects | ✓ | | | | not yet on Mac and Linux (their cache is in the app's private storage); browser |
