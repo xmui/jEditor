@@ -100,7 +100,8 @@ const ukIn = (text) => {
     return out;
 };
 const prose = (s) => !(s.startsWith('#version') || (/^[a-z0-9_.\-:#\/\[\]=" ]*$/.test(s) && !/ /.test(s)) || (/[.#\[]/.test(s) && /^(\[|\.|#)?[a-z][\w-]*([.\s#>,:\[\]=]+[\w-]+)*\]?$/.test(s)));
-const withBoth = (s, words) => words.some(w => new RegExp('\\b' + US_OF(w) + '\\b', 'i').test(s));
+// (side by side: a search's list of words, 'colour color')
+const withBoth = (s, words) => words.some(w => new RegExp('\\b(' + w + '\\s+' + US_OF(w) + '|' + US_OF(w) + '\\s+' + w + ')\\b', 'i').test(s));
 const uk = [];
 for (const f of fs.readdirSync(APP).filter(f => /\.(js|html)$/.test(f)).sort()) {
     const src = fs.readFileSync(path.join(APP, f), 'utf8');

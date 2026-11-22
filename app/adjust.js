@@ -837,7 +837,7 @@ const Adjust = {
         const r = adj.restore;
         const kind = r && Develop.RESTORE_TYPES[r.type];
         const msg = !r ? 'Restore color: nothing to restore'
-            : r.type === 'keep' ? (type === 'keep' ? 'Restore color: the colors kept, the light and any stain fixed' : 'Restore color: no colour fade found, so the colours are kept; the light and any stain are fixed')
+            : r.type === 'keep' ? (type === 'keep' ? 'Restore color: the colors kept, the light and any stain fixed' : 'Restore color: no color fade found, so the colors are kept; the light and any stain are fixed')
             : `Restore color: ${kind.name.toLowerCase()} found, its colors brought back`;
         this.app.showToast(msg + '. Restore color\'s slider sets how much', 2600, null, null, { kind: 'adjust' });
     },

@@ -5457,11 +5457,11 @@ const PROJECT = `
                 Themes.choose('mac84/finder');
                 await until(() => !root.classList.contains('theme-loading'));
                 app.renderCustomizePanel();
-                out.setting = root.dataset.tsThumbs === 'dither' && !!document.querySelector('#set-theme-settings input[value="gray"]');
+                out.setting = root.dataset.tsThumbs === 'dither' && !!document.querySelector('#set-theme-settings input[value="grey"]');
                 const img = () => app.files[0]._gridEl.querySelector('img');
                 await until(() => img().src.startsWith('data:image/png'));
                 out.dithered = img().src.startsWith('data:image/png') && !!img().dataset.undithered;
-                document.querySelector('#set-theme-settings input[value="color"]').click();
+                document.querySelector('#set-theme-settings input[value="colour"]').click();
                 await until(() => !img().src.startsWith('data:'));
                 out.colour = root.dataset.tsThumbs === 'colour' && app.uiPrefs.skinSettings.mac84.thumbs === 'colour' && img().src === app.files[0].thumbnailUrl;
                 // Kept for next time: the theme and its setting read back as at a start

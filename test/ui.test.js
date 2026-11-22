@@ -1266,7 +1266,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('Ctrl+, opens Settings; Esc closes it', r.opened && r.closed, JSON.stringify({ o: r.opened, c: r.closed }));
         check('Settings: a page at a time, Appearance first; a click (or the arrow keys) changes page, and it opens on the last page used', r.firstPage === 'appearance' && r.messagesPage === 'messages true' && r.noUpdates && r.reopenedOn === 'messages' && r.arrowPage === 'projects projects', JSON.stringify([r.firstPage, r.messagesPage, r.noUpdates, r.reopenedOn, r.arrowPage]));
         check('theme, density, glass and surround apply and are remembered',
-            r.applied === 'light,comfortable,opaque,gray' && r.lightText && r.comfortable && r.subtleGlass &&
+            r.applied === 'light,comfortable,opaque,grey' && r.lightText && r.comfortable && r.subtleGlass &&
             r.surround === 'rgb(118, 118, 118)' && r.saved.theme === 'light' && r.saved.density === 'comfortable' &&
             r.saved.glass === 'opaque' && r.saved.surround === 'grey', JSON.stringify(r));
         check('the glass is fixed: it no longer follows the photo', r.noSampler && r.noGlassClasses);
@@ -6752,7 +6752,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('adjust: films by process (C-41, E-6, ECN-2, B&W), every one\'s settings kept whole', m.looksWhole && m.processes === 'C-41,E-6,ECN-2,B&W,Creative', JSON.stringify([m.looksWhole, m.processes]));
         check('adjust: black-and-white films see color their own way (Acros darkens reds, SFX lightens them)', m.mono, JSON.stringify(m.mono));
         check('adjust: sharpening adds contrast at an edge, not on flat ground', m.sharpen[0] < 80 && m.sharpen[1] > 170 && m.sharpen[2] === 80, JSON.stringify(m.sharpen));
-        check('adjust: noise reduction smooths a noisy patch and keeps the edge; color noise takes out colour blotches', m.noise[1] < m.noise[0] / 2 && m.noise[2] && m.colorNoise[1] < m.colorNoise[0] / 2, JSON.stringify([m.noise, m.colorNoise]));
+        check('adjust: noise reduction smooths a noisy patch and keeps the edge; color noise takes out color blotches', m.noise[1] < m.noise[0] / 2 && m.noise[2] && m.colorNoise[1] < m.colorNoise[0] / 2, JSON.stringify([m.noise, m.colorNoise]));
         check('adjust: detail in blocks is the same as all at once, and left out of small previews', m.detailTiles <= 1 && m.previewSkips, JSON.stringify([m.detailTiles, m.previewSkips]));
         check('adjust: masks (linear, radial, brush with erase) agree on the GPU and the CPU, in tiles', m.maskWorst <= 1, JSON.stringify(m.maskWorst));
         check('adjust: a mask stays on its spot of the photo when it\'s cropped', m.maskCrop[0] > 150 && Math.abs(m.maskCrop[0] - m.maskCrop[1]) <= 1 && m.maskCrop[2] === 96 && m.maskCrop[3] === 96, JSON.stringify(m.maskCrop));

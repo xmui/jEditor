@@ -153,7 +153,7 @@ const FAKE_NATIVE = `
             // A scanner whose window never shows: only Stop ends it
             if (window.__scanHang) {
                 await new Promise(r => { window.__unhang = r; });
-                return { count: 0, names: [], canceled: true };
+                return { count: 0, names: [], cancelled: true };
             }
             const root = window.__orderRoot + '\\\\';
             let dir = await sub('disk');
