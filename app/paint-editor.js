@@ -883,6 +883,13 @@ const PaintEditor = {
         this.ed = edit && !Edits.wholePhoto(edit) ? CropEditor.fromSnapshot(this.PW, this.PH, edit) : null;
         let shown = this.ed ? this.ed.drawOutput(base) : (() => { const c = document.createElement('canvas'); c.width = this.PW; c.height = this.PH; c.getContext('2d').drawImage(base, 0, 0); return c; })();
         if (edit && edit.adj) Develop.applyCanvas(shown, edit.adj, { scale: this.PW / this.fullW, map: Develop.cropMap(this.ed, this.PW, this.PH) });
+        // Unlocked (unlockPhoto): its copy is the bottom layer, so the
+        // photo itself isn't drawn; under it, clear or the canvas's fill
+        if (this.noPhoto) {
+            const g = shown.getContext('2d');
+            g.clearRect(0, 0, shown.width, shown.height);
+            if (this.fill) { g.fillStyle = this.fill; g.fillRect(0, 0, shown.width, shown.height); }
+        }
         // The picture as shown, before the canvas pads it
         this.PO = { w: shown.width, h: shown.height };
         const pad = this.pad || Paint.ZERO, ext = this.ext;
@@ -973,6 +980,7 @@ const PaintEditor = {
         this.ext = { ...Paint.ZERO, ...(kp && kp.ext) };
         this.pad = kp && kp.pad ? { ...kp.pad } : null;
         this.fill = (kp && kp.fill) || null;
+        this.noPhoto = !!(kp && kp.noPhoto);
         this.crop = null;
         this.W = this.PW + this.ext.l + this.ext.r;
         this.H = this.PH + this.ext.t + this.ext.b;
@@ -1059,6 +1067,14 @@ const PaintEditor = {
         this.photo = this.photo0 = this.backdrop = this.stroke = this.before = this._scratch = this._shown = this._below = this._photoThumb = null;
         this.layers = [];
         this.sel = this.float = null;
+    },
+
+    // The photo's pixels in layer space, as the tools that look at the
+    // whole picture see them: nothing, once it's unlocked (its copy is a layer)
+    photoPx() {
+        if (!this.noPhoto) return this.photo;
+        if (!this._noPx || this._noPx.width !== this.W || this._noPx.height !== this.H) this._noPx = this.newCanvas();
+        return this._noPx;
     },
 
     // The photo in layer space: where the layers reach past it, clear
@@ -2106,7 +2122,7 @@ const PaintEditor = {
 
     // The layer list as it is (for undoing a change to it)
     snapshot() {
-        return { layers: this.layers.map(l => ({ ...l })), cur: this.cur, groups: JSON.parse(JSON.stringify(this.groups || {})) };
+        return { layers: this.layers.map(l => ({ ...l })), cur: this.cur, groups: JSON.parse(JSON.stringify(this.groups || {})), noPhoto: !!this.noPhoto };
     },
 
     // What a step of the layer list keeps alive on its own: the pictures
@@ -2159,6 +2175,7 @@ const PaintEditor = {
             this.layers = s.layers.map(l => ({ ...l, changed: true }));
             this.groups = JSON.parse(JSON.stringify(s.groups || {}));
             this.cur = Math.min(s.cur, this.layers.length - 1);
+            if (!!s.noPhoto !== !!this.noPhoto) { this.noPhoto = !!s.noPhoto; this.setView(this.edit); }
             if (!undo && entry.extra) this.apply(entry.extra, false);
         }
     },
@@ -2857,7 +2874,7 @@ const PaintEditor = {
         c.height = b.h;
         const g = c.getContext('2d', { willReadFrequently: true });
         g.translate(-b.x, -b.y);
-        g.drawImage(this.photo, 0, 0, this.W, this.H);
+        g.drawImage(this.photoPx(), 0, 0, this.W, this.H);
         for (const l of this.layers) {
             if (!this.isShown(l)) continue;
             this.drawShown(g, l);
@@ -3936,7 +3953,7 @@ const PaintEditor = {
         g.setTransform(1, 0, 0, 1, 0, 0);
         g.globalCompositeOperation = 'copy';
         if (this.opts.sampleAll) {
-            g.drawImage(this.photo, 0, 0, this.W, this.H);
+            g.drawImage(this.photoPx(), 0, 0, this.W, this.H);
             g.globalCompositeOperation = 'source-over';
             for (const l of upTo ? this.layers.slice(0, this.layers.indexOf(upTo) + 1) : this.layers) {
                 if (!this.isShown(l)) continue;
@@ -5465,7 +5482,7 @@ const PaintEditor = {
         const c = this.newCanvas(b.w, b.h);
         const g = c.getContext('2d');
         if (merged) {
-            g.drawImage(this.photo, -b.x, -b.y, this.W, this.H);
+            g.drawImage(this.photoPx(), -b.x, -b.y, this.W, this.H);
             for (const k of this.layers) {
                 if (!this.isShown(k)) continue;
                 g.save();
@@ -6078,30 +6095,40 @@ const PaintEditor = {
             list.appendChild(row);
         }
         // The photo: the bottom layer, locked (painting goes on the layers
-        // above it, so it's never changed)
-        const base = document.createElement('div');
-        base.className = 'paint-layer paint-photo-layer';
-        base.setAttribute('role', 'option');
-        base.setAttribute('aria-selected', 'false');
-        base.setAttribute('aria-disabled', 'true');
-        base.title = 'The photo is locked: paint on a layer above it';
-        base.innerHTML = '<span class="paint-eye paint-lock"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span><canvas></canvas><span class="paint-layer-name">Photo</span>';
-        // Made small once for each photo, not on every redraw of the list
-        if (this.backdrop && (!this._photoThumb || this._photoThumb.src !== this.backdrop)) {
-            const t = document.createElement('canvas');
-            t.width = 96;
-            t.height = 72;
-            const pa = this.backdrop.width / this.backdrop.height;
-            const bw = pa > 96 / 72 ? 96 : 72 * pa, bh = pa > 96 / 72 ? 96 / pa : 72;
-            t.getContext('2d').drawImage(this.backdrop, (96 - bw) / 2, (72 - bh) / 2, bw, bh);
-            this._photoThumb = { src: this.backdrop, canvas: t };
+        // above it, so it's never changed). Its lock, or its right-click,
+        // unlocks it: a copy of it becomes a layer. Gone once it is
+        if (!this.noPhoto) {
+            const base = document.createElement('div');
+            base.className = 'paint-layer paint-photo-layer';
+            base.setAttribute('role', 'option');
+            base.setAttribute('aria-selected', 'false');
+            // (not a layer to choose: only its lock does anything)
+            base.setAttribute('aria-disabled', 'true');
+            base.title = 'The photo is locked: paint on a layer above it, or click the lock to unlock it';
+            base.innerHTML = '<button type="button" class="paint-eye paint-lock" title="Unlock the photo" aria-label="Unlock the photo"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></button><canvas></canvas><span class="paint-layer-name">Photo</span>';
+            // Made small once for each photo, not on every redraw of the list
+            if (this.backdrop && (!this._photoThumb || this._photoThumb.src !== this.backdrop)) {
+                const t = document.createElement('canvas');
+                t.width = 96;
+                t.height = 72;
+                const pa = this.backdrop.width / this.backdrop.height;
+                const bw = pa > 96 / 72 ? 96 : 72 * pa, bh = pa > 96 / 72 ? 96 / pa : 72;
+                t.getContext('2d').drawImage(this.backdrop, (96 - bw) / 2, (72 - bh) / 2, bw, bh);
+                this._photoThumb = { src: this.backdrop, canvas: t };
+            }
+            const bc = base.querySelector('canvas');
+            bc.width = 96;
+            bc.height = 72;
+            if (this._photoThumb) bc.getContext('2d').drawImage(this._photoThumb.canvas, 0, 0);
+            base.querySelector('.paint-lock').addEventListener('click', (e) => { e.stopPropagation(); this.unlockPhoto(); });
+            base.addEventListener('click', () => this.app.showToast('The photo is locked: paint on a layer above it, or click its lock to unlock it', 2400));
+            base.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.app.openContextMenu([['Unlock the photo', () => this.unlockPhoto()]], e.clientX, e.clientY);
+            });
+            list.appendChild(base);
         }
-        const bc = base.querySelector('canvas');
-        bc.width = 96;
-        bc.height = 72;
-        if (this._photoThumb) bc.getContext('2d').drawImage(this._photoThumb.canvas, 0, 0);
-        base.addEventListener('click', () => this.app.showToast('The photo is locked: paint on a layer above it', 2000));
-        list.appendChild(base);
         const l = this.layer();
         if (l) this.el('paint-layer-blend').value = l.blend;
         this.opacityRow._sync();
@@ -6392,6 +6419,36 @@ const PaintEditor = {
         l.clip = !l.clip;
         l.changed = true;
         this.afterState();
+    },
+
+    // ---- Unlock the photo ----
+    // A copy of the photo as it's shown (its spots and adjustments done,
+    // in layer space, so the crop and turn still go over it) becomes the
+    // bottom layer, Photo, to paint on, erase, move, mask or delete as any
+    // other; the photo itself isn't drawn under the layers from then on
+    // (paint.noPhoto). Adjust doesn't change the copy. One step to undo;
+    // the original file is never changed
+
+    unlockPhoto() {
+        if (!this.ready || this.noPhoto) return;
+        if (this.layers.length >= Paint.MAX_LAYERS) { this.app.showToast(`Up to ${Paint.MAX_LAYERS} layers: merge or delete one to unlock the photo`, 2500); return; }
+        if (this.text) this.endText(true);
+        if (this.float) this.commitFloat();
+        const c = this.newCanvas();
+        c.getContext('2d').drawImage(this.photo, 0, 0);
+        // (its masks and vignette placed on the photo, past which the layers may reach)
+        const e = this.ext;
+        if (this.edit && this.edit.adj) Develop.applyCanvas(c, this.edit.adj, { scale: this.PW / this.fullW, map: { m: [this.W / this.PW, 0, -e.l / this.PW, 0, this.H / this.PH, -e.t / this.PH], asp: this.PW / this.PH } });
+        this.pushState('Unlock the photo');
+        const l = this.makeLayer('Photo');
+        l.canvas = c;
+        this.layers.unshift(l);
+        this.cur = 0;
+        this.noPhoto = true;
+        this.setView(this.edit);
+        this.afterState();
+        this.buildOptions();
+        this.app.showToast('The photo is a layer now: Adjust won\'t change it after this (Undo puts it back)', 3200);
     },
 
     // ---- Lock the layer: nothing painted on it, moved or transformed ----
@@ -7183,7 +7240,7 @@ const PaintEditor = {
     async keep() {
         if (this.text) this.endText(true);
         if (this.float) this.commitFloat();
-        const paint = { id: this.paintId, w: this.PW, h: this.PH, layers: [], ext: this.ext, pad: this.pad, fill: this.fill };
+        const paint = { id: this.paintId, w: this.PW, h: this.PH, layers: [], ext: this.ext, pad: this.pad, fill: this.fill, noPhoto: !!this.noPhoto };
         for (const l of this.layers) {
             if ((l.changed || !l.rev) && this.empty(l) && !l.adj) continue;
             const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, ...(l.lock ? { lock: true } : {}), ...(l.text ? { text: l.text } : {}), ...(l.shape ? { shape: l.shape } : {}), ...(l.clip ? { clip: true } : {}), ...(l.fixed ? { fixed: true } : {}), ...(l.group && this.groups[l.group] ? { group: l.group } : {}), ...(l.adj ? { adj: l.adj } : {}), ...(l.turn ? { turn: l.turn } : {}) };

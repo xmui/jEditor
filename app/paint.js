@@ -6,7 +6,12 @@
 // changes, so Ctrl+Z on the edit finds the old one still there).
 //
 //   paint: { id, w, h, layers: [{ id, rev, name, opacity, blend, hidden, lock?, clip?, fixed?, group?, adj?, mask?, text?, shape? }], groups?: [{ id, name, hidden, open }],
-//            ext?, pad?, fill? }
+//            ext?, pad?, fill?, noPhoto? }
+//
+// noPhoto: the photo's been unlocked (paint-editor.js, Unlock the photo):
+// a copy of it, as it was shown then, is the bottom layer, and the photo
+// itself isn't drawn under the layers any more (what's erased from that
+// layer is clear, or the canvas's fill). The original file is never changed
 //
 // Layers cover the whole photo as it is on disk (before any crop or turn,
 // w × h: the photo's own size, or less for a very big one), so cropping
@@ -43,7 +48,7 @@ const Paint = {
     // ---- The record ----
 
     has(e) {
-        return !!(e && e.paint && Array.isArray(e.paint.layers) && (e.paint.layers.length || this.padOf(e.paint)));
+        return !!(e && e.paint && Array.isArray(e.paint.layers) && (e.paint.layers.length || this.padOf(e.paint) || e.paint.noPhoto));
     },
 
     // ---- Adjustment layers ----
@@ -374,11 +379,11 @@ const Paint = {
         const fill = typeof v.fill === 'string' && /^#[0-9a-f]{6}$/i.test(v.fill) ? v.fill.toLowerCase() : null;
         // (a canvas that's smaller can't be smaller than nothing)
         const ok = !pad || (v.w + pad.l + pad.r >= 1 && v.h + pad.t + pad.b >= 1);
-        if (!layers.length && !(pad && ok)) return null;
+        if (!layers.length && !(pad && ok) && !v.noPhoto) return null;
         const used = new Set(layers.map(l => l.group).filter(Boolean));
         const groups = (Array.isArray(v.groups) ? v.groups : []).filter(g => g && id(g.id) && used.has(g.id))
             .map(g => ({ id: g.id, name: typeof g.name === 'string' && g.name.trim() ? g.name.trim().slice(0, 60) : 'Group', hidden: !!g.hidden, open: g.open !== false }));
-        return { id: v.id, w: v.w, h: v.h, layers, ...(groups.length ? { groups } : {}), ...(ext ? { ext } : {}), ...(pad && ok ? { pad } : {}), ...(pad && ok && fill ? { fill } : {}) };
+        return { id: v.id, w: v.w, h: v.h, layers, ...(groups.length ? { groups } : {}), ...(ext ? { ext } : {}), ...(pad && ok ? { pad } : {}), ...(pad && ok && fill ? { fill } : {}), ...(v.noPhoto ? { noPhoto: true } : {}) };
     },
 
     ZERO: { l: 0, t: 0, r: 0, b: 0 },
@@ -541,7 +546,7 @@ const Paint = {
             if (src) layers.push({ src, opacity: l.opacity, blend: l.blend });
         }
         const pad = this.padOf(p);
-        return layers.length || pad ? { w: p.w, h: p.h, ext: p.ext || this.ZERO, pad, fill: p.fill || null, layers } : null;
+        return layers.length || pad || p.noPhoto ? { w: p.w, h: p.h, ext: p.ext || this.ZERO, pad, fill: p.fill || null, noPhoto: !!p.noPhoto, layers } : null;
     },
 
     // ---- Drawn over a photo ----
@@ -555,6 +560,11 @@ const Paint = {
         at = at || { x: 0, y: 0, w: canvas.width, h: canvas.height };
         const ctx = canvas.getContext('2d');
         ctx.save();
+        // The photo unlocked: its copy, the bottom layer, stands for it
+        if (prepared.noPhoto) {
+            ctx.clearRect(at.x, at.y, at.w, at.h);
+            if (prepared.fill) { ctx.fillStyle = prepared.fill; ctx.fillRect(at.x, at.y, at.w, at.h); }
+        }
         for (const l of prepared.layers) {
             if (l.adj) {
                 this.adjustCanvas(canvas, l.adj, l.src ? (t) => this.drawThrough(t, ed, l.src, canvas.width, canvas.height, prepared, at) : null, l.opacity, at.w / (ed ? ed.outputRect().w : prepared.w), null, at);
