@@ -519,6 +519,7 @@ sealed class MainForm : Form
             case "moveFolder":
             case "cacheDir":
             case "setCacheDir":
+            case "resetApp":
                 var files = FilesOf(e);
                 BeginInvoke(async () => await HandleRequestAsync(msg, files));
                 break;
@@ -932,6 +933,25 @@ sealed class MainForm : Form
                 case "cacheDir":
                     Reply(id, new { path = Shell.OrdersDir, chosen = Shell.CacheDir is not null });
                     break;
+                case "resetApp":
+                {
+                    // Settings → Troubleshooting (app/reset.js, AppReset.cs):
+                    // the browser's caches, for Reset jEditor this app's own
+                    // files, then jEditor again. The page's storage isn't
+                    // wiped here: the page has removed what goes
+                    var full = msg["full"]?.GetValue<bool>() ?? false;
+                    try
+                    {
+                        await Core.Profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.DiskCache
+                            | CoreWebView2BrowsingDataKinds.CacheStorage | CoreWebView2BrowsingDataKinds.ServiceWorkers);
+                    }
+                    catch (Exception ex) { Log.Write($"Reset: the browser's caches weren't cleared: {ex.Message}"); }
+                    if (full && smoke is null) AppReset.Forget();
+                    Log.Write(full ? "Reset jEditor: starting again" : "Cleared the cache: starting again");
+                    Reply(id, new { ok = smoke is null });
+                    if (smoke is null) AppReset.Restart();
+                    break;
+                }
                 case "setCacheDir":
                 {
                     // The cache folder chosen in Settings → Projects: its

@@ -655,6 +655,103 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('reset')) {
+        console.log('Settings → Troubleshooting: Clear cache and restart, Reset jEditor (reset.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const $ = (id) => document.getElementById(id);
+                const blob = async (color) => { const c = document.createElement('canvas'); c.width = 160; c.height = 120; const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, 160, 120); return canvasBlob(c); };
+                await openProject('Resetting', { 'a.png': await blob('#806040'), 'b.png': await blob('#406080') });
+                await until(() => app.files.every(f => f.thumbnailUrl));
+                // The two rows, at the bottom of Projects under their heading
+                step = 'rows';
+                app.toggleCustomizePanel(true);
+                app.showSettingsPage('projects');
+                const sec = $('set-page-projects'), heads = [...sec.querySelectorAll('.set-group')];
+                out.rows = [heads[heads.length - 1].textContent, !!$('set-reset-cache').getClientRects().length, !!$('set-reset-all').getClientRects().length,
+                    sec.lastElementChild.contains($('set-reset-all'))];
+                // What's kept: a setting, a pin, a recent, the edits store; what's a cache
+                step = 'seed';
+                const idb = (name) => new Promise(res => { const q = indexedDB.open(name); q.onsuccess = () => { const db = q.result; const stores = [...db.objectStoreNames]; db.close(); res(stores); }; q.onerror = () => res(null); });
+                const dbs = async () => (await indexedDB.databases()).map(d => d.name).sort().join();
+                localStorage.setItem('jeditor.pins', JSON.stringify([{ path: '/x', name: 'x' }]));
+                localStorage.setItem('jeditor.settingsPage', 'projects');
+                sessionStorage.setItem('jeditor.something', '1');
+                await app.idbPutThumb('k', new Blob(['x']));
+                await (await caches.open('jeditor-v-test')).put('/x', new Response('x'));
+                const ui = localStorage.getItem('jeditor.ui');
+                out.before = [await dbs(), !!ui, (await caches.keys()).includes('jeditor-v-test')];
+                // Clear cache and restart: the web reloads; the caches go, the rest stays
+                step = 'clear';
+                let reloads = 0;
+                AppReset.reload = () => { reloads++; };
+                $('set-reset-cache').click();
+                await until(() => reloads === 1, 100);
+                out.cleared = [reloads, await dbs(), localStorage.getItem('jeditor.ui') === ui, !!localStorage.getItem('jeditor.pins'),
+                    localStorage.getItem('jeditor.settingsPage'), sessionStorage.length, (await caches.keys()).filter(k => k.startsWith('jeditor')).length];
+                // Reset jEditor… asks first, saying what goes; Cancel changes nothing
+                step = 'ask';
+                $('set-reset-all').click();
+                await until(() => !$('ui-dialog').classList.contains('hidden'));
+                out.ask = [$('uid-title').textContent, $('uid-text').textContent, $('uid-ok').textContent, $('uid-ok').classList.contains('danger')];
+                $('uid-cancel').click();
+                await sleep(200);
+                out.cancelled = [reloads, !!localStorage.getItem('jeditor.pins')];
+                // ...and OK: every jeditor key and the recents go, the project's own data stays
+                step = 'reset';
+                $('set-reset-all').click();
+                await until(() => !$('ui-dialog').classList.contains('hidden'));
+                $('uid-ok').click();
+                await until(() => reloads === 2, 100);
+                const left = []; for (let i = 0; i < localStorage.length; i++) if (localStorage.key(i).startsWith('jeditor')) left.push(localStorage.key(i));
+                out.reset = [reloads, left.join(), await dbs()];
+                // The apps' copy of Recent on disk (recent.json): left empty,
+                // so Recent isn't made again from the projects' order.json
+                step = 'disk';
+                const store = await (await navigator.storage.getDirectory()).getDirectoryHandle('reset-store', { create: true });
+                const write = async (name, data) => { const w = await (await store.getFileHandle(name, { create: true })).createWritable(); await w.write(JSON.stringify(data)); await w.close(); };
+                await write(Recents.FILE, { version: 1, folders: [{ id: 'x', name: 'Smith', path: 'Z:\\Smith', openedAt: 1 }] });
+                const proj = await store.getDirectoryHandle('Smith-1', { create: true });
+                const w2 = await (await proj.getFileHandle('order.json', { create: true })).createWritable(); await w2.write(JSON.stringify({ path: 'Z:\\Smith', name: 'Smith', openedAt: 1 })); await w2.close();
+                const nativeWas = FolderCache.native;
+                FolderCache.native = () => ({ dataDir: async () => store });
+                await AppReset.dropRemembered();
+                out.disk = [JSON.stringify(await Recents.readDisk(store)), await Recents.restore()];
+                FolderCache.native = nativeWas;
+                // In an app (appReset): the app restarts itself, the page doesn't reload
+                step = 'app';
+                const asked = [];
+                window.JEditorNative = { platform: 'windows', features: ['appReset'], resetApp: async (o) => { asked.push(o.full); return true; } };
+                await AppReset.clearCache();
+                await AppReset.restart({ full: true });
+                // (one that can't: the page reloads)
+                window.JEditorNative.resetApp = async () => { throw new Error('no'); };
+                await AppReset.restart({ full: false });
+                out.app = [asked.join(), reloads];
+                delete window.JEditorNative;
+                return out;
+            } catch (e) {
+                return { error: step + ': ' + e.message };
+            }
+        });
+        check('reset: Troubleshooting, the last group in Settings → Projects, has Clear cache and restart and Reset…',
+            !r.error && r.rows && r.rows[0] === 'Troubleshooting' && r.rows[1] && r.rows[2] && r.rows[3], JSON.stringify(r));
+        check('reset: Clear cache and restart takes the thumbnails, previews and offline copy, keeps settings, pins and recents, and reloads (the web)',
+            !!r.cleared && r.cleared[0] === 1 && !/(^|,)jeditor(,|$)/.test(r.cleared[1]) && /jeditor-recents/.test(r.cleared[1]) && r.cleared[2] && r.cleared[3] && r.cleared[4] === null && r.cleared[5] === 0 && r.cleared[6] === 0,
+            JSON.stringify([r.before, r.cleared]));
+        check('reset: Reset jEditor… asks first, saying what goes, in red; Cancel changes nothing',
+            !!r.ask && r.ask[0] === 'Reset jEditor?' && /settings/.test(r.ask[1]) && /Recent projects/.test(r.ask[1]) && /photos/.test(r.ask[1]) && r.ask[2] === 'Reset jEditor' && r.ask[3] && r.cancelled[0] === 1 && r.cancelled[1],
+            JSON.stringify([r.ask, r.cancelled]));
+        check('reset: ...OK: every setting, pin and recent gone, then a reload', !!r.reset && r.reset[0] === 2 && r.reset[1] === '' && !/jeditor-recents/.test(r.reset[2]), JSON.stringify(r.reset));
+        check('reset: the apps\' Recent on disk (recent.json) is left empty, so it doesn\'t come back from the projects\' folders', !!r.disk && r.disk[0] === '[]' && r.disk[1] === 0, JSON.stringify(r.disk));
+        check('reset: in an app the app restarts itself (Clear cache, then a reset); if it can\'t, the page reloads', !!r.app && r.app[0] === 'false,true' && r.app[1] === 3, JSON.stringify(r.app));
+        check('reset: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     if (wanted('savequestion')) {
         console.log('a project\'s first time: keep edits in jEditor, or into the photos (first-open.js, edits.js)');
         const { page, issues } = await open();
