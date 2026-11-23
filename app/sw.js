@@ -46,6 +46,7 @@ const ASSETS = [
     './experiments.js',
     './start.js',
     './folder-move.js',
+    './reset.js',
     './open-card.js',
     './palette.js',
     './first-open.js',

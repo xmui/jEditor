@@ -243,14 +243,25 @@ const FolderMove = {
             ok: 'Clear cache'
         });
         if (!ok) return;
-        await FolderCache.flush();
-        let failed = 0;
-        for (const c of await this.caches()) {
-            try { await c.store.removeEntry('cache', { recursive: true }); } catch (e) { if (e.name !== 'NotFoundError') failed++; }
-        }
-        FolderCache.reset();
-        if (typeof Recents !== 'undefined') await Recents.clearThumbs();
+        const failed = await this.clearCacheNow();
         this.app.showToast(failed ? `Cleared the cache, but ${failed} project${failed === 1 ? '\'s was' : 's\' were'} in use` : `Cleared the cache: ${this.bytes(bytes)} freed`, 4000, null, null, failed ? {} : { type: 'success' });
         this.draw();
+    },
+
+    // Every project's thumbnails and the home page's pictures, removed
+    // without asking (Clear cache above, and Settings → Troubleshooting:
+    // reset.js). Flags, edits, Auto crop originals and deleted photos stay.
+    // → how many projects' caches couldn't be removed (in use)
+    async clearCacheNow() {
+        let failed = 0;
+        if (this.native()) {
+            await FolderCache.flush();
+            for (const c of await this.caches()) {
+                try { await c.store.removeEntry('cache', { recursive: true }); } catch (e) { if (e.name !== 'NotFoundError') failed++; }
+            }
+            FolderCache.reset();
+        }
+        if (typeof Recents !== 'undefined') await Recents.clearThumbs();
+        return failed;
     }
 };

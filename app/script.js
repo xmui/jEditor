@@ -281,6 +281,7 @@ const app = {
         AdjustSync.init(this);
         Stored.init(this);
         FolderMove.init(this);
+        AppReset.init(this);
         OpenCard.init(this);
         Palette.init(this); // Find anything, Ctrl+K
         FirstOpen.init(this);
