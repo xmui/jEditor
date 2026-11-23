@@ -653,6 +653,63 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('cropsync')) {
+        console.log('syncing a crop again: the new crop goes on, in Photos\' Sync, Adjust\'s Sync and Crop like the last crop');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const $ = (id) => document.getElementById(id);
+                const blob = async (color) => { const c = document.createElement('canvas'); c.width = 300; c.height = 200; const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, 300, 200); return canvasBlob(c); };
+                app.uiPrefs.keepEdits = true; // (kept as edits, to read back)
+                await openProject('Crops', { 'a.png': await blob('#806040'), 'b.png': await blob('#406080'), 'c.png': await blob('#408060') });
+                const [A, B, C] = ['a.png', 'b.png', 'c.png'].map(n => app.files.find(f => f.name === n));
+                const crop = (x0, x1, angle = 0) => ({ q: 0, angle, aspectKey: 'free', landscape: true, n: { x0, y0: -0.4, x1, y1: 0.4 } });
+                const nOf = (f) => f._edit ? [Math.round(f._edit.n.x0 * 100), Math.round(f._edit.n.x1 * 100), Math.round((f._edit.angle || 0) * 10)].join() : 'none';
+                const okSync = async (fn) => { const p = fn(); await until(() => !$('sync-panel').classList.contains('hidden')); $('sync-ok').click(); await p; };
+                // Photos' Sync: A's crop onto B, then a new crop on A, synced again
+                step = 'photos';
+                Edits.set([{ file: A, edit: crop(-0.4, 0.2) }], 'crop');
+                await okSync(() => AdjustSync.open(A, [B]));
+                const first = nOf(B);
+                Edits.set([{ file: A, edit: crop(-0.1, 0.45) }], 'crop');
+                await okSync(() => AdjustSync.open(A, [B]));
+                out.photos = [nOf(A), first, nOf(B)];
+                // Crop like the last crop: twice, with a new crop in between
+                step = 'like';
+                app.rememberCrop(crop(-0.3, 0.1));
+                await app.cropLike([C]);
+                const likeFirst = nOf(C);
+                app.rememberCrop(crop(0, 0.4));
+                await app.cropLike([C]);
+                out.like = [likeFirst, nOf(C)];
+                // Adjust's Sync: straightened in Adjust (Geometry), synced; straightened again, synced again
+                step = 'adjust';
+                app.openSingle(A);
+                await app.enterAdjust(A);
+                await until(() => Adjust.ready);
+                // B picked in the strip too (Ctrl+click)
+                app.selection = new Set([A, B]);
+                out.targets = AdjustSync.targets().map(f => f.name).join();
+                Adjust.applyGeo(Adjust.geoAt(4));
+                await okSync(() => AdjustSync.fromAdjust());
+                const adjFirst = nOf(B);
+                Adjust.applyGeo(Adjust.geoAt(-6));
+                await okSync(() => AdjustSync.fromAdjust());
+                out.adjust = [adjFirst, nOf(B)];
+                return out;
+            } catch (e) {
+                return { error: step + ': ' + e.message };
+            }
+        });
+        check('crop sync: Photos\' Sync puts the new crop on when synced again', !r.error && !!r.photos && r.photos[2] !== r.photos[1] && r.photos[2] === '-10,45,0', JSON.stringify(r));
+        check('crop sync: Crop like the last crop, again with a new crop, puts the new one on', !!r.like && r.like[0] !== r.like[1] && /^0,/.test(r.like[1]), JSON.stringify(r.like));
+        check('crop sync: Adjust\'s Sync puts the straighten being made on, the first time and again', r.targets === 'b.png' && !!r.adjust && /,40$/.test(r.adjust[0]) && /,-60$/.test(r.adjust[1]), JSON.stringify([r.targets, r.adjust]));
+        check('crop sync: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     if (wanted('sync')) {
         console.log('sync (adjust-sync.js)');
         const { page, issues } = await open();
