@@ -97,6 +97,17 @@ const Unsaved = {
     update() {
         const pill = this.el('unsaved-pill'), side = this.el('unsaved-side');
         if (!pill || !side) return;
+        // Counting started or stopped (the project's choice, Settings →
+        // Saving): the thumbnails' dots follow
+        const counting = this.counting();
+        if (counting !== this._counting) {
+            this._counting = counting;
+            for (const f of this.app ? this.app.files : []) {
+                if (!f._edit) continue;
+                if (f._gridEl) Edits.decorate(f._gridEl, f);
+                if (f._stripEl) Edits.decorate(f._stripEl, f);
+            }
+        }
         const n = this.files().length;
         const text = `${n.toLocaleString()} unsaved`;
         const title = n === 1 ? '1 photo has edits that aren\'t saved over the original or exported yet'

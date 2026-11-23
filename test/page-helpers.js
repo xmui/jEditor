@@ -200,7 +200,8 @@ const PAGE_HELPERS = `
 // is written into the photo as the tests check; the tests of keeping turn
 // it on (keepEdits(true))
 const QUIET_FIRST_OPEN = () => {
-    try { if (!localStorage.getItem('jeditor.firstOpen')) localStorage.setItem('jeditor.firstOpen', JSON.stringify({ asked: true })); } catch (e) { /* no storage */ }
+    // (asked: the welcome; askSaving: a project's first time, first-open.js)
+    try { if (!localStorage.getItem('jeditor.firstOpen')) localStorage.setItem('jeditor.firstOpen', JSON.stringify({ asked: true, askSaving: false })); } catch (e) { /* no storage */ }
     try {
         const ui = JSON.parse(localStorage.getItem('jeditor.ui') || '{}') || {};
         if (typeof ui.keepEdits !== 'boolean') localStorage.setItem('jeditor.ui', JSON.stringify({ ...ui, keepEdits: false }));

@@ -584,6 +584,75 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('savequestion')) {
+        console.log('a project\'s first time: keep edits in jEditor, or into the photos (first-open.js, edits.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const $ = (id) => document.getElementById(id);
+                const blob = async (color) => { const c = document.createElement('canvas'); c.width = 120; c.height = 90; const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, 120, 90); return canvasBlob(c); };
+                const shown = () => !$('ui-dialog').classList.contains('hidden');
+                const dialog = () => [$('uid-title').textContent, $('uid-ok').textContent, $('uid-alt').textContent, $('uid-cancel').textContent, $('uid-check-label').textContent];
+                // (the tests turn the question off: on, as it starts)
+                FirstOpen.setAsking(true);
+                app.uiPrefs.keepEdits = true;
+                step = 'first';
+                const a = await openProject('Wedding', { 'a.png': await blob('#806040') });
+                await until(shown);
+                out.first = dialog();
+                // Into the photos, for this project only
+                $('uid-alt').click();
+                await until(() => !shown());
+                await Edits.flush();
+                const ej = await (await (await (await FolderCache.root(app, false)).getFileHandle('edits.json')).getFile()).text();
+                out.chose = [Edits.chosen(), Edits.keeping(), JSON.parse(ej).keep, app.uiPrefs.keepEdits, FirstOpen.asking()];
+                // The project's ⋯ says so, and changes it back
+                const items = app.contextItemsFor(null, false).map(it => it[0]);
+                out.menu = items.includes('Keep edits in jEditor');
+                // Opened again: not asked, its choice kept
+                step = 'again';
+                const b = await openProject('Party', { 'b.png': await blob('#406080') });
+                await until(shown);
+                out.second = dialog()[0];
+                // Keep, and Don't ask again: the default for new ones, and no more questions
+                $('uid-check-box').checked = true;
+                $('uid-ok').click();
+                await until(() => !shown());
+                await Edits.flush();
+                out.dontAsk = [Edits.keeping(), app.uiPrefs.keepEdits, FirstOpen.asking()];
+                step = 'back';
+                window.showDirectoryPicker = async () => a;
+                await app.browseFolder();
+                await until(() => app.dirHandle && app.dirHandle.name === 'Wedding');
+                await sleep(400);
+                out.back = [shown(), Edits.chosen(), Edits.keeping()];
+                step = 'new';
+                await openProject('Garden', { 'c.png': await blob('#408060') });
+                await sleep(400);
+                out.fresh = [shown(), Edits.chosen(), Edits.keeping()];
+                // Settings → Saving: the default, and the question
+                app.toggleCustomizePanel(true);
+                app.showSettingsPage('projects');
+                out.settings = [$('cust-keep-edits').checked, $('cust-ask-saving').checked];
+                return out;
+            } catch (e) {
+                return { error: step + ': ' + e.message };
+            }
+        });
+        check('save question: a project\'s first time asks, Keep in jEditor first, Not now, Don\'t ask again',
+            !r.error && !!r.first && r.first[0] === 'How should Wedding save edits?' && r.first[1] === 'Keep in jEditor' && r.first[2] === 'Into the photos' && r.first[3] === 'Not now' && r.first[4] === 'Don\'t ask again', JSON.stringify(r));
+        check('save question: the answer is the project\'s, kept with its edits; the default and the question stay', !!r.chose && JSON.stringify(r.chose) === '[true,false,false,true,true]', JSON.stringify(r.chose));
+        check('save question: the project\'s ⋯ changes it', r.menu === true, JSON.stringify(r.menu));
+        check('save question: another project is asked; Don\'t ask again makes it the default and stops asking', r.second === 'How should Party save edits?' && !!r.dontAsk && r.dontAsk[0] && r.dontAsk[1] && r.dontAsk[2] === false, JSON.stringify([r.second, r.dontAsk]));
+        check('save question: opened again it isn\'t asked, and keeps its own choice (into the photos)', !!r.back && JSON.stringify(r.back) === '[false,true,false]', JSON.stringify(r.back));
+        check('save question: a new project after Don\'t ask again isn\'t asked, and keeps edits (the default)', !!r.fresh && JSON.stringify(r.fresh) === '[false,false,true]', JSON.stringify(r.fresh));
+        check('save question: Settings → Saving shows the default and the question', !!r.settings && JSON.stringify(r.settings) === '[true,false]', JSON.stringify(r.settings));
+        check('save question: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     if (wanted('sync')) {
         console.log('sync (adjust-sync.js)');
         const { page, issues } = await open();

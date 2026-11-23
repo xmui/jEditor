@@ -140,7 +140,8 @@ const CHANGELOG = [
             'Fixed: in Paint, Undo and Redo stalled the whole app for a moment on a big picture, and the Blur tool lagged far behind the pointer with a big brush. Undo\'s puff now looks the same but costs next to nothing, and Blur keeps up with the pointer.',
             'Fixed: in Adjust, opening another photo while the last one was still loading could leave a blank or wrongly sized picture, and the 1:1 view stayed empty for good if the full-size photo couldn\'t be read once. Adjust also redraws less while you move a slider, so it keeps up better on a big photo.',
             'Fixed: in Paint, typing text after clicking one of its options (Bold, the font, a color) sent the letters to the shortcuts instead: a capital M opened Copy to, and other letters changed the tool. While the text box is open, every letter goes in it.',
-            'In Paint, the photo at the bottom of the layers can be unlocked: click its lock, or right-click it. A copy of it, as it\'s shown, becomes a layer named Photo, to paint on, erase, move or delete like any other. Adjust doesn\'t change the copy after that, the original file is never touched, and Undo puts the photo back.'
+            'In Paint, the photo at the bottom of the layers can be unlocked: click its lock, or right-click it. A copy of it, as it\'s shown, becomes a layer named Photo, to paint on, erase, move or delete like any other. Adjust doesn\'t change the copy after that, the original file is never touched, and Undo puts the photo back.',
+            'The first time you open a project, jEditor asks how it should save edits: keep them in jEditor, with your photos as they are until you Save over the original, or write them into the photos as you go. Each project keeps its answer, and its ⋯ changes it. "Don\'t ask again" makes your answer the default for new projects; Settings → Projects → Saving has both.'
         ]
     },
     {
