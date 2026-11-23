@@ -282,6 +282,7 @@ const app = {
         Stored.init(this);
         FolderMove.init(this);
         AppReset.init(this);
+        SortKeys.init(this);
         OpenCard.init(this);
         Palette.init(this); // Find anything, Ctrl+K
         FirstOpen.init(this);
@@ -1981,6 +1982,9 @@ const app = {
 
     async finalizeLoad() {
         try {
+            // The dates taken kept with the project (sort-keys.js), so a
+            // project sorted by date taken opens in that order at once
+            await SortKeys.loadFor(800);
             // Sort initial files
             this.sortFiles(false); // pass false to avoid re-rendering twice
             // Edits kept until saved: the thumbnails are made with them
@@ -4259,6 +4263,8 @@ const app = {
     // Pre-generate every thumbnail in the background right after a folder
     // loads, so scrolling the grid only ever hits the cache.
     precacheThumbnails() {
+        // (and the dates taken not kept yet, read quietly: sort-keys.js)
+        SortKeys.soon();
         const missing = this.files.filter(f => !f.thumbnailUrl && !f._thumbPromise);
         if (missing.length === 0) return;
 
@@ -7691,6 +7697,8 @@ const app = {
         });
         this._readingDates = Promise.all(workers).finally(() => { this._readingDates = null; this.endTask('taken'); });
         await this._readingDates;
+        // Kept with the project, so it's instant next time (sort-keys.js)
+        SortKeys.save();
     },
 
     // ---- Rename ----
