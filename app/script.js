@@ -2674,8 +2674,12 @@ const app = {
         const edit = typeof Edits !== 'undefined' && Edits.get(file);
         if (edit) {
             const what = [Object.keys(edit).some(k => !['adj', 'paint'].includes(k)) && 'Crop or turn', edit.adj && 'Adjust', edit.paint && 'Paint'].filter(Boolean);
-            rows.push(['Edits', `${what.join(', ') || 'Kept'} · not yet in the file`]);
+            const saved = typeof Unsaved !== 'undefined' && Unsaved.counting() && !Unsaved.is(file);
+            rows.push(['Edits', `${what.join(', ') || 'Kept'} · ${saved ? 'exported, not in the file' : 'not saved or exported yet'}`]);
         }
+        // When and where it was last exported (unsaved.js)
+        const exported = typeof Unsaved !== 'undefined' && Unsaved.describe(file);
+        if (exported) rows.push(['Exported', exported]);
         if (token !== this._infoToken) return;
         render();
         this.fillInfoExtra(file, exif);
@@ -8266,8 +8270,8 @@ const app = {
                     await w.write(out);
                     await w.close();
                     done++;
-                    // Exported with its edit as it is: no longer unsaved
-                    if (f._edit) exported.push(f);
+                    // Exported (with its edit as it is: no longer unsaved)
+                    exported.push(f);
                 } catch (e) {
                     failed++;
                     console.error('Export failed:', f.name, e);
@@ -8275,7 +8279,7 @@ const app = {
                 this.updateTask('export', `Exporting ${done + failed + skipped}/${list.length}`);
             }
             this.endTask('export');
-            if (exported.length) Unsaved.exported(exported);
+            if (exported.length) Unsaved.exported(exported, where);
             const left = skipped ? `, ${skipped} skipped (already there)` : '';
             const rest = list.length - done - failed - skipped;
             this.showToast(

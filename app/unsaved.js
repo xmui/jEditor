@@ -67,13 +67,18 @@ const Unsaved = {
         return this.counting() ? this.app.files.filter(f => f._edit && f._exportedEdit !== f._edit) : [];
     },
 
-    // Exported as it is now: saved, until it's edited again
-    exported(files) {
+    // Exported as it is now: saved, until it's edited again. Each photo
+    // keeps when and where it was last exported (_exported: { at, where }),
+    // shown in Info and found by Show exported photos, edited since or not
+    exported(files, where = '') {
         let n = 0;
+        const at = Date.now();
         for (const f of files) {
-            if (f && f._edit && f._exportedEdit !== f._edit) {
+            if (!f) continue;
+            f._exported = { at, where: String(where || '') };
+            n++;
+            if (f._edit && f._exportedEdit !== f._edit) {
                 f._exportedEdit = f._edit;
-                n++;
                 if (f._gridEl) Edits.decorate(f._gridEl, f);
                 if (f._stripEl) Edits.decorate(f._stripEl, f);
             }
@@ -83,6 +88,119 @@ const Unsaved = {
             Edits.saveSoon();
         }
         this.update();
+    },
+
+    // Exported at all (Info, Show exported photos, is:exported)
+    wasExported(f) {
+        return !!(f && f._exported && f._exported.at);
+    },
+
+    // "Exported Nov 22, 3:41 PM to "Smith export"", and whether it's been
+    // edited since (Info)
+    describe(f) {
+        if (!this.wasExported(f)) return null;
+        const e = f._exported;
+        const when = new Date(e.at).toLocaleString(undefined, { month: 'short', day: 'numeric', year: new Date(e.at).getFullYear() === new Date().getFullYear() ? undefined : 'numeric', hour: 'numeric', minute: '2-digit' });
+        const since = f._edit && f._exportedEdit !== f._edit ? ' · edited since' : '';
+        return `${when}${e.where ? ` to ${e.where}` : ''}${since}`;
+    },
+
+    // ---- Kept with the project (edits.json: exports) ----
+
+    // { rel: { at, where, current } }: when and where each was last
+    // exported, and whether its edit now is the one exported
+    collect(files) {
+        const out = {};
+        for (const f of files) {
+            if (!this.wasExported(f) && !(f._edit && f._exportedEdit === f._edit)) continue;
+            const e = f._exported || {};
+            out[f.relPath || f.name] = { at: e.at || 0, where: e.where || '', current: !!(f._edit && f._exportedEdit === f._edit) };
+        }
+        return out;
+    },
+
+    // Read back: exports (this) or exported (a list: saved as it is)
+    restore(f, rel, data) {
+        delete f._exported;
+        delete f._exportedEdit;
+        const x = data && data.exports && data.exports[rel];
+        if (x && typeof x === 'object') {
+            if (x.at) f._exported = { at: +x.at || 0, where: typeof x.where === 'string' ? x.where : '' };
+            if (x.current && f._edit) f._exportedEdit = f._edit;
+        } else if (Array.isArray(data && data.exported) && data.exported.includes(rel) && f._edit) {
+            f._exportedEdit = f._edit;
+        }
+    },
+
+    // ---- Exports made before jEditor kept track (once per project) ----
+    //
+    // What there is to go by: the copies Export made, in the project's
+    // export folders ("Smith export", "Smith – Web", "jEditor Export", or
+    // one left out of the project), under the photo's own name (the usual
+    // pattern), and when edits.json was last written (no edit is newer
+    // than that). A copy newer than that was made from the edits as they
+    // are now: that photo's marked exported, with the copy's date and
+    // folder. Anything else stays unsaved. Write edits to file needs no
+    // record: it takes the edit off the photo, so it isn't counted anyway.
+
+    EXPORT_DIR: /( export$| – |^jEditor Export$)/i,
+    BACKFILL_MS: 20000,
+
+    async backfill(root, editsAt) {
+        const app = this.app;
+        const dir = app.dirHandle;
+        if (!dir || !editsAt) return 0;
+        const started = performance.now();
+        const late = () => performance.now() - started > this.BACKFILL_MS || app.dirHandle !== dir;
+        const left = (typeof Export !== 'undefined' && Export.leftOut) ? (Export.leftOut()[Export.projectKey()] || []) : [];
+        // The project's own export folders, at its top
+        const folders = [];
+        try {
+            for await (const [name, h] of dir.entries()) {
+                if (h.kind === 'directory' && (this.EXPORT_DIR.test(name) || left.includes(name.toLowerCase()))) folders.push([name, h]);
+                if (late()) break;
+            }
+        } catch (e) { return 0; }
+        // Edited photos not marked, by name without its extension
+        const stem = (n) => n.replace(/\.[^.]+$/, '').toLowerCase();
+        const want = new Map();
+        for (const f of app.files) {
+            if (!f._edit || f._exportedEdit === f._edit) continue;
+            if (folders.some(([name]) => (f.relPath || '').toLowerCase().startsWith(name.toLowerCase() + '/'))) continue; // (a copy itself)
+            const k = stem(f.name);
+            if (!want.has(k)) want.set(k, []);
+            want.get(k).push(f);
+        }
+        if (!want.size) return 0;
+        const marked = [];
+        for (const [name, h] of folders) {
+            try {
+                for await (const entry of h.values()) {
+                    if (late()) break;
+                    if (entry.kind !== 'file') continue;
+                    const fs = want.get(stem(entry.name));
+                    if (!fs) continue;
+                    const file = await entry.getFile().catch(() => null);
+                    if (!file || file.lastModified < editsAt) continue;
+                    for (const f of fs) {
+                        if (f._exportedEdit === f._edit) continue;
+                        f._exportedEdit = f._edit;
+                        f._exported = { at: file.lastModified, where: `"${name}"` };
+                        marked.push(f);
+                    }
+                }
+            } catch (e) { /* that folder can't be read: left as it is */ }
+        }
+        if (marked.length) {
+            for (const f of marked) {
+                if (f._gridEl) Edits.decorate(f._gridEl, f);
+                if (f._stripEl) Edits.decorate(f._stripEl, f);
+            }
+            Edits._dirty = true;
+            Edits.saveSoon();
+            this.update();
+        }
+        return marked.length;
     },
 
     // ---- On screen ----
@@ -133,19 +251,21 @@ const Unsaved = {
         if (!files.length) return;
         const n = files.length, these = n === 1 ? 'this photo' : `these ${n.toLocaleString()} photos`;
         const r = btn.getBoundingClientRect();
+        const exported = app.files.filter(f => this.wasExported(f)).length;
         app.openContextMenu([
             [n === 1 ? 'Save over the original' : 'Save over originals', () => Edits.saveAll({ list: this.files() })],
             ['Export…', () => Export.open({ files: this.files() })],
             ['—'],
-            [`Show ${these}`, () => this.show()]
+            [`Show ${these}`, () => this.show()],
+            ...(exported ? [[`Show exported photos (${exported.toLocaleString()})`, () => this.show('exported')]] : [])
         ], r.left, r.top - 6, { above: true });
     },
 
     // The grid, filtered to them (Flags' filter: the chip takes it off)
-    async show() {
+    async show(kind = 'unsaved') {
         const app = this.app;
         if (typeof Modes !== 'undefined' && Modes.current() !== 'photos') await Modes.go('photos');
         if (app.viewMode !== 'grid') app.setView('grid');
-        Flags.setFilter('unsaved');
+        Flags.setFilter(kind);
     }
 };

@@ -6362,6 +6362,41 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await sleep(100);
             out.shown = app.viewFiles().map(f => f.name).sort();
             Flags.setFilter(null);
+            // Exported, as Info says: when and where, and edited since
+            const aNow = app.files.find(f => f.name === 'a.jpg');
+            out.describe = [Unsaved.describe(aNow), Unsaved.describe(app.files.find(f => f.name === 'c.jpg'))];
+            // Show exported photos: in the menu, and the grid filtered to them
+            pill.click();
+            await sleep(100);
+            out.menu2 = [...document.querySelectorAll('#context-menu .ctx-item, #context-menu [role="menuitem"]')].map(e => e.textContent.trim()).filter(Boolean);
+            app.closeContextMenu();
+            await Unsaved.show('exported');
+            await sleep(100);
+            out.shownExported = app.viewFiles().map(f => f.name).sort();
+            Flags.setFilter(null);
+            // Exports made before jEditor kept track: a copy in the project's
+            // export folder newer than its edits.json marks that photo; one
+            // older doesn't
+            const bNow = app.files.find(f => f.name === 'b.jpg');
+            const exp = await dir.getDirectoryHandle('unsavedproj export', { create: true });
+            const ch = await exp.getFileHandle('b.jpg', { create: true });
+            const cw = await ch.createWritable(); await cw.write(new Blob([new Uint8Array([1, 2, 3])])); await cw.close();
+            const copyAt = (await ch.getFile()).lastModified;
+            delete bNow._exportedEdit; delete bNow._exported;
+            out.older = await Unsaved.backfill(null, copyAt + 60000);
+            out.newer = await Unsaved.backfill(null, copyAt - 60000);
+            out.backfilled = [Unsaved.is(bNow), Unsaved.describe(bNow)];
+            // ...and it's looked for once, by itself, when a project's edits are read
+            await Edits.save();
+            const ej = async () => JSON.parse(await (await (await (await FolderCache.root(app, false)).getFileHandle('edits.json')).getFile()).text());
+            const before = await ej();
+            delete before.backfilled;
+            const root = await FolderCache.root(app, false);
+            await FolderCache.writeJson(root, 'edits.json', before);
+            await Edits.load();
+            for (let i = 0; i < 60 && !(await ej()).backfilled; i++) await sleep(100);
+            const after = await ej();
+            out.kept = [!!after.backfilled, !!(after.exports && after.exports['a.jpg'] && after.exports['a.jpg'].at && after.exports['a.jpg'].where === 'a folder')];
             // Into the photos as they're made: nothing counted, no pill
             keepEdits(false);
             Unsaved.update();
@@ -6380,6 +6415,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('... its menu: Save over originals, Export…, Show these photos (the grid filtered to them)',
             /Save over originals/.test(s(r.menu)) && /Export…/.test(s(r.menu)) && /Show these 2 photos/.test(s(r.menu)) && s(r.shown) === '["a.jpg","b.jpg"]', s([r.menu, r.shown]));
         check('... edits going into the photos as they\'re made: nothing counted, nothing shown', r.off.n === 0 && !r.off.pill && !r.off.side, s(r.off));
+        check('... exported: when and where (and edited since), for Info; never exported: nothing', /to a folder · edited since$/.test(r.describe[0] || '') && r.describe[1] === null, s(r.describe));
+        check('... Show exported photos, in its menu, filters the grid to them', /Show exported photos \(1\)/.test(s(r.menu2)) && s(r.shownExported) === '["a.jpg"]', s([r.menu2, r.shownExported]));
+        check('... exports from before: a copy newer than the project\'s edits marks its photo exported (with its folder); an older one doesn\'t', r.older === 0 && r.newer === 1
+            && r.backfilled[0] === false && /to "unsavedproj export"$/.test(r.backfilled[1] || ''), s([r.older, r.newer, r.backfilled]));
+        check('... looked for once by itself, and the export record kept with the project (when and where)', r.kept[0] && r.kept[1], s(r.kept));
         check('unsaved suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }

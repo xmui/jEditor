@@ -178,26 +178,27 @@ const Edits = {
         if (this._final) await this._final.catch(() => { });
         if (this._loadedFor !== app.dirHandle) return [];
         let data = null;
+        let editsAt = 0;
         try {
             const root = await FolderCache.root(app, false);
             const fh = root && await root.getFileHandle(this.FILE);
-            data = fh && JSON.parse(await (await fh.getFile()).text());
+            const file = fh && await fh.getFile();
+            editsAt = file ? file.lastModified : 0;
+            data = file && JSON.parse(await file.text());
         } catch (e) { /* nothing kept */ }
         if (this._loadedFor !== app.dirHandle) return [];
         // Its own choice (only `keep`: the old `defer` was written for every
         // project, asked or not, so it says nothing about a choice)
         this.choice = data && typeof data.keep === 'boolean' ? data.keep : null;
         const saved = new Map(Object.entries((data && data.edits) || {}));
-        // The photos whose edit was exported as it is (unsaved.js)
-        const exported = new Set(Array.isArray(data && data.exported) ? data.exported : []);
         for (const f of app.files) {
             const rel = f.relPath || f.name;
             const e = this.clean(saved.get(rel));
             // A photo changed since (outside jEditor): its edit no longer fits
             if (e && (!e.size || e.size === f.size)) f._edit = e;
             else delete f._edit;
-            if (f._edit && exported.has(rel)) f._exportedEdit = f._edit;
-            else delete f._exportedEdit;
+            // When and where it was exported (unsaved.js)
+            Unsaved.restore(f, rel, data);
             saved.delete(rel);
         }
         for (const [k, v] of saved) {
@@ -207,6 +208,22 @@ const Edits = {
         // Paint layers nothing in edits.json uses any more (paint.js)
         Paint.tidy(Object.values((data && data.edits) || {}).map(v => this.clean(v)).filter(Boolean)).catch(() => { });
         if (typeof Places !== 'undefined' && Places.boxes) Places.drawCard();
+        // Once per project: exports made before jEditor kept track of them,
+        // looked for in the background (unsaved.js: backfill)
+        this._backfilled = !!(data && data.backfilled);
+        if (!this._backfilled && data && Object.keys(data.edits || {}).length) {
+            const dir = app.dirHandle;
+            setTimeout(() => {
+                if (app.dirHandle !== dir) return;
+                Unsaved.backfill(null, editsAt).catch(() => 0).then((n) => {
+                    if (app.dirHandle !== dir) return;
+                    this._backfilled = true;
+                    this._dirty = true;
+                    this.saveSoon();
+                    if (n) app.log(`Unsaved: ${n} photo${n === 1 ? '' : 's'} found exported before`);
+                });
+            }, 1500);
+        }
         return app.files.filter(f => f._edit);
     },
 
@@ -289,20 +306,19 @@ const Edits = {
 
     // Nothing to keep
     isEmpty(data) {
-        return !Object.keys(data.edits).length && typeof data.keep !== 'boolean';
+        return !Object.keys(data.edits).length && typeof data.keep !== 'boolean' && !(data.exports && Object.keys(data.exports).length);
     },
 
     // Every edit, as edits.json holds them
     collect() {
         const out = {};
         for (const [k, v] of this.orphans) out[k] = v;
-        const exported = [];
-        for (const f of this.app.files) {
-            if (!f._edit) continue;
-            out[f.relPath || f.name] = f._edit;
-            if (f._exportedEdit === f._edit) exported.push(f.relPath || f.name);
-        }
-        return { version: 1, ...(this.choice === null ? {} : { keep: this.choice }), edits: out, ...(exported.length ? { exported } : {}) };
+        for (const f of this.app.files) if (f._edit) out[f.relPath || f.name] = f._edit;
+        // When and where photos were exported (unsaved.js), and that the
+        // exports before that were looked for (backfilled)
+        const exports = Unsaved.collect(this.app.files);
+        return { version: 1, ...(this.choice === null ? {} : { keep: this.choice }), edits: out,
+            ...(Object.keys(exports).length ? { exports } : {}), ...(this._backfilled ? { backfilled: true } : {}) };
     },
 
     // Written to the project's data folder (removed when there's nothing)
