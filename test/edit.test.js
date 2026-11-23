@@ -653,6 +653,66 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('sortkeys')) {
+        console.log('sorting by date taken is instant: the dates kept with the project (sort-keys.js)');
+        const { page, issues } = await open();
+        // Each photo's date taken (by name), and how many were read
+        const STUB = `
+            window.__reads = 0;
+            const DATES = { 'a.jpg': 2001, 'b.jpg': 2005, 'c.jpg': 2003 };
+            const real = app.getExifInfo.bind(app);
+            app.getExifInfo = async (f) => { window.__reads++; await new Promise(r => setTimeout(r, 30)); return { dateTaken: new Date(DATES[f.name] || 1999, 0, 1) }; };
+            SortKeys.WAIT = 200;
+        `;
+        const order = () => page.evaluate(() => app.files.map(f => f.name).join());
+        await page.evaluate(STUB);
+        const first = await page.evaluate(async () => {
+            const blob = async (color) => { const c = document.createElement('canvas'); c.width = 80; c.height = 60; const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, 80, 60); return canvasBlob(c, 'image/jpeg'); };
+            await openProject('Sorted', { 'a.jpg': await blob('#806040'), 'b.jpg': await blob('#406080'), 'c.jpg': await blob('#408060') });
+            const kept = async () => { try { const d = await app.dirHandle.getDirectoryHandle('.jeditor'); return JSON.parse(await (await (await d.getFileHandle('sortkeys.json')).getFile()).text()); } catch (e) { return null; } };
+            await until(async () => !!(await kept()), 100);
+            const k = await kept();
+            const readInBackground = window.__reads;
+            // Newest taken: nothing read, at once
+            const sel = document.getElementById('sort-mode');
+            sel.value = 'taken_desc';
+            const t0 = performance.now();
+            sel.dispatchEvent(new Event('change'));
+            await until(() => app.files[0].name === 'b.jpg', 40);
+            return { readInBackground, keptN: k && Object.keys(k.photos).length, readOnSort: window.__reads - readInBackground, ms: Math.round(performance.now() - t0), order: app.files.map(f => f.name).join() };
+        });
+        // A restart: the page again, the same project, sorted by date taken
+        await page.reload({ waitUntil: 'networkidle' });
+        await page.evaluate(PROJECT);
+        await page.evaluate(STUB);
+        const again = await page.evaluate(async () => {
+            const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('Sorted');
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            await until(() => app.dirHandle === dir && !app.isLoading && app.files.length === 3);
+            const atOpen = app.files.map(f => f.name).join();
+            await sleep(600); // (past the background's wait)
+            const reads = window.__reads;
+            // One photo changed outside jEditor: only it is read again
+            const cv = document.createElement('canvas'); cv.width = 120; cv.height = 90; cv.getContext('2d').fillRect(0, 0, 60, 90);
+            const w = await (await dir.getFileHandle('c.jpg')).createWritable(); await w.write(await canvasBlob(cv, 'image/jpeg')); await w.close();
+            window.__reads = 0;
+            const other = await (await navigator.storage.getDirectory()).getDirectoryHandle('Sorted');
+            app.closeFolder && await app.closeFolder();
+            window.showDirectoryPicker = async () => other;
+            await app.browseFolder();
+            await until(() => app.dirHandle === other && !app.isLoading);
+            await sleep(700);
+            return { mode: app.sortMode, atOpen, reads, changedReads: window.__reads };
+        });
+        check('sort keys: read in the background after a project opens, and kept with it', first.readInBackground === 3 && first.keptN === 3, JSON.stringify(first));
+        check('sort keys: Newest taken then reads nothing, and is in date order at once', first.readOnSort === 0 && first.order === 'b.jpg,c.jpg,a.jpg', JSON.stringify(first));
+        check('sort keys: after a restart the project opens sorted by date taken, nothing read', again.mode === 'taken_desc' && again.atOpen === 'b.jpg,c.jpg,a.jpg' && again.reads === 0, JSON.stringify(again));
+        check('sort keys: a photo changed outside jEditor is read again, only it', again.changedReads === 1, JSON.stringify(again));
+        check('sort keys: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     if (wanted('sync')) {
         console.log('sync (adjust-sync.js)');
         const { page, issues } = await open();
