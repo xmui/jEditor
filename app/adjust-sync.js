@@ -97,7 +97,10 @@ const AdjustSync = {
 
     // Sync source's settings onto files, after the dialog
     // adj: the source's settings, if not as kept (Adjust's, being made)
-    async open(source, files, { adj } = {}) {
+    // edit: the source's crop and turn, if not as kept (Adjust's Geometry,
+    // being made: before, Sync from Adjust put on the crop last saved, so
+    // a crop changed there and synced again didn't go on: the owner, 23 November)
+    async open(source, files, { adj, edit } = {}) {
         const app = this.app;
         files = files.filter(f => f && f !== source && !/\.gif$/i.test(f.name));
         if (!source || !files.length) {
@@ -110,9 +113,10 @@ const AdjustSync = {
         }
         if (app.editsSaving()) return;
         if (adj === undefined) adj = (source._edit && source._edit.adj) || null;
+        if (edit === undefined) edit = source._edit || null;
         const has = new Set(Develop.syncGroups(adj));
         // A crop box or a tilt: a quarter turn alone is each photo's own
-        const cropped = !!(source._edit && !Edits.wholePhoto({ ...source._edit, q: 0 }));
+        const cropped = !!(edit && !Edits.wholePhoto({ ...edit, q: 0 }));
         if (cropped) has.add('crop');
         const n = files.length;
         this.el('sync-text').textContent = `From ${source.name} onto ${n === 1 ? files[0].name : n.toLocaleString() + ' other photos'}. ` +
@@ -170,7 +174,7 @@ const AdjustSync = {
         const ticked = new Set([...box.querySelectorAll('.sync-item:checked')].map(i => i.value));
         const groups = this.groups().map(g => g.id).filter(id => ticked.has(id));
         this.remember(!cropped && keepCrop && !groups.includes('crop') ? [...groups, 'crop'] : groups);
-        await this.apply(source, files, groups, adj);
+        await this.apply(source, files, groups, adj, edit);
     },
 
     update() {
@@ -201,9 +205,9 @@ const AdjustSync = {
     },
 
     // The settings themselves: one undo step for all of them
-    async apply(source, files, groups, adj = (source._edit && source._edit.adj) || null) {
+    async apply(source, files, groups, adj = (source._edit && source._edit.adj) || null, edit = source._edit || null) {
         const app = this.app;
-        const crops = groups.includes('crop') && this.cropper() ? await app.cropEditsLike(source, files) : null;
+        const crops = groups.includes('crop') && this.cropper() ? await app.cropEditsLike(source, files, edit) : null;
         const cropped = new Map((crops || []).map(it => [it.file, it.edit]));
         const items = files.map(f => {
             const base = cropped.has(f) ? cropped.get(f) : (f._edit || null);
@@ -231,7 +235,8 @@ const AdjustSync = {
         if (!Adjust.ready) return;
         const files = this.targets();
         if (!files.length) return this.none();
-        this.open(Adjust.file, files, { adj: Adjust.result() });
+        // (its geometry as it is now, not as last saved)
+        return this.open(Adjust.file, files, { adj: Adjust.result(), edit: Adjust.withGeo(Adjust.file._edit || null) });
     },
 
     toggleAuto(on = !this.auto) {
