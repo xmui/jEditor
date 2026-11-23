@@ -18,7 +18,7 @@ Changes are saved to the original files as you go.
 
 - **Appearance**: in the Windows, Mac and Linux apps, a **theme** (see [Themes](#themes)); the theme (dark, light or match the system), the accent color and the color behind photos (black, gray or light, for judging color); on Windows 11 (22H2 or later), **Window background** puts Mica or Acrylic behind jEditor, like the Start menu, and **Transparency** sets how much of the desktop shows through (photos, Crop and Duplicates stay solid; it needs Windows' Transparency effects on, in Settings → Personalization → Colors); then glass (Crystal, the clearest, to start with; Liquid, like Apple's Liquid Glass, which bends what's under its edges; Clear; Opaque, which is faster on older computers; or Lens, a bubble of thick glass; the system's Reduce transparency or Increase contrast makes any of them solid) and its tint (none, your accent color, warm, cool or rose: none is best for judging color), animations (on, or off: things just change), density and toolbar size.
 - **Toolbar & keys**: keyboard shortcuts and their profiles, a vertical toolbar, the buttons above the film strip, and which buttons are in the toolbar.
-- **Messages**: which messages pop up after you do something.
+- **Messages**: which messages pop up after you do something. A tip about something hidden (a key to hold in Paint, rotating outside the frame in Crop) shows once, the first time it helps; **Show tips again** brings them back.
 - **Auto crop** (with the Auto crop experiment on): keeping test scans to improve Auto crop, how many are kept, and exporting, recovering or clearing them.
 - **Projects**: watching the folder for changes, the thumbnail cache, stored projects and cleaning up the open one.
 - **Updates**: checking for updates, and the log.
@@ -383,7 +383,7 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `places.js`: the sidebar's places in the apps: the project's name and its picker (find a project), Recents, pinned folders and drives with the room on each, renaming a project in place (and its Undo), and All projects… on the home page
 - `recents.js`: the home page's stacks of prints (recent folders, with small pictures kept for each) and its Recent print (a photo opened on its own), and spotting a folder that's part of an order
 - `ui.js`: the app's own alert / confirm / prompt dialogs, and focus handling for every dialog
-- `tips.js`: the tooltips: one tip in the menus' glass for every control's hint (its title), with the key quietly at the right; shown on pointing or keyboard focus, gone on a press, a key, a scroll or an open menu
+- `tips.js`: the tooltips: one tip in the menus' glass for every control's hint (its title), with the key quietly at the right; shown on pointing or keyboard focus, gone on a press, a key, a scroll or an open menu Also `Hints`: a hint that teaches something hidden shows once (`Hints.show(key)`, or `data-hint-once` on a panel's line), kept in `jeditor.hintsSeen`; Settings → Messages → Show tips again clears it.
 - `guide.js`: the guide (`F1`): cards with clips by topic, the shortcuts as they're set, and a search
 - `tour.js`: the welcome tour: a walk through the real app, offered once on the home page
 - `highlights.js`: What's new in 2.0: seven cards, one at a time, shown once after updating from 1.x and from Help → What's new; their pictures are in `whatsnew/`. Show me is one stop of the tour

@@ -13428,18 +13428,8 @@ body.touring .controls.idle button { pointer-events: auto; }
    would be (that and the messages stack above it), while the sidebar's
    closed; a quiet button at the bottom of the sidebar while it's open.
    Hidden at 0. Its dot, and the unsaved photos' thumbnail dots, are amber:
-   warm enough to find, not an alarm (nothing is at risk) */
-:root {
-    --unsaved: #f5a524;
-}
-:root[data-theme="light"] {
-    --unsaved: #d97706;
-}
-@media (prefers-color-scheme: light) {
-    :root:not([data-theme]) {
-        --unsaved: #d97706;
-    }
-}
+   warm enough to find, not an alarm (nothing is at risk): --unsaved, in
+   tokens.css */
 
 /* The glass toolbars' own recipe (section 4: .toolbar), so it matches the
    selection pill and the size slider beside it: their height, glass,
@@ -13496,7 +13486,7 @@ body:has(:is(#adjust-editor, #paint-editor):not(.hidden)) .unsaved-pill {
     display: none;
 }
 .unsaved-pill:hover {
-    background: var(--glass-bg-hover, var(--glass-bg));
+    background: linear-gradient(var(--tb-hover), var(--tb-hover)) padding-box, var(--glass-bg);
 }
 .unsaved-pill:focus-visible,
 .unsaved-side:focus-visible {
@@ -13553,4 +13543,21 @@ body.has-unsaved[data-view="single"]:not(:has(:is(#adjust-editor, #paint-editor)
 /* The thumbnails' edited dot, amber while unsaved (edits.js: decorate) */
 .tile-edit.unsaved {
     background: var(--unsaved);
+}
+/* A selected tile's check sits in that corner: the dot beside it, so the
+   photos chosen to save or export still show it (the design review) */
+.grid-item.selected > .tile-edit {
+    top: 12px;
+    left: 34px;
+}
+
+/* A hint that shows once (tips.js: Hints), once it has */
+.hint-done {
+    display: none !important;
+}
+
+/* A tool with no options and no hint left to show (the Hand, the Lasso,
+   once their hint has shown): no empty glass pill at the bottom */
+:root:not([data-skin]) .paint-options:empty {
+    display: none;
 }

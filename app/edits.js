@@ -85,12 +85,62 @@ const Edits = {
         return this.choice !== null;
     },
 
-    // The open project's own choice, kept with its edits; quiet: no message
+    // ---- Each project's choice, also kept by its path ----
+    //
+    // edits.json holds it, but where that is comes from the project's path
+    // (folder-cache.js: orderStore), and on a network share the path the app
+    // gives can differ from one open to the next (Z:\ or \\server\share, its
+    // case, a trailing \), or not come at all (WebView2 158): then the answer
+    // was lost and the question asked every time (the owner, 22 November).
+    // So it's kept here too, by the path made plain (or, without one, the
+    // folder's name), in jEditor's own settings: an update and Clear cache
+    // keep it; Reset jEditor forgets it.
+    CHOICES_KEY: 'jeditor.saveChoices',
+    CHOICES_MAX: 500,
+
+    // The path as a key: one per folder however it's written
+    pathKey(path) {
+        return String(path || '').replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
+    },
+
+    async choiceKey() {
+        const app = this.app;
+        const dir = app && app.dirHandle;
+        if (!dir) return null;
+        let path = null;
+        try { if (typeof FolderCache !== 'undefined' && FolderCache.native()) path = await FolderCache.orderPath(app); } catch (e) { /* unknown */ }
+        return path ? 'path:' + this.pathKey(path) : 'name:' + dir.name.toLowerCase();
+    },
+
+    savedChoices() {
+        try { return JSON.parse(localStorage.getItem(this.CHOICES_KEY) || 'null') || {}; } catch (e) { return {}; }
+    },
+
+    async rememberedChoice() {
+        const key = await this.choiceKey();
+        const v = key && this.savedChoices()[key];
+        return v && typeof v.keep === 'boolean' ? v.keep : null;
+    },
+
+    async rememberChoice(on) {
+        const key = await this.choiceKey();
+        if (!key) return;
+        const all = this.savedChoices();
+        all[key] = { keep: !!on, at: Date.now() };
+        // The newest kept, so it can't grow without end
+        const keys = Object.keys(all);
+        if (keys.length > this.CHOICES_MAX) keys.sort((a, b) => (all[a].at || 0) - (all[b].at || 0)).slice(0, keys.length - this.CHOICES_MAX).forEach(k => delete all[k]);
+        try { localStorage.setItem(this.CHOICES_KEY, JSON.stringify(all)); } catch (e) { /* private */ }
+    },
+
+    // The open project's own choice, kept with its edits and by its path;
+    // quiet: no message
     setProjectKeeping(on, { quiet = false } = {}) {
         if (!this.canKeep()) return;
         on = !!on;
         const was = this.keeping();
         this.choice = on;
+        this.rememberChoice(on);
         this._dirty = true;
         this.saveSoon();
         if (typeof Unsaved !== 'undefined') Unsaved.soon();
@@ -190,6 +240,15 @@ const Edits = {
         // Its own choice (only `keep`: the old `defer` was written for every
         // project, asked or not, so it says nothing about a choice)
         this.choice = data && typeof data.keep === 'boolean' ? data.keep : null;
+        // ...or as kept by its path, when edits.json wasn't where it was left
+        if (this.choice === null) {
+            const kept = await this.rememberedChoice();
+            if (this._loadedFor !== app.dirHandle) return [];
+            if (kept !== null) {
+                this.choice = kept;
+                this._dirty = true; // into edits.json again, where it's looked for now
+            }
+        } else this.rememberChoice(this.choice);
         const saved = new Map(Object.entries((data && data.edits) || {}));
         for (const f of app.files) {
             const rel = f.relPath || f.name;

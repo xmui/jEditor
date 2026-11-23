@@ -9918,8 +9918,9 @@ const app = {
     // For Adjust's Sync: the crop of source (its kept edit) on the other
     // photos, as cropEdits. Sync puts its adjustments on these and does
     // one Edits.set. null: source has no kept crop to sync.
-    async cropEditsLike(source, files) {
-        const e = source && source._edit;
+    // edit: the source's crop if not as kept (Adjust's Geometry, being made)
+    async cropEditsLike(source, files, edit = source && source._edit) {
+        const e = edit;
         if (!e || Edits.wholePhoto(e)) return null;
         const { W, H } = await this.cropDims(source);
         const wide = (e.q % 2 ? H >= W : W >= H);

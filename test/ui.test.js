@@ -408,6 +408,55 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- 1d. Hints show once (tips.js: Hints) ----
+    // The owner (22 November): no hints that state the obvious; the ones
+    // kept teach something hidden and show once, then never again
+    console.log('hints: only what is hidden, once');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            // The window's edges and the sidebar's grip: no hint popping up as the pointer passes
+            out.edgeTitles = document.querySelectorAll('.side-edge[title], .side-grip[title]').length;
+            localStorage.removeItem('jeditor.hintsSeen');
+            Hints.now.clear();
+            // Shown the first time, and while that moment lasts; then never again
+            out.first = Hints.show('t.key');
+            out.during = Hints.show('t.key');
+            Hints.end('t.');
+            out.after = Hints.show('t.key');
+            // A panel's line with data-hint-once: remembered once it's been on screen
+            const p = document.createElement('p');
+            p.dataset.hintOnce = 't.line';
+            p.textContent = 'Something hidden';
+            p.style.cssText = 'position: fixed; left: 40px; top: 40px; z-index: 9999';
+            document.body.appendChild(p);
+            Hints.watch();
+            for (let i = 0; i < 40 && !Hints.seen().has('t.line'); i++) await new Promise(res => setTimeout(res, 25));
+            out.lineSeen = Hints.seen().has('t.line');
+            Hints.now.clear();
+            const q = document.createElement('p');
+            q.dataset.hintOnce = 't.line';
+            q.textContent = 'Something hidden';
+            q.style.cssText = p.style.cssText;
+            document.body.appendChild(q);
+            Hints.watch();
+            out.lineHidden = getComputedStyle(q).display === 'none';
+            // Settings → Messages → Show tips again
+            document.getElementById('hints-reset').click();
+            out.reset = !Hints.seen().has('t.key') && Hints.show('t.key') && getComputedStyle(q).display !== 'none';
+            p.remove(); q.remove();
+            localStorage.removeItem('jeditor.hintsSeen');
+            return out;
+        });
+        check('no hint on the window\'s edges or the sidebar\'s grip (the sidebar-drag one)', r.edgeTitles === 0, JSON.stringify(r));
+        check('a hint shows the first time, stays for that moment, then never again', r.first && r.during && !r.after, JSON.stringify(r));
+        check('a panel\'s line that shows once: remembered once on screen, hidden from then on', r.lineSeen && r.lineHidden, JSON.stringify(r));
+        check('Settings → Messages → Show tips again brings them back', r.reset, JSON.stringify(r));
+        check('hints: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 2. Sort + selection identity ----
     console.log('sort & selection identity');
     {
@@ -3999,8 +4048,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             for (let i = 0; i < 250 && app.isLoading; i++) await new Promise(res => setTimeout(res, 20));
             const target = [...document.querySelectorAll('#recent-list li')].find(li => li.querySelector('.recent-name').textContent === 'rec 3');
             target.querySelector('.recent-open').click();
-            for (let i = 0; i < 250 && !(app.dirHandle && app.dirHandle.name === 'rec 3' && app.files.length); i++) await new Promise(res => setTimeout(res, 20));
-            await Recents.saving;
+            // (until it has opened: Recent is told at the end of the open,
+            // after its photos are listed, so waiting for them alone left a
+            // slow run looking at Recent before rec 3 was put in it)
+            for (let i = 0; i < 250 && !(app.dirHandle && app.dirHandle.name === 'rec 3' && app.files.length && !app.isLoading); i++) await new Promise(res => setTimeout(res, 20));
+            for (let i = 0; i < 100 && !(await names()).startsWith('rec 3,'); i++) { await Recents.saving; await new Promise(res => setTimeout(res, 20)); }
             out.clicked = app.dirHandle.name === 'rec 3' && app.files.length === 1 && (await names()).startsWith('rec 3,');
             // × forgets it (the folder stays)
             // The table shows four: rec 3 (just opened), rec 6, rec 5, rec 4; the list keeps six
@@ -6258,6 +6310,70 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('... the apps: a Recent project opens by its path (a share, or found for one kept before), its kept handle never asked', recent.asked.length === 0
             && JSON.stringify(recent.opened) === JSON.stringify(['\\\\mc-S1-labnas1\\general\\Smith', 'Z:\\Archive Scan Jobs\\vandenberg'])
             && JSON.stringify(recent.saved) === JSON.stringify(['Z:\\Archive Scan Jobs\\vandenberg']) && recent.clicked === 2, JSON.stringify(recent));
+        // Recent kept on disk too (the apps): the page's storage cleared (the
+        // owner had to clear it, and lost every project), Recent comes back:
+        // the first time from each project's order.json in the app's
+        // storage, then from recent.json, which follows Recent (a project
+        // taken off stays off). Projects on Z: and a share, opened by path
+        const durable = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('appstore', { recursive: true }); } catch (e) { /* fresh */ }
+            const store = await opfs.getDirectoryHandle('appstore', { create: true });
+            const write = async (dir, name, data) => {
+                const fh = await dir.getFileHandle(name, { create: true });
+                const w = await fh.createWritable(); await w.write(JSON.stringify(data)); await w.close();
+            };
+            await write(await store.getDirectoryHandle('vandenberg-1a2b', { create: true }), 'order.json', { path: 'Z:\\Archive Scan Jobs\\vandenberg', name: 'vandenberg', openedAt: 2000 });
+            await write(await store.getDirectoryHandle('11-19-3c4d', { create: true }), 'order.json', { path: '\\\\mc-S1-labnas1\\general\\Lab Temp\\11-19', name: '11-19', openedAt: 1000 });
+            await store.getDirectoryHandle('not-a-project', { create: true });
+            const opened = [];
+            const was = FolderCache.native;
+            FolderCache.native = () => ({
+                dataDir: async () => store,
+                openPath: async (p) => { opened.push(p); return true; },
+                folderPath: async () => null,
+                pathsNamed: async () => [],
+                log: () => { }
+            });
+            const wipe = async () => { const all = await Recents.all(); await Recents.tx('readwrite', s => all.forEach(r => s.delete(r.id))); };
+            const disk = async () => { try { return JSON.parse(await (await (await store.getFileHandle('recent.json')).getFile()).text()).folders.map(f => f.name); } catch (e) { return null; } };
+            try {
+                await wipe();
+                out.first = await Recents.restore();
+                const list = await Recents.list();
+                out.names = list.map(r => r.name);
+                out.paths = list.every(r => r.path && !r.handle);
+                out.disk = await disk();
+                await Recents.render();
+                await sleep(50);
+                out.stacks = document.querySelectorAll('#recent-list .recent-open').length;
+                await Recents.open(list[0]);
+                out.opened = opened.slice();
+                // Taken off Recent: off the file too, and stays off
+                await Recents.forget(list.find(r => r.name === '11-19').id);
+                out.afterForget = await disk();
+                await wipe();
+                out.second = await Recents.restore();
+                out.namesAgain = (await Recents.list()).map(r => r.name);
+                // Reset jEditor (reset.js) forgets it on disk too: nothing comes back
+                await Recents.clearDisk();
+                await wipe();
+                out.afterReset = await Recents.restore();
+            } finally {
+                FolderCache.native = was;
+                await wipe();
+                await Recents.render();
+            }
+            return out;
+        });
+        check('... Recent kept on disk: wiped from the page, its projects come back (the first time from their folders in the app\'s storage), opened by path', durable.first === 2
+            && JSON.stringify(durable.names) === '["vandenberg","11-19"]' && durable.paths && JSON.stringify(durable.disk) === '["vandenberg","11-19"]' && durable.stacks === 2
+            && JSON.stringify(durable.opened) === JSON.stringify(['Z:\\Archive Scan Jobs\\vandenberg']), JSON.stringify(durable));
+        check('... then from recent.json, which follows Recent: a project taken off stays off', JSON.stringify(durable.afterForget) === '["vandenberg"]'
+            && durable.second === 1 && JSON.stringify(durable.namesAgain) === '["vandenberg"]', JSON.stringify(durable));
+        check('... Reset jEditor forgets it on disk too (Recents.clearDisk): nothing comes back, not even from the projects\' folders', durable.afterReset === 0, JSON.stringify(durable));
         check('home suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -6305,6 +6421,12 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await frame();
             out.edited = state();
             out.dot = !!(a._gridEl && a._gridEl.querySelector('.tile-edit.unsaved'));
+            // Selected, the dot's beside the check, not under it (the design review)
+            app.selection = new Set([a]); app.updateSelectionUI();
+            await frame();
+            const dotR = a._gridEl.querySelector('.tile-edit').getBoundingClientRect(), tileR = a._gridEl.getBoundingClientRect();
+            out.beside = a._gridEl.classList.contains('selected') && dotR.left - tileR.left >= 28;
+            app.selection.clear(); app.updateSelectionUI();
             // The pill: bottom left, on the bottom row with the selection
             // pill (the owner's arrow), not over it
             await Promise.all(pill.getAnimations().map(an => an.finished.catch(() => { }))); // (it slides in)
@@ -6407,6 +6529,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         const s = (x) => JSON.stringify(x);
         check('unsaved: nothing edited, nothing shown; edited, "2 unsaved" bottom left, on the bottom row with the size slider, and an amber dot',
             r.none.n === 0 && !r.none.pill && !r.none.side && r.edited.n === 2 && r.edited.pill === '2 unsaved' && r.dot && r.corner, s([r.none, r.edited, r.dot, r.corner]));
+        check('... a selected tile shows its dot beside the check', r.beside, s(r.beside));
         check('... the same height and look as the pills beside it', Array.isArray(r.same) && r.same.length === 0, s(r.same));
         check('... exported: no longer counted, its dot plain; kept with the project', r.exported.n === 1 && r.exported.pill === '1 unsaved' && r.dotPlain && s(r.reloaded) === '[false,true]', s([r.exported, r.dotPlain, r.reloaded]));
         check('... edited again: counted again; written into the file: not; Ctrl+Z of that: counted', r.again.n === 2 && r.written.n === 1 && r.undone.n === 2, s([r.again, r.written, r.undone]));

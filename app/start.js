@@ -363,15 +363,22 @@ const Start = {
         const app = this.app;
         const p = app.uiPrefs;
         if (!p.onOpen || p.onOpen === 'home' || !Recents.supported()) return;
+        // (Recent as it is once anything lost has come back from disk)
+        if (Recents.restored) await Recents.restored;
         const list = await Recents.list().catch(() => []);
         const rec = p.onOpen === 'pick' ? list.find(r => r.id === p.onOpenId) : list[0];
-        if (!rec || !rec.handle) return;
+        // The apps open it by its path (recents.js: open); a browser needs
+        // the handle, and its permission without asking
+        const byPath = !!(rec && rec.path && FolderCache.native());
+        if (!rec || (!rec.handle && !byPath)) return;
         // Something else opened meanwhile (a folder given when starting)
         if (app.dirHandle || app.isLoading || app.files.length || app.elements.dropZone.classList.contains('hidden')) return;
-        try {
-            if (typeof rec.handle.queryPermission === 'function' && await rec.handle.queryPermission({ mode: 'readwrite' }) !== 'granted') return;
-        } catch (e) {
-            return;
+        if (!byPath) {
+            try {
+                if (typeof rec.handle.queryPermission === 'function' && await rec.handle.queryPermission({ mode: 'readwrite' }) !== 'granted') return;
+            } catch (e) {
+                return;
+            }
         }
         if (app.dirHandle || app.isLoading) return;
         await Recents.open(rec);
