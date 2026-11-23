@@ -10,9 +10,9 @@
 //                             Projects, recents, pins and settings stay.
 //   Reset jEditor…            all that, and everything jEditor remembers:
 //                             settings, keys, saved looks and presets,
-//                             recents, pins, the projects folder, and the
-//                             app's own files (its window place, the
-//                             projects list it keeps: appReset). As after
+//                             recents (and their copy on disk, recent.json),
+//                             pins, the projects folder, and the app's own
+//                             files (its window place: appReset). As after
 //                             a fresh install. Asks first, saying what goes.
 //
 // Neither touches the photos, or anything in the folders they're in. Each
@@ -132,6 +132,18 @@ const AppReset = {
             if (typeof Recents !== 'undefined') Recents._db = undefined;
         } catch (e) { /* not open */ }
         await this.deleteDb(this.RECENTS_DB);
+        // ...and the copy the apps keep on disk (recents.js: recent.json in
+        // jEditor's storage), left empty, not removed: without it Recent is
+        // made again from the projects' order.json files, and they'd be back
+        try {
+            const native = typeof FolderCache !== 'undefined' && FolderCache.native();
+            if (native && typeof native.dataDir === 'function' && typeof Recents !== 'undefined') {
+                const dir = await native.dataDir();
+                const w = await (await dir.getFileHandle(Recents.FILE, { create: true })).createWritable();
+                await w.write(JSON.stringify({ version: 1, folders: [] }));
+                await w.close();
+            }
+        } catch (e) { console.warn('Reset: Recent on disk:', e); }
     },
 
     forget(key) {

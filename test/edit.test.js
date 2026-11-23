@@ -637,6 +637,19 @@ const PROJECT = `
                 await until(() => reloads === 2, 100);
                 const left = []; for (let i = 0; i < localStorage.length; i++) if (localStorage.key(i).startsWith('jeditor')) left.push(localStorage.key(i));
                 out.reset = [reloads, left.join(), await dbs()];
+                // The apps' copy of Recent on disk (recent.json): left empty,
+                // so Recent isn't made again from the projects' order.json
+                step = 'disk';
+                const store = await (await navigator.storage.getDirectory()).getDirectoryHandle('reset-store', { create: true });
+                const write = async (name, data) => { const w = await (await store.getFileHandle(name, { create: true })).createWritable(); await w.write(JSON.stringify(data)); await w.close(); };
+                await write(Recents.FILE, { version: 1, folders: [{ id: 'x', name: 'Smith', path: 'Z:\\Smith', openedAt: 1 }] });
+                const proj = await store.getDirectoryHandle('Smith-1', { create: true });
+                const w2 = await (await proj.getFileHandle('order.json', { create: true })).createWritable(); await w2.write(JSON.stringify({ path: 'Z:\\Smith', name: 'Smith', openedAt: 1 })); await w2.close();
+                const nativeWas = FolderCache.native;
+                FolderCache.native = () => ({ dataDir: async () => store });
+                await AppReset.dropRemembered();
+                out.disk = [JSON.stringify(await Recents.readDisk(store)), await Recents.restore()];
+                FolderCache.native = nativeWas;
                 // In an app (appReset): the app restarts itself, the page doesn't reload
                 step = 'app';
                 const asked = [];
@@ -662,6 +675,7 @@ const PROJECT = `
             !!r.ask && r.ask[0] === 'Reset jEditor?' && /settings/.test(r.ask[1]) && /Recent projects/.test(r.ask[1]) && /photos/.test(r.ask[1]) && r.ask[2] === 'Reset jEditor' && r.ask[3] && r.cancelled[0] === 1 && r.cancelled[1],
             JSON.stringify([r.ask, r.cancelled]));
         check('reset: ...OK: every setting, pin and recent gone, then a reload', !!r.reset && r.reset[0] === 2 && r.reset[1] === '' && !/jeditor-recents/.test(r.reset[2]), JSON.stringify(r.reset));
+        check('reset: the apps\' Recent on disk (recent.json) is left empty, so it doesn\'t come back from the projects\' folders', !!r.disk && r.disk[0] === '[]' && r.disk[1] === 0, JSON.stringify(r.disk));
         check('reset: in an app the app restarts itself (Clear cache, then a reset); if it can\'t, the page reloads', !!r.app && r.app[0] === 'false,true' && r.app[1] === 3, JSON.stringify(r.app));
         check('reset: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
