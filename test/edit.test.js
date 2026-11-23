@@ -1767,7 +1767,7 @@ const PROJECT = `
                 const exported = [written.width, written.height, wpx(10, 100), wpx(20, 315), wpx(200, 100)];
                 const onlyPhoto = Paint.padded(c, P.layersNow(), null);
                 P.startCrop();
-                const cropping = !!P.crop && document.getElementById('paint-options').textContent.includes('Enter crops');
+                const cropping = !!P.crop && !!document.querySelector('#paint-options #paint-crop-size'); // (its size along the top; the hint shows once only)
                 P.crop = { x0: 0, y0: 0, x1: P.OW + 60, y1: P.OH };
                 P.endCrop(true);
                 const cropped = [P.OW, P.OH, P.pad.r, P.history[P.history.length - 1].name];

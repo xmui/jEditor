@@ -301,11 +301,11 @@
                     </button>
                     <button id="fr-total" class="fr-total" title="Details of what's shown (I)"></button>
                 </div>
-                <div class="side-grip" data-side="rail" data-edge="right" title="Drag to resize; double-click for its own width" aria-hidden="true"></div>
+                <div class="side-grip" data-side="rail" data-edge="right" aria-hidden="true"></div>
             </aside>
             <!-- The sidebar hidden: a thin line at the window's edge, to
                  drag it back out from (script.js: initSidebarResize) -->
-            <div id="rail-edge" class="side-edge hidden" data-side="rail" data-edge="right" data-for="folder-rail" title="Drag to show the sidebar" aria-hidden="true"></div>
+            <div id="rail-edge" class="side-edge hidden" data-side="rail" data-edge="right" data-for="folder-rail" aria-hidden="true"></div>
 
             <!-- Grid view -->
             <div id="grid-view" class="grid-view hidden" tabindex="-1" aria-label="Photos">
@@ -398,7 +398,7 @@
         <div class="crop-head mode-head">
             <span id="crop-file" class="mode-title"></span>
             <span id="crop-dims" class="crop-dims"></span>
-            <span id="crop-hint" class="crop-hint hidden">Draw a line along a horizon or print edge to level it</span>
+            <span id="crop-hint" class="crop-hint hidden" data-hint-once="crop.level">Draw a line along a horizon or print edge to level it</span>
             <span id="crop-tip" class="crop-tip"></span>
         </div>
         <div class="crop-stage">
@@ -501,10 +501,10 @@
                 <!-- Zoom (adjust.js): Ctrl+wheel or a pinch, Ctrl+= and Ctrl+−, double-click; Fit and 100% here -->
                 <div id="adj-zoom" class="adj-zoom" role="group" aria-label="Zoom"><span id="adj-zoom-level" class="adj-zoom-level hidden"></span><button id="adj-zoom-fit" class="adj-zoom-btn" aria-pressed="true" title="Fit the photo (Ctrl+0). Ctrl+wheel or pinch zooms; double-click goes between Fit and 100%">Fit</button><button id="adj-zoom-100" class="adj-zoom-btn" aria-pressed="false" title="Show at 100% (Ctrl+1). Zoomed in, drag (or hold Space and drag) to move about">100%</button></div></div>
             <!-- Hidden (dragged away), a line at the window's right edge drags it back out -->
-            <div class="side-edge side-edge-right hidden" data-side="adjust" data-edge="left" data-for="adj-panel" title="Drag to show the panel" aria-hidden="true"></div>
+            <div class="side-edge side-edge-right hidden" data-side="adjust" data-edge="left" data-for="adj-panel" aria-hidden="true"></div>
             <!-- The sidebar hidden: its line, at the left (folders.js) -->
-            <div class="side-edge hidden" data-side="rail" data-edge="right" data-for="folder-rail" title="Drag to show the sidebar" aria-hidden="true"></div>
-            <div class="side-grip" data-side="adjust" data-edge="left" title="Drag to resize; double-click for its own width" aria-hidden="true"></div>
+            <div class="side-edge hidden" data-side="rail" data-edge="right" data-for="folder-rail" aria-hidden="true"></div>
+            <div class="side-grip" data-side="adjust" data-edge="left" aria-hidden="true"></div>
             <aside id="adj-panel" class="adj-panel" aria-label="Adjustments">
                 <section class="adj-sec adj-hist-box" aria-label="Histogram and levels" data-reset="levels" data-reset-name="levels">
                     <div class="adj-sec-head">
@@ -587,7 +587,6 @@
                     <details id="adj-detail-sec" class="adj-sec" data-reset="detail" data-reset-name="Detail">
                         <summary><span>Detail</span></summary>
                         <canvas id="adj-loupe" class="adj-loupe" title="1:1, from the full photo: click the photo to look somewhere else"></canvas>
-                        <p class="adj-hint">1:1 — click the photo to look elsewhere</p>
                         <div id="adj-detail" class="adj-rows"></div>
                     </details>
                     <!-- Geometry (adjust.js): straighten, as Crop's angle, perspective and lens fixes -->
@@ -623,7 +622,7 @@
                             <p id="adj-restore-found" class="adj-hint"></p>
                         </div>
                         <div class="adj-sub">Red-eye</div>
-                        <p class="adj-hint">Click an eye that's red from a flash. Drag a spot to move it; right-click takes it off</p>
+                        <p class="adj-hint" data-hint-once="adjust.redeye">Click an eye that's red from a flash. Drag a spot to move it; right-click takes it off</p>
                         <div id="adj-eye-tools" class="adj-rows"></div>
                         <div class="adj-sub">Dust on scans</div>
                         <div id="adj-dust-tools" class="adj-rows"></div>
@@ -632,7 +631,7 @@
                             <button id="adj-dust-clear" class="btn ghost sm" title="Take off the dust spots and scratches Find dust and Find scratches put on" disabled>Clear found</button>
                         </div>
                         <div class="adj-sub">Scratches and creases</div>
-                        <p class="adj-hint">Drag along a scratch or crease to take it off</p>
+                        <p class="adj-hint" data-hint-once="adjust.scratch">Drag along a scratch or crease to take it off</p>
                         <div class="adj-mask-add">
                             <button id="adj-scratch-find" class="btn secondary sm" title="Put a line on every scratch and crease found: check them, and right-click any that aren't">Find scratches</button>
                         </div>
@@ -729,9 +728,9 @@
                 </div>
                 <textarea id="paint-text" class="paint-text hidden" spellcheck="false" aria-label="Text"></textarea>
             </div>
-            <div class="side-edge side-edge-right hidden" data-side="paint" data-edge="left" data-for="paint-panel" title="Drag to show the panel" aria-hidden="true"></div>
-            <div class="side-edge hidden" data-side="rail" data-edge="right" data-for="folder-rail" title="Drag to show the sidebar" aria-hidden="true"></div>
-            <div class="side-grip" data-side="paint" data-edge="left" title="Drag to resize; double-click for its own width" aria-hidden="true"></div>
+            <div class="side-edge side-edge-right hidden" data-side="paint" data-edge="left" data-for="paint-panel" aria-hidden="true"></div>
+            <div class="side-edge hidden" data-side="rail" data-edge="right" data-for="folder-rail" aria-hidden="true"></div>
+            <div class="side-grip" data-side="paint" data-edge="left" aria-hidden="true"></div>
             <aside id="paint-panel" class="paint-panel" aria-label="Colors and layers">
                 <section class="paint-sec">
                     <div class="paint-sec-head"><span>Color</span></div>
@@ -969,6 +968,13 @@
                         <h3 id="set-h-messages" class="settings-page-title">Messages</h3>
                         <p class="set-help">The messages that pop up after you do something. Errors and warnings always show.</p>
                         <div id="cust-toasts"></div>
+                        <div class="set-row">
+                            <span class="set-label">Tips
+                                <small>A tip about something hidden, such as a key to hold, shows once, the first time it helps.</small></span>
+                            <span class="set-buttons">
+                                <button id="hints-reset" class="btn secondary">Show tips again</button>
+                            </span>
+                        </div>
                     </section>
 
                     <section id="set-page-autocrop" class="settings-section" data-page="autocrop" data-experiment="auto-crop" role="tabpanel" aria-labelledby="set-h-autocrop">

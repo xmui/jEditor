@@ -390,6 +390,8 @@ const HELPERS = `
         return d;
     };
     window.names = async (dir) => { const out = []; for await (const [n] of dir.entries()) out.push(n); return out.sort(); };
+    // The projects' folders in the app's storage (not recent.json beside them: recents.js)
+    window.stores = async (dir) => { const out = []; for await (const [n, h] of dir.entries()) if (h.kind === 'directory') out.push(n); return out.sort(); };
     window.has = async (dir, ...parts) => {
         try {
             let d = dir;
@@ -515,14 +517,14 @@ async function newPage(context, baseUrl, host = null) {
             await wait(() => app.files.some(f => f._flags));
             out.kept = !!(app.files.find(f => f.name === starred)._flags || {}).star;
             const data = await opfs('appdata');
-            out.stores = (await names(data)).length;
+            out.stores = (await stores(data)).length;
             // Clean up (confirmed)
             const done = app.cleanUpFolder();
             await wait(() => !document.getElementById('ui-dialog').classList.contains('hidden'));
             out.dialog = document.getElementById('ui-dialog').textContent;
             document.getElementById('uid-ok').click();
             await done;
-            out.afterNames = await names(data);
+            out.afterNames = await stores(data);
             out.flagsGone = !app.files.some(f => f._flags);
             return out;
         });
@@ -670,7 +672,7 @@ async function newPage(context, baseUrl, host = null) {
             out.confirm = document.getElementById('ui-dialog').textContent;
             document.getElementById('uid-ok').click();
             await wait(() => rows().length === 1);
-            out.after = (await names(await opfs('appdata'))).map(n => n.split('-')[0]);
+            out.after = (await stores(await opfs('appdata'))).map(n => n.split('-')[0]);
             // Open from the list
             window.__missing = [];
             await Stored.refresh();

@@ -346,22 +346,24 @@ const CropEditor = {
 
         const mac = /Mac|iPhone|iPad/.test(navigator.platform || '');
         this.el('crop-tip').textContent =
-            `Drag the photo to move it · drag outside the frame to rotate · ${mac ? '⌘' : 'Ctrl'}+drag along a straight line to level it · scroll to zoom`;
+            `Drag outside the frame to rotate · ${mac ? '⌘' : 'Ctrl'}+drag along a straight line to level it`;
 
         this._resizeObs = new ResizeObserver(() => this.resizeCanvas());
         this._resizeObs.observe(cv.parentElement);
     },
 
-    // How Crop works, said the first three times it opens, then left to
-    // the guide (audit M1): it fades after a few seconds each time
+    // What's hidden in Crop (rotating outside the frame, levelling along a
+    // line), said the first time it opens, then left to the guide (audit
+    // M1; once, not three times: the owner, 22 November). It fades after a
+    // few seconds
     TIP_SEEN: 'jeditor.cropTipSeen',
     showTipOnce() {
         const tip = this.el('crop-tip');
         let seen = 0;
         try { seen = +localStorage.getItem(this.TIP_SEEN) || 0; } catch (e) { /* no storage */ }
         clearTimeout(this._tipFade);
-        tip.classList.toggle('crop-tip-done', seen >= 3);
-        if (seen >= 3) return;
+        tip.classList.toggle('crop-tip-done', seen >= 1);
+        if (seen >= 1) return;
         try { localStorage.setItem(this.TIP_SEEN, String(seen + 1)); } catch (e) { /* no storage */ }
         this._tipFade = setTimeout(() => tip.classList.add('crop-tip-done'), 8000);
     },
