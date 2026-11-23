@@ -204,10 +204,11 @@ const Recents = {
     // The same folder: by path when both have one, else asked (never for
     // long: a folder that doesn't answer isn't this one)
     async sameFolder(rec, handle, path) {
-        if (!rec || !rec.handle) return false;
-        if (rec.handle === handle) return true;
+        if (!rec) return false;
+        if (rec.handle && rec.handle === handle) return true;
         const a = this.pathKey(rec.path), b = this.pathKey(path);
         if (a && b) return a.key === b.key;
+        if (!rec.handle) return false; // (kept on disk only: by its path or not at all)
         // (a record kept before paths were: asked, if it's even the same name)
         if (rec.name !== handle.name) return false;
         let timer = null;
@@ -234,6 +235,7 @@ const Recents = {
             s.put(rec);
             stale.forEach(r => s.delete(r.id));
         });
+        await this.writeDisk();
         await this.render();
     },
 
@@ -242,13 +244,129 @@ const Recents = {
     async replace(id, handle) {
         const rec = (await this.all()).find(r => r.id === id);
         if (!rec || !handle) return;
-        await this.tx('readwrite', s => s.put({ ...rec, handle, name: handle.name }));
+        const path = await this.pathOf(handle);
+        await this.tx('readwrite', s => s.put({ ...rec, handle, name: handle.name, ...(path ? { path } : {}) }));
+        await this.writeDisk();
         await this.render();
     },
 
     async forget(id) {
         await this.tx('readwrite', s => s.delete(id));
+        await this.writeDisk();
         this.render();
+    },
+
+    // ---- Kept on disk too (the apps) ----
+    //
+    // The folders in Recent are also kept in a file of the app's own, in
+    // its storage on the computer (recent.json, beside each project's
+    // folder there: bridge.js dataDir), with their paths. The page's own
+    // storage (IndexedDB) can be cleared (Clear cache, a WebView2 update,
+    // a reset of the browser's data); Recent comes back from the file, its
+    // folders opened by their paths (open). The owner, 22 November:
+    // "ideally we never want our users to have to re add their projects".
+    // Before the file was kept, each project's folder there still had its
+    // order.json (path, name, when it was opened: folder-cache.js), so a
+    // Recent lost before then comes back from those, once.
+
+    FILE: 'recent.json',
+    DISK_MS: 4000,
+
+    async diskDir() {
+        const native = typeof FolderCache !== 'undefined' && FolderCache.native();
+        if (!native || typeof native.dataDir !== 'function') return null;
+        return this.within_(native.dataDir(), this.DISK_MS, null);
+    },
+
+    // Write what's in Recent now (folders with a path; never the photo)
+    async writeDisk() {
+        try {
+            const dir = await this.diskDir();
+            if (!dir) return;
+            const folders = (await this.list()).filter(r => typeof r.path === 'string' && r.path)
+                .map(r => ({ id: r.id, name: r.name, path: r.path, openedAt: r.openedAt, ...(r.count ? { count: r.count } : {}) }));
+            const fh = await dir.getFileHandle(this.FILE, { create: true });
+            const w = await fh.createWritable();
+            await w.write(JSON.stringify({ version: 1, folders }));
+            await w.close();
+        } catch (e) {
+            console.warn('Recent: couldn\'t keep the list on disk', e);
+        }
+    },
+
+    // Reset jEditor (reset.js): Recent forgotten on disk too, or it would
+    // come back from the file at the next start. Recent is then rebuilt from
+    // nothing (an empty file, so not from the projects' order.json either)
+    async clearDisk() {
+        try {
+            const dir = await this.diskDir();
+            if (!dir) return;
+            const fh = await dir.getFileHandle(this.FILE, { create: true });
+            const w = await fh.createWritable();
+            await w.write(JSON.stringify({ version: 1, folders: [] }));
+            await w.close();
+        } catch (e) {
+            console.warn('Recent: couldn\'t forget the list on disk', e);
+        }
+    },
+
+    // → [{ id, name, path, openedAt, count? }], or null (no file yet)
+    async readDisk(dir) {
+        let text;
+        try {
+            text = await (await (await dir.getFileHandle(this.FILE)).getFile()).text();
+        } catch (e) {
+            return null;
+        }
+        try {
+            const data = JSON.parse(text);
+            return (Array.isArray(data && data.folders) ? data.folders : []).filter(f => f && typeof f.path === 'string' && f.path && typeof f.name === 'string');
+        } catch (e) {
+            return []; // (a broken file: nothing from it, and it's written again)
+        }
+    },
+
+    // Each project's folder in the app's storage: its order.json
+    async fromOrders(dir) {
+        const out = [];
+        try {
+            for await (const [, h] of dir.entries()) {
+                if (h.kind !== 'directory') continue;
+                try {
+                    const o = JSON.parse(await (await (await h.getFileHandle('order.json')).getFile()).text());
+                    if (o && typeof o.path === 'string' && o.path) out.push({ name: typeof o.name === 'string' && o.name ? o.name : o.path.split(/[\\/]/).filter(Boolean).pop(), path: o.path, openedAt: Number(o.openedAt) || 0 });
+                } catch (e) { /* not a project's folder */ }
+                if (out.length >= 500) break;
+            }
+        } catch (e) { /* storage not readable */ }
+        return out.sort((a, b) => b.openedAt - a.openedAt).slice(0, this.MAX);
+    },
+
+    // At start: what's on disk and not in Recent goes back in (by path, with
+    // no handle: opened by its path). → how many came back
+    async restore() {
+        if (!this.supported()) return 0;
+        const dir = await this.diskDir();
+        if (!dir) return 0;
+        let kept = await this.readDisk(dir);
+        const first = kept === null;
+        if (first) kept = await this.fromOrders(dir);
+        const have = await this.list();
+        const keys = new Set(have.map(r => (this.pathKey(r.path) || {}).key).filter(Boolean));
+        const add = [];
+        for (const f of kept) {
+            const k = this.pathKey(f.path);
+            if (!k || keys.has(k.key)) continue;
+            keys.add(k.key);
+            add.push({ id: typeof f.id === 'string' && f.id ? f.id : `disk-${Math.round(f.openedAt) || 0}-${Math.random().toString(36).slice(2, 8)}`, name: f.name, path: f.path, openedAt: Number(f.openedAt) || 0, ...(f.count ? { count: f.count } : {}) });
+        }
+        // (no more than Recent keeps)
+        const room = Math.max(0, this.MAX - have.length);
+        const back = add.sort((a, b) => b.openedAt - a.openedAt).slice(0, room);
+        if (back.length) await this.tx('readwrite', s => back.forEach(r => s.put(r)));
+        if (first || back.length) await this.writeDisk();
+        if (back.length) this.note(`Recent: ${back.length} project${back.length === 1 ? '' : 's'} back from ${first ? 'their folders in jEditor\'s storage' : this.FILE}`);
+        return back.length;
     },
 
     // Clear cache (folder-move.js): the stacks' pictures go, so they lie
@@ -404,6 +522,10 @@ const Recents = {
             }
             this.note(`Recent: no path for ${rec.name}; opening it as kept`);
         }
+        if (!h) {
+            app.showToast(`Couldn't open “${rec.name}” here`, 4000, null, { label: 'Remove', run: () => this.forget(rec.id) });
+            return;
+        }
         try {
             // Asked within the click, while Chrome still allows a prompt
             if (typeof h.queryPermission === 'function' && await h.queryPermission({ mode: 'readwrite' }) !== 'granted' &&
@@ -546,5 +668,7 @@ const Recents = {
         this.app = app;
         this.initPrompt();
         this.render();
+        // (the apps: what the page's storage lost, back from disk)
+        this.restored = this.restore().then(n => { if (n) this.render(); return n; }).catch(() => 0);
     }
 };

@@ -255,3 +255,83 @@ const Tips = {
 };
 
 Tips.init();
+
+// ---- Hints that show once (the owner, 22 November: no hints that state
+// the obvious). A hint that teaches something hidden (a modifier key, an
+// Alt-click, Enter to put something down) shows the first time its moment
+// comes, stays while that moment lasts, and then never again. What a tool
+// does is its tooltip's job, not a hint's.
+//
+// - Hints.show(key): whether to show it now. The first time it says yes and
+//   remembers it; it goes on saying yes until Hints.end(key) (or one starting
+//   with key) says that moment is over.
+// - An element with data-hint-once="key" (a panel's own line) is shown the
+//   first time it's on screen, and hidden from then on (class hint-done).
+// - Settings → Messages → Show tips again forgets them all.
+const Hints = {
+    KEY: 'jeditor.hintsSeen',
+    now: new Set(), // shown, and that moment not over yet
+
+    seen() {
+        try { return new Set(JSON.parse(localStorage.getItem(this.KEY) || '[]')); } catch (e) { return new Set(); }
+    },
+
+    remember(set) {
+        try { localStorage.setItem(this.KEY, JSON.stringify([...set])); } catch (e) { /* no storage: shown each time */ }
+    },
+
+    show(key) {
+        if (this.now.has(key)) return true;
+        const seen = this.seen();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        this.remember(seen);
+        this.now.add(key);
+        return true;
+    },
+
+    end(prefix) {
+        for (const k of [...this.now]) if (k === prefix || k.startsWith(prefix)) this.now.delete(k);
+    },
+
+    reset() {
+        try { localStorage.removeItem(this.KEY); } catch (e) { /* no storage */ }
+        this.now.clear();
+        for (const el of document.querySelectorAll('[data-hint-once].hint-done')) el.classList.remove('hint-done');
+        this.watch();
+    },
+
+    // Panel lines that show once: hidden if seen; otherwise the first time
+    // one is on screen it's remembered (and stays for this visit)
+    watch() {
+        const seen = this.seen();
+        const els = [...document.querySelectorAll('[data-hint-once]')];
+        for (const el of els) if (seen.has(el.dataset.hintOnce) && !this.now.has(el.dataset.hintOnce)) el.classList.add('hint-done');
+        if (typeof IntersectionObserver !== 'function') return;
+        if (!this.io) {
+            this.io = new IntersectionObserver((entries) => {
+                for (const e of entries) {
+                    if (!e.isIntersecting || !e.target.textContent.trim()) continue;
+                    this.show(e.target.dataset.hintOnce);
+                    this.io.unobserve(e.target);
+                }
+            });
+        }
+        for (const el of els) if (!el.classList.contains('hint-done')) this.io.observe(el);
+    },
+
+    init() {
+        const start = () => {
+            this.watch();
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('#hints-reset')) return;
+                this.reset();
+                if (typeof app !== 'undefined' && app.showToast) app.showToast('Tips will show again', 1800);
+            });
+        };
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+        else start();
+    }
+};
+
+Hints.init();

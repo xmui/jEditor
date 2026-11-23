@@ -1046,6 +1046,7 @@ const PaintEditor = {
     },
 
     close() {
+        if (typeof Hints !== 'undefined') Hints.end('paint.');
         this.closeFonts();
         if (this.text) this.endText(false);
         this.isOpen = false;
@@ -1193,6 +1194,8 @@ const PaintEditor = {
         if (this.text) this.endText(true);
         if (this.float && id !== 'move') this.commitFloat();
         if (this.poly && id !== 'polygon') this.endPoly(true);
+        // (another tool: the last one's hint, shown once, is done with)
+        if (id !== this.tool && typeof Hints !== 'undefined') Hints.end('paint.');
         this.tool = id;
         this.syncTools();
         this.remember();
@@ -1379,45 +1382,26 @@ const PaintEditor = {
                 }
             }
         }
+        // A hint only for what's hidden (a key to hold, Alt-click, the key
+        // that puts it down), the first time it helps (tips.js: Hints).
+        // What a tool does is its tooltip's to say (the owner, 22 November)
+        const select = ['select', 'Shift adds to the selection, Alt takes away; Ctrl+D selects nothing'];
+        const source = ['source', 'Alt-click where to copy from, then paint'];
+        const lesson = this.onMask && this.layer() && this.layer().mask && this.isBrush()
+            ? ['mask', 'On the mask: black hides the layer, white shows it again (X swaps them)']
+            : {
+                move: this.sel ? ['float', 'Its corners scale it, the knob above turns it; Enter puts it down'] : null,
+                'rect-select': select, 'ellipse-select': select, lasso: select, wand: select,
+                picker: ['picker', 'Alt-click picks the background color; with a brush, hold Alt to pick'],
+                hand: ['hand', 'Shift-drag turns the view; double-click fits'],
+                text: ['text', 'Ctrl+Enter puts the text down'],
+                heal: source, clone: source
+            }[this.tool];
         const hint = document.createElement('span');
         hint.className = 'paint-opt paint-hint';
-        hint.textContent = {
-            move: this.sel ? 'Drag what\'s selected; its corners scale it, the knob above turns it. Enter puts it down' : 'Drag the layer; select first to move part of it',
-            'rect-select': 'Drag a rectangle. Shift adds, Alt takes away; Ctrl+D selects nothing',
-            'ellipse-select': 'Drag an ellipse. Shift adds, Alt takes away',
-            lasso: 'Draw round what to select. Shift adds, Alt takes away',
-            wand: 'Click a color to select it. Shift adds, Alt takes away',
-            picker: 'Click or drag for the foreground color, Alt for the background. With a brush, hold Alt to pick',
-            hand: 'Drag to move about; Shift-drag turns the view; the wheel zooms; double-click fits',
-            text: 'Click where the text goes; Ctrl+Enter puts it down',
-            fill: wholeFill ? 'Click to fill the whole layer (or what\'s selected) with the foreground color' : 'Click to fill with the foreground color',
-            gradient: 'Drag from where it starts to where it ends',
-            recolor: 'Click a color: it becomes the foreground color everywhere, its shading kept',
-            pixel: 'Square pixels on a grid the brush\'s size, crisp at any zoom',
-            can: 'Hold to spray: the longer it\'s held, the more dots',
-            stamp: 'Click for a stamp; drag for a row of them',
-            charcoal: 'Grainy, as on rough paper; with a pen, tilt it for a broad side',
-            watercolour: 'See-through: it pools at its edges, and darkens where strokes cross',
-            texture: 'Paints through the texture; go over it again to fill it in',
-            mixer: 'Starts with the brush color and blends in the colors it goes over',
-            custom: this.ownBrushes().length ? 'One of your own brushes; ⋯ → Brushes makes more' : 'Make one first: select part of the picture, then ⋯ → Brushes',
-            'spot-heal': 'Paint over a mark or a speck: it\'s filled from what\'s round it',
-            heal: this.healSrc ? 'Paint over what to hide: copied from the + mark, in the colors round it. Alt-click to copy from elsewhere' : 'Alt-click where to copy from, then paint over what to hide',
-            ink: 'Thin when you go fast, thick when slow; with a pen, as hard as you press',
-            marker: 'See-through, like a felt pen: where strokes cross, it\'s darker',
-            airbrush: 'Soft: hold still or go over it again to build it up',
-            'eraser-soft': 'Soft: hold still or go over it again to take more off',
-            'eraser-block': 'A hard square, like the pencil',
-            dodge: 'Paint to lighten; again over it for more',
-            burn: 'Paint to darken; again over it for more',
-            sponge: 'Paint to take color out, or (More) to put it in',
-            blur: 'Paint to soften; again over it for more',
-            sharpen: 'Paint to make it crisper; a little goes a long way',
-            smudge: 'Drag: the colors under the brush go with it',
-            clone: this.healSrc ? 'Paint: copied from the + mark. Alt-click to copy from elsewhere' : 'Alt-click where to copy from, then paint'
-        }[this.tool] || '';
-        // On a mask: what the colours do there
-        if (this.onMask && this.layer() && this.layer().mask && this.isBrush()) hint.textContent = 'On the mask: black hides the layer, white shows it again (X swaps them)';
+        // (Your brush with none made yet: how to make one, always, as it can't paint till then)
+        hint.textContent = this.tool === 'custom' && !this.ownBrushes().length ? 'Make one first: select part of the picture, then ⋯ → Brushes'
+            : lesson && typeof Hints !== 'undefined' && Hints.show('paint.' + lesson[0]) ? lesson[1] : '';
         hint.textContent = Host.keys(hint.textContent);
         if (hint.textContent) {
             hint.title = hint.textContent;
@@ -4947,11 +4931,14 @@ const PaintEditor = {
         box.appendChild(mode);
         if (f.mesh) {
             const fin = (label, title, fn, cls) => { const x = document.createElement('button'); x.className = cls; x.textContent = label; x.title = title; x.addEventListener('click', () => { x.blur(); fn(); }); box.appendChild(x); };
-            const hint = document.createElement('span');
-            hint.className = 'paint-opt paint-hint';
-            hint.textContent = 'Drag a point to bend it; drag inside to move it';
-            hint.title = hint.textContent;
-            box.appendChild(hint);
+            // (once: tips.js, Hints)
+            if (typeof Hints === 'undefined' || Hints.show('paint.warp')) {
+                const hint = document.createElement('span');
+                hint.className = 'paint-opt paint-hint';
+                hint.textContent = 'Drag a point to bend it; drag inside to move it';
+                hint.title = hint.textContent;
+                box.appendChild(hint);
+            }
             fin('Reset', 'Take the bend out', () => { f.mesh = this.meshOf({ ...f, mesh: null }, true); this.renderSoon(); }, 'btn ghost sm');
             fin('Cancel', 'Put it back as it was (Esc)', () => this.cancelFloat(), 'btn secondary paint-tf-cancel');
             fin('Done', 'Put it down (Enter)', () => this.commitFloat(), 'btn primary paint-tf-ok');
@@ -4987,11 +4974,14 @@ const PaintEditor = {
         };
         button('Flip ↔', 'Flip left to right', () => { t.sx = -t.sx; this.renderSoon(); });
         button('Flip ↕', 'Flip upside down', () => { t.sy = -t.sy; this.renderSoon(); });
-        const hint = document.createElement('span');
-        hint.className = 'paint-opt paint-hint';
-        hint.textContent = 'Drag a corner to size it (Shift frees its shape), a side to stretch it, the knob or just outside a corner to turn it; Ctrl-drag a corner to distort it';
-        hint.title = hint.textContent;
-        box.appendChild(hint);
+        // (once: tips.js, Hints)
+        if (typeof Hints === 'undefined' || Hints.show('paint.transform')) {
+            const hint = document.createElement('span');
+            hint.className = 'paint-opt paint-hint';
+            hint.textContent = 'Shift frees its shape; the knob or just outside a corner turns it; Ctrl-drag a corner to distort it';
+            hint.title = hint.textContent;
+            box.appendChild(hint);
+        }
         button('Cancel', 'Put it back as it was (Esc)', () => this.cancelFloat(), 'btn secondary paint-tf-cancel');
         button('Done', 'Put it down (Enter)', () => this.commitFloat(), 'btn primary paint-tf-ok');
     },
@@ -5692,7 +5682,11 @@ const PaintEditor = {
         this.dropSelection();
         this.setTool('move');
         this.renderSoon();
-        this.app.showToast('Drag it to move it, a corner to size it (Shift frees its shape); Enter puts it down', 3500);
+        // (once ever: tips.js, Hints)
+        if (typeof Hints === 'undefined' || Hints.show('paint.paste')) {
+            if (typeof Hints !== 'undefined') Hints.end('paint.paste');
+            this.app.showToast('Drag it to move it, a corner to size it (Shift frees its shape); Enter puts it down', 3500);
+        }
         return true;
     },
 
@@ -7117,12 +7111,15 @@ const PaintEditor = {
     },
 
     cropOptions(box) {
-        const hint = document.createElement('span');
-        hint.className = 'paint-opt paint-hint';
-        hint.textContent = 'Drag the edges in to crop, or out past the picture for more canvas. Enter crops, Esc doesn\'t';
-        hint.title = hint.textContent;
-        hint.style.color = 'var(--text-3, var(--text-2))';
-        box.appendChild(hint);
+        // (once: tips.js, Hints)
+        if (typeof Hints === 'undefined' || Hints.show('paint.crop')) {
+            const hint = document.createElement('span');
+            hint.className = 'paint-opt paint-hint';
+            hint.textContent = 'Drag an edge out past the picture for more canvas. Enter crops, Esc doesn\'t';
+            hint.title = hint.textContent;
+            hint.style.color = 'var(--text-3, var(--text-2))';
+            box.appendChild(hint);
+        }
         const r = this.crop ? this.cropRect(this.crop) : null, k = this.fullW / this.PW;
         if (r) {
             const size = document.createElement('span');
