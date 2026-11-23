@@ -133,11 +133,13 @@ const AppReset = {
         } catch (e) { /* not open */ }
         await this.deleteDb(this.RECENTS_DB);
         // ...and the copy the apps keep on disk (recents.js: recent.json in
-        // jEditor's storage), left empty, not removed: without it Recent is
-        // made again from the projects' order.json files, and they'd be back
+        // jEditor's storage, which a reset keeps): Recents.clearDisk (#344)
+        // where it's there; until then left empty, not removed, since without
+        // it Recent is made again from the projects' order.json files
         try {
             const native = typeof FolderCache !== 'undefined' && FolderCache.native();
-            if (native && typeof native.dataDir === 'function' && typeof Recents !== 'undefined') {
+            if (typeof Recents !== 'undefined' && Recents.clearDisk) await Recents.clearDisk();
+            else if (native && typeof native.dataDir === 'function' && typeof Recents !== 'undefined') {
                 const dir = await native.dataDir();
                 const w = await (await dir.getFileHandle(Recents.FILE, { create: true })).createWritable();
                 await w.write(JSON.stringify({ version: 1, folders: [] }));
