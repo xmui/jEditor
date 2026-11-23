@@ -281,6 +281,8 @@ const app = {
         AdjustSync.init(this);
         Stored.init(this);
         FolderMove.init(this);
+        AppReset.init(this);
+        SortKeys.init(this);
         OpenCard.init(this);
         Palette.init(this); // Find anything, Ctrl+K
         FirstOpen.init(this);
@@ -295,6 +297,7 @@ const app = {
         Permissions.init(this);
         Flags.init(this);
         Edits.init(this);
+        Unsaved.init(this);
         Paint.init(this);
         Import.init(this);
         Disc.init(this);
@@ -2002,6 +2005,9 @@ const app = {
 
     async finalizeLoad() {
         try {
+            // The dates taken kept with the project (sort-keys.js), so a
+            // project sorted by date taken opens in that order at once
+            await SortKeys.loadFor(800);
             // Sort initial files
             this.sortFiles(false); // pass false to avoid re-rendering twice
             // Edits kept until saved: the thumbnails are made with them
@@ -2696,8 +2702,12 @@ const app = {
         const edit = typeof Edits !== 'undefined' && Edits.get(file);
         if (edit) {
             const what = [Object.keys(edit).some(k => !['adj', 'paint'].includes(k)) && 'Crop or turn', edit.adj && 'Adjust', edit.paint && 'Paint'].filter(Boolean);
-            rows.push(['Edits', `${what.join(', ') || 'Kept'} · not yet in the file`]);
+            const saved = typeof Unsaved !== 'undefined' && Unsaved.counting() && !Unsaved.is(file);
+            rows.push(['Edits', `${what.join(', ') || 'Kept'} · ${saved ? 'exported, not in the file' : 'not saved or exported yet'}`]);
         }
+        // When and where it was last exported (unsaved.js)
+        const exported = typeof Unsaved !== 'undefined' && Unsaved.describe(file);
+        if (exported) rows.push(['Exported', exported]);
         if (token !== this._infoToken) return;
         render();
         this.fillInfoExtra(file, exif);
@@ -3475,6 +3485,7 @@ const app = {
     // Grid View with Lazy Loading. sync: every tile now, so a re-render
     // after a move keeps the scroll position.
     renderGrid({ sync = false } = {}) {
+        Unsaved.soon(); // (the photos shown changed: opened, deleted, filtered)
         // Read before the tiles go: a windowed grid keeps its place
         const scrollWas = this._gridWin ? this.elements.gridView.scrollTop : null;
         this.elements.gridView.innerHTML = '';
@@ -4275,6 +4286,8 @@ const app = {
     // Pre-generate every thumbnail in the background right after a folder
     // loads, so scrolling the grid only ever hits the cache.
     precacheThumbnails() {
+        // (and the dates taken not kept yet, read quietly: sort-keys.js)
+        SortKeys.soon();
         const missing = this.files.filter(f => !f.thumbnailUrl && !f._thumbPromise);
         if (missing.length === 0) return;
 
@@ -7707,6 +7720,8 @@ const app = {
         });
         this._readingDates = Promise.all(workers).finally(() => { this._readingDates = null; this.endTask('taken'); });
         await this._readingDates;
+        // Kept with the project, so it's instant next time (sort-keys.js)
+        SortKeys.save();
     },
 
     // ---- Rename ----
@@ -8214,6 +8229,7 @@ const app = {
             dir = dir || await this.dirHandle.getDirectoryHandle('jEditor Export', { create: true });
             this.beginTask('export', `Exporting 0/${list.length}`);
             let done = 0, failed = 0, skipped = 0, stopped = false;
+            const exported = [];
             const written = new Set(); // names used by this export (lower case)
             const there = (name) => written.has(name.toLowerCase()) ? true : dir.getFileHandle(name).then(() => true, () => false);
             for (const [i, f] of list.entries()) {
@@ -8286,6 +8302,8 @@ const app = {
                     await w.write(out);
                     await w.close();
                     done++;
+                    // Exported (with its edit as it is: no longer unsaved)
+                    exported.push(f);
                 } catch (e) {
                     failed++;
                     console.error('Export failed:', f.name, e);
@@ -8293,6 +8311,7 @@ const app = {
                 this.updateTask('export', `Exporting ${done + failed + skipped}/${list.length}`);
             }
             this.endTask('export');
+            if (exported.length) Unsaved.exported(exported, where);
             const left = skipped ? `, ${skipped} skipped (already there)` : '';
             const rest = list.length - done - failed - skipped;
             this.showToast(
@@ -9931,8 +9950,9 @@ const app = {
     // For Adjust's Sync: the crop of source (its kept edit) on the other
     // photos, as cropEdits. Sync puts its adjustments on these and does
     // one Edits.set. null: source has no kept crop to sync.
-    async cropEditsLike(source, files) {
-        const e = source && source._edit;
+    // edit: the source's crop if not as kept (Adjust's Geometry, being made)
+    async cropEditsLike(source, files, edit = source && source._edit) {
+        const e = edit;
         if (!e || Edits.wholePhoto(e)) return null;
         const { W, H } = await this.cropDims(source);
         const wide = (e.q % 2 ? H >= W : W >= H);

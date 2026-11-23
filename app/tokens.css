@@ -149,6 +149,7 @@
     --success: #4ade80;
     --warning-text: #fde68a;
     --warning-soft: rgb(250 204 21 / 0.16);
+    --unsaved: #f5a524;     /* unsaved edits: the count's dot, the thumbnails' (unsaved.js) */
     --flag-star: #fbbf24;
     --flag-rescan: #fb923c;
 
@@ -264,6 +265,7 @@
     --danger-soft: rgb(220 38 38 / 0.10);
     --success: #15803d;
     --warning-text: #92400e;
+    --unsaved: #b45309;     /* about 4:1 on the light grid, and still amber */
     --flag-star: #d97706;
     --flag-rescan: #ea580c;
 

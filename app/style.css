@@ -10289,7 +10289,7 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
    than on a solid card (--glass-off), so it's still read as there: 3:1.
    On dark glass a soft scrim behind the words and icons (--glass-halo,
    --glass-icon-halo); none on light glass, Opaque or solid glass */
-:root:not([data-skin]) :is(.toolbar, .file-info, .mode-file, .mode-head-acts, .mode-row, .adj-zoom, .crop-zoom, .adj-panel, .paint-panel, .paint-tools, .paint-options, .paint-zoom, .picked-bar, .task-pill, .toast, .sb-picker, .popover) {
+:root:not([data-skin]) :is(.toolbar, .file-info, .mode-file, .mode-head-acts, .mode-row, .adj-zoom, .crop-zoom, .adj-panel, .paint-panel, .paint-tools, .paint-options, .paint-zoom, .picked-bar, .task-pill, .unsaved-pill, .toast, .sb-picker, .popover) {
     --text-2: var(--glass-text-2);
     --text-3: var(--glass-text-2);
     text-shadow: var(--glass-halo);
@@ -13452,6 +13452,135 @@ body.touring .controls.idle button { pointer-events: auto; }
 .tip.long { padding-block: 7px; }
 :root[data-motion="off"] .tip { transition: none; }
 @media (prefers-reduced-motion: reduce) { .tip { transition: none; } }
+
+/* ---- Unsaved edits (unsaved.js): "12 unsaved" ----
+   The count of photos whose edits aren't saved over the original or
+   exported yet. A glass pill in the bottom-left corner, where the task pill
+   would be (that and the messages stack above it), while the sidebar's
+   closed; a quiet button at the bottom of the sidebar while it's open.
+   Hidden at 0. Its dot, and the unsaved photos' thumbnail dots, are amber:
+   warm enough to find, not an alarm (nothing is at risk): --unsaved, in
+   tokens.css */
+
+/* The glass toolbars' own recipe (section 4: .toolbar), so it matches the
+   selection pill and the size slider beside it: their height, glass,
+   shadow and type, and their size with Settings → Toolbar size (zoom: its
+   place divided by it, as the toolbars' are) */
+.unsaved-pill {
+    position: fixed;
+    left: calc(var(--toast-left) / var(--ui-scale, 1));
+    bottom: calc(var(--toast-bottom) / var(--ui-scale, 1));
+    z-index: var(--z-toast);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    height: var(--ctl-lg);
+    padding: 0 var(--sp-4) 0 var(--sp-4);
+    border-radius: var(--r-pill);
+    zoom: var(--ui-scale, 1);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-2), var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    color: var(--text-1);
+    font: inherit;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    cursor: pointer;
+    animation: toast-in var(--dur-slow) var(--ease-spring);
+    transition: bottom var(--dur-base) var(--ease-out);
+}
+/* On the bottom row, beside the selection pill and the size slider (the
+   owner's arrow, 22 November); the messages keep their place above it */
+body :is(.unsaved-pill) {
+    --toast-left: var(--gutter);
+    --toast-bottom: var(--gutter);
+}
+/* (a narrow window: the selection pill needs that row, so above it) */
+@media (max-width: 640px) {
+    body[data-view="grid"] .unsaved-pill {
+        --toast-bottom: calc(var(--gutter) + var(--ctl-lg) + var(--sp-3));
+    }
+}
+body[data-view="single"] .unsaved-pill {
+    --toast-bottom: calc(var(--strip-height, 80px) + var(--gutter));
+}
+body[data-view="single"]:has(#main-interface[data-fit~="toast-up"]:not(.hidden)) .unsaved-pill {
+    --toast-bottom: calc(var(--strip-height, 80px) + var(--gutter) + var(--ctl-lg) + var(--sp-2));
+}
+/* Adjust and Paint have Done: the count is only in the sidebar there (the
+   owner: "the pill will be hidden in adjust and paint if sidebar hidden") */
+body:has(:is(#adjust-editor, #paint-editor):not(.hidden)) .unsaved-pill {
+    display: none;
+}
+.unsaved-pill:hover {
+    background: linear-gradient(var(--tb-hover), var(--tb-hover)) padding-box, var(--glass-bg);
+}
+.unsaved-pill:focus-visible,
+.unsaved-side:focus-visible {
+    outline: 2px solid var(--focus-ring, var(--accent));
+    outline-offset: 2px;
+}
+/* Not on the start page, in Crop, Duplicates or a slideshow */
+body:is(:has(#drop-zone:not(.hidden)), :has(#crop-editor:not(.hidden)), :has(#dupes-panel:not(.hidden)), .slideshow) .unsaved-pill {
+    display: none;
+}
+/* Where it takes their place (the single view, a narrow grid), the task
+   pill and the messages stack above it */
+body.has-unsaved[data-view="single"]:not(:has(:is(#adjust-editor, #paint-editor):not(.hidden))) :is(#toast-stack, .task-pill) {
+    margin-bottom: calc(var(--ctl-lg) * var(--ui-scale, 1) + var(--sp-2));
+}
+@media (max-width: 640px) {
+    body.has-unsaved[data-view="grid"] :is(#toast-stack, .task-pill) {
+        margin-bottom: calc(var(--ctl-lg) * var(--ui-scale, 1) + var(--sp-2));
+    }
+}
+
+.unsaved-side {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    flex: none;
+    width: calc(100% - 2 * var(--sp-2));
+    min-height: var(--ctl-md);
+    margin: var(--sp-1) var(--sp-2) var(--sp-2);
+    padding: 0 var(--sp-3);
+    border: 1px solid var(--border);
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: var(--text-1);
+    font: inherit;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-out);
+}
+.unsaved-side:hover {
+    background: var(--tb-hover);
+}
+
+.unsaved-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--unsaved);
+}
+
+/* The thumbnails' edited dot, amber while unsaved (edits.js: decorate) */
+.tile-edit.unsaved {
+    background: var(--unsaved);
+}
+/* A selected tile's check sits in that corner: the dot beside it, so the
+   photos chosen to save or export still show it (the design review) */
+.grid-item.selected > .tile-edit {
+    top: 12px;
+    left: 34px;
+}
 
 /* A hint that shows once (tips.js: Hints), once it has */
 .hint-done {

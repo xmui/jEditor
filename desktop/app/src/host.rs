@@ -42,6 +42,10 @@ impl Rec {
     }
 }
 
+/// This app's own files that Reset jEditor forgets, in its userData
+/// folder (as mac/main.js and src/AppReset.cs: test/parity.test.js checks)
+pub const RESET_FILES: &[&str] = &["mac.json"];
+
 pub struct Host {
     pub app: AppHandle,
     pub opts: Opts,
@@ -496,6 +500,30 @@ impl Host {
             "photosAccess" => Ok(json!({ "status": "denied" })),
             "photosLibrary" | "photosAssets" | "photosSave" | "photosAdd" => Err("No Photos library here".into()),
             "checkUpdate" => updates::check(self, b(d, "beta")),
+            // Settings → Troubleshooting (app/reset.js, mac/main.js resetApp):
+            // the page has removed what it keeps; for Reset jEditor this
+            // app's own files too (RESET_FILES), then jEditor again. The
+            // web view's storage isn't wiped: the page has removed what goes
+            "resetApp" => {
+                let full = b(d, "full");
+                if full {
+                    *self.settings.lock().unwrap() = json!({});
+                    for name in RESET_FILES {
+                        if let Err(e) = std::fs::remove_file(self.user_data.join(name)) {
+                            if e.kind() != std::io::ErrorKind::NotFound { self.log("warn", &format!("Reset: couldn't remove {name}: {e}")); }
+                        }
+                    }
+                }
+                self.log("info", if full { "Reset jEditor: starting again" } else { "Cleared the cache: starting again" });
+                if self.opts.smoke.is_some() { return Ok(json!({ "ok": false })); }
+                self.leaving.store(true, Ordering::SeqCst);
+                let app = self.app.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                    app.restart();
+                });
+                Ok(json!({ "ok": true }))
+            }
             "installUpdate" => updates::install(self, label),
             "ready" => {
                 if let Some(r) = self.windows.lock().unwrap().get_mut(label) {

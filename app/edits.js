@@ -85,14 +85,65 @@ const Edits = {
         return this.choice !== null;
     },
 
-    // The open project's own choice, kept with its edits; quiet: no message
+    // ---- Each project's choice, also kept by its path ----
+    //
+    // edits.json holds it, but where that is comes from the project's path
+    // (folder-cache.js: orderStore), and on a network share the path the app
+    // gives can differ from one open to the next (Z:\ or \\server\share, its
+    // case, a trailing \), or not come at all (WebView2 158): then the answer
+    // was lost and the question asked every time (the owner, 22 November).
+    // So it's kept here too, by the path made plain (or, without one, the
+    // folder's name), in jEditor's own settings: an update and Clear cache
+    // keep it; Reset jEditor forgets it.
+    CHOICES_KEY: 'jeditor.saveChoices',
+    CHOICES_MAX: 500,
+
+    // The path as a key: one per folder however it's written
+    pathKey(path) {
+        return String(path || '').replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
+    },
+
+    async choiceKey() {
+        const app = this.app;
+        const dir = app && app.dirHandle;
+        if (!dir) return null;
+        let path = null;
+        try { if (typeof FolderCache !== 'undefined' && FolderCache.native()) path = await FolderCache.orderPath(app); } catch (e) { /* unknown */ }
+        return path ? 'path:' + this.pathKey(path) : 'name:' + dir.name.toLowerCase();
+    },
+
+    savedChoices() {
+        try { return JSON.parse(localStorage.getItem(this.CHOICES_KEY) || 'null') || {}; } catch (e) { return {}; }
+    },
+
+    async rememberedChoice() {
+        const key = await this.choiceKey();
+        const v = key && this.savedChoices()[key];
+        return v && typeof v.keep === 'boolean' ? v.keep : null;
+    },
+
+    async rememberChoice(on) {
+        const key = await this.choiceKey();
+        if (!key) return;
+        const all = this.savedChoices();
+        all[key] = { keep: !!on, at: Date.now() };
+        // The newest kept, so it can't grow without end
+        const keys = Object.keys(all);
+        if (keys.length > this.CHOICES_MAX) keys.sort((a, b) => (all[a].at || 0) - (all[b].at || 0)).slice(0, keys.length - this.CHOICES_MAX).forEach(k => delete all[k]);
+        try { localStorage.setItem(this.CHOICES_KEY, JSON.stringify(all)); } catch (e) { /* private */ }
+    },
+
+    // The open project's own choice, kept with its edits and by its path;
+    // quiet: no message
     setProjectKeeping(on, { quiet = false } = {}) {
         if (!this.canKeep()) return;
         on = !!on;
         const was = this.keeping();
         this.choice = on;
+        this.rememberChoice(on);
         this._dirty = true;
         this.saveSoon();
+        if (typeof Unsaved !== 'undefined') Unsaved.soon();
         if (!quiet && was !== on) this.app.showToast(on ? 'This project keeps its edits in jEditor; the photos stay as they are' : 'This project saves edits into the photos as you go', 3000);
     },
 
@@ -177,15 +228,27 @@ const Edits = {
         if (this._final) await this._final.catch(() => { });
         if (this._loadedFor !== app.dirHandle) return [];
         let data = null;
+        let editsAt = 0;
         try {
             const root = await FolderCache.root(app, false);
             const fh = root && await root.getFileHandle(this.FILE);
-            data = fh && JSON.parse(await (await fh.getFile()).text());
+            const file = fh && await fh.getFile();
+            editsAt = file ? file.lastModified : 0;
+            data = file && JSON.parse(await file.text());
         } catch (e) { /* nothing kept */ }
         if (this._loadedFor !== app.dirHandle) return [];
         // Its own choice (only `keep`: the old `defer` was written for every
         // project, asked or not, so it says nothing about a choice)
         this.choice = data && typeof data.keep === 'boolean' ? data.keep : null;
+        // ...or as kept by its path, when edits.json wasn't where it was left
+        if (this.choice === null) {
+            const kept = await this.rememberedChoice();
+            if (this._loadedFor !== app.dirHandle) return [];
+            if (kept !== null) {
+                this.choice = kept;
+                this._dirty = true; // into edits.json again, where it's looked for now
+            }
+        } else this.rememberChoice(this.choice);
         const saved = new Map(Object.entries((data && data.edits) || {}));
         for (const f of app.files) {
             const rel = f.relPath || f.name;
@@ -193,6 +256,8 @@ const Edits = {
             // A photo changed since (outside jEditor): its edit no longer fits
             if (e && (!e.size || e.size === f.size)) f._edit = e;
             else delete f._edit;
+            // When and where it was exported (unsaved.js)
+            Unsaved.restore(f, rel, data);
             saved.delete(rel);
         }
         for (const [k, v] of saved) {
@@ -202,6 +267,22 @@ const Edits = {
         // Paint layers nothing in edits.json uses any more (paint.js)
         Paint.tidy(Object.values((data && data.edits) || {}).map(v => this.clean(v)).filter(Boolean)).catch(() => { });
         if (typeof Places !== 'undefined' && Places.boxes) Places.drawCard();
+        // Once per project: exports made before jEditor kept track of them,
+        // looked for in the background (unsaved.js: backfill)
+        this._backfilled = !!(data && data.backfilled);
+        if (!this._backfilled && data && Object.keys(data.edits || {}).length) {
+            const dir = app.dirHandle;
+            setTimeout(() => {
+                if (app.dirHandle !== dir) return;
+                Unsaved.backfill(null, editsAt).catch(() => 0).then((n) => {
+                    if (app.dirHandle !== dir) return;
+                    this._backfilled = true;
+                    this._dirty = true;
+                    this.saveSoon();
+                    if (n) app.log(`Unsaved: ${n} photo${n === 1 ? '' : 's'} found exported before`);
+                });
+            }, 1500);
+        }
         return app.files.filter(f => f._edit);
     },
 
@@ -284,7 +365,7 @@ const Edits = {
 
     // Nothing to keep
     isEmpty(data) {
-        return !Object.keys(data.edits).length && typeof data.keep !== 'boolean';
+        return !Object.keys(data.edits).length && typeof data.keep !== 'boolean' && !(data.exports && Object.keys(data.exports).length);
     },
 
     // Every edit, as edits.json holds them
@@ -292,7 +373,11 @@ const Edits = {
         const out = {};
         for (const [k, v] of this.orphans) out[k] = v;
         for (const f of this.app.files) if (f._edit) out[f.relPath || f.name] = f._edit;
-        return this.choice === null ? { version: 1, edits: out } : { version: 1, keep: this.choice, edits: out };
+        // When and where photos were exported (unsaved.js), and that the
+        // exports before that were looked for (backfilled)
+        const exports = Unsaved.collect(this.app.files);
+        return { version: 1, ...(this.choice === null ? {} : { keep: this.choice }), edits: out,
+            ...(Object.keys(exports).length ? { exports } : {}), ...(this._backfilled ? { backfilled: true } : {}) };
     },
 
     // Written to the project's data folder (removed when there's nothing)
@@ -436,6 +521,7 @@ const Edits = {
             if (f._stripEl) this.decorate(f._stripEl, f);
         }
         this.updateHeader();
+        if (typeof Unsaved !== 'undefined') Unsaved.soon();
         if (save) this.saveSoon();
     },
 
@@ -495,7 +581,11 @@ const Edits = {
             b.className = 'tile-edit';
             el.appendChild(b);
         }
-        b.title = this.describe(f._edit);
+        // Not saved over the original or exported yet (unsaved.js): the
+        // dot that's counted
+        const unsaved = typeof Unsaved !== 'undefined' && Unsaved.is(f);
+        b.classList.toggle('unsaved', unsaved);
+        b.title = this.describe(f._edit) + (unsaved ? '\nNot saved or exported yet' : '');
     },
 
     // Beside the file name: this photo's edit isn't saved yet
