@@ -88,10 +88,27 @@ a {
     background: var(--accent-soft);
 }
 
-/* Scrollbars */
-* {
+/* Scrollbars: thin and round, with no arrow buttons at their ends (the
+   owner, 23 November). Where the browser has ::-webkit-scrollbar (the
+   apps' WebView2 and Electron; Chrome, Edge, Safari) it draws them: the
+   standard scrollbar-width would turn those off and bring back the
+   system's own scroll bar, arrows and all on Windows. Elsewhere (Firefox)
+   the standard thin one, which has none. A theme keeps its own, as before */
+@supports not selector(::-webkit-scrollbar) {
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--border-input) transparent;
+    }
+}
+:root[data-skin] * {
     scrollbar-width: thin;
     scrollbar-color: var(--border-input) transparent;
+}
+
+::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
 }
 
 ::-webkit-scrollbar {
@@ -10282,6 +10299,20 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 }
 :root:not([data-skin]) :is(.toolbar, .file-info, .mode-file, .mode-head-acts, .mode-row, .adj-zoom, .crop-zoom, .adj-panel, .paint-panel, .paint-tools, .paint-options, .paint-zoom, .picked-bar, .task-pill, .toast, .sb-picker, .popover) button svg {
     filter: var(--glass-icon-halo);
+}
+/* The clearer the glass (Settings → Glass strength), the bolder its icons */
+:root:not([data-skin]) :is(.toolbar, .file-info, .mode-file, .mode-head-acts, .mode-row, .adj-zoom, .crop-zoom, .adj-panel, .paint-panel, .paint-tools, .paint-options, .paint-zoom, .picked-bar, .task-pill, .toast, .sb-picker, .popover) .i {
+    stroke-width: calc(1.75 + 0.5 * var(--glass-u));
+}
+:root:not([data-skin]) :is(.toolbar, .file-info, .mode-file, .mode-head-acts, .mode-row, .adj-zoom, .crop-zoom, .adj-panel, .paint-panel, .paint-tools, .paint-options, .paint-zoom, .picked-bar, .task-pill, .toast, .sb-picker, .popover) .i.sm {
+    stroke-width: calc(2 + 0.5 * var(--glass-u));
+}
+/* The accent's own buttons (Done, the tool in hand) are solid: no scrim */
+:root:not([data-skin]) :is(.toolbar, .file-info, .mode-file, .mode-head-acts, .mode-row, .adj-zoom, .crop-zoom, .adj-panel, .paint-panel, .paint-tools, .paint-options, .paint-zoom, .picked-bar, .task-pill, .toast, .sb-picker, .popover) :is(.btn.primary, .paint-tool[aria-pressed="true"]) {
+    text-shadow: none;
+}
+:root:not([data-skin]) :is(.toolbar, .file-info, .mode-file, .mode-head-acts, .mode-row, .adj-zoom, .crop-zoom, .adj-panel, .paint-panel, .paint-tools, .paint-options, .paint-zoom, .picked-bar, .task-pill, .toast, .sb-picker, .popover) :is(.btn.primary, .paint-tool[aria-pressed="true"]) svg {
+    filter: none;
 }
 :root:not([data-skin]) :is(.toolbar, .file-info, .mode-file, .mode-head-acts, .mode-row, .adj-zoom, .crop-zoom, .adj-panel, .paint-panel, .paint-tools, .paint-options, .paint-zoom, .picked-bar, .task-pill, .toast, .sb-picker, .popover) :is(.btn, .tb-btn):is(:disabled, [aria-disabled="true"]) {
     opacity: var(--glass-off);
