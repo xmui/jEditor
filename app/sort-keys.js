@@ -95,8 +95,13 @@ const SortKeys = {
         }
         if (!live()) return;
         await this.save();
-        // Sorted by date taken already: in the order the dates give now
-        if (app.sortMode && app.sortMode.startsWith('taken')) app.sortFiles();
+        // Sorted by date taken already: in the order the dates give now,
+        // only if they change it (a redraw of the grid otherwise for nothing)
+        if (app.sortMode && app.sortMode.startsWith('taken')) {
+            const was = app.files.slice();
+            app.sortFiles(false);
+            if (app.files.some((f, i) => f !== was[i])) app.sortFiles();
+        }
     },
 
     // Every date known, kept (one write; nothing when the cache is off)
