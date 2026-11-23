@@ -291,7 +291,7 @@ const Places = {
         }
         const recents = await Recents.list().catch(() => []);
         for (const r of recents) {
-            const path = await this.native().folderPath(r.handle).catch(() => null);
+            const path = (r.path || await this.native().folderPath(r.handle).catch(() => null));
             if (!path || seen.has(this.key(path))) continue;
             seen.add(this.key(path));
             out.push({ path, name: r.name, recent: r.id, at: r.openedAt });
@@ -382,7 +382,7 @@ const Places = {
         const recents = await Recents.list().catch(() => []);
         const out = [];
         for (const r of recents) {
-            const path = await this.native().folderPath(r.handle).catch(() => null);
+            const path = (r.path || await this.native().folderPath(r.handle).catch(() => null));
             // (inside the projects folder: listed there already)
             if (!path || (dir && this.within(path, dir) && this.key(path).replace(/[\\/]+$/, '') !== dir.replace(/[\\/]+$/, ''))) continue;
             out.push(this.row({ path, name: r.name, icon: this.icons.project, meta: this.when(r.openedAt), count: true }));
@@ -859,7 +859,7 @@ const Places = {
     async followRecents(under, moved) {
         if (typeof Recents === 'undefined' || !Recents.supported()) return;
         for (const r of await Recents.list().catch(() => [])) {
-            const was = await this.native().folderPath(r.handle).catch(() => null);
+            const was = (r.path || await this.native().folderPath(r.handle).catch(() => null));
             if (!was || !under(was)) continue;
             const now = moved(was);
             const handle = await this.native().folderHandle(now).catch(() => null);

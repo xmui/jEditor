@@ -6307,6 +6307,65 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('... the apps: a Recent project opens by its path (a share, or found for one kept before), its kept handle never asked', recent.asked.length === 0
             && JSON.stringify(recent.opened) === JSON.stringify(['\\\\mc-S1-labnas1\\general\\Smith', 'Z:\\Archive Scan Jobs\\vandenberg'])
             && JSON.stringify(recent.saved) === JSON.stringify(['Z:\\Archive Scan Jobs\\vandenberg']) && recent.clicked === 2, JSON.stringify(recent));
+        // Recent kept on disk too (the apps): the page's storage cleared (the
+        // owner had to clear it, and lost every project), Recent comes back:
+        // the first time from each project's order.json in the app's
+        // storage, then from recent.json, which follows Recent (a project
+        // taken off stays off). Projects on Z: and a share, opened by path
+        const durable = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('appstore', { recursive: true }); } catch (e) { /* fresh */ }
+            const store = await opfs.getDirectoryHandle('appstore', { create: true });
+            const write = async (dir, name, data) => {
+                const fh = await dir.getFileHandle(name, { create: true });
+                const w = await fh.createWritable(); await w.write(JSON.stringify(data)); await w.close();
+            };
+            await write(await store.getDirectoryHandle('vandenberg-1a2b', { create: true }), 'order.json', { path: 'Z:\\Archive Scan Jobs\\vandenberg', name: 'vandenberg', openedAt: 2000 });
+            await write(await store.getDirectoryHandle('11-19-3c4d', { create: true }), 'order.json', { path: '\\\\mc-S1-labnas1\\general\\Lab Temp\\11-19', name: '11-19', openedAt: 1000 });
+            await store.getDirectoryHandle('not-a-project', { create: true });
+            const opened = [];
+            const was = FolderCache.native;
+            FolderCache.native = () => ({
+                dataDir: async () => store,
+                openPath: async (p) => { opened.push(p); return true; },
+                folderPath: async () => null,
+                pathsNamed: async () => [],
+                log: () => { }
+            });
+            const wipe = async () => { const all = await Recents.all(); await Recents.tx('readwrite', s => all.forEach(r => s.delete(r.id))); };
+            const disk = async () => { try { return JSON.parse(await (await (await store.getFileHandle('recent.json')).getFile()).text()).folders.map(f => f.name); } catch (e) { return null; } };
+            try {
+                await wipe();
+                out.first = await Recents.restore();
+                const list = await Recents.list();
+                out.names = list.map(r => r.name);
+                out.paths = list.every(r => r.path && !r.handle);
+                out.disk = await disk();
+                await Recents.render();
+                await sleep(50);
+                out.stacks = document.querySelectorAll('#recent-list .recent-open').length;
+                await Recents.open(list[0]);
+                out.opened = opened.slice();
+                // Taken off Recent: off the file too, and stays off
+                await Recents.forget(list.find(r => r.name === '11-19').id);
+                out.afterForget = await disk();
+                await wipe();
+                out.second = await Recents.restore();
+                out.namesAgain = (await Recents.list()).map(r => r.name);
+            } finally {
+                FolderCache.native = was;
+                await wipe();
+                await Recents.render();
+            }
+            return out;
+        });
+        check('... Recent kept on disk: wiped from the page, its projects come back (the first time from their folders in the app\'s storage), opened by path', durable.first === 2
+            && JSON.stringify(durable.names) === '["vandenberg","11-19"]' && durable.paths && JSON.stringify(durable.disk) === '["vandenberg","11-19"]' && durable.stacks === 2
+            && JSON.stringify(durable.opened) === JSON.stringify(['Z:\\Archive Scan Jobs\\vandenberg']), JSON.stringify(durable));
+        check('... then from recent.json, which follows Recent: a project taken off stays off', JSON.stringify(durable.afterForget) === '["vandenberg"]'
+            && durable.second === 1 && JSON.stringify(durable.namesAgain) === '["vandenberg"]', JSON.stringify(durable));
         check('home suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
