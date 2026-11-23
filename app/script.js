@@ -600,6 +600,7 @@ const app = {
             surround: 'auto',
             backdrop: 'none', // Settings → Window background: none (solid), mica or acrylic
             transparency: 50, // how much of the window background shows through (10-100%)
+            glassStrength: 75, // Settings → Glass strength: 0 the clearest glass, 100 the most held back (tokens.css: --glass-k)
             // Which messages show for things done (TOAST_KINDS); errors always do
             toasts: Object.fromEntries(this.TOAST_KINDS.map(([k, , on]) => [k, on]))
         };
@@ -700,6 +701,7 @@ const app = {
                     if (k >= 0) { o.splice(k, 1); o.push('customize'); }
                 }
                 if (saved.transparency >= 10 && saved.transparency <= 100) this.uiPrefs.transparency = saved.transparency;
+                if (saved.glassStrength >= 0 && saved.glassStrength <= 100) this.uiPrefs.glassStrength = Math.round(saved.glassStrength);
                 // The theme (themes.js checks it's one it knows) and each theme's own settings
                 if (typeof saved.skin === 'string' && /^[a-z0-9]+\/[a-z0-9]+$/.test(saved.skin)) this.uiPrefs.skin = saved.skin;
                 if (saved.skinSettings && typeof saved.skinSettings === 'object') {
@@ -814,6 +816,13 @@ const app = {
 
     // Theme, density, glass and the color behind photos: attributes on
     // <html> that tokens.css switches on
+    // Settings → Glass strength (0-100) → how far each glass goes from its
+    // clearest to its most held back (tokens.css: --glass-k, 0-1)
+    glassK(strength) {
+        const s = Math.max(0, Math.min(100, +strength || 0)) / 100;
+        return +(1 - Math.pow(1 - s, 1.4)).toFixed(3);
+    },
+
     applyAppearance() {
         const p = this.uiPrefs;
         const root = document.documentElement;
@@ -833,6 +842,12 @@ const app = {
         root.dataset.motion = p.motion;
         root.dataset.surround = p.surround;
         root.style.setProperty('--window-tint', `${100 - p.transparency}%`);
+        // (on a gentle curve: 0 the clearest glass, 100 the most held back,
+        // and 75, where it starts, enough to keep words 4.5:1 with no shadow)
+        root.style.setProperty('--glass-k', String(this.glassK(p.glassStrength ?? 75)));
+        // (Opaque glass has no strength to set)
+        const gs = document.getElementById('cust-glass-strength');
+        if (gs) gs.disabled = p.glass === 'opaque';
         const meta = document.querySelector('meta[name="theme-color"]');
         if (meta) meta.content = theme === 'light' ? '#e8e8e8' : '#0b0b0b';
     },
@@ -957,6 +972,12 @@ const app = {
                 if (key === 'backdrop') this.applyBackdrop();
             }));
         }
+        $('cust-glass-strength').addEventListener('input', (e) => {
+            this.uiPrefs.glassStrength = parseInt(e.target.value, 10);
+            $('cust-glass-strength-out').textContent = `${this.uiPrefs.glassStrength}%`;
+            this.saveUiPrefs();
+            this.applyAppearance();
+        });
         $('cust-transparency').addEventListener('input', (e) => {
             this.uiPrefs.transparency = parseInt(e.target.value, 10);
             $('cust-transparency-out').textContent = `${this.uiPrefs.transparency}%`;
@@ -1169,6 +1190,8 @@ const app = {
         $('cust-scale-out').textContent = `${Math.round(this.uiPrefs.scale * 100)}%`;
         $('cust-transparency').value = this.uiPrefs.transparency;
         $('cust-transparency-out').textContent = `${this.uiPrefs.transparency}%`;
+        $('cust-glass-strength').value = this.uiPrefs.glassStrength;
+        $('cust-glass-strength-out').textContent = `${this.uiPrefs.glassStrength}%`;
         this.syncBackdropControls();
 
         this.uiPrefs.order.forEach(key => {

@@ -167,23 +167,34 @@
        The frosted glass the others start from: deeply blurred, a faint
        sheen from the top, and light caught on the curved edge, more along
        the top left than the bottom right. Never on the photos.
-       Every glass holds what's behind it in a band (contrast() then
-       brightness(), before its own tint): dark glass never lighter than
-       about 38%, light glass never darker than about 80%, whatever the
-       photo (white, black or busy). Not a dark slab: the photo still
-       shows through. On dark glass a soft scrim behind the words and
-       icons (--glass-halo, --glass-icon-halo) does the rest, so the words
-       keep 4.5:1, secondary words (--glass-text-2) too, and an icon or a
-       dimmed control 3:1 (--glass-off) (2.0, the owner: dark glass over
-       a white canvas couldn't be read). Crystal (the default) and Clear: less
+       Settings → Glass strength (--glass-k, 0 to 1; 0.75 to start with,
+       the owner's pick, 22 November) sets how much each glass holds back
+       what's behind it (contrast() then brightness(), before its tint):
+       at 0 the clear glass of before 2.0's readability pass, at 1 that
+       pass's (dark glass never lighter than about 37% over a white photo,
+       light never darker than about 80% over a black one). The clearer
+       the glass (--glass-u), the bolder its icons and the less dimmed
+       its dimmed controls (--glass-off). From 75% up (the default), words
+       keep 4.5:1, icons and dimmed controls 3:1, over any photo, with no
+       shadow. Below 75% a faint shadow behind the words helps
+       (--glass-halo); it doesn't keep them at 4.5:1 over a plain white
+       (dark) or black (light) photo all the way down: the owner chose the
+       full range with a faint shadow over a glow (23 November). Crystal (the default) and Clear: less
        frost. Liquid: Apple's Liquid Glass, the only one that bends what's
        under it (liquid.js). Lens: thicker glass, lit top and bottom.
        Opaque: near-solid, no blur. */
     --glass-tint: transparent; /* Settings → Glass tint, over every glass */
-    --glass-halo: 0 0 2px rgb(0 0 0 / 0.45), 0 0 8px rgb(0 0 0 / 0.3); /* a soft scrim behind light words on dark glass */
-    --glass-icon-halo: drop-shadow(0 0 1.5px rgb(0 0 0 / 0.5)); /* the same behind its icons */
-    --glass-text-2: #dadada; /* secondary words on glass: 4.5:1 at the band's lightest, with the scrim */
-    --glass-off: 0.65; /* a dimmed control on glass: 3:1 at the band's edge (not 0.4) */
+    --glass-k: 0.856; /* Settings → Glass strength, 0 to 1 (script.js sets it from the slider: 75% to start with) */
+    --glass-u: calc(1 - var(--glass-k)); /* how clear: the scrim grows with it */
+    /* No shadow or glow behind the words (the owner, 23 November): only
+       below 75% strength, where the glass gets too clear for the words
+       to keep 4.5:1 on their own, a faint one, from nothing at 75% to its
+       most at 0% (--glass-low). Icons: none, only bolder (style.css) */
+    --glass-low: max(0, calc(0.75 - var(--glass-k)));
+    --glass-halo: 0 0 1px rgb(0 0 0 / calc(0.73 * var(--glass-low))), 0 0 4px rgb(0 0 0 / calc(0.47 * var(--glass-low)));
+    --glass-icon-halo: none;
+    --glass-text-2: #f0f0f0; /* secondary words on glass: 4.5:1 from 75% strength up */
+    --glass-off: calc(0.8 + 0.15 * var(--glass-u)); /* a dimmed control on glass, still read as there (not 0.4); less dim as the glass gets clearer */
     /* The halo itself: tight round each letter, where it counts, fading out.
        It keeps text at 7:1 and secondary text at 4.5:1 against what's
        right round them, over a white photo or a black one, and shows only
@@ -266,10 +277,10 @@
 
     --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, linear-gradient(180deg, rgb(255 255 255 / 0.45), rgb(255 255 255 / 0) 45%), rgb(250 250 252 / 0.66);
     --glass-border: rgb(0 0 0 / 0.08); /* an edge even over a white photo */
-    --glass-filter: blur(24px) saturate(180%) contrast(0.4) brightness(1.6);
+    --glass-filter: blur(24px) saturate(180%) contrast(calc(0.5 - 0.1 * var(--glass-k))) brightness(1.6);
     --glass-rim: inset 1px 1px 0 -0.5px rgb(255 255 255 / 0.95), inset -1px -1px 0 -0.5px rgb(255 255 255 / 0.5);
-    --glass-text-2: #505050;
-    --glass-halo: none; /* light glass keeps dark words readable on its own */
+    --glass-text-2: #2e2e2e;
+    --glass-halo: 0 0 1px rgb(255 255 255 / calc(0.8 * var(--glass-low))), 0 0 4px rgb(255 255 255 / calc(0.53 * var(--glass-low))); /* (below 75% only, as above) */
     --glass-icon-halo: none;
 }
 
@@ -282,9 +293,9 @@
    bends; a halo behind the words keeps them readable, as on Crystal ---- */
 :root[data-glass="liquid"] {
     --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box,
-        radial-gradient(130% 160% at 0% 0%, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0) 45%),
-        linear-gradient(180deg, rgb(255 255 255 / 0.03), rgb(255 255 255 / 0) 40%);
-    --glass-filter: blur(1.5px) saturate(180%) contrast(0.55) brightness(0.42);
+        radial-gradient(130% 160% at 0% 0%, rgb(255 255 255 / calc(0.12 - 0.06 * var(--glass-k))), rgb(255 255 255 / 0) 45%),
+        linear-gradient(180deg, rgb(255 255 255 / calc(0.06 - 0.03 * var(--glass-k))), rgb(255 255 255 / 0) 40%), rgb(255 255 255 / calc(0.03 - 0.03 * var(--glass-k)));
+    --glass-filter: blur(1.5px) saturate(180%) contrast(calc(1 - 0.45 * var(--glass-k))) brightness(calc(0.72 - 0.3 * var(--glass-k)));
     --glass-rim: inset 1.5px 1.5px 0 -1px rgb(255 255 255 / 0.70), inset -1.5px -1.5px 0 -1px rgb(255 255 255 / 0.40),
         inset 0 0 0 0.5px rgb(255 255 255 / 0.12), inset 0 8px 14px -10px rgb(255 255 255 / 0.35), inset 0 -8px 14px -10px rgb(0 0 0 / 0.30);
     --shadow-2: 0 10px 30px rgb(0 0 0 / 0.28), 0 2px 6px rgb(0 0 0 / 0.20);
@@ -295,9 +306,9 @@
 :root[data-glass="liquid"][data-theme="light"] {
     --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box,
         radial-gradient(130% 160% at 0% 0%, rgb(255 255 255 / 0.55), rgb(255 255 255 / 0) 45%),
-        linear-gradient(180deg, rgb(255 255 255 / 0.30), rgb(255 255 255 / 0) 40%), rgb(255 255 255 / 0.34);
+        linear-gradient(180deg, rgb(255 255 255 / 0.30), rgb(255 255 255 / 0) 40%), rgb(255 255 255 / calc(0.18 + 0.16 * var(--glass-k)));
     --glass-border: rgb(0 0 0 / 0.06);
-    --glass-filter: blur(1.5px) saturate(150%) contrast(0.3) brightness(2);
+    --glass-filter: blur(1.5px) saturate(150%) contrast(calc(0.7 - 0.4 * var(--glass-k))) brightness(calc(1.4 + 0.6 * var(--glass-k)));
     --glass-rim: inset 1.5px 1.5px 0 -1px #fff, inset -1.5px -1.5px 0 -1px rgb(255 255 255 / 0.8),
         inset 0 8px 14px -10px rgb(255 255 255 / 0.9), inset 0 -8px 14px -10px rgb(0 0 0 / 0.10);
     --shadow-2: 0 10px 30px rgb(0 0 0 / 0.14), 0 2px 6px rgb(0 0 0 / 0.08);
@@ -307,18 +318,18 @@
    a bevel catching light along the top edge and fainter along the
    bottom ---- */
 :root[data-glass="lens"] {
-    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, linear-gradient(180deg, rgb(255 255 255 / 0.05), rgb(255 255 255 / 0.02)) padding-box,
+    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, linear-gradient(180deg, rgb(255 255 255 / calc(0.18 - 0.13 * var(--glass-k))), rgb(255 255 255 / calc(0.06 - 0.04 * var(--glass-k)))) padding-box,
         linear-gradient(180deg, rgb(255 255 255 / 0.5), rgb(255 255 255 / 0) 3px, rgb(255 255 255 / 0) calc(100% - 3px), rgb(255 255 255 / 0.18)) border-box; /* the bevel: on the edge only, not under the words */
     --glass-border: transparent;
-    --glass-filter: blur(16px) saturate(170%) contrast(0.5) brightness(0.42);
+    --glass-filter: blur(16px) saturate(170%) contrast(calc(1 - 0.5 * var(--glass-k))) brightness(calc(0.5 - 0.08 * var(--glass-k)));
     --glass-rim: inset 0 1px 1px rgb(255 255 255 / 0.25), inset 0 -1px 1px rgb(0 0 0 / 0.15);
     --shadow-2: 0 8px 24px rgb(0 0 0 / 0.35), 0 0 0 0.5px rgb(0 0 0 / 0.3);
 }
 
 :root[data-glass="lens"][data-theme="light"] {
-    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, linear-gradient(180deg, rgb(255 255 255 / 0.75), rgb(255 255 255 / 0.45)) padding-box,
+    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, linear-gradient(180deg, rgb(255 255 255 / 0.75), rgb(255 255 255 / calc(0.4 + 0.05 * var(--glass-k)))) padding-box,
         linear-gradient(180deg, #fff, rgb(255 255 255 / 0) 3px, rgb(0 0 0 / 0) calc(100% - 3px), rgb(0 0 0 / 0.14)) border-box;
-    --glass-filter: blur(16px) saturate(110%) contrast(0.3) brightness(1.9);
+    --glass-filter: blur(16px) saturate(110%) contrast(calc(0.5 - 0.2 * var(--glass-k))) brightness(calc(1.6 + 0.3 * var(--glass-k)));
     --glass-rim: inset 0 1px 1px #fff, inset 0 -1px 1px rgb(0 0 0 / 0.06);
     --shadow-2: 0 8px 24px rgb(0 0 0 / 0.14), 0 0 0 0.5px rgb(0 0 0 / 0.12);
 }
@@ -328,26 +339,26 @@
    the band above keeps the words readable) ---- */
 :root[data-glass="clear"] {
     --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, rgb(20 20 22 / 0.30);
-    --glass-filter: blur(14px) saturate(190%) contrast(0.5) brightness(0.55);
+    --glass-filter: blur(14px) saturate(190%) contrast(calc(1 - 0.5 * var(--glass-k))) brightness(calc(0.62 - 0.07 * var(--glass-k)));
     --shadow-2: 0 12px 40px rgb(0 0 0 / 0.35), 0 2px 6px rgb(0 0 0 / 0.18);
 }
 
 :root[data-glass="crystal"] {
-    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, rgb(255 255 255 / 0.04);
-    --glass-filter: blur(8px) saturate(220%) contrast(0.5) brightness(0.44);
+    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, rgb(255 255 255 / calc(0.06 - 0.02 * var(--glass-k)));
+    --glass-filter: blur(8px) saturate(220%) contrast(calc(1 - 0.5 * var(--glass-k))) brightness(calc(0.68 - 0.24 * var(--glass-k)));
     --shadow-2: 0 12px 40px rgb(0 0 0 / 0.3);
 }
 
 :root[data-glass="clear"][data-theme="light"],
 :root[data-glass="crystal"][data-theme="light"] {
-    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, rgb(255 255 255 / 0.5);
-    --glass-filter: blur(14px) saturate(140%) contrast(0.3) brightness(1.8);
+    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, rgb(255 255 255 / calc(0.4 + 0.1 * var(--glass-k)));
+    --glass-filter: blur(14px) saturate(140%) contrast(calc(0.6 - 0.3 * var(--glass-k))) brightness(calc(1.5 + 0.3 * var(--glass-k)));
     --shadow-2: 0 12px 40px rgb(0 0 0 / 0.12);
 }
 
 :root[data-glass="crystal"][data-theme="light"] {
-    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, rgb(255 255 255 / 0.45);
-    --glass-filter: blur(8px) saturate(140%) contrast(0.32) brightness(1.9);
+    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, rgb(255 255 255 / calc(0.22 + 0.23 * var(--glass-k)));
+    --glass-filter: blur(8px) saturate(140%) contrast(calc(0.7 - 0.38 * var(--glass-k))) brightness(calc(1.4 + 0.5 * var(--glass-k)));
 }
 
 /* ---- Glass tint (Settings): a wash of colour over whichever glass ---- */

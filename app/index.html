@@ -901,6 +901,14 @@
                             </div>
                         </div>
                         <div class="set-row set-own-look">
+                            <label class="set-label" for="cust-glass-strength">Glass strength
+                                <small>Lower shows more of the photo through the glass. Higher is easier to read over bright photos</small></label>
+                            <span class="set-range">
+                                <input type="range" id="cust-glass-strength" min="0" max="100" step="5" value="75">
+                                <output id="cust-glass-strength-out" for="cust-glass-strength">75%</output>
+                            </span>
+                        </div>
+                        <div class="set-row set-own-look">
                             <span class="set-label" id="set-tint-label">Glass tint
                                 <small>A wash of color over the glass. None is best for judging color</small></span>
                             <div class="seg" role="radiogroup" aria-labelledby="set-tint-label">
