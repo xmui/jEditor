@@ -584,6 +584,77 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('savekept')) {
+        console.log('a project\'s answer about saving is kept: reopened, its edits.json gone, on a network path, after a restart (edits.js)');
+        const { page, issues } = await open();
+        const step1 = await page.evaluate(async () => {
+            const out = {};
+            const $ = (id) => document.getElementById(id);
+            const shown = () => !$('ui-dialog').classList.contains('hidden');
+            const blob = async (color) => { const c = document.createElement('canvas'); c.width = 120; c.height = 90; const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, 120, 90); return canvasBlob(c); };
+            FirstOpen.setAsking(true);
+            app.uiPrefs.keepEdits = true;
+            const smith = await openProject('Smith', { 'a.png': await blob('#806040') });
+            await until(shown);
+            out.asked = $('uid-title').textContent;
+            $('uid-alt').click(); // Into the photos
+            await until(() => !shown());
+            await Edits.flush();
+            // Opened again: not asked
+            const reopen = async (d) => { window.showDirectoryPicker = async () => d; await app.browseFolder(); await until(() => app.dirHandle === d && !app.isLoading); await sleep(500); };
+            const other = await openProject('Other', { 'b.png': await blob('#406080') });
+            await until(shown);
+            $('uid-ok').click();
+            await until(() => !shown());
+            await reopen(smith);
+            out.again = [shown(), Edits.keeping()];
+            // Its edits.json not where it was left (another path for the same
+            // folder, as a network share gives): still not asked, and put back
+            await smith.getDirectoryHandle('.jeditor').then(d => d.removeEntry('edits.json')).catch(() => { });
+            await reopen(other);
+            await reopen(smith);
+            out.lost = [shown(), Edits.keeping()];
+            await Edits.save();
+            out.putBack = await smith.getDirectoryHandle('.jeditor').then(d => d.getFileHandle('edits.json')).then(h => h.getFile()).then(f => f.text()).then(t => JSON.parse(t).keep).catch(e => 'none: ' + e.message);
+            // The same share written two ways is one key; the folder's name without a path
+            out.keys = [Edits.pathKey('\\\\MC-S1-LABNAS1\\General\\Orders\\Smith\\') === Edits.pathKey('\\\\mc-s1-labnas1\\general\\Orders\\Smith'),
+                Edits.pathKey('Z:/Orders/Smith/') === Edits.pathKey('z:\\orders\\smith'), await Edits.choiceKey()];
+            // In the app: by the path it says, however it's written
+            const native = FolderCache.native, orderPath = FolderCache.orderPath;
+            FolderCache.native = () => ({});
+            FolderCache.orderPath = async () => '\\\\mc-S1-labnas1\\general\\Orders\\Smith';
+            await Edits.rememberChoice(false);
+            FolderCache.orderPath = async () => '\\\\MC-S1-LABNAS1\\General\\Orders\\Smith\\';
+            out.unc = [await Edits.choiceKey(), await Edits.rememberedChoice()];
+            FolderCache.native = native;
+            FolderCache.orderPath = orderPath;
+            return out;
+        });
+        // A restart: the page loaded again, the project opened again
+        await page.reload({ waitUntil: 'networkidle' });
+        await page.evaluate(PROJECT);
+        const step2 = await page.evaluate(async () => {
+            const $ = (id) => document.getElementById(id);
+            const shown = () => !$('ui-dialog').classList.contains('hidden');
+            const opfs = await navigator.storage.getDirectory();
+            const smith = await opfs.getDirectoryHandle('Smith');
+            await smith.getDirectoryHandle('.jeditor').then(d => d.removeEntry('edits.json')).catch(() => { });
+            window.showDirectoryPicker = async () => smith;
+            await app.browseFolder();
+            await until(() => app.dirHandle === smith && !app.isLoading);
+            await sleep(600);
+            return [FirstOpen.asking(), shown(), Edits.keeping()];
+        });
+        check('save kept: asked the first time', step1.asked === 'How should Smith save edits?', JSON.stringify(step1));
+        check('save kept: opened again, not asked, its answer kept', JSON.stringify(step1.again) === '[false,false]', JSON.stringify(step1.again));
+        check('save kept: its edits.json not where it was left, still not asked (kept by its path), and put back', JSON.stringify(step1.lost) === '[false,false]' && step1.putBack === false, JSON.stringify([step1.lost, step1.putBack]));
+        check('save kept: a network share written two ways is one project; without a path, its name', !!step1.keys && step1.keys[0] && step1.keys[1] && step1.keys[2] === 'name:smith', JSON.stringify(step1.keys));
+        check('save kept: in the app, by the path it gives, whatever its case or trailing \\\\', !!step1.unc && step1.unc[0] === 'path:\\\\mc-s1-labnas1\\general\\orders\\smith' && step1.unc[1] === false, JSON.stringify(step1.unc));
+        check('save kept: after a restart, still not asked', JSON.stringify(step2) === '[true,false,false]', JSON.stringify(step2));
+        check('save kept: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     if (wanted('savequestion')) {
         console.log('a project\'s first time: keep edits in jEditor, or into the photos (first-open.js, edits.js)');
         const { page, issues } = await open();
@@ -710,6 +781,63 @@ const PROJECT = `
         check('sort keys: after a restart the project opens sorted by date taken, nothing read', again.mode === 'taken_desc' && again.atOpen === 'b.jpg,c.jpg,a.jpg' && again.reads === 0, JSON.stringify(again));
         check('sort keys: a photo changed outside jEditor is read again, only it', again.changedReads === 1, JSON.stringify(again));
         check('sort keys: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    if (wanted('cropsync')) {
+        console.log('syncing a crop again: the new crop goes on, in Photos\' Sync, Adjust\'s Sync and Crop like the last crop');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const $ = (id) => document.getElementById(id);
+                const blob = async (color) => { const c = document.createElement('canvas'); c.width = 300; c.height = 200; const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, 300, 200); return canvasBlob(c); };
+                app.uiPrefs.keepEdits = true; // (kept as edits, to read back)
+                await openProject('Crops', { 'a.png': await blob('#806040'), 'b.png': await blob('#406080'), 'c.png': await blob('#408060') });
+                const [A, B, C] = ['a.png', 'b.png', 'c.png'].map(n => app.files.find(f => f.name === n));
+                const crop = (x0, x1, angle = 0) => ({ q: 0, angle, aspectKey: 'free', landscape: true, n: { x0, y0: -0.4, x1, y1: 0.4 } });
+                const nOf = (f) => f._edit ? [Math.round(f._edit.n.x0 * 100), Math.round(f._edit.n.x1 * 100), Math.round((f._edit.angle || 0) * 10)].join() : 'none';
+                const okSync = async (fn) => { const p = fn(); await until(() => !$('sync-panel').classList.contains('hidden')); $('sync-ok').click(); await p; };
+                // Photos' Sync: A's crop onto B, then a new crop on A, synced again
+                step = 'photos';
+                Edits.set([{ file: A, edit: crop(-0.4, 0.2) }], 'crop');
+                await okSync(() => AdjustSync.open(A, [B]));
+                const first = nOf(B);
+                Edits.set([{ file: A, edit: crop(-0.1, 0.45) }], 'crop');
+                await okSync(() => AdjustSync.open(A, [B]));
+                out.photos = [nOf(A), first, nOf(B)];
+                // Crop like the last crop: twice, with a new crop in between
+                step = 'like';
+                app.rememberCrop(crop(-0.3, 0.1));
+                await app.cropLike([C]);
+                const likeFirst = nOf(C);
+                app.rememberCrop(crop(0, 0.4));
+                await app.cropLike([C]);
+                out.like = [likeFirst, nOf(C)];
+                // Adjust's Sync: straightened in Adjust (Geometry), synced; straightened again, synced again
+                step = 'adjust';
+                app.openSingle(A);
+                await app.enterAdjust(A);
+                await until(() => Adjust.ready);
+                // B picked in the strip too (Ctrl+click)
+                app.selection = new Set([A, B]);
+                out.targets = AdjustSync.targets().map(f => f.name).join();
+                Adjust.applyGeo(Adjust.geoAt(4));
+                await okSync(() => AdjustSync.fromAdjust());
+                const adjFirst = nOf(B);
+                Adjust.applyGeo(Adjust.geoAt(-6));
+                await okSync(() => AdjustSync.fromAdjust());
+                out.adjust = [adjFirst, nOf(B)];
+                return out;
+            } catch (e) {
+                return { error: step + ': ' + e.message };
+            }
+        });
+        check('crop sync: Photos\' Sync puts the new crop on when synced again', !r.error && !!r.photos && r.photos[2] !== r.photos[1] && r.photos[2] === '-10,45,0', JSON.stringify(r));
+        check('crop sync: Crop like the last crop, again with a new crop, puts the new one on', !!r.like && r.like[0] !== r.like[1] && /^0,/.test(r.like[1]), JSON.stringify(r.like));
+        check('crop sync: Adjust\'s Sync puts the straighten being made on, the first time and again', r.targets === 'b.png' && !!r.adjust && /,40$/.test(r.adjust[0]) && /,-60$/.test(r.adjust[1]), JSON.stringify([r.targets, r.adjust]));
+        check('crop sync: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

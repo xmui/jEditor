@@ -294,6 +294,22 @@ const Recents = {
         }
     },
 
+    // Reset jEditor (reset.js): Recent forgotten on disk too, or it would
+    // come back from the file at the next start. Recent is then rebuilt from
+    // nothing (an empty file, so not from the projects' order.json either)
+    async clearDisk() {
+        try {
+            const dir = await this.diskDir();
+            if (!dir) return;
+            const fh = await dir.getFileHandle(this.FILE, { create: true });
+            const w = await fh.createWritable();
+            await w.write(JSON.stringify({ version: 1, folders: [] }));
+            await w.close();
+        } catch (e) {
+            console.warn('Recent: couldn\'t forget the list on disk', e);
+        }
+    },
+
     // → [{ id, name, path, openedAt, count? }], or null (no file yet)
     async readDisk(dir) {
         let text;

@@ -6354,6 +6354,10 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                 await wipe();
                 out.second = await Recents.restore();
                 out.namesAgain = (await Recents.list()).map(r => r.name);
+                // Reset jEditor (reset.js) forgets it on disk too: nothing comes back
+                await Recents.clearDisk();
+                await wipe();
+                out.afterReset = await Recents.restore();
             } finally {
                 FolderCache.native = was;
                 await wipe();
@@ -6366,6 +6370,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             && JSON.stringify(durable.opened) === JSON.stringify(['Z:\\Archive Scan Jobs\\vandenberg']), JSON.stringify(durable));
         check('... then from recent.json, which follows Recent: a project taken off stays off', JSON.stringify(durable.afterForget) === '["vandenberg"]'
             && durable.second === 1 && JSON.stringify(durable.namesAgain) === '["vandenberg"]', JSON.stringify(durable));
+        check('... Reset jEditor forgets it on disk too (Recents.clearDisk): nothing comes back, not even from the projects\' folders', durable.afterReset === 0, JSON.stringify(durable));
         check('home suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
