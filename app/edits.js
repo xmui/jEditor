@@ -143,6 +143,7 @@ const Edits = {
         this.rememberChoice(on);
         this._dirty = true;
         this.saveSoon();
+        if (typeof Unsaved !== 'undefined') Unsaved.soon();
         if (!quiet && was !== on) this.app.showToast(on ? 'This project keeps its edits in jEditor; the photos stay as they are' : 'This project saves edits into the photos as you go', 3000);
     },
 
@@ -227,10 +228,13 @@ const Edits = {
         if (this._final) await this._final.catch(() => { });
         if (this._loadedFor !== app.dirHandle) return [];
         let data = null;
+        let editsAt = 0;
         try {
             const root = await FolderCache.root(app, false);
             const fh = root && await root.getFileHandle(this.FILE);
-            data = fh && JSON.parse(await (await fh.getFile()).text());
+            const file = fh && await fh.getFile();
+            editsAt = file ? file.lastModified : 0;
+            data = file && JSON.parse(await file.text());
         } catch (e) { /* nothing kept */ }
         if (this._loadedFor !== app.dirHandle) return [];
         // Its own choice (only `keep`: the old `defer` was written for every
@@ -252,6 +256,8 @@ const Edits = {
             // A photo changed since (outside jEditor): its edit no longer fits
             if (e && (!e.size || e.size === f.size)) f._edit = e;
             else delete f._edit;
+            // When and where it was exported (unsaved.js)
+            Unsaved.restore(f, rel, data);
             saved.delete(rel);
         }
         for (const [k, v] of saved) {
@@ -261,6 +267,22 @@ const Edits = {
         // Paint layers nothing in edits.json uses any more (paint.js)
         Paint.tidy(Object.values((data && data.edits) || {}).map(v => this.clean(v)).filter(Boolean)).catch(() => { });
         if (typeof Places !== 'undefined' && Places.boxes) Places.drawCard();
+        // Once per project: exports made before jEditor kept track of them,
+        // looked for in the background (unsaved.js: backfill)
+        this._backfilled = !!(data && data.backfilled);
+        if (!this._backfilled && data && Object.keys(data.edits || {}).length) {
+            const dir = app.dirHandle;
+            setTimeout(() => {
+                if (app.dirHandle !== dir) return;
+                Unsaved.backfill(null, editsAt).catch(() => 0).then((n) => {
+                    if (app.dirHandle !== dir) return;
+                    this._backfilled = true;
+                    this._dirty = true;
+                    this.saveSoon();
+                    if (n) app.log(`Unsaved: ${n} photo${n === 1 ? '' : 's'} found exported before`);
+                });
+            }, 1500);
+        }
         return app.files.filter(f => f._edit);
     },
 
@@ -343,7 +365,7 @@ const Edits = {
 
     // Nothing to keep
     isEmpty(data) {
-        return !Object.keys(data.edits).length && typeof data.keep !== 'boolean';
+        return !Object.keys(data.edits).length && typeof data.keep !== 'boolean' && !(data.exports && Object.keys(data.exports).length);
     },
 
     // Every edit, as edits.json holds them
@@ -351,7 +373,11 @@ const Edits = {
         const out = {};
         for (const [k, v] of this.orphans) out[k] = v;
         for (const f of this.app.files) if (f._edit) out[f.relPath || f.name] = f._edit;
-        return this.choice === null ? { version: 1, edits: out } : { version: 1, keep: this.choice, edits: out };
+        // When and where photos were exported (unsaved.js), and that the
+        // exports before that were looked for (backfilled)
+        const exports = Unsaved.collect(this.app.files);
+        return { version: 1, ...(this.choice === null ? {} : { keep: this.choice }), edits: out,
+            ...(Object.keys(exports).length ? { exports } : {}), ...(this._backfilled ? { backfilled: true } : {}) };
     },
 
     // Written to the project's data folder (removed when there's nothing)
@@ -495,6 +521,7 @@ const Edits = {
             if (f._stripEl) this.decorate(f._stripEl, f);
         }
         this.updateHeader();
+        if (typeof Unsaved !== 'undefined') Unsaved.soon();
         if (save) this.saveSoon();
     },
 
@@ -554,7 +581,11 @@ const Edits = {
             b.className = 'tile-edit';
             el.appendChild(b);
         }
-        b.title = this.describe(f._edit);
+        // Not saved over the original or exported yet (unsaved.js): the
+        // dot that's counted
+        const unsaved = typeof Unsaved !== 'undefined' && Unsaved.is(f);
+        b.classList.toggle('unsaved', unsaved);
+        b.title = this.describe(f._edit) + (unsaved ? '\nNot saved or exported yet' : '');
     },
 
     // Beside the file name: this photo's edit isn't saved yet

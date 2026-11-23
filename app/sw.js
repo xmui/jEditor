@@ -78,6 +78,7 @@ const ASSETS = [
     './folders.js',
     './flags.js',
     './edits.js',
+    './unsaved.js',
     './history.js',
     './watch.js',
     './recents.js',

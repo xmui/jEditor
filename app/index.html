@@ -34,6 +34,7 @@
     <script src="folders.js"></script>
     <script src="flags.js"></script>
     <script src="edits.js"></script>
+    <script src="unsaved.js"></script>
     <script src="adjust.js"></script>
     <script src="adjust-masks.js"></script>
     <script src="adjust-spots.js"></script>
@@ -149,6 +150,9 @@
             <button id="picked-save" class="btn primary">Save…</button>
         </div>
 
+        <!-- Unsaved edits (unsaved.js): the count, in the corner while the
+             sidebar's closed; a click offers Save, Export, Show them -->
+        <button id="unsaved-pill" class="unsaved-pill hidden" type="button" aria-haspopup="menu"><span class="unsaved-dot" aria-hidden="true"></span><span class="unsaved-text"></span></button>
         <!-- Task pill: spinner + current task; hover reveals every active task -->
         <div id="loading-indicator" class="task-pill hidden" role="status" aria-live="polite">
             <div class="loader-spinner" aria-hidden="true"></div>
@@ -302,6 +306,8 @@
                     </button>
                     <button id="fr-total" class="fr-total" title="Details of what's shown (I)"></button>
                 </div>
+                <!-- Unsaved edits (unsaved.js), at the bottom while it's open -->
+                <button id="unsaved-side" class="unsaved-side hidden" type="button" aria-haspopup="menu"><span class="unsaved-dot" aria-hidden="true"></span><span class="unsaved-text"></span></button>
                 <div class="side-grip" data-side="rail" data-edge="right" aria-hidden="true"></div>
             </aside>
             <!-- The sidebar hidden: a thin line at the window's edge, to
