@@ -4048,8 +4048,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             for (let i = 0; i < 250 && app.isLoading; i++) await new Promise(res => setTimeout(res, 20));
             const target = [...document.querySelectorAll('#recent-list li')].find(li => li.querySelector('.recent-name').textContent === 'rec 3');
             target.querySelector('.recent-open').click();
-            for (let i = 0; i < 250 && !(app.dirHandle && app.dirHandle.name === 'rec 3' && app.files.length); i++) await new Promise(res => setTimeout(res, 20));
-            await Recents.saving;
+            // (until it has opened: Recent is told at the end of the open,
+            // after its photos are listed, so waiting for them alone left a
+            // slow run looking at Recent before rec 3 was put in it)
+            for (let i = 0; i < 250 && !(app.dirHandle && app.dirHandle.name === 'rec 3' && app.files.length && !app.isLoading); i++) await new Promise(res => setTimeout(res, 20));
+            for (let i = 0; i < 100 && !(await names()).startsWith('rec 3,'); i++) { await Recents.saving; await new Promise(res => setTimeout(res, 20)); }
             out.clicked = app.dirHandle.name === 'rec 3' && app.files.length === 1 && (await names()).startsWith('rec 3,');
             // × forgets it (the folder stays)
             // The table shows four: rec 3 (just opened), rec 6, rec 5, rec 4; the list keeps six
@@ -6354,6 +6357,10 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                 await wipe();
                 out.second = await Recents.restore();
                 out.namesAgain = (await Recents.list()).map(r => r.name);
+                // Reset jEditor (reset.js) forgets it on disk too: nothing comes back
+                await Recents.clearDisk();
+                await wipe();
+                out.afterReset = await Recents.restore();
             } finally {
                 FolderCache.native = was;
                 await wipe();
@@ -6366,6 +6373,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             && JSON.stringify(durable.opened) === JSON.stringify(['Z:\\Archive Scan Jobs\\vandenberg']), JSON.stringify(durable));
         check('... then from recent.json, which follows Recent: a project taken off stays off', JSON.stringify(durable.afterForget) === '["vandenberg"]'
             && durable.second === 1 && JSON.stringify(durable.namesAgain) === '["vandenberg"]', JSON.stringify(durable));
+        check('... Reset jEditor forgets it on disk too (Recents.clearDisk): nothing comes back, not even from the projects\' folders', durable.afterReset === 0, JSON.stringify(durable));
         check('home suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
