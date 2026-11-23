@@ -110,6 +110,17 @@ for (const [n, row] of Object.entries(doc)) {
 }
 check('the table matches what each app lists', !wrong.length, wrong.join('; '));
 
+// Reset jEditor forgets the same files of the app's own everywhere: the
+// Windows app's (src/AppReset.cs), the Mac and Linux app's (mac/main.js) and
+// the Tauri one's (desktop/app/src/host.rs), each beside its settings file
+const resetFiles = (p, re) => { const m = read(p).match(re); return m ? [...m[1].matchAll(/["']([^"']+)["']/g)].map(x => x[1]) : null; };
+const winReset = resetFiles('src/AppReset.cs', /Forgotten\s*=\s*\[([^\]]*)\]/);
+const macReset = resetFiles('mac/main.js', /RESET_FILES\s*=\s*\[([^\]]*)\]/);
+const tauriReset = resetFiles('desktop/app/src/host.rs', /RESET_FILES:[^=]*=\s*&\[([^\]]*)\]/);
+check('Reset jEditor forgets each app\'s settings file (window.json; mac.json in the Mac and Linux app and in Tauri)',
+    !!winReset && winReset.includes('window.json') && !!macReset && macReset.includes('mac.json') && JSON.stringify(macReset) === JSON.stringify(tauriReset),
+    JSON.stringify({ windows: winReset, mac: macReset, tauri: tauriReset }));
+
 // What runs where, as the code has it
 const names = [...inBuild].sort((a, b) => (has[b] ? has[b].size : 0) - (has[a] ? has[a].size : 0) || a.localeCompare(b));
 const col = (s, w) => String(s).padEnd(w);

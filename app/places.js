@@ -112,6 +112,12 @@ const Places = {
             // Right-click a folder: open, rename, show in Explorer, pin
             box.addEventListener('contextmenu', (e) => {
                 const row = e.target.closest('.sb-row');
+                // The Projects or Recents heading: New project…
+                if (!row && e.target.closest('.sb-sec[data-sec="projects"], .sb-sec[data-sec="recents"]')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return this.app.openContextMenu([['New project…', () => this.newProject()]], e.clientX, e.clientY);
+                }
                 if (!row || !row.dataset.path || row.querySelector('.sb-rename')) return;
                 e.preventDefault();
                 e.stopPropagation();
@@ -154,11 +160,14 @@ const Places = {
             Picker.close();
             this.app.openContextMenu(this.cardItems(), e.clientX, e.clientY);
         });
-        // Right-click the sidebar's empty space: a new folder in the project
+        // Right-click the sidebar's empty space: a new project, and a new
+        // folder in the open one
         this.el('folder-rail').addEventListener('contextmenu', (e) => {
-            if (e.defaultPrevented || !this.app.dirHandle || e.target.closest('.fr-row, .sb-row, .sb-card, .mode-seg, button, input')) return;
+            if (e.defaultPrevented || e.target.closest('.fr-row, .sb-row, .sb-card, .mode-seg, button, input')) return;
             e.preventDefault();
-            this.app.openContextMenu([['New folder…', () => Folders.newFolder('')]], e.clientX, e.clientY);
+            const items = [['New project…', () => this.newProject()]];
+            if (this.app.dirHandle) items.push(['New folder…', () => Folders.newFolder('')]);
+            this.app.openContextMenu(items, e.clientX, e.clientY);
         });
         Picker.init(this);
         this.initDrag();
@@ -724,6 +733,8 @@ const Places = {
         if (!drive) items.push(['—'], ['Export: USB drive' + (Host.has('burn') ? ', disc' : '') + ', copies…', () => Export.open({ path })]);
         // The open project's photos in another format
         if (!drive && this.app.files.length && this.key(path) === this.key(this.current())) items.push(['Convert…', () => Convert.open({ folder: '' })]);
+        // A project in the projects folder's list: a new one beside it
+        if (row.closest('.sb-projects') && row.style.getPropertyValue('--depth').trim() === '0') items.push(['—'], ['New project…', () => this.newProject()]);
         return items;
     },
 
@@ -736,6 +747,7 @@ const Places = {
         items.push(['Rename…', rename || (() => this.renameFolder(path))]);
         if (Host.has('reveal')) items.push([Host.say('Show in {files}'), () => this.native().reveal(path)]);
         if (recent) items.push(['—'], ['Remove from Recents', () => this.forgetRecent(recent)]);
+        items.push(['—'], ['New project…', () => this.newProject()]);
         return items;
     },
 

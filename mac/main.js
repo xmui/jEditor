@@ -630,6 +630,8 @@ async function handle(rec, type, data) {
             return { ok: true };
         case 'checkUpdate':
             return checkUpdate({ beta: !!data.beta });
+        case 'resetApp':
+            return resetApp(rec, !!data.full);
         case 'installUpdate':
             return installUpdate(wc);
         case 'ready':
@@ -1274,6 +1276,36 @@ function holdClose(rec) {
         rec.win.webContents.send('jeditor', { type: 'closing' });
     }
     return true;
+}
+
+// Settings → Troubleshooting (app/reset.js, the `appReset` feature). The
+// page has removed what it keeps; here the browser's caches, for Reset
+// jEditor this app's own files (RESET_FILES), then jEditor again. The page's
+// own storage isn't wiped: each project's flags, edits and deleted photos are
+// in it (jeditor-data), and the page has removed the rest
+// This app's files a full reset forgets, in its userData folder: mac.json
+// (the window's place, the folder picked last, what's been asked). A file of
+// its own that holds what a fresh install wouldn't have goes here too (as in
+// src/AppReset.cs: test/parity.test.js checks they match)
+const RESET_FILES = ['mac.json'];
+async function resetApp(rec, full) {
+    const ses = rec.win.webContents.session;
+    try {
+        await ses.clearCache();
+        await ses.clearStorageData({ storages: ['cachestorage', 'serviceworkers', 'shadercache'] });
+    } catch (e) {
+        log('warn', 'Reset: the browser\'s caches weren\'t cleared: ' + e.message);
+    }
+    if (full) {
+        settings = {};
+        for (const name of RESET_FILES) {
+            try { fs.rmSync(path.join(app.getPath('userData'), name), { force: true }); } catch (e) { log('warn', `Reset: couldn't remove ${name}: ${e.message}`); }
+        }
+    }
+    log('info', full ? 'Reset jEditor: starting again' : 'Cleared the cache: starting again');
+    if (opts.smoke) return { ok: false };
+    setTimeout(() => { app.relaunch(); quitNow(); }, 200);
+    return { ok: true };
 }
 
 function quitNow() {

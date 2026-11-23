@@ -397,7 +397,7 @@
         log(level, text) {
             log(level === 'error' || level === 'warn' ? level : 'info', text);
         },
-        features: ['reveal', 'windows', 'places', 'folderMove', 'menuBar', 'systemFonts'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions'] : [], ['themes'], mac.platform === 'mac' && mac.photos ? ['photosLibrary', 'photosAdd'] : []),
+        features: ['reveal', 'windows', 'places', 'folderMove', 'menuBar', 'systemFonts', 'appReset'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions'] : [], ['themes'], mac.platform === 'mac' && mac.photos ? ['photosLibrary', 'photosAdd'] : []),
         // jEditor's storage on this Mac: one folder per project (see
         // app/folder-cache.js), in the app's own private storage
         async dataDir() {
@@ -610,6 +610,12 @@
         // beta: betas count too (Settings → Updates → Beta builds)
         async checkUpdate({ beta = false } = {}) {
             return answer('checkUpdate', { beta: !!beta });
+        },
+        // Settings → Troubleshooting (app/reset.js): the browser's caches
+        // cleared, for full this app's own files too, then jEditor starts
+        // again → true when it's restarting
+        async resetApp({ full = false } = {}) {
+            return !!(await answer('resetApp', { full: !!full })).ok;
         },
         // Downloads the newest .dmg, opens it in Finder and quits, so
         // jEditor can be dragged into Applications over this one.

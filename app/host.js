@@ -45,6 +45,11 @@
 //                (JEditorNative.fonts), in its Font picker; the web asks the
 //                browser (queryLocalFonts, Chrome and Edge) and else has
 //                Paint's five (paint-editor.js: loadFonts)
+//   appReset     Settings → Troubleshooting (reset.js): after the page has
+//                cleared what it keeps, the app clears its browser caches
+//                and, for Reset jEditor, its own files (window place, last
+//                folder: src/AppReset.cs, mac/main.js RESET_FILES), then
+//                restarts (JEditorNative.resetApp). The web reloads instead
 //   engineHeic   the engine does HEICs too, grid thumbnails and the viewer's
 //                picture (libheif, with libde265; its DLLs beside the
 //                engine's), natively and on every core, rather than the

@@ -234,7 +234,7 @@
         // (app/host.js says what each feature covers)
         platform: 'windows',
         // (engine: when jeditor_engine.dll loaded; the app says so, Engine.cs)
-        features: ['recycle', 'reveal', 'places', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn', 'themes', 'folderMove', 'cacheFolder', 'menuBar', 'systemFonts'].concat(window.__jeditorEngine ? ['engine'] : [], window.__jeditorEngine && window.__jeditorEngine.heic ? ['engineHeic'] : []),
+        features: ['recycle', 'reveal', 'places', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn', 'themes', 'folderMove', 'cacheFolder', 'menuBar', 'systemFonts', 'appReset'].concat(window.__jeditorEngine ? ['engine'] : [], window.__jeditorEngine && window.__jeditorEngine.heic ? ['engineHeic'] : []),
         // jEditor's storage on this PC: a folder handle, one subfolder per
         // order (see app/folder-cache.js)
         async dataDir() {
@@ -511,6 +511,12 @@
             return done;
         },
         // The cache's folder: { path, chosen }
+        // Settings → Troubleshooting (app/reset.js): the browser's caches
+        // cleared, for full this app's own files too, then jEditor starts
+        // again → true when it's restarting
+        async resetApp({ full = false } = {}) {
+            return !!(await answer('resetApp', { full: !!full })).msg.ok;
+        },
         async cacheDir() {
             return (await answer('cacheDir')).msg;
         },

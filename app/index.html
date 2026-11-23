@@ -68,6 +68,7 @@
     <script src="windows.js"></script>
     <script src="start.js"></script>
     <script src="folder-move.js"></script>
+    <script src="reset.js"></script>
     <script src="open-card.js"></script>
     <script src="palette.js"></script>
     <script src="first-open.js"></script>
@@ -1095,6 +1096,18 @@
                             <span class="set-label"><span data-native-text="Clean up this project">Clean up this folder</span>
                                 <small data-native-text="Removes what jEditor keeps on {computer} for the open project: cache, flags and Auto crop originals. Photos aren't touched.">Empties the trash and removes the cache, flags and Auto crop originals. Photos aren't touched.</small></span>
                             <button id="cust-cleanup" class="btn secondary danger-text">Clean up…</button>
+                        </div>
+                        <!-- When jEditor misbehaves (reset.js): both restart it -->
+                        <h4 class="set-group">Troubleshooting</h4>
+                        <div class="set-row">
+                            <span class="set-label">Clear cache and restart
+                                <small>Thumbnails and the rest are made again. Your projects, recents, pins and settings stay.</small></span>
+                            <button id="set-reset-cache" class="btn secondary">Clear and restart</button>
+                        </div>
+                        <div class="set-row">
+                            <span class="set-label">Reset jEditor
+                                <small>Back to how it was when installed: settings, recents and pins go. Your photos aren't touched.</small></span>
+                            <button id="set-reset-all" class="btn secondary danger-text">Reset…</button>
                         </div>
                     </section>
 
