@@ -4048,8 +4048,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             for (let i = 0; i < 250 && app.isLoading; i++) await new Promise(res => setTimeout(res, 20));
             const target = [...document.querySelectorAll('#recent-list li')].find(li => li.querySelector('.recent-name').textContent === 'rec 3');
             target.querySelector('.recent-open').click();
-            for (let i = 0; i < 250 && !(app.dirHandle && app.dirHandle.name === 'rec 3' && app.files.length); i++) await new Promise(res => setTimeout(res, 20));
-            await Recents.saving;
+            // (until it has opened: Recent is told at the end of the open,
+            // after its photos are listed, so waiting for them alone left a
+            // slow run looking at Recent before rec 3 was put in it)
+            for (let i = 0; i < 250 && !(app.dirHandle && app.dirHandle.name === 'rec 3' && app.files.length && !app.isLoading); i++) await new Promise(res => setTimeout(res, 20));
+            for (let i = 0; i < 100 && !(await names()).startsWith('rec 3,'); i++) { await Recents.saving; await new Promise(res => setTimeout(res, 20)); }
             out.clicked = app.dirHandle.name === 'rec 3' && app.files.length === 1 && (await names()).startsWith('rec 3,');
             // × forgets it (the folder stays)
             // The table shows four: rec 3 (just opened), rec 6, rec 5, rec 4; the list keeps six
