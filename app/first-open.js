@@ -115,7 +115,7 @@ const FirstOpen = {
         const keep = Edits.defaultKeeping();
         const a = await UI.choose({
             title: `How should ${dir.name} save edits?`,
-            message: `Keep in jEditor: your photos stay as they are, and Save over the original (${Host.say('Ctrl+S')}) writes an edit in when you want it. Into the photos: turns and crops are written into the files as you go.`,
+            message: `Keep in jEditor: your photos stay as they are, and Write edits to file (${Host.say('Ctrl+S')}) writes an edit in when you want it. Into the photos: turns and crops are written into the files as you go.`,
             ok: keep ? 'Keep in jEditor' : 'Into the photos',
             alt: keep ? 'Into the photos' : 'Keep in jEditor',
             cancel: 'Not now',

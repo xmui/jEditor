@@ -51,12 +51,21 @@ const Highlights = {
           spot: { find: true, title: 'Find anything', text: () => '{key:app.palette}, then type a command, a photo or a folder and press Enter. {key:edit.undo} takes back any step, and {key:edit.redo} does it again.' } },
         { kicker: 'Start and save', art: 'save', title: 'A new start, and safer saving', tour: true, lines: () => [
             'A new home page, a short tour, and the guide on {key:app.guide}',
-            'Edits are always kept in jEditor; {key:edit.saveOver} writes them into the file',
+            'Edits are kept in jEditor, with a count of what’s unsaved; {key:edit.saveOver} writes them into the file',
             'A proper Export window'] },
         { kicker: 'And more', title: 'Everything else in 2.0', more: [
-            ['Big upgrades', 'Light mode, culling with {key:flag.star} and {key:flag.reject}, Full screen, Find duplicates, the slideshow, QuickShape', 51],
-            ['Polish and fixes', 'Plain words, calmer motion, smoother scrolling, sharper zoom', 53]] }
+            // (how many: counted from the changelog's 2.0 lines, by kind)
+            ['Big upgrades', 'Light mode, culling with {key:flag.star} and {key:flag.reject}, Full screen, the slideshow, Glass strength, QuickShape', 'big'],
+            ['Polish and fixes', 'Plain words, calmer motion, smoother scrolling, sharper zoom', 'polish']] }
     ],
+
+    // 2.0's lines in the changelog (changelog.js: each says what it is), of
+    // one kind ('big', 'polish', 'card'), or all of them
+    count(kind = null) {
+        const entry = (typeof CHANGELOG !== 'undefined' ? CHANGELOG : []).find(e => e.kinds && e.kinds.some(Boolean));
+        if (!entry) return 0;
+        return kind ? entry.kinds.filter(k => k === kind).length : entry.items.length;
+    },
 
     isOpen() { return !!this.el && !this.el.classList.contains('hidden'); },
     skin() { return !!document.documentElement.dataset.skin; },
@@ -134,7 +143,7 @@ const Highlights = {
         const w = (t) => Tour.words(t);
         const card = this.el.querySelector('.hl-card');
         card.innerHTML = c.more
-            ? `<div class="hl-more"><span class="hl-kicker">${Tour.esc(c.kicker)}</span><h2 id="hl-title">${Tour.esc(c.title)}</h2><ul>${c.more.map(([h, t, n]) => `<li><b>${Tour.esc(h)}</b><span>${w(t)}</span><i>${n}</i></li>`).join('')}</ul></div>`
+            ? `<div class="hl-more"><span class="hl-kicker">${Tour.esc(c.kicker)}</span><h2 id="hl-title">${Tour.esc(c.title)}</h2><ul>${c.more.map(([h, t, kind]) => `<li><b>${Tour.esc(h)}</b><span>${w(t)}</span><i>${this.count(kind)}</i></li>`).join('')}</ul></div>`
             : `<div class="hl-art" aria-hidden="true">${this.art(c)}</div><div class="hl-body"><span class="hl-kicker">${Tour.esc(c.kicker)}</span><h2 id="hl-title">${Tour.esc(c.title)}</h2><ul>${c.lines().map(t => `<li>${w(t)}</li>`).join('')}</ul></div>`;
         // Without its pictures (the one-file version), the card goes on without
         card.querySelectorAll('img').forEach(im => im.addEventListener('error', () => card.querySelector('.hl-art')?.remove(), { once: true }));
@@ -146,7 +155,7 @@ const Highlights = {
         const b = (act, label, primary) => `<button type="button" class="btn ${primary ? 'primary' : 'secondary'}" data-hl="${act}">${label}</button>`;
         let acts;
         if (this.i === 0) acts = b('close', 'Later') + b('next', 'Take a look', true);
-        else if (last) acts = b('all', 'See all') + b('close', 'Start', true);
+        else if (last) acts = b('all', `See all ${this.count()} changes`) + b('close', 'Start', true);
         else acts = (c.tour ? b('tour', 'Take the tour') : c.spot && this.canShow() ? b('show', 'Show me') : '') + b('next', 'Next', true);
         this.el.querySelector('.hl-acts').innerHTML = acts;
         if (focus) this.el.querySelector('.hl-acts .primary')?.focus({ preventScroll: true });

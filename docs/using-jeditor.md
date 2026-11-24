@@ -388,7 +388,7 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `tips.js`: the tooltips: one tip in the menus' glass for every control's hint (its title), with the key quietly at the right; shown on pointing or keyboard focus, gone on a press, a key, a scroll or an open menu Also `Hints`: a hint that teaches something hidden shows once (`Hints.show(key)`, or `data-hint-once` on a panel's line), kept in `jeditor.hintsSeen`; Settings → Messages → Show tips again clears it.
 - `guide.js`: the guide (`F1`): cards with clips by topic, the shortcuts as they're set, and a search
 - `tour.js`: the welcome tour: a walk through the real app, offered once on the home page
-- `highlights.js`: What's new in 2.0: seven cards, one at a time, shown once after updating from 1.x and from Help → What's new; their pictures are in `whatsnew/`. Show me is one stop of the tour
+- `highlights.js`: What's new in 2.0: seven cards, one at a time, shown once after updating from 1.x and from Help → What's new; their pictures are in `whatsnew/`. Show me is one stop of the tour. The last card's numbers (big upgrades, polish and fixes, and See all's total) are counted from `changelog.js`, where each 2.0 line says what it is (`{ card }`, `{ big }` or `{ polish }`)
 - `tokens.css`: the design tokens (colors, type, spacing, radii, shadows, motion, layers) and the theme, density, glass, surround and window background switches; `style.css` builds every component from them
 
 Building, testing and releasing are in the [README](../README.md).
