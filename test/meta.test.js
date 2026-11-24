@@ -319,6 +319,154 @@ const PAGE = `
         await page.close();
     }
 
+    // ---- The date tools, All fields and presets ----
+    if (wanted('tools')) {
+        console.log('tools');
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1280, height: 860 });
+        await page.evaluate(PAGE);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('Tools', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('Tools', { create: true });
+            const put = async (name, bytes) => { const w = await (await dir.getFileHandle(name, { create: true })).createWritable(); await w.write(bytes); await w.close(); };
+            const base = await encode('image/jpeg', 0.9);
+            for (const n of ['s1.jpg', 's2.jpg', 's3.jpg']) await put(n, base);
+            await put('dated.jpg', await MetaFields.write(base, { taken: '2001-01-01T12:00:00', rating: 3 }));
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            await until(() => app.files.length === 4);
+            const file = (n) => app.files.find(f => f.name === n);
+            const fieldsOf = async (n) => MetaFields.read(new Uint8Array(await (await file(n).handle.getFile()).arrayBuffer()));
+            const set = (id, v) => { const el = document.getElementById(id); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
+            const pick = (files) => { app.clearSelection(); for (const n of files) app.toggleSelection(file(n)); app.updateSelectionUI(); app.refreshInfoPanel(); };
+            app.setView('grid');
+            await until(() => app.viewMode === 'grid');
+            app.toggleInfoPanel(true);
+
+            // In grid order, a minute apart, from a start
+            pick(['s3.jpg', 's1.jpg', 's2.jpg']);
+            await until(() => document.getElementById('info-edit') && !document.getElementById('info-edit').hidden);
+            document.getElementById('info-edit').click();
+            await until(() => document.getElementById('meta-date-tools'));
+            document.getElementById('meta-date-tools').click();
+            await sleep(100);
+            const menu = [...document.querySelectorAll('#context-menu [role^="menuitem"]')].map(b => b.textContent.trim());
+            out.menu = menu.join('|');
+            [...document.querySelectorAll('#context-menu [role^="menuitem"]')].find(b => /grid order/.test(b.textContent)).click();
+            await until(() => document.getElementById('meta-dates-start'));
+            out.modal = MetaEditor.dialogOpen();
+            set('meta-dates-start', '1962-12-25T09:00:00');
+            out.preview = document.getElementById('meta-dates-preview').textContent;
+            document.getElementById('meta-dates-ok').click();
+            await until(() => !document.getElementById('meta-dates'));
+            await until(async () => (await fieldsOf('s3.jpg')).taken);
+            const order = app.viewFiles().map(f => f.name).filter(n => /^s\d/.test(n));
+            const got = await Promise.all(order.map(async n => (await fieldsOf(n)).taken));
+            out.inOrder = got.join(',') === '1962-12-25T09:00:00,1962-12-25T09:01:00,1962-12-25T09:02:00';
+            out.formBack = !!document.getElementById('meta-form');
+            await app.undo();
+            out.orderUndone = (await Promise.all(order.map(async n => (await fieldsOf(n)).taken))).every(t => t === '');
+            MetaEditor.close();
+
+            // Shift by an amount: one with no date is left as it is
+            pick(['dated.jpg', 's1.jpg']);
+            await until(() => !document.getElementById('info-edit').hidden);
+            document.getElementById('info-edit').click();
+            await until(() => document.getElementById('meta-form'));
+            await MetaEditor.dateTools('shift');
+            set('meta-dates-years', '-1'); set('meta-dates-hours', '2');
+            out.shiftPreview = document.getElementById('meta-dates-preview').textContent;
+            document.getElementById('meta-dates-ok').click();
+            await until(async () => (await fieldsOf('dated.jpg')).taken === '2000-01-01T14:00:00');
+            out.shifted = (await fieldsOf('dated.jpg')).taken === '2000-01-01T14:00:00' && (await fieldsOf('s1.jpg')).taken === '';
+            MetaEditor.close();
+
+            // All fields: change one, add some, remove one
+            app.clearSelection();
+            await app.openSingle(file('dated.jpg'));
+            app.toggleInfoPanel(true);
+            await until(() => MetaEditor._for && MetaEditor._for[0] === file('dated.jpg') && !document.getElementById('info-edit').hidden);
+            await sleep(200);
+            document.getElementById('info-edit').click();
+            await until(() => document.getElementById('meta-all'));
+            document.getElementById('meta-all').click();
+            await until(() => document.getElementById('meta-all-list'));
+            const rows = [...document.querySelectorAll('.meta-all-row')].map(r => r.querySelector('label').textContent);
+            out.allRows = rows.join('|');
+            out.noPointers = !rows.includes('EXIF block');
+            set('meta-all-xmp_xmp_Rating', '5');
+            document.querySelector('.meta-all-row[data-key="xmp:photoshop:DateCreated"] .meta-all-x').click();
+            document.getElementById('meta-all-add').click();
+            set('meta-all-add-name', 'photoshop:City'); set('meta-all-add-value', 'Chicago');
+            document.getElementById('meta-all-add-ok').click();
+            document.getElementById('meta-all-add-group').value = 'EXIF';
+            document.getElementById('meta-all-add-group').dispatchEvent(new Event('change'));
+            set('meta-all-add-name', 'Lens model'); set('meta-all-add-value', 'Nikkor 50 mm');
+            document.getElementById('meta-all-add-ok').click();
+            set('meta-all-add-name', 'photoshop'); set('meta-all-add-value', 'x');
+            document.getElementById('meta-all-add-group').value = 'XMP';
+            document.getElementById('meta-all-add-ok').click();
+            out.badName = /prefix:Name/.test(document.querySelector('#meta-all-fields .dialog-note').textContent);
+            document.getElementById('meta-all-fields-ok').click();
+            await until(() => !document.getElementById('meta-all-fields'));
+            await until(async () => (await fieldsOf('dated.jpg')).rating === 5);
+            const bytes = new Uint8Array(await (await file('dated.jpg').handle.getFile()).arrayBuffer());
+            const all = await MetaFields.listAll(bytes);
+            const val = (k) => ([...all.exif, ...all.xmp].find(x => x.key === k) || {}).value;
+            out.allVals = JSON.stringify([val('xmp:xmp:Rating'), val('xmp:photoshop:City'), val('exif:exif:42036'), val('xmp:photoshop:DateCreated'), val('xmp:exif:DateTimeOriginal')]);
+            out.allSaved = val('xmp:xmp:Rating') === '5' && val('xmp:photoshop:City') === 'Chicago' && val('exif:exif:42036') === 'Nikkor 50 mm' && val('xmp:photoshop:DateCreated') === undefined && val('xmp:exif:DateTimeOriginal') === '2000-01-01T14:00:00';
+            await app.undo();
+            out.allUndone = (await fieldsOf('dated.jpg')).rating === 3;
+
+            // Presets: saved from the form, filled in on another
+            localStorage.removeItem('jeditor.metaPresets');
+            document.getElementById('info-edit').click();
+            await until(() => document.getElementById('meta-form'));
+            set('meta-author', 'Walter Kowalski'); set('meta-copyright', '© Kowalski family');
+            const kw = document.getElementById('meta-kw-input'); kw.value = 'family'; kw.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            const asked = MetaEditor.savePreset();
+            await until(() => !document.getElementById('ui-dialog').classList.contains('hidden'));
+            document.getElementById('uid-input').value = 'Kowalski scans';
+            document.getElementById('uid-ok').click();
+            await asked;
+            out.presetSaved = JSON.stringify(MetaEditor.presets()) === JSON.stringify([{ name: 'Kowalski scans', author: 'Walter Kowalski', copyright: '© Kowalski family', keywords: ['family'] }]);
+            MetaEditor.close();
+            await app.openSingle(file('s2.jpg'));
+            await until(() => MetaEditor._for && MetaEditor._for[0] === file('s2.jpg') && !document.getElementById('info-edit').hidden);
+            await sleep(200);
+            document.getElementById('info-edit').click();
+            await until(() => document.getElementById('meta-presets'));
+            document.getElementById('meta-presets').click();
+            await sleep(100);
+            [...document.querySelectorAll('#context-menu [role^="menuitem"]')].find(b => b.textContent.trim() === 'Kowalski scans').click();
+            out.filled = document.getElementById('meta-author').value === 'Walter Kowalski' && !!document.querySelector('.meta-chip[data-word="family"]');
+            document.getElementById('meta-done').click();
+            await until(async () => (await fieldsOf('s2.jpg')).author === 'Walter Kowalski');
+            const s2 = await fieldsOf('s2.jpg');
+            out.presetWritten = s2.copyright === '© Kowalski family' && s2.keywords.join() === 'family';
+            return out;
+        });
+        check('tools: ⋯ beside Taken has the three date tools for a selection', r.menu === 'Set one date for all…|Shift by an amount…|Number in grid order…', r.menu);
+        check('tools: the date tools are a dialog (the app\'s keys stand aside)', r.modal);
+        check('tools: the preview shows each photo\'s new date', /no date → Dec 25, 1962/.test(r.preview), r.preview);
+        check('tools: numbered in grid order, a minute apart', r.inOrder);
+        check('tools: the form comes back after', r.formBack);
+        check('tools: one Ctrl+Z takes all the dates off', r.orderUndone);
+        check('tools: a photo with no date says it\'s left as it is', /no date: left as it is/.test(r.shiftPreview), r.shiftPreview);
+        check('tools: shift moves a date back a year and on two hours, and leaves one with none', r.shifted);
+        check('tools: All fields lists EXIF and XMP, without the blocks\' pointers', r.noPointers && /Date taken/.test(r.allRows) && /xmp:Rating/.test(r.allRows), r.allRows);
+        check('tools: All fields says what an XMP name needs', r.badName);
+        check('tools: All fields changes, adds (XMP and EXIF) and removes', r.allSaved, r.allVals);
+        check('tools: All fields\' save is undone with Ctrl+Z', r.allUndone);
+        check('tools: a preset keeps the author, copyright and keywords', r.presetSaved);
+        check('tools: a preset fills them in on another photo', r.filled);
+        check('tools: Done saves what the preset filled in', r.presetWritten);
+        check('tools: no errors on the page', !issues.errors.length, issues.errors.join(' | '));
+        await page.close();
+    }
+
     await browser.close();
     server.close();
     console.log(`\n${passed} passed, ${failed} failed`);

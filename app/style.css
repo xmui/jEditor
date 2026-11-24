@@ -13101,9 +13101,152 @@ body.touring .controls.idle button { pointer-events: auto; }
 }
 .meta-foot {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: center;
     gap: 6px;
     margin-top: 4px;
+}
+.meta-foot-right {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+}
+.meta-foot .btn.ghost {
+    padding: 0 8px;
+}
+/* Taken, with ⋯ for the date tools */
+.meta-date {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px;
+}
+.meta-date-more {
+    width: var(--ctl-md, 32px);
+    padding: 0;
+}
+/* The date tools and All fields: dialogs of their own */
+.meta-dialog .dialog {
+    width: min(520px, 92vw);
+}
+.meta-dialog .meta-dialog-wide {
+    width: min(680px, 94vw);
+}
+.meta-dates {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.meta-dates-mode {
+    align-self: flex-start;
+}
+.meta-dates-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 8px;
+}
+.meta-dates-fields.meta-dates-set,
+.meta-dates-fields.meta-dates-order {
+    grid-template-columns: 2fr 1fr 1fr;
+}
+.meta-dates-fields label,
+.meta-all-add {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: var(--fs-small);
+    color: var(--text-2);
+    min-width: 0;
+}
+.meta-dates-fields .field {
+    width: 100%;
+    box-sizing: border-box;
+}
+.meta-dates-preview {
+    font-size: var(--fs-small);
+    font-variant-numeric: tabular-nums;
+}
+.meta-dates-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: var(--row, 28px);
+    align-items: center;
+    border-bottom: 1px solid color-mix(in srgb, var(--text-1) 7%, transparent);
+}
+.meta-dates-row > span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.meta-dates-change,
+.meta-dates-more,
+.meta-all-empty {
+    color: var(--text-2);
+    text-align: right;
+}
+.meta-dates-more {
+    text-align: left;
+    padding-top: 6px;
+}
+.meta-all {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.meta-all-top {
+    display: flex;
+    gap: 8px;
+}
+.meta-all-top .field {
+    flex: 1;
+    min-width: 0;
+}
+.meta-all-add {
+    flex-direction: row;
+    align-items: center;
+}
+.meta-all-add[hidden] { display: none; }
+.meta-all-add .field {
+    flex: 1;
+    min-width: 0;
+}
+.meta-all-add select.field {
+    flex: 0 0 84px;
+}
+.meta-all-list {
+    max-height: min(420px, 55vh);
+    overflow-y: auto;
+}
+.meta-all-group {
+    margin: 12px 0 4px;
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+    color: var(--text-2);
+}
+.meta-all-row {
+    display: grid;
+    grid-template-columns: minmax(120px, 34%) 1fr 28px;
+    gap: 8px;
+    align-items: center;
+    min-height: 32px;
+    font-size: var(--fs-small);
+}
+.meta-all-row[hidden] { display: none; }
+.meta-all-row label {
+    color: var(--text-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.meta-all-row .field {
+    height: 28px;
+    min-width: 0;
+    font-size: var(--fs-small);
+}
+.meta-all-x[hidden] { visibility: hidden; display: block; }
+@media (max-width: 520px) {
+    .meta-all-row { grid-template-columns: 1fr 28px; }
+    .meta-all-row label { grid-column: 1 / -1; }
 }
 .meta-note {
     margin: 0;

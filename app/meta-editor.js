@@ -186,7 +186,27 @@ const MetaEditor = {
             el.id = 'meta-taken';
             el.value = value || '';
             el.addEventListener('input', () => this.dirty.add('taken'));
-            const row = field('taken', 'Taken', el);
+            // ⋯: the date tools, for scans with no date or a wrong one
+            const box = document.createElement('div');
+            box.className = 'meta-date';
+            const more = document.createElement('button');
+            more.type = 'button';
+            more.className = 'btn secondary icon meta-date-more';
+            more.id = 'meta-date-tools';
+            more.textContent = '⋯';
+            more.title = n > 1 ? 'Set one date for all, shift them, or number them in grid order' : 'Shift the date by an amount';
+            more.setAttribute('aria-label', 'Date tools');
+            more.addEventListener('click', (e) => {
+                e.preventDefault();
+                const r = more.getBoundingClientRect();
+                const items = [];
+                if (n > 1) items.push(['Set one date for all…', () => this.dateTools('set')]);
+                items.push(['Shift by an amount…', () => this.dateTools('shift')]);
+                if (n > 1) items.push(['Number in grid order…', () => this.dateTools('order')]);
+                app.openContextMenu(items, r.right - 220, r.bottom + 6);
+            });
+            box.append(el, more);
+            const row = field('taken', 'Taken', box);
             if (mixed) row.classList.add('meta-row-mixed');
         }
         text('author', 'Author', { placeholder: 'Separate several with ;' });
@@ -236,8 +256,31 @@ const MetaEditor = {
         done.id = 'meta-done';
         done.textContent = 'Done';
         done.title = 'Save (Enter)';
-        foot.append(cancel, done);
+        const right = document.createElement('span');
+        right.className = 'meta-foot-right';
+        right.append(cancel, done);
+        // Every EXIF, IPTC and XMP field, for one photo
+        if (n === 1) {
+            const all = document.createElement('button');
+            all.type = 'button';
+            all.className = 'btn ghost';
+            all.id = 'meta-all';
+            all.textContent = 'All fields…';
+            all.title = 'Every EXIF, IPTC and XMP field this photo has, to change, add or remove';
+            all.addEventListener('click', () => this.allFields(files[0]));
+            foot.appendChild(all);
+        }
+        foot.appendChild(right);
         form.appendChild(foot);
+        // Presets: a set of fields kept to put on other photos
+        const presets = document.createElement('button');
+        presets.type = 'button';
+        presets.className = 'btn secondary info-edit';
+        presets.id = 'meta-presets';
+        presets.textContent = 'Presets';
+        presets.title = 'Fill in a saved author, copyright and keywords, or save these';
+        presets.addEventListener('click', () => this.presetsMenu(presets));
+        h3.after(presets);
         const note = document.createElement('p');
         note.className = 'meta-note';
         note.id = 'meta-note';
@@ -250,6 +293,7 @@ const MetaEditor = {
             else if (e.key === 'Enter' && e.target.tagName === 'TEXTAREA' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); this.done(); }
         });
         app.elements.infoList.after(form);
+        this._presetsBtn = presets;
         panel.classList.add('meta-editing');
         const first = form.querySelector('input, textarea');
         if (first) first.focus({ preventScroll: true });
@@ -317,6 +361,9 @@ const MetaEditor = {
         const add = () => {
             const words = MetaFields.splitList(input.value);
             input.value = '';
+            this.addWords(words);
+        };
+        this.addWords = (words) => {
             for (const w of words) {
                 if (this.kwCount(w) === n && box.querySelector(`.meta-chip[data-word="${CSS.escape(w)}"]`)) continue;
                 this.kw.removed.delete(w);
@@ -543,6 +590,522 @@ const MetaEditor = {
         return undo;
     },
 
+    // ---- A dialog of its own (the date tools, All fields) ----
+
+    dialogOpen() {
+        return !!this._dialog;
+    },
+
+    // → { overlay, body, ok, note }; onOk returns true to close
+    dialog({ id, title, okText, wide = false, onOk, onClose }) {
+        const o = document.createElement('div');
+        o.className = 'dialog-overlay meta-dialog';
+        o.id = id;
+        const card = document.createElement('div');
+        card.className = 'dialog' + (wide ? ' meta-dialog-wide' : '');
+        card.setAttribute('role', 'dialog');
+        card.setAttribute('aria-modal', 'true');
+        const head = document.createElement('div');
+        head.className = 'dialog-head';
+        const h = document.createElement('h2');
+        h.className = 'dialog-title';
+        h.id = `${id}-title`;
+        h.textContent = title;
+        card.setAttribute('aria-labelledby', h.id);
+        const x = document.createElement('button');
+        x.className = 'btn ghost icon';
+        x.type = 'button';
+        x.title = 'Close (Esc)';
+        x.setAttribute('aria-label', 'Close');
+        x.innerHTML = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+        head.append(h, x);
+        const body = document.createElement('div');
+        body.className = 'dialog-body';
+        const foot = document.createElement('div');
+        foot.className = 'dialog-foot';
+        const note = document.createElement('span');
+        note.className = 'dialog-note';
+        note.setAttribute('aria-live', 'polite');
+        const actions = document.createElement('span');
+        actions.className = 'dialog-actions';
+        const cancel = document.createElement('button');
+        cancel.className = 'btn secondary';
+        cancel.type = 'button';
+        cancel.textContent = 'Cancel';
+        const ok = document.createElement('button');
+        ok.className = 'btn primary';
+        ok.type = 'button';
+        ok.id = `${id}-ok`;
+        ok.textContent = okText;
+        actions.append(cancel, ok);
+        foot.append(note, actions);
+        card.append(head, body, foot);
+        o.appendChild(card);
+        document.body.appendChild(o);
+        const close = (saved) => {
+            if (this._dialog !== o) return;
+            this._dialog = null;
+            o.remove();
+            if (onClose) onClose(saved);
+        };
+        x.addEventListener('click', () => close(false));
+        cancel.addEventListener('click', () => close(false));
+        ok.addEventListener('click', async () => {
+            ok.disabled = true;
+            try { if (await onOk()) close(true); } finally { ok.disabled = false; }
+        });
+        o.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(false); }
+            else if (e.key === 'Enter' && e.target.tagName === 'INPUT' && !e.target.closest('.meta-all-add')) { e.preventDefault(); ok.click(); }
+        });
+        this._dialog = o;
+        return { overlay: o, body, ok, note, close };
+    },
+
+    // ---- The date tools (⋯ beside Taken) ----
+
+    // 'YYYY-MM-DDTHH:MM:SS' ↔ a Date in local time (the photo's own clock)
+    toDate(s) {
+        const m = s && s.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+        if (!m) return null;
+        const d = new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+        d.setFullYear(+m[1]); // years before 100 stay as they are
+        return d;
+    },
+
+    fromDate(d) {
+        const p = (n, w = 2) => String(n).padStart(w, '0');
+        return `${p(d.getFullYear(), 4)}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+    },
+
+    showDate(s) {
+        const d = this.toDate(s);
+        return d ? d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' }) : 'no date';
+    },
+
+    // The new date of each photo for these settings → [{ file, was, now }]
+    datePlan(mode, files, s) {
+        const was = (f) => (this._dateWas.get(f) || {}).taken || '';
+        if (mode === 'set') return s.set ? files.map(f => ({ file: f, was: was(f), now: s.set })) : [];
+        if (mode === 'shift') {
+            return files.map(f => {
+                const d = this.toDate(was(f));
+                if (!d) return { file: f, was: '', now: '' }; // no date: nothing to shift
+                d.setFullYear(d.getFullYear() + (s.years || 0));
+                d.setDate(d.getDate() + (s.days || 0));
+                d.setHours(d.getHours() + (s.hours || 0));
+                d.setMinutes(d.getMinutes() + (s.minutes || 0));
+                return { file: f, was: was(f), now: this.fromDate(d) };
+            });
+        }
+        // In the order the grid shows them, from the start, a step apart
+        const start = this.toDate(s.start);
+        if (!start) return [];
+        const inGrid = this.app.viewFiles().filter(f => files.includes(f));
+        const rest = files.filter(f => !inGrid.includes(f));
+        const unit = { seconds: 1000, minutes: 60000, hours: 3600000, days: 86400000 }[s.unit] || 60000;
+        return [...inGrid, ...rest].map((f, i) => {
+            const d = new Date(start.getTime());
+            if (s.unit === 'days') d.setDate(d.getDate() + i * (s.step || 0));
+            else d.setTime(d.getTime() + i * (s.step || 0) * unit);
+            return { file: f, was: was(f), now: this.fromDate(d) };
+        });
+    },
+
+    // mode: 'set', 'shift' or 'order'. What's typed in the form is saved first;
+    // the form comes back after, with the new dates
+    async dateTools(mode) {
+        const files = this.files;
+        if (!files) return;
+        if (this.dirty.size) await this.done();
+        else this.close();
+        this._dateWas = new Map();
+        for (const f of files) this._dateWas.set(f, await this.fields(f));
+        const n = files.length;
+        const d = this.dialog({
+            id: 'meta-dates', title: n > 1 ? `Date taken for ${n.toLocaleString()} photos` : `Date taken for ${files[0].name}`, okText: 'Set dates',
+            onOk: async () => {
+                const plan = this.datePlan(mode, files, read()).filter(p => p.now && p.now !== p.was);
+                if (!plan.length) return true;
+                await this.save(plan.map(p => ({ file: p.file, changes: { taken: p.now } })));
+                return true;
+            },
+            onClose: () => { this._dateWas = null; this.open(files); }
+        });
+        const body = d.body;
+        body.classList.add('meta-dates');
+        // Which tool
+        const seg = document.createElement('div');
+        seg.className = 'seg meta-dates-mode';
+        seg.setAttribute('role', 'group');
+        seg.setAttribute('aria-label', 'How');
+        const tools = [['set', 'Set one date'], ['shift', 'Shift'], ['order', 'In grid order']].filter(([m]) => n > 1 || m === 'shift' || m === 'set');
+        for (const [m, label] of tools) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.dataset.mode = m;
+            b.textContent = label;
+            b.addEventListener('click', () => { mode = m; show(); });
+            seg.appendChild(b);
+        }
+        const fields = document.createElement('div');
+        fields.className = 'meta-dates-fields';
+        const preview = document.createElement('div');
+        preview.className = 'meta-dates-preview';
+        preview.id = 'meta-dates-preview';
+        body.append(seg, fields, preview);
+        const first = files.map(f => this._dateWas.get(f).taken).find(Boolean) || '';
+        const input = (id, label, attrs) => {
+            const l = document.createElement('label');
+            const s = document.createElement('span');
+            s.textContent = label;
+            const el = document.createElement(attrs.tag || 'input');
+            el.className = 'field';
+            el.id = id;
+            for (const [k, v] of Object.entries(attrs)) if (k !== 'tag' && k !== 'options') el[k] = v;
+            if (attrs.options) for (const [v, t] of attrs.options) { const o = document.createElement('option'); o.value = v; o.textContent = t; el.appendChild(o); }
+            if (attrs.value != null) el.value = attrs.value;
+            el.addEventListener('input', () => draw());
+            el.addEventListener('change', () => draw());
+            l.append(s, el);
+            return l;
+        };
+        const state = { set: first, years: 0, days: 0, hours: 0, minutes: 0, start: first || '', step: 1, unit: 'minutes' };
+        const read = () => {
+            const v = (id) => { const el = document.getElementById(id); return el ? el.value : null; };
+            const num = (id) => { const x = Number(v(id)); return isFinite(x) ? Math.trunc(x) : 0; };
+            const dt = (x) => x ? (x.length === 16 ? x + ':00' : x.slice(0, 19)) : '';
+            if (mode === 'set') state.set = dt(v('meta-dates-set'));
+            if (mode === 'shift') Object.assign(state, { years: num('meta-dates-years'), days: num('meta-dates-days'), hours: num('meta-dates-hours'), minutes: num('meta-dates-minutes') });
+            if (mode === 'order') Object.assign(state, { start: dt(v('meta-dates-start')), step: num('meta-dates-step'), unit: v('meta-dates-unit') });
+            return state;
+        };
+        const draw = () => {
+            const plan = this.datePlan(mode, files, read());
+            preview.textContent = '';
+            const shown = plan.slice(0, 6);
+            for (const p of shown) {
+                const row = document.createElement('div');
+                row.className = 'meta-dates-row';
+                const a = document.createElement('span');
+                a.textContent = p.file.name;
+                const b = document.createElement('span');
+                b.className = 'meta-dates-change';
+                b.textContent = !p.now ? 'no date: left as it is' : p.now === p.was ? `${this.showDate(p.now)}, as it is` : `${p.was ? this.showDate(p.was) : 'no date'} → ${this.showDate(p.now)}`;
+                row.append(a, b);
+                preview.appendChild(row);
+            }
+            if (plan.length > shown.length) {
+                const more = document.createElement('div');
+                more.className = 'meta-dates-more';
+                more.textContent = `and ${(plan.length - shown.length).toLocaleString()} more`;
+                preview.appendChild(more);
+            }
+            const changing = plan.filter(p => p.now && p.now !== p.was).length;
+            d.ok.disabled = !changing;
+            d.ok.textContent = changing > 1 ? `Set ${changing.toLocaleString()} dates` : 'Set date';
+            const z = Host.say('Ctrl+Z');
+            d.note.textContent = mode === 'order' ? `In the grid's order, kept apart so they sort that way. ${z} undoes ${changing > 1 ? 'all of them' : 'it'}.`
+                : mode === 'shift' ? `For a camera whose clock was wrong. ${z} undoes ${changing > 1 ? 'all of them' : 'it'}.`
+                    : `${z} undoes ${changing > 1 ? 'all of them' : 'it'}.`;
+        };
+        const show = () => {
+            for (const b of seg.children) b.classList.toggle('active', b.dataset.mode === mode);
+            fields.textContent = '';
+            fields.className = `meta-dates-fields meta-dates-${mode}`;
+            if (mode === 'set') fields.append(input('meta-dates-set', 'Date and time', { type: 'datetime-local', step: 1, value: state.set }));
+            else if (mode === 'shift') {
+                fields.append(
+                    input('meta-dates-years', 'Years', { type: 'number', value: state.years, step: 1 }),
+                    input('meta-dates-days', 'Days', { type: 'number', value: state.days, step: 1 }),
+                    input('meta-dates-hours', 'Hours', { type: 'number', value: state.hours, step: 1 }),
+                    input('meta-dates-minutes', 'Minutes', { type: 'number', value: state.minutes, step: 1 }));
+            } else {
+                fields.append(
+                    input('meta-dates-start', 'Start', { type: 'datetime-local', step: 1, value: state.start }),
+                    input('meta-dates-step', 'Then each one', { type: 'number', value: state.step, min: 0, step: 1 }),
+                    input('meta-dates-unit', 'later by', { tag: 'select', options: [['seconds', 'seconds'], ['minutes', 'minutes'], ['hours', 'hours'], ['days', 'days']], value: state.unit }));
+            }
+            draw();
+            const f = fields.querySelector('input');
+            if (f) f.focus();
+        };
+        show();
+    },
+
+    // ---- All fields… (one photo) ----
+
+    async allFields(file) {
+        if (this.dirty && this.dirty.size) await this.done();
+        else this.close();
+        const sidecar = MetaFields.where(file.name) === 'sidecar';
+        let bytes;
+        try {
+            bytes = new Uint8Array(await (await file.handle.getFile()).arrayBuffer());
+        } catch (e) {
+            this.app.showToast(`Couldn't read ${file.name}: ${e.message}`);
+            return;
+        }
+        const side = await this.sidecarText(file);
+        const list = await MetaFields.listAll(bytes, side, { readOnlyExif: sidecar });
+        const edits = new Map(); // row key → { row, value } (value null: removed)
+        const added = [];
+        const d = this.dialog({
+            id: 'meta-all-fields', title: `All fields · ${file.name}`, okText: 'Save', wide: true,
+            onOk: async () => {
+                const raw = { exif: { ifd0: {}, exif: {}, gps: {} }, iptc: {}, xmp: [] };
+                const split = (ds) => [20, 25].includes(ds);
+                for (const { row, value } of [...edits.values(), ...added]) {
+                    if (row.group === 'EXIF') raw.exif[row.ifd][row.tag] = value == null ? null : { type: row.type, text: value, ucs2: row.ucs2 };
+                    else if (row.group === 'IPTC') raw.iptc[row.ds] = value == null ? null : split(row.ds) ? value.split(';').map(x => x.trim()).filter(Boolean) : [value];
+                    else raw.xmp.push({ uri: row.uri, name: row.name, kind: row.kind, value: value == null ? '' : value });
+                }
+                if (!edits.size && !added.length) return true;
+                try {
+                    // A wrong number is caught before anything's written
+                    MetaFields.exifTags(null, { raw: { exif: raw.exif } });
+                } catch (e) {
+                    d.note.textContent = e.message;
+                    return false;
+                }
+                await this.save([{ file, changes: { raw } }]);
+                return true;
+            },
+            onClose: () => this.app.refreshInfoPanel()
+        });
+        const body = d.body;
+        body.classList.add('meta-all');
+        const top = document.createElement('div');
+        top.className = 'meta-all-top';
+        const find = document.createElement('input');
+        find.type = 'search';
+        find.className = 'field';
+        find.id = 'meta-all-find';
+        find.placeholder = 'Find a field';
+        find.setAttribute('aria-label', 'Find a field');
+        const addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.className = 'btn secondary';
+        addBtn.id = 'meta-all-add';
+        addBtn.textContent = 'Add field';
+        top.append(find, addBtn);
+        const addRow = document.createElement('div');
+        addRow.className = 'meta-all-add';
+        addRow.hidden = true;
+        const scroll = document.createElement('div');
+        scroll.className = 'meta-all-list';
+        scroll.id = 'meta-all-list';
+        body.append(top, addRow, scroll);
+        const rowEl = (row, value, fresh = false) => {
+            const el = document.createElement('div');
+            el.className = 'meta-all-row' + (row.editable ? '' : ' kept');
+            el.dataset.key = row.key;
+            const name = document.createElement('label');
+            name.textContent = row.name;
+            name.title = row.group === 'XMP' ? row.name : row.group === 'IPTC' ? `IPTC 2:${row.ds}` : `EXIF 0x${row.tag.toString(16).toUpperCase().padStart(4, '0')}`;
+            const v = document.createElement('input');
+            v.type = 'text';
+            v.className = 'field';
+            v.value = value;
+            v.disabled = !row.editable;
+            v.id = `meta-all-${row.key.replace(/[^\w-]/g, '_')}`;
+            name.htmlFor = v.id;
+            if (!row.editable) v.title = row.kept ? 'jEditor keeps this one right itself' : 'This one can\'t be typed in';
+            v.addEventListener('input', () => {
+                if (fresh) { fresh.value = v.value; return; }
+                edits.set(row.key, { row, value: v.value });
+            });
+            const x = document.createElement('button');
+            x.type = 'button';
+            x.className = 'btn ghost icon meta-all-x';
+            x.textContent = '−';
+            x.title = `Remove ${row.name}`;
+            x.setAttribute('aria-label', `Remove ${row.name}`);
+            x.hidden = !row.editable;
+            x.addEventListener('click', () => {
+                if (fresh) added.splice(added.indexOf(fresh), 1);
+                else edits.set(row.key, { row, value: null });
+                el.remove();
+            });
+            el.append(name, v, x);
+            return el;
+        };
+        const groups = [['EXIF', list.exif], ['IPTC', list.iptc], ['XMP', list.xmp]];
+        for (const [g, rows] of groups) {
+            if (!rows.length) continue;
+            const h = document.createElement('div');
+            h.className = 'meta-all-group';
+            h.dataset.group = g;
+            h.textContent = g + (g === 'EXIF' && sidecar ? ' (in the photo: shown, not changed)' : '');
+            scroll.appendChild(h);
+            for (const r of rows) scroll.appendChild(rowEl(r, r.value));
+        }
+        if (!list.exif.length && !list.iptc.length && !list.xmp.length) {
+            const p = document.createElement('p');
+            p.className = 'meta-all-empty';
+            p.textContent = 'This photo has no metadata yet. Add field puts some in.';
+            scroll.appendChild(p);
+        }
+        find.addEventListener('input', () => {
+            const q = find.value.trim().toLowerCase();
+            for (const el of scroll.querySelectorAll('.meta-all-row')) {
+                const t = (el.querySelector('label').textContent + ' ' + el.querySelector('input').value + ' ' + el.querySelector('label').title).toLowerCase();
+                el.hidden = !!q && !t.includes(q);
+            }
+        });
+        // Add field: which kind, its name (suggested as you type), its value
+        const kinds = sidecar ? [['XMP', 'XMP']] : [['XMP', 'XMP'], ['EXIF', 'EXIF']];
+        const group = document.createElement('select');
+        group.className = 'field';
+        group.id = 'meta-all-add-group';
+        group.setAttribute('aria-label', 'Kind');
+        for (const [v, t] of kinds) { const o = document.createElement('option'); o.value = v; o.textContent = t; group.appendChild(o); }
+        const nameIn = document.createElement('input');
+        nameIn.className = 'field';
+        nameIn.id = 'meta-all-add-name';
+        nameIn.placeholder = 'Name';
+        nameIn.setAttribute('aria-label', 'Field name');
+        nameIn.setAttribute('list', 'meta-all-names');
+        const names = document.createElement('datalist');
+        names.id = 'meta-all-names';
+        const valueIn = document.createElement('input');
+        valueIn.className = 'field';
+        valueIn.id = 'meta-all-add-value';
+        valueIn.placeholder = 'Value';
+        valueIn.setAttribute('aria-label', 'Value');
+        const put = document.createElement('button');
+        put.type = 'button';
+        put.className = 'btn secondary';
+        put.id = 'meta-all-add-ok';
+        put.textContent = 'Add';
+        addRow.append(group, nameIn, names, valueIn, put);
+        const addable = () => {
+            names.textContent = '';
+            const opts = group.value === 'XMP' ? MetaFields.XMP_COMMON : this.exifAddable().map(x => x.name);
+            for (const n of opts) { const o = document.createElement('option'); o.value = n; names.appendChild(o); }
+            nameIn.placeholder = group.value === 'XMP' ? 'prefix:Name, as photoshop:City' : 'Name, as Lens model';
+        };
+        group.addEventListener('change', addable);
+        addBtn.addEventListener('click', () => { addRow.hidden = false; addable(); nameIn.focus(); });
+        const doAdd = () => {
+            const name = nameIn.value.trim(), value = valueIn.value;
+            let row = null;
+            if (group.value === 'XMP') {
+                const m = name.match(/^(\w+):(\w+)$/);
+                const uri = m && MetaFields.XMP_PREFIXES[m[1]];
+                if (!uri) { d.note.textContent = `An XMP name is prefix:Name, with one of these prefixes: ${Object.keys(MetaFields.XMP_PREFIXES).join(', ')}`; return; }
+                row = { key: `xmp:${name}`, group: 'XMP', uri, name, kind: MetaFields.xmpKind(name), editable: true };
+            } else {
+                const x = this.exifAddable().find(e => e.name.toLowerCase() === name.toLowerCase());
+                if (!x) { d.note.textContent = 'Pick an EXIF field from the list'; return; }
+                row = { key: `exif:${x.ifd}:${x.tag}`, group: 'EXIF', ifd: x.ifd, tag: x.tag, type: x.ucs2 ? 1 : 2, ucs2: x.ucs2, name: x.name, editable: true };
+            }
+            if (!value.trim()) { d.note.textContent = 'Type a value for it'; valueIn.focus(); return; }
+            const had = scroll.querySelector(`.meta-all-row[data-key="${CSS.escape(row.key)}"]`);
+            if (had) { had.querySelector('input').value = value; had.querySelector('input').dispatchEvent(new Event('input')); }
+            else {
+                const fresh = { row, value };
+                added.push(fresh);
+                let h = scroll.querySelector(`.meta-all-group[data-group="${row.group}"]`);
+                if (!h) { h = document.createElement('div'); h.className = 'meta-all-group'; h.dataset.group = row.group; h.textContent = row.group; scroll.prepend(h); }
+                h.after(rowEl(row, value, fresh));
+            }
+            d.note.textContent = '';
+            nameIn.value = valueIn.value = '';
+            nameIn.focus();
+        };
+        put.addEventListener('click', doAdd);
+        addRow.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doAdd(); } });
+        const z = Host.say('Ctrl+Z');
+        d.note.textContent = sidecar ? `Saved in ${MetaFields.sidecarName(file.name)}, beside it. ${z} undoes it.` : `Saved into the photo. Gray ones jEditor keeps right itself. ${z} undoes it.`;
+        find.focus();
+    },
+
+    // EXIF text fields that can be added
+    exifAddable() {
+        const out = [];
+        const text = { ifd0: [0x010E, 0x010F, 0x0110, 0x0131, 0x013B, 0x013C, 0x8298], exif: [0x9003, 0x9004, 0x9010, 0xA420, 0xA430, 0xA431, 0xA433, 0xA434, 0xA435] };
+        for (const [ifd, tags] of Object.entries(text)) for (const tag of tags) out.push({ ifd, tag, name: MetaFields.EXIF_NAMES[ifd][tag] });
+        for (const tag of [0x9C9B, 0x9C9C, 0x9C9D, 0x9C9E, 0x9C9F]) out.push({ ifd: 'ifd0', tag, ucs2: true, name: MetaFields.EXIF_NAMES.ifd0[tag] });
+        return out;
+    },
+
+    // ---- Presets: an author, copyright and keywords kept to put on others ----
+
+    PRESETS_KEY: 'jeditor.metaPresets',
+
+    presets() {
+        try {
+            const p = JSON.parse(localStorage.getItem(this.PRESETS_KEY) || '[]');
+            return Array.isArray(p) ? p.filter(x => x && typeof x.name === 'string') : [];
+        } catch (e) {
+            return [];
+        }
+    },
+
+    savePresets(list) {
+        try { localStorage.setItem(this.PRESETS_KEY, JSON.stringify(list)); } catch (e) { /* private mode */ }
+    },
+
+    presetsMenu(btn) {
+        const list = this.presets();
+        const items = [];
+        if (list.length) {
+            items.push(['Fill in', null]);
+            for (const p of list) items.push([p.name, () => this.applyPreset(p)]);
+            items.push(['—']);
+        }
+        items.push(['Save these as a preset…', () => this.savePreset()]);
+        if (list.length) items.push(['Delete a preset', list.map(p => [p.name, () => this.savePresets(this.presets().filter(x => x.name !== p.name))])]);
+        const r = btn.getBoundingClientRect();
+        this.app.openContextMenu(items, r.right - 230, r.bottom + 6);
+    },
+
+    // What's in the form for a preset: the author, the copyright and the
+    // keywords every photo will have
+    formPreset() {
+        const v = (id) => (document.getElementById(id) || {}).value || '';
+        const n = this.files.length;
+        const words = [...document.querySelectorAll('#meta-keywords .meta-chip')].map(c => c.dataset.word).filter(w => this.kwCount(w) === n);
+        return { author: v('meta-author').trim(), copyright: v('meta-copyright').trim(), keywords: words };
+    },
+
+    async savePreset() {
+        const p = this.formPreset();
+        if (!p.author && !p.copyright && !p.keywords.length) {
+            this.app.showToast('Type an author, a copyright or keywords first: a preset keeps those');
+            return;
+        }
+        const name = await UI.prompt({
+            title: 'Save as preset',
+            message: `Keeps ${[p.author && 'the author', p.copyright && 'the copyright', p.keywords.length && `${p.keywords.length} keyword${p.keywords.length === 1 ? '' : 's'}`].filter(Boolean).join(', ')}, to fill in on other photos from Presets.`,
+            input: { label: 'Name', placeholder: 'Kowalski family scans', value: p.author || '' },
+            ok: 'Save'
+        });
+        if (!name || !name.trim()) return;
+        const list = this.presets().filter(x => x.name !== name.trim());
+        list.push({ name: name.trim(), ...p });
+        list.sort((a, b) => a.name.localeCompare(b.name));
+        this.savePresets(list);
+        this.app.showToast(`Saved the preset ${name.trim()}`, 1800);
+    },
+
+    // Filled in on the form; Done saves it on the photos
+    applyPreset(p) {
+        if (!this.isOpen()) return;
+        const set = (k, v) => {
+            if (!v) return;
+            const el = document.getElementById(`meta-${k}`);
+            el.value = v;
+            el.classList.remove('meta-mixed');
+            this.dirty.add(k);
+        };
+        set('author', p.author);
+        set('copyright', p.copyright);
+        if (p.keywords && p.keywords.length) this.addWords(p.keywords);
+        this.app.showToast(`Filled in ${p.name}: Done saves it`, 2000);
+    },
+
     // Back to Info as it reads
     close() {
         const app = this.app;
@@ -552,6 +1115,8 @@ const MetaEditor = {
         this.was = null;
         const panel = app.elements.infoPanel;
         panel.classList.remove('meta-editing');
+        if (this._presetsBtn) this._presetsBtn.remove();
+        this._presetsBtn = null;
         if (this._title != null) panel.querySelector('h3').textContent = this._title;
         this.hidePane(false);
         app.refreshInfoPanel();
