@@ -3229,10 +3229,30 @@ const app = {
         }
     },
 
+    // The home page, from anywhere (Ctrl+Shift+H, File → Home page, the
+    // project picker): out of Adjust or Paint first, as Done does (what was
+    // done is kept), then the project closes. A crop being made isn't
+    // thrown away: it asks for Enter or Esc, as switching modes does
+    async goHome() {
+        if (this.elements.mainInterface.classList.contains('hidden') || this.isLoading) return;
+        if (this.cropState.active && this.cropState.tool !== 'adjust' && this.cropState.tool !== 'paint') {
+            this.showToast('Finish cropping first (Enter, or Esc)', 2000);
+            return;
+        }
+        this.closeContextMenu();
+        this.stopSlideshow();
+        if (typeof Modes !== 'undefined' && Modes.current() !== 'photos') {
+            await Modes.go('photos');
+            if (Modes.current() !== 'photos') return;
+        }
+        await this.closeFolder();
+    },
+
     // Back to the start screen, with everything saved (before ejecting the
-    // drive the project is on: nothing of it may stay open)
+    // drive the project is on: nothing of it may stay open). Photos opened
+    // without a project (dropped, or picked on a phone) close the same way
     async closeFolder() {
-        if (!this.dirHandle) return;
+        if (!this.dirHandle && !this.files.length) return;
         try { await Flags.save(); } catch (e) { /* best-effort */ }
         try { await Edits.flush(); } catch (e) { /* best-effort */ }
         await FolderCache.flush();
@@ -5348,6 +5368,7 @@ const app = {
         ['app.shortcuts', 'global', 'App', 'Keyboard shortcuts', ['?']],
         ['app.guide', 'global', 'App', 'Guide: how-tos and shortcuts', ['F1']],
         ['app.tour', 'global', 'App', 'Take the tour', []],
+        ['app.home', 'global', 'App', 'Home page', ['Ctrl+Shift+H']],
         ['app.settings', 'global', 'App', 'Settings', ['Ctrl+,']],
         ['app.debug', 'global', 'App', 'Debug console', ['Ctrl+Shift+D']],
         ['crop.save', 'crop', 'Crop & Straighten', 'Save', ['Enter']],
@@ -5601,6 +5622,7 @@ const app = {
             'app.guide': () => Guide.toggle(),
             'app.tour': () => Tour.start(),
             'app.settings': () => this.toggleCustomizePanel(true),
+            'app.home': () => { this.goHome(); },
             'app.debug': () => this.toggleDebugConsole(),
             'crop.save': () => this.saveCrop(),
             'crop.saveNext': () => this.saveCrop({ next: true }),
@@ -6026,8 +6048,9 @@ const app = {
         let id = this._keyMaps[context].get(combo);
         // Duplicates: Undo (it says Ctrl+Z restores) works there too
         if (!id && context === 'dupes' && this._keyMaps.global.get(combo) === 'edit.undo') id = 'edit.undo';
-        // The guide (guide.js) opens from every screen
-        if (!id && this._keyMaps.global.get(combo) === 'app.guide') id = 'app.guide';
+        // The guide (guide.js) opens from every screen, and the home page
+        // is a key away in every mode
+        if (!id && ['app.guide', 'app.home'].includes(this._keyMaps.global.get(combo))) id = this._keyMaps.global.get(combo);
         // A focused button's own Enter/Space press isn't a shortcut there
         if (id && context === 'dupes' && e.target && e.target.tagName === 'BUTTON' && (combo === 'Enter' || combo === 'Space')) return;
         if (!id) return;

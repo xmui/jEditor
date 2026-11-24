@@ -812,6 +812,90 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('home')) {
+        console.log('the home page from anywhere (Ctrl+Shift+H), and When jEditor opens falling back to it (start.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            const out = {};
+            const home = () => !app.elements.dropZone.classList.contains('hidden') && app.elements.mainInterface.classList.contains('hidden');
+            const key = (o = {}) => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'H', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true, ...o }));
+            try {
+                const c = document.createElement('canvas'); c.width = 300; c.height = 200; c.getContext('2d').fillRect(0, 0, 300, 200);
+                const photos = { 'a.jpg': await canvasBlob(c, 'image/jpeg', .8), 'b.jpg': await canvasBlob(c, 'image/jpeg', .8) };
+                step = 'grid';
+                await openProject('Homeward', photos);
+                key(); await until(() => home(), 60);
+                out.fromGrid = home();
+                step = 'adjust';
+                await openProject('Homeward', photos);
+                await app.enterAdjust(app.files[0]); await until(() => Adjust.ready);
+                key(); await until(() => home(), 100);
+                out.fromAdjust = [home(), !Adjust.isOpen, Modes.current()];
+                step = 'paint';
+                await openProject('Homeward', photos);
+                await app.enterPaint(app.files[1]); await until(() => PaintEditor.ready);
+                key(); await until(() => home(), 100);
+                out.fromPaint = [home(), Modes.current()];
+                step = 'typing';
+                await openProject('Homeward', photos);
+                const box = document.createElement('input'); document.body.appendChild(box); box.focus();
+                box.dispatchEvent(new KeyboardEvent('keydown', { key: 'H', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }));
+                await sleep(300);
+                out.typing = !home();
+                box.remove();
+                step = 'named';
+                const act = app.KEY_ACTIONS.find(a => a[0] === 'app.home');
+                out.named = [act && act[3], (app.keyBindings['app.home'] || []).join(), app.KEY_ACTIONS.filter(a => a[0] !== 'app.home' && a[4].includes('Ctrl+Shift+H')).length];
+                out.menu = MenuBar.MENUS.File.some(m => Array.isArray(m) && m[0] === 'Home page' && m[1] === 'app.home');
+                out.palette = typeof Palette !== 'undefined';
+                // When jEditor opens: Home page is a choice, in Settings and the gear's menu alike
+                step = 'choices';
+                await Start.drawOnOpen();
+                out.settingsChoices = [...document.querySelectorAll('#cust-on-open option')].slice(0, 2).map(o => o.textContent).join();
+                key(); await until(() => home(), 60);
+                let gear = null;
+                const was = app.openContextMenu;
+                app.openContextMenu = (items) => { gear = items.map(i => i[0]); };
+                Start.settingsMenu(document.getElementById('btn-settings-start'));
+                app.openContextMenu = was;
+                out.gearChoices = gear && gear.slice(gear.indexOf('When jEditor opens') + 1, gear.indexOf('When jEditor opens') + 3).join();
+                // A project on Z: or \\server that can't be reached: the home page stays, and says why
+                step = 'unreachable';
+                out.fallback = [];
+                for (const path of ['Z:\\Orders\\Smith', '\\\\nas\\photos\\Jones']) {
+                    const name = path.split('\\').pop();
+                    await Recents.tx('readwrite', s => s.put({ id: 'far-' + name, name, path, openedAt: Date.now() + 1e6 }));
+                    window.JEditorNative = { openPath: async () => false };
+                    const toasts = [];
+                    const show = app.showToast;
+                    app.showToast = (m, ...rest) => { toasts.push(m); return show.call(app, m, ...rest); };
+                    app.uiPrefs.onOpen = 'last';
+                    await Start.reopen();
+                    app.showToast = show;
+                    delete window.JEditorNative;
+                    out.fallback.push([name, home(), toasts.some(t => t.includes(name) && /drive/.test(t))]);
+                    await Recents.tx('readwrite', s => s.delete('far-' + name));
+                }
+                app.uiPrefs.onOpen = 'home';
+                return out;
+            } catch (e) {
+                return { error: step + ': ' + e.message, ...out };
+            }
+        });
+        check('home: Ctrl+Shift+H goes to the home page from the grid, Adjust and Paint (out of the mode first)',
+            !r.error && r.fromGrid && JSON.stringify(r.fromAdjust) === '[true,true,"photos"]' && JSON.stringify(r.fromPaint) === '[true,"photos"]', JSON.stringify(r));
+        check('home: not while typing in a box', r.typing === true, JSON.stringify(r.typing));
+        check('home: a named command (so Find anything, the guide and the shortcuts list have it), on no other command, and in the File menu',
+            !!r.named && r.named[0] === 'Home page' && r.named[1] === 'Ctrl+Shift+H' && r.named[2] === 0 && r.menu, JSON.stringify([r.named, r.menu]));
+        check('home: When jEditor opens offers Home page first, the same in Settings and the gear\'s menu',
+            r.settingsChoices === 'Home page,The last project' && r.gearChoices === 'Home page,The last project', JSON.stringify([r.settingsChoices, r.gearChoices]));
+        check('home: a last project on Z: or a network share that can\'t be reached leaves the home page, saying its drive may not be connected',
+            !!r.fallback && r.fallback.length === 2 && r.fallback.every(f => f[1] && f[2]), JSON.stringify(r.fallback));
+        check('home: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     if (wanted('savequestion')) {
         console.log('a project\'s first time: keep edits in jEditor, or into the photos (first-open.js, edits.js)');
         const { page, issues } = await open();
