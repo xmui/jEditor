@@ -1432,10 +1432,10 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         const again = await launch(profile2, [], { JEDITOR_SKIP_PERMISSIONS: '', JEDITOR_VOLUMES: vols });
         await again.page.waitForTimeout(1500);
         const auto = await again.page.evaluate(() => Permissions.isOpen());
-        await again.page.evaluate(() => { app.toggleCustomizePanel(true); document.querySelector('[data-page="projects"]').click(); });
+        await again.page.evaluate(() => { app.toggleCustomizePanel(true); document.querySelector('[data-page="general"]').click(); });
         await again.page.click('#cust-permissions');
         await again.page.waitForSelector('#permissions-panel:not(.hidden)', { timeout: 5000 }).catch(() => { });
-        check('only the first time on its own; then from Settings → Projects → Permissions', !auto && await again.page.evaluate(() => Permissions.isOpen()));
+        check('only the first time on its own; then from Settings → General → Permissions', !auto && await again.page.evaluate(() => Permissions.isOpen()));
         check('no JS errors', again.errors.length === 0, again.errors.join('; '));
         await again.app.close();
     }

@@ -666,11 +666,11 @@ const PROJECT = `
                 const blob = async (color) => { const c = document.createElement('canvas'); c.width = 160; c.height = 120; const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, 160, 120); return canvasBlob(c); };
                 await openProject('Resetting', { 'a.png': await blob('#806040'), 'b.png': await blob('#406080') });
                 await until(() => app.files.every(f => f.thumbnailUrl));
-                // The two rows, at the bottom of Projects under their heading
+                // The two rows, at the bottom of General under their heading
                 step = 'rows';
                 app.toggleCustomizePanel(true);
-                app.showSettingsPage('projects');
-                const sec = $('set-page-projects'), heads = [...sec.querySelectorAll('.set-group')];
+                app.showSettingsPage('general');
+                const sec = $('set-page-general'), heads = [...sec.querySelectorAll('.set-group')];
                 out.rows = [heads[heads.length - 1].textContent, !!$('set-reset-cache').getClientRects().length, !!$('set-reset-all').getClientRects().length,
                     sec.lastElementChild.contains($('set-reset-all'))];
                 // What's kept: a setting, a pin, a recent, the edits store; what's a cache
@@ -737,7 +737,7 @@ const PROJECT = `
                 return { error: step + ': ' + e.message };
             }
         });
-        check('reset: Troubleshooting, the last group in Settings → Projects, has Clear cache and restart and Reset…',
+        check('reset: Troubleshooting, the last group in Settings → General, has Clear cache and restart and Reset…',
             !r.error && r.rows && r.rows[0] === 'Troubleshooting' && r.rows[1] && r.rows[2] && r.rows[3], JSON.stringify(r));
         check('reset: Clear cache and restart takes the thumbnails, previews and offline copy, keeps settings, pins and recents, and reloads (the web)',
             !!r.cleared && r.cleared[0] === 1 && !/(^|,)jeditor(,|$)/.test(r.cleared[1]) && /jeditor-recents/.test(r.cleared[1]) && r.cleared[2] && r.cleared[3] && r.cleared[4] === null && r.cleared[5] === 0 && r.cleared[6] === 0,
@@ -749,6 +749,66 @@ const PROJECT = `
         check('reset: the apps\' Recent on disk (recent.json) is left empty, so it doesn\'t come back from the projects\' folders', !!r.disk && r.disk[0] === '[]' && r.disk[1] === 0, JSON.stringify(r.disk));
         check('reset: in an app the app restarts itself (Clear cache, then a reset); if it can\'t, the page reloads', !!r.app && r.app[0] === 'false,true' && r.app[1] === 3, JSON.stringify(r.app));
         check('reset: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    if (wanted('scrollbars')) {
+        console.log('scroll bars stay inside a pane\'s round corners (style.css: --sb-end, --sb-pad)');
+        const { page, issues } = await open();
+        await page.setViewportSize({ width: 1280, height: 520 }); // (short, so the panels scroll)
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            const bad = [], seen = new Set();
+            // Every pane scrolling now whose scroll bar meets a round corner
+            // (its own, or one it fills to the edge of): the bar's ends keep
+            // clear of it, and its thumb is in from the edge
+            const audit = (where) => {
+                const rad = (cs, c) => parseFloat(cs[`border${c}Radius`]) || 0;
+                for (const el of document.querySelectorAll('*')) {
+                    const cs = getComputedStyle(el);
+                    if (!/auto|scroll/.test(cs.overflowY) || el.scrollHeight <= el.clientHeight + 1 || !el.getClientRects().length || cs.visibility === 'hidden') continue;
+                    const b = el.getBoundingClientRect();
+                    if (b.width < 40 || b.height < 40) continue;
+                    let corner = Math.max(rad(cs, 'TopRight'), rad(cs, 'BottomRight'));
+                    for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+                        const ab = a.getBoundingClientRect(), acs = getComputedStyle(a);
+                        if (Math.abs(ab.right - b.right) < 2 && Math.abs(ab.top - b.top) < 2) corner = Math.max(corner, rad(acs, 'TopRight'));
+                        if (Math.abs(ab.right - b.right) < 2 && Math.abs(ab.bottom - b.bottom) < 2) corner = Math.max(corner, rad(acs, 'BottomRight'));
+                    }
+                    const name = el.id ? '#' + el.id : '.' + [...el.classList].join('.');
+                    seen.add(`${where}: ${name}`);
+                    if (corner < 6) continue;
+                    const end = parseFloat(cs.getPropertyValue('--sb-end')) || 0, pad = parseFloat(cs.getPropertyValue('--sb-pad')) || 2;
+                    if (end < corner * 0.5 || pad < 4) bad.push(`${where}: ${name} (corner ${corner}px, ends ${end}px, in ${pad}px)`);
+                }
+            };
+            try {
+                const c = document.createElement('canvas'); c.width = 600; c.height = 400;
+                const photos = {};
+                for (let i = 0; i < 30; i++) { const g = c.getContext('2d'); g.fillStyle = `hsl(${i * 37},50%,50%)`; g.fillRect(0, 0, 600, 400); photos[`F${i % 15}/p${i}.jpg`] = await canvasBlob(c, 'image/jpeg', .8); }
+                await openProject('Scrolling', photos);
+                await until(() => app.files.every(f => f.thumbnailUrl));
+                step = 'grid'; audit('grid');
+                step = 'menu';
+                app.openContextMenu(Array.from({ length: 40 }, (_, i) => [`Item ${i + 1}`, () => { }]), 200, 4);
+                await sleep(300); audit('a long menu'); app.closeContextMenu();
+                step = 'settings';
+                app.toggleCustomizePanel(true, 'appearance'); await sleep(300); audit('Settings'); app.toggleCustomizePanel(false);
+                step = 'guide';
+                Guide.open(); await sleep(400); audit('the guide'); Guide.close(); await sleep(300);
+                step = 'adjust';
+                await app.enterAdjust(app.files[0]); await sleep(800); audit('Adjust');
+                step = 'paint';
+                await Modes.go('photos'); await until(() => !Adjust.isOpen); await sleep(300);
+                await app.enterPaint(app.files[1]); await until(() => PaintEditor.ready); await sleep(500); audit('Paint');
+                return { bad, seen: [...seen] };
+            } catch (e) {
+                return { error: step + ': ' + e.message, bad, seen: [...seen] };
+            }
+        });
+        check('scroll bars: each rounded pane that scrolls (a long menu, Adjust, Paint, Settings, the guide) keeps its bar in from the edge and its ends clear of the corners',
+            !r.error && r.bad.length === 0 && r.seen.some(s => /Adjust: #adj-panel/.test(s)) && r.seen.some(s => /a long menu: #context-menu/.test(s)) && r.seen.some(s => /Paint: #paint-panel/.test(s)), JSON.stringify(r));
+        check('scroll bars: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

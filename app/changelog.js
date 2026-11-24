@@ -24,6 +24,7 @@ const CHANGELOG = [
             'The pill at the top right holds Scan, Camera, Crop and Info to start with, and More. Right-click it to choose what it shows; Customize… in Settings puts them in your order.',
             'Info (`I`) is a glass card, as Adjust\'s panel is, and stops above the film strip.',
             'Settings is in grouped rows, each group a rounded card, as in the system\'s own settings. Appearance starts with Match system.',
+            'Settings has a General page, first: what jEditor opens with, where your projects and the cache are kept, and Troubleshooting (the debug console, the log, Clear cache and restart, and Reset jEditor). Projects keeps what each project does.',
             'Every dialog has the same look: one backdrop, one set of buttons, and the focus ring only when you use the keyboard.',
             'Plain words throughout: buttons, menus and messages say what they do, in short everyday words, and no other app is named, except in the shortcut sets named after them.',
             'jEditor follows the system\'s light or dark to start with, and light is finished: the film strip, Adjust\'s histogram and Crop are light in light mode too.',

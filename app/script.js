@@ -1127,7 +1127,7 @@ const app = {
             this.renderCustomizePanel();
             let last = null;
             try { last = localStorage.getItem('jeditor.settingsPage'); } catch (e) { /* private mode */ }
-            this.showSettingsPage(page || last || 'appearance');
+            this.showSettingsPage(page || last || 'general');
         }
     },
 

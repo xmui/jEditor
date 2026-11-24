@@ -111,20 +111,41 @@ a {
     height: 0;
 }
 
+/* --sb-size is the scroll bar's gutter, --sb-pad the clear space round
+   its thumb, --sb-end how far its ends stay from the pane's ends */
 ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: var(--sb-size, 8px);
+    height: var(--sb-size, 8px);
 }
 
 ::-webkit-scrollbar-track {
     background: transparent;
 }
+::-webkit-scrollbar-track:vertical {
+    margin-block: var(--sb-end, 0px);
+}
+::-webkit-scrollbar-track:horizontal {
+    margin-inline: var(--sb-end, 0px);
+}
 
 ::-webkit-scrollbar-thumb {
     background: var(--border);
     border-radius: var(--r-pill);
-    border: 2px solid transparent;
+    border: var(--sb-pad, 2px) solid transparent;
     background-clip: padding-box;
+}
+
+/* A pane with round corners keeps its scroll bar inside them (the owner,
+   24 November: it poked out of Adjust's panel): the thumb 4px in from the
+   edge, and its ends clear of the corners, as macOS insets a scroller in
+   a rounded sheet or popover. test/ui.test.js checks every rounded pane
+   that scrolls has it */
+:is(#context-menu, .ctx-fly, .adj-panel, .paint-panel, .info-panel, .dialog-body,
+    .palette-list, .oc-list, .fp-list, .sb-picker-list, .guide-list, .guide-topics,
+    .hl-sheet, .scan-dock-body, .paint-fonts-list, .whatsnew-list, .popover) {
+    --sb-size: 12px;
+    --sb-pad: 4px;
+    --sb-end: 14px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
