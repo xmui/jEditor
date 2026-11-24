@@ -12884,10 +12884,13 @@ body.touring .controls.idle button { pointer-events: auto; }
     font-weight: var(--fw-semibold);
     color: var(--text-1);
 }
+/* The tiles make room for it, but the grid scrolls on under it, with its
+   scroll bar at the window's right edge (padding, not a margin: the owner,
+   "scroll bar … should still be on the far right of the screen") */
 :root:not([data-skin]) .interface.info-open #grid-view {
     /* At once, not eased: each frame of a slide laid the whole grid out
        again (its ResizeObserver), with the columns jumping part way */
-    margin-right: calc(300px + var(--gutter));
+    padding-right: calc(300px + 2 * var(--gutter));
 }
 /* The photo fits beside it, but zoomed in runs on under it (padding, not
    a margin: the owner, "it should also go behind the right pane") */
