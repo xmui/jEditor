@@ -129,7 +129,7 @@ const History = {
             case 'bytes': return { what: label(e.label), detail: e.file.name };
             case 'rotate': return { what: 'Rotation', detail: e.file.name };
             case 'flip': return { what: 'Flip', detail: e.file.name };
-            case 'group': return { what: 'Rotation', detail: photos(e.count || e.items.length) };
+            case 'group': return { what: e.label ? label(e.label) : 'Rotation', detail: e.items.length === 1 && e.items[0].file ? e.items[0].file.name : photos(e.count || e.items.length) };
             case 'rename': return { what: 'Rename', detail: `${e.oldName} → ${e.file.name}` };
             case 'batch-rename': return { what: 'Rename', detail: one(e.items) };
             case 'flags': return { what: this.flagWhat(e), detail: one(e.items) };

@@ -297,6 +297,7 @@ const app = {
         Permissions.init(this);
         Flags.init(this);
         Edits.init(this);
+        MetaEditor.init(this);
         Unsaved.init(this);
         Paint.init(this);
         Import.init(this);
@@ -2474,6 +2475,8 @@ const app = {
         const panel = this.elements.infoPanel;
         if (!panel) return;
         const open = forceOpen !== null ? forceOpen : panel.classList.contains('hidden');
+        // What's typed in Edit is saved as Info closes (meta-editor.js)
+        if (!open && typeof MetaEditor !== 'undefined') MetaEditor.leave();
         panel.classList.toggle('hidden', !open);
         // The photo moves over to fit beside it (style.css: info-open)
         const ui = document.getElementById('main-interface');
@@ -2489,12 +2492,26 @@ const app = {
 
     refreshInfoPanel() {
         if (!this._infoOpen) return;
+        // Info's Edit (meta-editor.js): the form stays while it's the same photos
+        const editing = typeof MetaEditor !== 'undefined';
+        if (editing && MetaEditor.keeps(this.infoFiles())) return;
+        if (editing) MetaEditor.button(this.infoFiles());
         const t = this._infoTarget;
         if (t && t.file && this.files.includes(t.file)) return this.fillInfoPanel(t.file);
         if (t && typeof t.folder === 'string') return this.fillFolderInfo({ folder: t.folder });
         if (this.viewMode === 'single') return this.fillInfoPanel(this.currentFile);
         if (this.selection.size > 1) return this.fillFolderInfo({ files: [...this.selection] });
         return this.fillFolderInfo({ folder: Folders.scope });
+    },
+
+    // The photos Info is about (null for a folder or the project)
+    infoFiles() {
+        const t = this._infoTarget;
+        if (t && t.file) return this.files.includes(t.file) ? [t.file] : null;
+        if (t && typeof t.folder === 'string') return null;
+        if (this.viewMode === 'single') return this.currentFile ? [this.currentFile] : null;
+        if (this.selection.size > 1) return [...this.selection];
+        return null;
     },
 
     // Selection changes come in bursts (a click clears and adds): one refresh
@@ -2665,6 +2682,12 @@ const app = {
             if (token !== this._infoToken) return; // superseded by newer fill
             list.innerHTML = '';
             rows.forEach(([k, v]) => {
+                if (k === '—') {
+                    const hr = document.createElement('div');
+                    hr.className = 'info-sep';
+                    list.appendChild(hr);
+                    return;
+                }
                 const dt = document.createElement('dt');
                 dt.textContent = k;
                 const dd = document.createElement('dd');
@@ -2698,6 +2721,9 @@ const app = {
             if (camera) rows.push(['Camera', camera]);
             if (exif.lens) rows.push(['Lens', exif.lens]);
         }
+        // Its title, caption, keywords and the rest, when it has them (meta-editor.js)
+        const about = typeof MetaEditor !== 'undefined' ? await MetaEditor.rows(file).catch(() => []) : [];
+        if (about.length) rows.unshift(...about, ['—']);
         // What's kept in jEditor for it, not yet in the file
         const edit = typeof Edits !== 'undefined' && Edits.get(file);
         if (edit) {
@@ -6954,10 +6980,28 @@ const app = {
         if (entry.type === 'bytes') {
             f.pendingRotation = 0;
             f.savingRotation = 0;
+            const before = { size: f.size, lastModified: f.lastModified };
             const writable = await f.handle.createWritable();
             await writable.write(entry.blob);
             await writable.close();
-            await this.afterFileChanged(f);
+            // Only its metadata changed: the picture, and what's cached of it, stay
+            if (entry.meta) await this.afterMetaChanged(f, before);
+            else await this.afterFileChanged(f);
+            return;
+        }
+        // Info's Edit for a RAW and the like: the .xmp beside it as it was,
+        // or none (meta-editor.js)
+        if (entry.type === 'sidecar') {
+            const dir = f.parentDir || this.dirHandle;
+            if (entry.text == null) {
+                try { await dir.removeEntry(entry.name); } catch (e) { if (e.name !== 'NotFoundError') throw e; }
+            } else {
+                const w = await (await dir.getFileHandle(entry.name, { create: true })).createWritable();
+                await w.write(new Blob([entry.text], { type: 'application/rdf+xml' }));
+                await w.close();
+            }
+            f._meta = null;
+            if (this._infoOpen) this.refreshInfoPanel();
             return;
         }
         f._undoing = true; // the reverse rotation isn't itself undoable
@@ -7254,6 +7298,24 @@ const app = {
         return entry;
     },
 
+    // A photo whose metadata alone was written (Info's Edit; meta-editor.js):
+    // its new size and date, its thumbnail and preview carried over (the
+    // picture is the same), and its date taken read again
+    async afterMetaChanged(f, before, changes = null) {
+        const data = await f.handle.getFile();
+        f._cacheFrom = { size: before.size, lastModified: before.lastModified, saved: f._savedRotationTotal || 0 };
+        f.size = data.size;
+        f.lastModified = data.lastModified;
+        f._exif = undefined;
+        f._exifReading = null;
+        f._meta = null;
+        f._fp = undefined;
+        const m = changes && changes.taken ? changes.taken.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/) : null;
+        f.dateTaken = m ? new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime() : undefined;
+        await this.carryCache(f).catch(() => { });
+        if (this._infoOpen) this.refreshInfoSoon();
+    },
+
     editsNow(files) {
         return files.map(file => ({ file, edit: file._edit || null }));
     },
@@ -7264,7 +7326,9 @@ const app = {
         const Fo = Folders;
         switch (e.type) {
             case 'bytes':
-                return { type: 'bytes', file: e.file, label: e.label, blob: await this.bytesOf(e.file) };
+                return { type: 'bytes', file: e.file, label: e.label, meta: e.meta, blob: await this.bytesOf(e.file) };
+            case 'sidecar':
+                return { type: 'sidecar', file: e.file, name: e.name, label: e.label, text: typeof MetaEditor !== 'undefined' ? await MetaEditor.sidecarText(e.file) : null };
             case 'rotate':
                 return { type: 'rotate', file: e.file, deg: -(e.deg || 0), label: e.label };
             case 'flip':
