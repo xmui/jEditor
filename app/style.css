@@ -12952,6 +12952,165 @@ body.touring .controls.idle button { pointer-events: auto; }
     width: 100%;
 }
 
+/* ---- Info's Edit (meta-editor.js): the photo's title, keywords, date
+   and the rest, as a short form in the pane (the owner's pick, layout A) ---- */
+.info-panel h3 {
+    padding-right: 64px;
+}
+.info-edit {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    height: 26px;
+    padding: 0 12px;
+    font-size: var(--fs-small);
+}
+.info-edit[hidden] { display: none; }
+/* While editing, the form takes the pane's place */
+.info-panel.meta-editing > dl,
+.info-panel.meta-editing .info-extra,
+.info-panel.meta-editing .info-foot {
+    display: none !important;
+}
+.meta-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.meta-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: var(--text-2);
+    min-width: 0;
+}
+.meta-form .field {
+    width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
+    font-size: var(--fs-small);
+}
+.meta-form textarea.field {
+    height: 48px;
+    padding-top: 6px;
+    resize: vertical;
+    font-family: inherit;
+    line-height: var(--lh-small);
+}
+.meta-form .field.invalid {
+    border-color: var(--danger);
+}
+/* Mixed: what differs between the photos of a selection */
+.meta-form .meta-mixed::placeholder,
+.meta-mixed-word {
+    font-style: italic;
+    color: var(--text-2);
+}
+.meta-row-mixed > span::after {
+    content: " · Mixed";
+    font-style: italic;
+}
+.meta-two {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+.meta-kw {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    height: auto;
+    min-height: var(--ctl-md, 32px);
+    padding: 3px 6px;
+    cursor: text;
+}
+.meta-kw input {
+    flex: 1;
+    min-width: 60px;
+    border: 0;
+    outline: 0;
+    background: none;
+    font: inherit;
+    color: var(--text-1);
+}
+.meta-chip {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    padding: 1px 2px 1px 8px;
+    border-radius: var(--r-pill);
+    background: color-mix(in srgb, var(--text-1) 8%, transparent);
+    color: var(--text-1);
+}
+.meta-chip > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* A keyword only some of the selection has: click to give it to all */
+.meta-chip-some {
+    background: none;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-1) 25%, transparent);
+    color: var(--text-2);
+}
+.meta-chip-some > span {
+    cursor: pointer;
+}
+.meta-chip-x {
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--r-pill);
+    background: none;
+    color: inherit;
+    opacity: 0.6;
+    cursor: pointer;
+}
+.meta-chip-x:hover {
+    opacity: 1;
+    background: color-mix(in srgb, var(--text-1) 10%, transparent);
+}
+.meta-stars {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+.meta-stars button {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--r-ctl, 7px);
+    background: none;
+    font-size: 17px;
+    line-height: 1;
+    color: color-mix(in srgb, var(--text-1) 22%, transparent);
+    cursor: pointer;
+}
+.meta-stars button.on {
+    color: var(--text-1);
+}
+.meta-stars button:hover {
+    background: color-mix(in srgb, var(--text-1) 8%, transparent);
+}
+.meta-stars .meta-mixed-word {
+    margin-left: 6px;
+    font-size: var(--fs-small);
+}
+.meta-foot {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 4px;
+}
+.meta-note {
+    margin: 0;
+    font-size: var(--fs-caption);
+    color: var(--text-2);
+}
+
 /* ---- 2.0 Crop (audit M1) ---- */
 
 /* How it works: a coach mark the first few times, then gone */

@@ -31,6 +31,8 @@ const ASSETS = [
     './version.js',
     './changelog.js',
     './meta.js',
+    './meta-fields.js',
+    './meta-editor.js',
     './codec.js',
     './codec-worker.js',
     './tiff-codec.js',
