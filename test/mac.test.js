@@ -831,7 +831,11 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                 const pb = photos && photos.getClientRects().length ? photos.getBoundingClientRect() : null;
                                 const look_ = (e) => { const c = getComputedStyle(e); return [c.fontSize, c.fontWeight, c.paddingLeft, c.paddingRight, c.borderRadius, c.backgroundColor, c.color].join(' '); };
                                 const photosLook = pb && look_(photos);
-                                Modes.go(where);
+                                // (waited for: with the sidebar open, the wait below was
+                                // met at once, back() then came while the switch was still
+                                // going, so went nowhere, and the next round's sidebar
+                                // toggle landed in Adjust, remembered for the tests after)
+                                await Modes.go(where);
                                 for (let i = 0; i < 60 && !document.querySelector('.mode-float.over-mode:not(.hidden), #mode-row.over-mode:not(.hidden), .folder-rail:not(.hidden) #mode-row'); i++) await wait(50);
                                 const name = document.querySelector('.mode-screen:not(.hidden) .mode-title');
                                 if (name) name.textContent = 'IMG_20261101_143207.jpg';
@@ -1054,6 +1058,9 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await page.evaluate(() => app.setView('single'));
             await settle();
             const photosMode = (await describe()).items.find(i => i.id === 'mode');
+            // Adjust's own sidebar closed too (each mode remembers its own), so
+            // the toolbar is the mode's, whatever the tests before left
+            await page.evaluate(() => { app.uiPrefs.railIn = { ...(app.uiPrefs.railIn || {}), adjust: false }; app.saveUiPrefs(); });
             await click('mode', 'adjust');
             // Adjust is open once its screen shows (after the photo's loaded)
             await page.waitForFunction(() => !document.getElementById('adjust-editor').classList.contains('hidden'), null, { timeout: 15000 });
