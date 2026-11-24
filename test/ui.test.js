@@ -227,6 +227,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.keysShown = document.querySelectorAll('#highlights .hl-body kbd').length > 0 && !sheet.textContent.includes('{key');
             Highlights.go(6);
             out.lastBtns = [...document.querySelectorAll('#highlights .hl-acts button')].map(x => x.textContent).join('|');
+            // Its numbers are counted from the changelog's 2.0 lines, each of which says what it is
+            const e20 = CHANGELOG.find(e => e.kinds && e.kinds.some(Boolean));
+            const n = (k) => e20.kinds.filter(x => x === k).length;
+            out.counts = [[...document.querySelectorAll('#highlights .hl-more li i')].map(x => +x.textContent).join(), [n('big'), n('polish')].join(),
+                e20.kinds.every(k => ['card', 'big', 'polish'].includes(k)), e20.items.every(t => typeof t === 'string'), e20.items.length, n('big') + n('polish') + n('card')];
             key('Escape');
             out.escCloses = !Highlights.isOpen();
             app.openWhatsNew();
@@ -289,7 +294,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         const windowTitle = await page.title();
 
         check('start screen links to What\'s New', r.startLink.includes(require(path.join(ROOT, 'package.json')).version), r.startLink);
-        check("What's new opens 2.0's seven cards; the arrows move along, Esc closes, See all opens the list", r.cards && r.moved && r.back && r.escCloses && r.lastBtns === 'See all|Start', JSON.stringify(r));
+        check("What's new opens 2.0's seven cards; the arrows move along, Esc closes, See all opens the list", r.cards && r.moved && r.back && r.escCloses && /^See all \d+ changes\|Start$/.test(r.lastBtns), JSON.stringify(r));
+        check("What's new's last card counts the changelog's 2.0 lines by kind (big, polish), every line has a kind, and See all gives the total",
+            !!r.counts && r.counts[0] === r.counts[1] && r.counts[2] && r.counts[3] && r.counts[4] === r.counts[5] && r.lastBtns.startsWith(`See all ${r.counts[4]} changes`), JSON.stringify([r.counts, r.lastBtns]));
         check("What's new's cards: keys as key caps; Show me only with a folder open; the start card offers the tour", r.keysShown && r.noShow && r.tourBtn, JSON.stringify(r));
         check("What's new's cards come by themselves only on the first 2.x after 1.x", r.first === 'true,false,false,false', r.first);
         check("in a theme What's new is the list; Show me is one stop of the tour, with Done", r.themeList && r.spot && r.spotEnds, JSON.stringify(r));
