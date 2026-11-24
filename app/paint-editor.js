@@ -244,7 +244,7 @@ const PaintEditor = {
         ['sponge', 'Sponge: more or less color where you paint', '<rect x="4" y="7" width="16" height="11" rx="3"/><path d="M8 11h.01M12 13h.01M16 11h.01M10 15h.01M14 15h.01"/>'],
         ['blur', 'Blur: softer where you paint', '<path d="M12 3c3 4 6 7.5 6 11a6 6 0 0 1-12 0c0-3.5 3-7 6-11z"/>'],
         ['sharpen', 'Sharpen: crisper where you paint', '<path d="M12 3 21 20H3z"/>'],
-        ['smudge', 'Smudge: drag the colors along', '<path d="M9 21v-9a2 2 0 0 1 4 0v4M13 12a2 2 0 0 1 4 0v4a5 5 0 0 1-5 5"/><path d="M4 7c2-1 4 1 6 0s4-1 6 0"/>'],
+        ['smudge', 'Smudge: drag the colors along', '<g transform="rotate(30 15 11)"><path d="M11.5 0v11a3.5 3.5 0 0 0 7 0V0"/><path d="M13.3 8v3a1.7 1.7 0 0 0 3.4 0V8z"/></g><path d="M10 16.5C7 17.5 5 19 3 21.5M12 18.5c-2 1-3.5 1.8-5 3"/>'],
         ['sep'],
         ['fill', 'Fill (G)', '<path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2a2 2 0 0 0 2.8 0z"/><path d="m5 2 5 5M2 13h15M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4z"/>'],
         ['gradient', 'Gradient', '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18" opacity=".5"/>'],
