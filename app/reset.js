@@ -1,4 +1,4 @@
-// Settings → Projects → Troubleshooting: two ways to put jEditor right
+// Settings → General → Troubleshooting: two ways to put jEditor right
 // when it misbehaves, both ending in a restart (the app) or a reload (the
 // web):
 //

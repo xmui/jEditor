@@ -27,6 +27,7 @@ const MenuBar = {
         File: [
             // (the Mac's ⌘O is the app's own: native)
             ['Open folder…', () => MenuBar.app.browseFolder(), { native: 'open', key: 'Ctrl+O' }],
+            ['Home page', 'app.home', { project: true }],
             ['Import from a camera or card…', 'app.import'],
             ['Scan…', () => MenuBar.click('btn-scan'), { needs: 'scan', project: true }],
             ['Camera…', () => MenuBar.click('btn-camera'), { needs: 'camera', project: true }],

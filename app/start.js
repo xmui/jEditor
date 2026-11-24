@@ -304,7 +304,7 @@ const Start = {
         const items = [];
         if (this.update) items.push([`Update to jEditor ${Updates.label(this.update.tag)}…`, () => Updates.offer(this.update)], ['—']);
         items.push(['When jEditor opens', null]);
-        items.push(['This page', () => this.setOnOpen('home'), false, opens === 'home']);
+        items.push(['Home page', () => this.setOnOpen('home'), false, opens === 'home']);
         items.push(['The last project', () => this.setOnOpen('last'), false, opens === 'last']);
         items.push([opens === 'pick' && p.onOpenName ? `${p.onOpenName}…` : 'A project you pick…', () => this.pickProject(btn), false, opens === 'pick']);
         items.push(['—'], ['Settings…', () => app.toggleCustomizePanel(true)]);
@@ -333,7 +333,7 @@ const Start = {
         this.app.openContextMenu(list.map(rec => [rec.name, () => this.setOnOpen('pick', rec), false, this.app.uiPrefs.onOpenId === rec.id]), r.right - 260, r.bottom + 6);
     },
 
-    // Settings → Projects: When jEditor opens
+    // Settings → General: When jEditor opens
     async drawOnOpen() {
         const sel = this.el('cust-on-open');
         if (!sel || !this.app) return;
@@ -341,7 +341,7 @@ const Start = {
         const list = await Recents.list().catch(() => []);
         sel.textContent = '';
         const add = (value, label) => { const o = document.createElement('option'); o.value = value; o.textContent = label; sel.appendChild(o); };
-        add('home', 'This page');
+        add('home', 'Home page');
         add('last', 'The last project');
         for (const rec of list) add('pick:' + rec.id, rec.name);
         if (p.onOpen === 'pick' && p.onOpenId && !list.some(r => r.id === p.onOpenId)) add('pick:' + p.onOpenId, p.onOpenName || 'A project');

@@ -1,5 +1,5 @@
 // The projects folder and the cache folder, and moving what's in them
-// (Settings → Projects → Folders; the sidebar's "Choose your projects
+// (Settings → General → Folders; the sidebar's "Choose your projects
 // folder…" comes here too).
 //
 // When either folder changes, jEditor asks whether to move what's there
@@ -36,7 +36,7 @@ const FolderMove = {
         on('set-cache-clear', () => this.clearCache());
     },
 
-    // Settings → Projects is drawn (script.js): where each folder is, and
+    // Settings → General is drawn (script.js): where each folder is, and
     // how big the cache is
     async draw() {
         const box = this.el('set-folders');

@@ -1271,7 +1271,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.subtleGlass = css('--glass-filter') === 'none';
             out.surround = getComputedStyle(document.getElementById('main-view')).backgroundColor;
             out.saved = JSON.parse(localStorage.getItem('jeditor.ui'));
-            // A page at a time: Appearance first; Messages on a click, and it's
+            // A page at a time: General first (as in macOS); Messages on a click, and it's
             // where Settings opens next time; no Updates page outside the Windows app
             const shownPage = () => [...document.querySelectorAll('#settings-panel .settings-section')].filter(x => getComputedStyle(x).display !== 'none').map(x => x.dataset.page).join();
             out.firstPage = shownPage();
@@ -1313,7 +1313,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('glass saved before carries over: rich (the old default) is Crystal, Subtle and Off are Opaque; Off is gone from Settings',
             r.oldGlass === 'crystal,opaque,opaque,liquid' && r.glassOptions === 'crystal,liquid,clear,opaque,lens', JSON.stringify([r.oldGlass, r.glassOptions]));
         check('Ctrl+, opens Settings; Esc closes it', r.opened && r.closed, JSON.stringify({ o: r.opened, c: r.closed }));
-        check('Settings: a page at a time, Appearance first; a click (or the arrow keys) changes page, and it opens on the last page used', r.firstPage === 'appearance' && r.messagesPage === 'messages true' && r.noUpdates && r.reopenedOn === 'messages' && r.arrowPage === 'projects projects', JSON.stringify([r.firstPage, r.messagesPage, r.noUpdates, r.reopenedOn, r.arrowPage]));
+        check('Settings: a page at a time, General first; a click (or the arrow keys) changes page, and it opens on the last page used', r.firstPage === 'general' && r.messagesPage === 'messages true' && r.noUpdates && r.reopenedOn === 'messages' && r.arrowPage === 'projects projects', JSON.stringify([r.firstPage, r.messagesPage, r.noUpdates, r.reopenedOn, r.arrowPage]));
         check('theme, density, glass and surround apply and are remembered',
             r.applied === 'light,comfortable,opaque,grey' && r.lightText && r.comfortable && r.subtleGlass &&
             r.surround === 'rgb(118, 118, 118)' && r.saved.theme === 'light' && r.saved.density === 'comfortable' &&
@@ -6435,6 +6435,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const wipe = async () => { const all = await Recents.all(); await Recents.tx('readwrite', s => all.forEach(r => s.delete(r.id))); };
             const disk = async () => { try { return JSON.parse(await (await (await store.getFileHandle('recent.json')).getFile()).text()).folders.map(f => f.name); } catch (e) { return null; } };
             try {
+                // (a folder opened just before, guard-failing, may still be
+                // being added to Recent: after the wipe it came back)
+                if (Recents.saving) await Recents.saving;
                 await wipe();
                 out.first = await Recents.restore();
                 const list = await Recents.list();

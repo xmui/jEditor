@@ -1479,7 +1479,8 @@ const Picker = {
         } else {
             const recent = this.list.filter(p => p.current || p.recent).slice(0, P.RECENT + 1);
             html += '<div class="sb-picker-head">Recents</div>' + recent.map(row).join('');
-            html += sep + action('all', 'All projects…') + action('new', 'New project…') + action('folder', 'Open a folder…');
+            html += sep + action('all', 'All projects…') + action('new', 'New project…') + action('folder', 'Open a folder…') +
+                action('home', 'Home page', `Home page (${P.app.keyText((P.app.keyBindings['app.home'] || ['Ctrl+Shift+H'])[0])})`);
         }
         this.box.innerHTML = html;
         // Marked for Enter: the first match, or the last project before this one
@@ -1546,6 +1547,7 @@ const Picker = {
         if (act === 'open') return P.open(b.dataset.path);
         if (act === 'new') return P.newProject();
         if (act === 'choose') return P.chooseFolder();
+        if (act === 'home') return P.app.goHome();
         if (act === 'folder') return OpenCard.available() ? FirstOpen.before(() => OpenCard.open()) : P.app.browseFolder();
         if (act === 'find' && typeof Palette !== 'undefined') {
             Palette.open();
