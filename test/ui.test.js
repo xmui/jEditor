@@ -6188,6 +6188,16 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             for (let i = 0; i < 50 && rows()['.jeditor'] === 'Adding up…'; i++) await sleep(30);
             r1 = rows();
             out.own = r1['.jeditor'] === app.formatBytes(5000) && /1 photo/.test(r1.Trash || '');
+            // The grid scrolls on under Info, its scroll bar at the window's
+            // right edge; the tiles keep clear of the card (the owner, 24 November)
+            {
+                const grid = document.getElementById('grid-view'), ui = document.getElementById('main-interface');
+                const gr = grid.getBoundingClientRect(), panel = document.getElementById('info-panel').getBoundingClientRect();
+                const tiles = [...grid.querySelectorAll('.grid-item')].map(t => t.getBoundingClientRect().right);
+                out.gridUnder = ui.classList.contains('info-open') && Math.abs(gr.right - ui.getBoundingClientRect().right) <= 1
+                    && tiles.length > 0 && Math.max(...tiles) <= panel.left;
+                out.gridUnderWhy = JSON.stringify({ grid: gr.right, ui: ui.getBoundingClientRect().right, panel: panel.left, tiles: Math.max(...tiles) });
+            }
             // Several selected: the selection
             app.selection = new Set(app.files.slice(0, 2));
             app.updateSelectionUI();
@@ -6246,6 +6256,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         });
         check('folder details: I in the grid shows the project: photos, size, folders, types', r.order, JSON.stringify(r));
         check('folder details: how much room .jeditor takes, trash counted', r.own, JSON.stringify(r));
+        check('folder details: with Info open the grid scrolls under it, its scroll bar at the window\'s edge, the tiles clear of it', r.gridUnder, r.gridUnderWhy);
         check('folder details: a selection, a folder with the whole project, Folder Info in the menu', r.selection && r.folder && r.menu, JSON.stringify(r));
         check('folder details: total under the folder list; single view still shows the photo', r.railTotal && r.single && r.gb, JSON.stringify(r));
         check('Info is a glass card: the photo moves over beside it; its flags change the photo\'s', r.card && r.cardFlag && r.cardShut, JSON.stringify([r.card, r.cardFlag, r.cardShut]));
