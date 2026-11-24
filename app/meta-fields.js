@@ -407,20 +407,22 @@ const MetaFields = {
             desc.setAttributeNS(this.NS.rdf, 'rdf:about', '');
             rdf.appendChild(desc);
         }
-        const drop = (ns, local) => {
+        const dropQ = (uri, local) => {
             for (const d of this.descriptions(doc)) {
-                d.removeAttributeNS(this.NS[ns], local);
-                for (const c of [...d.children]) if (c.namespaceURI === this.NS[ns] && c.localName === local) c.remove();
+                d.removeAttributeNS(uri, local);
+                for (const c of [...d.children]) if (c.namespaceURI === uri && c.localName === local) c.remove();
             }
         };
         const has = (ns, local) => this.xmpGet(doc, ns, local) != null;
-        const put = (ns, local, kind, value) => {
-            drop(ns, local);
+        const put = (ns, local, kind, value) => putQ(this.NS[ns], ns, local, kind, value);
+        // Any property, by its namespace (All fields: meta-editor.js)
+        const putQ = (uri, prefix, local, kind, value) => {
+            dropQ(uri, local);
             const empty = value == null || value === '' || (Array.isArray(value) && !value.length);
             if (empty) return;
             // Declared once on the description, not on each property
-            if (!desc.lookupNamespaceURI(ns)) desc.setAttributeNS('http://www.w3.org/2000/xmlns/', `xmlns:${ns}`, this.NS[ns]);
-            const el = doc.createElementNS(this.NS[ns], `${ns}:${local}`);
+            if (desc.lookupNamespaceURI(prefix) !== uri) desc.setAttributeNS('http://www.w3.org/2000/xmlns/', `xmlns:${prefix}`, uri);
+            const el = doc.createElementNS(uri, `${prefix}:${local}`);
             if (kind === 'text') el.textContent = String(value);
             else {
                 const box = doc.createElementNS(this.NS.rdf, kind === 'alt' ? 'rdf:Alt' : kind === 'seq' ? 'rdf:Seq' : 'rdf:Bag');
@@ -456,6 +458,13 @@ const MetaFields = {
             put('exif', 'GPSLongitude', 'text', c.gps ? this.toXmpGps(c.gps.lon, 'E', 'W') : '');
             if (c.gps && !has('exif', 'GPSVersionID')) put('exif', 'GPSVersionID', 'text', '2.3.0.0');
             if (!c.gps) put('exif', 'GPSVersionID', 'text', '');
+        }
+        // All fields: [{ uri, name: 'prefix:local', kind, value }]
+        for (const r of (c.raw && c.raw.xmp) || []) {
+            const [prefix, local] = r.name.split(':');
+            const kind = r.kind || 'text';
+            const value = kind === 'bag' || kind === 'seq' ? String(r.value || '').split(';').map(x => x.trim()).filter(Boolean) : r.value;
+            putQ(r.uri, prefix, local, kind, value);
         }
         let xml = new XMLSerializer().serializeToString(doc.documentElement);
         // Room to grow in place, as other writers leave
@@ -624,7 +633,39 @@ const MetaFields = {
                 for (const tag of [0, 1, 2, 3, 4]) if (t.find(t.gps, tag)) tags.gps[tag] = null;
             }
         }
+        if (c.raw && c.raw.exif) this.rawExifTags(tags, c.raw.exif, le);
         return tags;
+    },
+
+    // All fields' EXIF changes: { ifd0|exif|gps: { tag: { type, text } | null } }
+    // → values to write, each typed as the tag is (or as given, for a new one)
+    rawExifTags(tags, raw, le) {
+        for (const ifd of ['ifd0', 'exif', 'gps']) {
+            for (const [tag, v] of Object.entries((raw && raw[ifd]) || {})) {
+                tags[ifd][tag] = v == null ? null : v.ucs2 ? this.ucs2Val(v.text) : this.exifValue(v.type, v.text, le);
+            }
+        }
+    },
+
+    // A value typed in, as a tag of this type → { type, count, data }
+    exifValue(type, text, le) {
+        const s = String(text).trim();
+        if (type === 2) return this.asciiVal(s);
+        const n = Number(s);
+        if (!isFinite(n)) throw new Error(`"${s}" isn't a number`);
+        const data = new Uint8Array(this.TYPE_SIZE[type] || 4), v = new DataView(data.buffer);
+        if (type === 3) v.setUint16(0, Math.round(n), le);
+        else if (type === 8) v.setInt16(0, Math.round(n), le);
+        else if (type === 4) v.setUint32(0, Math.round(n), le);
+        else if (type === 9) v.setInt32(0, Math.round(n), le);
+        else if (type === 5 || type === 10) {
+            // A fraction close enough: to 1/10000, or a whole number
+            const den = Number.isInteger(n) ? 1 : 10000;
+            if (type === 5) { v.setUint32(0, Math.round(Math.abs(n) * den), le); v.setUint32(4, den, le); }
+            else { v.setInt32(0, Math.round(n * den), le); v.setInt32(4, den, le); }
+        } else if (type === 1 || type === 7) data[0] = n & 255;
+        else throw new Error('this kind of value can\'t be typed in');
+        return { type, count: 1, data };
     },
 
     // Does this change touch the EXIF at all?
@@ -651,6 +692,11 @@ const MetaFields = {
         if ('taken' in c && sets.some(s => s.rec === 2 && s.ds === 55)) {
             drop(55, 60);
             if (c.taken) { add.push({ rec: 2, ds: 55, text: c.taken.slice(0, 10).replace(/-/g, '') }); add.push({ rec: 2, ds: 60, text: c.taken.slice(11, 19).replace(/:/g, '') }); }
+        }
+        // All fields: { dataset: [values] | null }
+        for (const [ds, vals] of Object.entries((c.raw && c.raw.iptc) || {})) {
+            drop(+ds);
+            for (const v of vals || []) if (v) str(+ds, v);
         }
         if (needUtf8 && !utf8) {
             // Latin-1 can't hold it: the IIM says UTF-8 from now on, and what it had is made UTF-8
@@ -871,6 +917,161 @@ const MetaFields = {
     // An .xmp file beside the photo, with these fields changed
     sidecarWith(text, changes) {
         return this.xmpWith(text, changes);
+    },
+
+    // ---- Every field (All fields: meta-editor.js) ----
+
+    EXIF_NAMES: {
+        ifd0: { 0x010E: 'Description', 0x010F: 'Make', 0x0110: 'Model', 0x0112: 'Orientation', 0x011A: 'X resolution', 0x011B: 'Y resolution',
+            0x0128: 'Resolution unit', 0x0131: 'Software', 0x0132: 'Date modified', 0x013B: 'Artist', 0x013C: 'Host computer', 0x8298: 'Copyright',
+            0x4746: 'Rating', 0x4749: 'Rating percent', 0x9C9B: 'XP title', 0x9C9C: 'XP comment', 0x9C9D: 'XP author', 0x9C9E: 'XP keywords', 0x9C9F: 'XP subject',
+            0x0100: 'Width', 0x0101: 'Height', 0x0102: 'Bits per sample', 0x0103: 'Compression', 0x0106: 'Photometric', 0x0115: 'Samples per pixel', 0x011C: 'Planar configuration',
+            0x0213: 'YCbCr positioning', 0x8769: 'EXIF block', 0x8825: 'GPS block', 0x02BC: 'XMP', 0x83BB: 'IPTC', 0x8773: 'Color profile' },
+        exif: { 0x829A: 'Exposure time', 0x829D: 'F number', 0x8822: 'Exposure program', 0x8827: 'ISO', 0x9000: 'EXIF version', 0x9003: 'Date taken',
+            0x9004: 'Date digitized', 0x9010: 'Time zone (taken)', 0x9011: 'Time zone (digitized)', 0x9201: 'Shutter speed value', 0x9202: 'Aperture value', 0x9204: 'Exposure bias',
+            0x9205: 'Max aperture', 0x9207: 'Metering mode', 0x9208: 'Light source', 0x9209: 'Flash', 0x920A: 'Focal length', 0x927C: 'Maker note', 0x9286: 'User comment',
+            0x9290: 'Subseconds', 0x9291: 'Subseconds (taken)', 0x9292: 'Subseconds (digitized)', 0xA000: 'FlashPix version', 0xA001: 'Color space',
+            0xA002: 'Pixel width', 0xA003: 'Pixel height', 0xA005: 'Interoperability block', 0xA20E: 'Focal plane X resolution', 0xA20F: 'Focal plane Y resolution',
+            0xA217: 'Sensing method', 0xA300: 'File source', 0xA301: 'Scene type', 0xA401: 'Custom rendered', 0xA402: 'Exposure mode', 0xA403: 'White balance',
+            0xA404: 'Digital zoom', 0xA405: 'Focal length (35 mm)', 0xA406: 'Scene capture type', 0xA420: 'Image unique ID', 0xA430: 'Camera owner',
+            0xA431: 'Body serial number', 0xA432: 'Lens specification', 0xA433: 'Lens make', 0xA434: 'Lens model', 0xA435: 'Lens serial number' },
+        gps: { 0: 'GPS version', 1: 'Latitude ref', 2: 'Latitude', 3: 'Longitude ref', 4: 'Longitude', 5: 'Altitude ref', 6: 'Altitude', 7: 'GPS time',
+            0x10: 'Direction ref', 0x11: 'Direction', 0x12: 'Map datum', 0x1D: 'GPS date' }
+    },
+    // jEditor keeps these right itself (the picture, its turn, the blocks)
+    EXIF_KEPT: new Set([0x0112, 0x8769, 0x8825, 0xA005, 0x02BC, 0x83BB, 0x8773, 0x927C, 0xA002, 0xA003, 0x0201, 0x0202]),
+    IPTC_NAMES: { 5: 'Object name (title)', 7: 'Edit status', 10: 'Urgency', 15: 'Category', 20: 'Supplemental category', 25: 'Keywords', 40: 'Special instructions',
+        55: 'Date created', 60: 'Time created', 80: 'By-line (author)', 85: 'By-line title', 90: 'City', 92: 'Sub-location', 95: 'Province/state',
+        100: 'Country code', 101: 'Country', 103: 'Transmission reference', 105: 'Headline', 110: 'Credit', 115: 'Source', 116: 'Copyright notice',
+        118: 'Contact', 120: 'Caption', 122: 'Caption writer' },
+    // XMP namespaces a field can be added in, by prefix
+    XMP_PREFIXES: {
+        dc: 'http://purl.org/dc/elements/1.1/', xmp: 'http://ns.adobe.com/xap/1.0/', photoshop: 'http://ns.adobe.com/photoshop/1.0/',
+        exif: 'http://ns.adobe.com/exif/1.0/', tiff: 'http://ns.adobe.com/tiff/1.0/', xmpRights: 'http://ns.adobe.com/xap/1.0/rights/',
+        Iptc4xmpCore: 'http://iptc.org/std/Iptc4xmpCore/1.0/xmlns/', Iptc4xmpExt: 'http://iptc.org/std/Iptc4xmpExt/2008-02-29/',
+        lr: 'http://ns.adobe.com/lightroom/1.0/', xmpMM: 'http://ns.adobe.com/xap/1.0/mm/', aux: 'http://ns.adobe.com/exif/1.0/aux/'
+    },
+    // Suggested when adding one
+    XMP_COMMON: ['dc:title', 'dc:description', 'dc:subject', 'dc:creator', 'dc:rights', 'dc:source', 'xmp:Rating', 'xmp:Label', 'photoshop:Headline',
+        'photoshop:City', 'photoshop:State', 'photoshop:Country', 'photoshop:Credit', 'photoshop:Source', 'photoshop:Instructions', 'photoshop:DateCreated',
+        'Iptc4xmpCore:Location', 'Iptc4xmpCore:CountryCode', 'xmpRights:UsageTerms', 'xmpRights:WebStatement', 'exif:UserComment'],
+    XMP_BAGS: new Set(['dc:subject', 'photoshop:SupplementalCategories', 'lr:hierarchicalSubject']),
+    XMP_SEQS: new Set(['dc:creator']),
+    XMP_ALTS: new Set(['dc:title', 'dc:description', 'dc:rights', 'xmpRights:UsageTerms']),
+
+    // A typed-in property's kind, by its name
+    xmpKind(name) {
+        return this.XMP_BAGS.has(name) ? 'bag' : this.XMP_SEQS.has(name) ? 'seq' : this.XMP_ALTS.has(name) ? 'alt' : 'text';
+    },
+
+    // Every field a photo has, to show and change one by one:
+    // { exif: [row], iptc: [row], xmp: [row] }. A row: { key, name, value,
+    // editable } and what writing it needs. readOnlyExif: the EXIF is
+    // shown but can't be written (a RAW's: its changes go in the .xmp)
+    async listAll(bytes, sidecar = null, { readOnlyExif = false } = {}) {
+        const out = { exif: [], iptc: [], xmp: [] };
+        let parts = { tiff: null, xmp: null, iptc: null };
+        try { parts = await this.parts(bytes); } catch (e) { /* none */ }
+        const t = parts.tiff && this.tiff(parts.tiff);
+        if (t) {
+            for (const ifd of ['ifd0', 'exif', 'gps']) {
+                const d = t[ifd];
+                if (!d) continue;
+                for (const e of d.entries) {
+                    const names = this.EXIF_NAMES[ifd];
+                    // Where the other blocks are: nothing anyone reads
+                    if (ImageMeta.TIFF_POINTERS.has(e.tag) || e.tag === 0x02BC || e.tag === 0x83BB) continue;
+                    // A whole TIFF's own picture tags aren't metadata
+                    if (ifd === 'ifd0' && ImageMeta.TIFF_PICTURE_TAGS.has(e.tag) && !names[e.tag]) continue;
+                    const v = this.exifText(t, d, e);
+                    const ucs2 = ifd === 'ifd0' && e.tag >= 0x9C9B && e.tag <= 0x9C9F;
+                    const simple = e.type === 2 || ucs2 || (e.count === 1 && [1, 3, 4, 5, 8, 9, 10].includes(e.type));
+                    const kept = this.EXIF_KEPT.has(e.tag) || (ifd === 'ifd0' && ImageMeta.TIFF_PICTURE_TAGS.has(e.tag));
+                    out.exif.push({
+                        key: `exif:${ifd}:${e.tag}`, group: 'EXIF', ifd, tag: e.tag, type: e.type, ucs2,
+                        name: names[e.tag] || `Tag 0x${e.tag.toString(16).toUpperCase().padStart(4, '0')}`,
+                        value: v, editable: !readOnlyExif && simple && !kept, kept
+                    });
+                }
+            }
+        }
+        if (parts.iptc) {
+            const sets = this.iim(parts.iptc).filter(x => x.rec === 2 && x.ds !== 0);
+            const by = new Map();
+            for (const x of sets) { if (!by.has(x.ds)) by.set(x.ds, []); by.get(x.ds).push(this.iimText(sets, x.data)); }
+            for (const [ds, vals] of [...by].sort((a, b) => a[0] - b[0])) {
+                out.iptc.push({ key: `iptc:${ds}`, group: 'IPTC', ds, name: this.IPTC_NAMES[ds] || `Dataset 2:${ds}`, value: vals.join('; '), editable: !readOnlyExif });
+            }
+        }
+        const xmp = sidecar != null ? sidecar : parts.xmp;
+        const doc = xmp && this.xmpDoc(xmp);
+        if (doc) {
+            const seen = new Set();
+            for (const d of this.descriptions(doc)) {
+                for (const a of [...d.attributes]) {
+                    if (!a.namespaceURI || a.namespaceURI === 'http://www.w3.org/2000/xmlns/' || a.namespaceURI === this.NS.rdf) continue;
+                    const name = `${a.prefix || this.prefixOf(a.namespaceURI)}:${a.localName}`;
+                    if (seen.has(name)) continue;
+                    seen.add(name);
+                    out.xmp.push({ key: `xmp:${name}`, group: 'XMP', uri: a.namespaceURI, name, kind: 'text', value: a.value, editable: true });
+                }
+                for (const el of [...d.children]) {
+                    const name = `${el.prefix || this.prefixOf(el.namespaceURI)}:${el.localName}`;
+                    if (seen.has(name)) continue;
+                    seen.add(name);
+                    const box = el.firstElementChild;
+                    let kind = 'text', value = el.textContent.trim(), editable = true;
+                    if (box && box.namespaceURI === this.NS.rdf && ['Alt', 'Bag', 'Seq'].includes(box.localName)) {
+                        kind = box.localName.toLowerCase();
+                        const lis = [...box.children];
+                        if (lis.some(l => l.firstElementChild)) { editable = false; value = `(${lis.length} item${lis.length === 1 ? '' : 's'})`; }
+                        else if (kind === 'alt') { const def = lis.find(l => l.getAttribute('xml:lang') === 'x-default') || lis[0]; value = def ? def.textContent : ''; }
+                        else value = lis.map(l => l.textContent.trim()).join('; ');
+                    } else if (box) {
+                        editable = false;
+                        value = '(several values)';
+                    }
+                    out.xmp.push({ key: `xmp:${name}`, group: 'XMP', uri: el.namespaceURI, name, kind, value, editable });
+                }
+            }
+        }
+        return out;
+    },
+
+    prefixOf(uri) {
+        return Object.keys(this.XMP_PREFIXES).find(k => this.XMP_PREFIXES[k] === uri) || Object.keys(this.NS).find(k => this.NS[k] === uri) || 'ns';
+    },
+
+    // An EXIF value as text
+    exifText(t, ifd, e) {
+        const b = t.get(ifd, e.tag);
+        if (!b) return '';
+        if (e.type === 2) return this.ascii(b);
+        if (e.tag >= 0x9C9B && e.tag <= 0x9C9F) return this.ucs2(b);
+        const v = t.v, le = t.le, size = this.TYPE_SIZE[e.type] || 1;
+        const at = b.byteOffset - t.b.byteOffset;
+        const one = (i) => {
+            const o = at + i * size;
+            switch (e.type) {
+                case 1: case 7: return t.b[o];
+                case 3: return v.getUint16(o, le);
+                case 8: return v.getInt16(o, le);
+                case 4: return v.getUint32(o, le);
+                case 9: return v.getInt32(o, le);
+                case 5: { const d = v.getUint32(o + 4, le); return d ? +(v.getUint32(o, le) / d).toFixed(6) : 0; }
+                case 10: { const d = v.getInt32(o + 4, le); return d ? +(v.getInt32(o, le) / d).toFixed(6) : 0; }
+                case 11: return +v.getFloat32(o, le).toFixed(6);
+                case 12: return +v.getFloat64(o, le).toFixed(6);
+                default: return null;
+            }
+        };
+        if ((e.type === 7 || e.type === 1) && e.count > 8) {
+            // Text some cameras keep as bytes (a user comment), else its size
+            const s = e.tag === 0x9286 ? this.ascii(b.subarray(8)) : '';
+            return s || `(${e.count.toLocaleString()} bytes)`;
+        }
+        if (e.count > 16) return `(${e.count.toLocaleString()} values)`;
+        return Array.from({ length: e.count }, (_, i) => one(i)).join(', ');
     },
 
     // ---- Comparing ----

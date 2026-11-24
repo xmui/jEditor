@@ -6008,7 +6008,7 @@ const app = {
 
         // The rename tool, folder dialogs, Settings and the alert/confirm
         // dialogs handle their own keys
-        const modal = Renamer.isOpen || Folders.isModalOpen() || Export.isOpen() || Recents.isPromptOpen() || AdjustSync.isOpen() || UI.isOpen() || Stored.isOpen() || Scan.isOpen() || Camera.isOpen() || Blank.isOpen() || (typeof Highlights !== 'undefined' && Highlights.isOpen());
+        const modal = Renamer.isOpen || Folders.isModalOpen() || Export.isOpen() || Recents.isPromptOpen() || AdjustSync.isOpen() || UI.isOpen() || Stored.isOpen() || Scan.isOpen() || Camera.isOpen() || Blank.isOpen() || (typeof Highlights !== 'undefined' && Highlights.isOpen()) || (typeof MetaEditor !== 'undefined' && MetaEditor.dialogOpen());
 
         // Find anything (palette.js): its key works everywhere, in each mode
         // and from inside a box being typed in; open, it has the keys
