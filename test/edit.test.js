@@ -4481,6 +4481,103 @@ const PROJECT = `
         await page.close();
     }
 
+    if (wanted('paintwarpstyles')) {
+        console.log('paint: Warp\'s styles (paint-editor.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 200; c.height = 200;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 200, 200);
+                await openProject('styles', { 's.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                P.opts.snap = false;
+                const g = P.layers[P.cur].canvas.getContext('2d', { willReadFrequently: true });
+                g.fillStyle = '#ff0000'; g.fillRect(50, 50, 100, 100);
+                const a = (x, y) => g.getImageData(x, y, 1, 1).data[3];
+                const st = document.getElementById('paint-stage'), box = document.getElementById('paint-options');
+                const sc = (q) => { const sp = P.V().transformPoint(q); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                const drag = (from, to) => {
+                    st.dispatchEvent(new PointerEvent('pointerdown', { ...sc(from), pointerId: 1, bubbles: true, button: 0 }));
+                    st.dispatchEvent(new PointerEvent('pointermove', { ...sc(to), pointerId: 1, bubbles: true }));
+                    st.dispatchEvent(new PointerEvent('pointerup', { ...sc(to), pointerId: 1, bubbles: true }));
+                };
+                const edge = (u, v) => { const q = P.patchAt(P.float.mesh, u, v); return [Math.round(q.x), Math.round(q.y)]; };
+                const pick = (v) => { const s = box.querySelector('.paint-warp-style'); s.value = v; s.dispatchEvent(new Event('change')); };
+                const slide = (label, v) => { const i = box.querySelector(`input[aria-label="${label}"]`); i.value = v; i.dispatchEvent(new Event('input')); i.dispatchEvent(new Event('change')); };
+                step = 'warp';
+                pressKey('t', { ctrlKey: true });
+                const mode = box.querySelector('.paint-tf-mode');
+                mode.value = 'warp'; mode.dispatchEvent(new Event('change'));
+                // Style: Custom to start, with every shape; no sliders for Custom
+                const sel = box.querySelector('.paint-warp-style');
+                out.styles = [...sel.options].map(o => o.textContent).join('|');
+                out.custom = sel.value === 'custom' && !box.querySelector('input[aria-label="Bend"]');
+                // Arc at 50: the top bowed up through the shape (at a third
+                // across, exactly), the corners where they were
+                step = 'arc';
+                pick('arc');
+                out.arc = [edge(0.5, 0)[1], edge(1 / 3, 0)[1], edge(0, 0).join(), edge(1, 1).join()];
+                out.sliders = ['Bend', 'H', 'V'].every(l => box.querySelector(`input[aria-label="${l}"]`)) && !!box.querySelector('.paint-warp-turn');
+                // Bend below 0: the other way
+                slide('Bend', -50);
+                out.down = edge(0.5, 0)[1];
+                // Up and down: the left side bows out instead of the top
+                step = 'turn';
+                slide('Bend', 50);
+                box.querySelector('.paint-warp-turn').click();
+                out.turned = [edge(0.5, 0)[1], edge(0, 0.5)[0]];
+                // Horizontal distortion: the right side taller than the left
+                step = 'distort';
+                box.querySelector('.paint-warp-turn').click();
+                pick('bulge'); slide('Bend', 0); slide('H', 50);
+                out.h = [edge(0, 1)[1] - edge(0, 0)[1], edge(1, 1)[1] - edge(1, 0)[1]];
+                slide('H', 0);
+                // Every style draws (and none leaves the 16 points unbent)
+                step = 'all';
+                slide('Bend', 50);
+                const flat = P.meshOf({ ...P.float, mesh: null }, true);
+                out.allBend = [...sel.options].map(o => o.value).filter(v => v !== 'custom').filter(v => { pick(v); return !P.float.mesh.every((q, i) => Math.abs(q.x - flat[i].x) < 0.5 && Math.abs(q.y - flat[i].y) < 0.5) || P.float.mesh.some(q => !isFinite(q.x)); }).length;
+                // Moved whole, a style moves with it; a point dragged by hand: Custom, from where it was
+                step = 'custom';
+                pick('arc');
+                drag({ x: 100, y: 100 }, { x: 110, y: 100 });
+                out.moved = [box.querySelector('.paint-warp-style').value, edge(0, 0).join()];
+                slide('Bend', 60);
+                out.movedBend = edge(0, 0).join();
+                const before = P.float.mesh[5].x, q = P.float.mesh[5];
+                drag(q, { x: q.x, y: q.y + 10 });
+                out.toCustom = [box.querySelector('.paint-warp-style').value, Math.round(P.float.mesh[5].x - before), !box.querySelector('input[aria-label="Bend"]')];
+                // Reset: flat again, and Custom
+                [...box.querySelectorAll('button')].find(b => b.textContent === 'Reset').click();
+                out.reset = [box.querySelector('.paint-warp-style').value, edge(0.5, 0).join()];
+                // Arc, Done: bent pixels; one undo puts it back
+                step = 'done';
+                pick('arc');
+                [...box.querySelectorAll('button')].find(b => b.textContent === 'Done').click();
+                out.bent = [a(100, 35), a(100, 25), a(100, 125), a(100, 140)];
+                pressKey('z', { ctrlKey: true });
+                out.undone = [a(100, 35), a(100, 140)];
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        const R = JSON.stringify(r);
+        check('paint warp styles: Style lists Custom and 15 shapes; Custom to start, with no sliders', r.styles === 'Custom|Arc|Arc lower|Arc upper|Arch|Bulge|Shell lower|Shell upper|Flag|Wave|Fish|Rise|Fisheye|Inflate|Squeeze|Twist' && r.custom, R);
+        check('paint warp styles: Arc bows it up (through the shape at a third), the top narrower and the bottom wider; Bend, H, V and the turn shown', r.arc && r.arc[0] === 30 && r.arc[1] === 32 && r.arc[2] === '56,50' && r.arc[3] === '156,150' && r.sliders, R);
+        check('paint warp styles: Bend below 0 bows it down; up and down bows the side instead', r.down === 70 && r.turned && r.turned[0] === 50 && r.turned[1] === 30, R);
+        check('paint warp styles: H makes one side taller than the other', r.h && r.h[1] > r.h[0] + 40, R);
+        check('paint warp styles: all 15 shapes bend it', r.allBend === 15, R);
+        check('paint warp styles: moved whole, it keeps its style; a point dragged makes it Custom from where it was; Reset flattens it', r.moved && r.moved.join() === 'arc,66,50' && r.movedBend === '67,50' && r.toCustom && r.toCustom.join() === 'custom,0,true' && r.reset.join() === 'custom,100,50', R);
+        check('paint warp styles: Done bends the pixels (bowed up, top and bottom); one undo puts them back', r.bent && r.bent.join() === '255,0,255,0' && r.undone && r.undone.join() === '0,255', R);
+        check('paint warp styles: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     if (wanted('paintfonts')) {
         console.log('paint: the computer\'s fonts in Text (paint-editor.js: fontChoice, openFonts)');
         const { page, issues } = await open();

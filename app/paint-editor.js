@@ -4930,7 +4930,28 @@ const PaintEditor = {
         ms.addEventListener('change', () => { this.setWarp(ms.value === 'warp'); f.mode = ms.value; ms.blur(); });
         box.appendChild(mode);
         if (f.mesh) {
-            const fin = (label, title, fn, cls) => { const x = document.createElement('button'); x.className = cls; x.textContent = label; x.title = title; x.addEventListener('click', () => { x.blur(); fn(); }); box.appendChild(x); };
+            const fin = (label, title, fn, cls) => { const x = document.createElement('button'); x.className = cls; x.textContent = label; x.title = title; x.addEventListener('click', () => { x.blur(); fn(); }); box.appendChild(x); return x; };
+            // Style: a ready-made shape, or Custom (the points by hand)
+            const w = f.warp || (f.warp = this.warpDefaults());
+            const style = document.createElement('label');
+            style.className = 'paint-opt';
+            style.innerHTML = '<span>Style</span><select class="field paint-warp-style"></select>';
+            const ss = style.querySelector('select');
+            for (const [v, t] of this.WARPS) ss.add(new Option(t, v));
+            ss.value = w.style;
+            ss.title = 'A ready-made bend, or Custom to drag the points yourself';
+            ss.addEventListener('change', () => { ss.blur(); this.setWarpStyle(ss.value); });
+            box.appendChild(style);
+            if (w.style !== 'custom') {
+                const set = (k) => (v) => { w[k] = v; this.applyWarp(); };
+                const add = (row, title) => { row.title = title; box.appendChild(row); };
+                add(this.slider('Bend', -100, 100, 1, () => w.bend, set('bend')), 'How far it bends (below 0: the other way)');
+                add(this.slider('H', -100, 100, 1, () => w.h, set('h')), 'Horizontal distortion: one side bigger than the other');
+                add(this.slider('V', -100, 100, 1, () => w.v, set('v')), 'Vertical distortion: the top bigger than the bottom, or smaller');
+                const o = fin(w.vertical ? '↕' : '↔', '', () => { w.vertical = !w.vertical; this.applyWarp(); this.buildOptions(); }, 'btn ghost sm paint-warp-turn');
+                o.title = w.vertical ? 'Bends up and down (click: across)' : 'Bends across (click: up and down)';
+                o.setAttribute('aria-pressed', String(w.vertical));
+            }
             // (once: tips.js, Hints)
             if (typeof Hints === 'undefined' || Hints.show('paint.warp')) {
                 const hint = document.createElement('span');
@@ -4939,7 +4960,7 @@ const PaintEditor = {
                 hint.title = hint.textContent;
                 box.appendChild(hint);
             }
-            fin('Reset', 'Take the bend out', () => { f.mesh = this.meshOf({ ...f, mesh: null }, true); this.renderSoon(); }, 'btn ghost sm');
+            fin('Reset', 'Take the bend out', () => { f.mesh = this.meshOf({ ...f, mesh: null }, true); f.warp = this.warpDefaults(); this.buildOptions(); this.renderSoon(); }, 'btn ghost sm');
             fin('Cancel', 'Put it back as it was (Esc)', () => this.cancelFloat(), 'btn secondary paint-tf-cancel');
             fin('Done', 'Put it down (Enter)', () => this.commitFloat(), 'btn primary paint-tf-ok');
             this.tfRows = [];
@@ -5294,6 +5315,7 @@ const PaintEditor = {
         const f = this.float;
         if (!f || !!f.mesh === on) return;
         f.mesh = on ? this.meshOf(f) : null;
+        f.warp = on ? this.warpDefaults() : null;
         this.buildOptions();
         this.renderSoon();
     },
@@ -5325,6 +5347,108 @@ const PaintEditor = {
     dragMesh(p) {
         const d = this.drag, f = this.float, dx = p.ox - d.start.ox, dy = p.oy - d.start.oy;
         f.mesh = d.mesh.map((q, i) => d.part === 'move' || d.part === 'm' + i ? { x: q.x + dx, y: q.y + dy } : { ...q });
+        const w = f.warp;
+        if (!w || w.style === 'custom') return;
+        if (d.part === 'move') {
+            d.base = d.base || w.base.map(q => ({ ...q }));
+            w.base = d.base.map(q => ({ x: q.x + dx, y: q.y + dy }));
+        } else if (dx || dy) {
+            // Its points by hand from here
+            w.style = 'custom';
+            this.buildOptions();
+        }
+    },
+
+    // ---- Warp's styles: ready-made bends, each a shape over the box ----
+    //
+    // Each takes a point of the box (x and y from -1 to 1, the middle 0)
+    // to where it goes, for b, the bend (-1 to 1), across; up and down
+    // swaps x and y. The mesh is fitted through 16 points of it
+    WARPS: [['custom', 'Custom'], ['arc', 'Arc'], ['arc-lower', 'Arc lower'], ['arc-upper', 'Arc upper'], ['arch', 'Arch'], ['bulge', 'Bulge'], ['shell-lower', 'Shell lower'], ['shell-upper', 'Shell upper'], ['flag', 'Flag'], ['wave', 'Wave'], ['fish', 'Fish'], ['rise', 'Rise'], ['fisheye', 'Fisheye'], ['inflate', 'Inflate'], ['squeeze', 'Squeeze'], ['twist', 'Twist']],
+
+    warpDefaults() {
+        return { style: 'custom', bend: 50, h: 0, v: 0, vertical: false, base: null };
+    },
+
+    warpShape(style, b, x, y) {
+        const k = 1 - x * x, top = (1 - y) / 2, bottom = (1 + y) / 2, r2 = Math.min(1, x * x + y * y);
+        switch (style) {
+            // Bowed as one, the bottom wider than the top
+            case 'arc': return [x * (1 + 0.25 * b * y), y - 0.8 * b * k];
+            case 'arc-lower': return [x * (1 + 0.25 * b * bottom), y - 0.8 * b * k * bottom];
+            case 'arc-upper': return [x * (1 - 0.25 * b * top), y - 0.8 * b * k * top];
+            // Bowed, the sides leaning in
+            case 'arch': return [x * (1 - 0.2 * b * top), y - 0.8 * b * k];
+            case 'bulge': return [x, y + 0.8 * b * k * y];
+            // The corners in, the middle of that edge where it was
+            case 'shell-lower': return [x, y - 0.8 * b * x * x * bottom];
+            case 'shell-upper': return [x, y + 0.8 * b * x * x * top];
+            case 'flag': return [x, y - 0.3 * b * Math.sin(Math.PI * x)];
+            case 'wave': return [x, y - 0.3 * b * Math.sin(Math.PI * x) * (top - bottom)];
+            // Full at the front, thin at the tail
+            case 'fish': return [x, y * (1 + 0.5 * b * k - 0.3 * b * Math.max(0, x))];
+            case 'rise': return [x, y - 0.4 * b * Math.sin(Math.PI * x / 2)];
+            case 'fisheye': { const s = 1 + 0.9 * b * (1 - r2); return [x * s, y * s]; }
+            case 'inflate': return [x * (1 + 0.3 * b * (1 - y * y)), y * (1 + 0.3 * b * k)];
+            case 'squeeze': return [x * (1 - 0.3 * b * (1 - y * y)), y * (1 + 0.3 * b * k)];
+            case 'twist': { const t = b * Math.PI * (1 - r2) ** 2, c = Math.cos(t), sn = Math.sin(t); return [x * c - y * sn, x * sn + y * c]; }
+        }
+        return [x, y];
+    },
+
+    // The 16 points for a style, over its box (its 4 corners, in the
+    // picture as shown)
+    warpMesh(w) {
+        const [tl, tr, br, bl] = w.base, b = w.bend / 100, hd = w.h / 100, vd = w.v / 100;
+        const at = (u, v) => {
+            let x = 2 * u - 1, y = 2 * v - 1;
+            if (w.vertical) [x, y] = [y, x];
+            [x, y] = this.warpShape(w.style, b, x, y);
+            if (w.vertical) [x, y] = [y, x];
+            // Distortion: one side (or the top) bigger, the other smaller
+            [x, y] = [x * (1 + 0.5 * vd * y), y * (1 + 0.5 * hd * x)];
+            const s = (x + 1) / 2, t = (y + 1) / 2;
+            const top = { x: tl.x + (tr.x - tl.x) * s, y: tl.y + (tr.y - tl.y) * s };
+            const bot = { x: bl.x + (br.x - bl.x) * s, y: bl.y + (br.y - bl.y) * s };
+            return { x: top.x + (bot.x - top.x) * t, y: top.y + (bot.y - top.y) * t };
+        };
+        // Through the shape at the thirds: the Bernstein weights there,
+        // undone (each way), give the points that put the patch on them
+        const Bi = [[1, 0, 0, 0], [-5 / 6, 3, -3 / 2, 1 / 3], [1 / 3, -3 / 2, 3, -5 / 6], [0, 0, 0, 1]];
+        const P = [];
+        for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) P.push(at(i / 3, j / 3));
+        const m = [];
+        for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) {
+            let x = 0, y = 0;
+            for (let jj = 0; jj < 4; jj++) for (let ii = 0; ii < 4; ii++) {
+                const k = Bi[j][jj] * Bi[i][ii];
+                if (k) { x += k * P[jj * 4 + ii].x; y += k * P[jj * 4 + ii].y; }
+            }
+            m.push({ x, y });
+        }
+        return m;
+    },
+
+    // A style picked: its shape over the box it has now (Custom: the
+    // points stay where they are, to drag from there)
+    setWarpStyle(style) {
+        const f = this.float;
+        if (!f || !f.mesh) return;
+        const w = f.warp || (f.warp = this.warpDefaults());
+        if (w.style === 'custom' && style !== 'custom') {
+            const flat = this.meshOf({ ...f, mesh: null }, true);
+            w.base = [flat[0], flat[3], flat[15], flat[12]].map(q => ({ ...q }));
+        }
+        w.style = style;
+        this.applyWarp();
+        this.buildOptions();
+    },
+
+    applyWarp() {
+        const f = this.float, w = f && f.warp;
+        if (!w || w.style === 'custom' || !w.base) return;
+        f.mesh = this.warpMesh(w);
+        this.renderSoon();
     },
 
     // Its outline and the lines across at the thirds, and the points
@@ -6813,7 +6937,7 @@ const PaintEditor = {
         if (!this.ready || this.drag || this.crop) return false;
         if (this.float) {
             const f = this.float;
-            for (const q of f.mesh || f.quad || []) { q.x += dx; q.y += dy; }
+            for (const q of [...(f.mesh || f.quad || []), ...(f.warp && f.warp.base || [])]) { q.x += dx; q.y += dy; }
             f.t.tx += dx;
             f.t.ty += dy;
             this.renderSoon();
