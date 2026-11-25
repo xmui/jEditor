@@ -1394,6 +1394,61 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         check('Add to Photos library: a project\'s photos go in as they are, in an album named after it', add.can && add.added === 2 && fs.existsSync(album) && fs.readdirSync(album).sort().join() === 'scan 1.jpg,scan 2.jpg' && fs.readFileSync(path.join(album, 'scan 1.jpg')).equals(JPEG) && /Added 2 photos to the Photos library \(the album “Order 1207”\)/.test(add.toast), JSON.stringify(add));
         check('no JS errors', errors.length === 0, errors.join('; '));
         await app.close();
+
+        // The owner's beta 173: macOS asks, and once allowed the library
+        // opens from home, home goes (never left over the grid), and it opens
+        // again from home and from the sidebar
+        console.log('mac: the Photos library from home, macOS asking first');
+        {
+            const asked = await launch(path.join(tmp, 'profile-photos-ask'), [], { JEDITOR_PHOTOS_LIBRARY: lib, JEDITOR_PHOTOS_AUTH: 'ask' });
+            const shown = () => asked.page.evaluate(() => ({
+                home: !document.getElementById('drop-zone').classList.contains('hidden'),
+                sheet: !document.getElementById('home-places').classList.contains('hidden'),
+                grid: !document.getElementById('main-interface').classList.contains('hidden'),
+                name: app.dirHandle && app.dirHandle.name, n: app.files.length
+            }));
+            await asked.page.click('#home-all');
+            await asked.page.waitForSelector('#start-places .sb-row[data-path="photos-library:"] [data-act="open"]', { timeout: 10000 }).catch(() => { });
+            const before = await asked.page.evaluate(async () => (await JEditorNative.photosAccess(false)));
+            await asked.page.click('#start-places .sb-row[data-path="photos-library:"] [data-act="open"]');
+            await loaded(asked.page, 6).catch(() => { });
+            const first = await shown();
+            check('home: Open on the Photos library asks macOS, then opens it, and home goes', before === 'ask' && first.name === 'Photos library' && first.n === 6 && first.grid && !first.home && !first.sheet, JSON.stringify({ before, first }));
+            // Home, and open it again from there
+            await asked.page.evaluate(() => app.goHome());
+            await asked.page.waitForSelector('#drop-zone:not(.hidden)', { timeout: 5000 }).catch(() => { });
+            await asked.page.evaluate(() => Places.open('photos-library:'));
+            await loaded(asked.page, 6).catch(() => { });
+            const again = await shown();
+            check('... and again from home after going back to it', again.name === 'Photos library' && again.n === 6 && again.grid && !again.home, JSON.stringify(again));
+            // A folder project open, then the library from the sidebar
+            const pics = makeOrder(tmp, 'Pictures', 2);
+            await asked.page.evaluate((p) => JEditorNative.openPath(p), pics);
+            await loaded(asked.page, 3).catch(() => { });
+            await asked.page.evaluate(() => Places.open('photos-library:album:Birthday'));
+            await loaded(asked.page, 2).catch(() => { });
+            const side = await shown();
+            check('... from the sidebar over a folder project: the album, with home hidden', side.name === 'Birthday' && side.n === 2 && side.grid && !side.home, JSON.stringify(side));
+            check('... no JS errors', asked.errors.length === 0, asked.errors.join('; '));
+            await asked.app.close();
+        }
+        console.log('mac: the Photos library, not allowed');
+        {
+            const no = await launch(path.join(tmp, 'profile-photos-no'), [], { JEDITOR_PHOTOS_LIBRARY: lib, JEDITOR_PHOTOS_AUTH: 'denied' });
+            const r = await no.page.evaluate(async () => {
+                let asked = null;
+                UI.confirm = async (o) => { asked = o; return false; };
+                await Places.open('photos-library:');
+                return {
+                    asked: asked && asked.title, ok: asked && asked.ok, open: !!app.dirHandle, n: app.files.length,
+                    home: !document.getElementById('drop-zone').classList.contains('hidden'),
+                    grid: !document.getElementById('main-interface').classList.contains('hidden')
+                };
+            });
+            check('not allowed: it says so and offers System Settings, opens nothing, and home stays', /isn't allowed to see the Photos library/.test(r.asked || '') && r.ok === 'Open Settings' && !r.open && r.n === 0 && r.home && !r.grid, JSON.stringify(r));
+            check('... no JS errors', no.errors.length === 0, no.errors.join('; '));
+            await no.app.close();
+        }
     }
 
         console.log('mac: permissions, the first time');

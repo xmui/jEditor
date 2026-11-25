@@ -2018,7 +2018,7 @@ const app = {
 
             if (this.files.length > 0) {
                 this.showToast(`Loaded ${this.files.length.toLocaleString()} photo${this.files.length === 1 ? '' : 's'}`, 2500, null, null, { kind: 'load' });
-                this.elements.mainInterface.classList.remove('hidden');
+                this.showProject();
 
                 // Force focus settings
                 this.elements.mainInterface.setAttribute('tabindex', '-1');
@@ -2066,7 +2066,7 @@ const app = {
                 this._openScope = null;
                 this.selection.clear();
                 this.currentFile = null;
-                this.elements.mainInterface.classList.remove('hidden');
+                this.showProject();
                 this.elements.mainInterface.setAttribute('tabindex', '-1');
                 this.elements.mainInterface.focus();
                 this.renderThumbnails();
@@ -2077,16 +2077,25 @@ const app = {
                 await Flags.load();
                 Watch.start();
             } else {
-                UI.alert({
+                const library = this.library;
+                // Back to home with nothing open, so opening it again (once
+                // there's something in it, or access is allowed) isn't
+                // taken for opening what's already open (places.js: open)
+                this.showHome();
+                UI.alert(library ? {
+                    title: 'No photos found',
+                    message: 'There are no photos in the Photos library that jEditor can see. If you only allowed some of them, choose more in System Settings → Privacy & Security → Photos.'
+                } : {
                     title: 'No photos found',
                     message: 'There are no JPEG, PNG, WebP or GIF files in that folder or its subfolders. Choose another folder.'
                 });
-                this.elements.dropZone.classList.remove('hidden');
             }
         } catch (err) {
             console.error('Error finalizing load:', err);
             UI.alert({ title: 'Something went wrong opening the folder', message: String(err.message || err) });
-            this.elements.dropZone.classList.remove('hidden');
+            // The photos are on screen already: they stay, with home hidden.
+            // Not yet: home, with nothing open
+            if (this.elements.mainInterface.classList.contains('hidden')) this.showHome();
         } finally {
             this.endTask('scan');
             this.isLoading = false;
@@ -2233,6 +2242,27 @@ const app = {
         if (!choice) return false;
         this.beginTask('scan', 'Scanning folder…');
         return true;
+    },
+
+    // The project on screen, home hidden: every way in (a folder, a project,
+    // a drive, the Photos library, photos dropped) comes through here, so
+    // home never stays over the grid (the owner's beta 173 on a Mac: the
+    // Photos library's grid under the home page)
+    showProject() {
+        const sheet = document.getElementById('home-places');
+        if (sheet) sheet.classList.add('hidden');
+        this.elements.dropZone.classList.add('hidden');
+        this.elements.mainInterface.classList.remove('hidden');
+    },
+
+    // Home, with nothing open
+    showHome() {
+        this.files = [];
+        this.dirHandle = null;
+        this.currentFile = null;
+        this.elements.mainInterface.classList.add('hidden');
+        this.elements.dropZone.classList.remove('hidden');
+        if (typeof Places !== 'undefined' && Places.apply) Places.apply();
     },
 
     // A huge folder not opened after all: back to the start screen

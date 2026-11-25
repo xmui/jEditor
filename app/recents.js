@@ -496,6 +496,13 @@ const Recents = {
         // (Z:, \\server\share) in WebView2 158 the kept one's permission
         // and listing never answered: the click did nothing (the owner's
         // beta 154, 22 November)
+        // The Photos library (an album, or all of it): opened as the sidebar
+        // opens it, asking macOS first; it isn't a folder to open by its path
+        if (rec.path && typeof Places !== 'undefined' && Places.isLibrary(rec.path)) {
+            if (typeof Modes !== 'undefined') Modes.next = 'photos';
+            await Places.open(rec.path);
+            return;
+        }
         const native = typeof FolderCache !== 'undefined' && FolderCache.native();
         if (rec.kind !== 'photo' && native && typeof native.openPath === 'function') {
             let path = rec.path || null;
