@@ -21,7 +21,7 @@ const Guide = {
 
     // [topics, clip, title, line, keys (action ids), the feature it needs]
     CARDS: [
-        ['start files', 'folder', 'Open a folder', 'Open one on the home page, or drop it on the window. Subfolders come too.', []],
+        ['start files', 'folder', 'Open a folder', 'Open one on Home, or drop it on the window. Subfolders come too.', []],
         ['start photos', 'turn', 'Turn a photo', 'Upright in one key. In the grid, every selected photo turns.', ['edit.rotateLeft', 'edit.rotateRight']],
         ['start crop', 'crop', 'Crop and straighten', 'Drag the corners or the dial. Enter saves.', ['edit.crop']],
         ['start flags', 'flag', 'Flag photos', 'Star the picks, mark the ones to scan again, add a color.', ['flag.star', 'flag.rescan']],

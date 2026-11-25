@@ -50,7 +50,7 @@ const Highlights = {
             Host.has('photosLibrary') ? 'iPhone photos show in seconds, and your Photos library is in the sidebar' : 'iPhone photos show in seconds, not minutes'],
           spot: { find: true, title: 'Find anything', text: () => '{key:app.palette}, then type a command, a photo or a folder and press Enter. {key:edit.undo} takes back any step, and {key:edit.redo} does it again.' } },
         { kicker: 'Start and save', art: 'save', title: 'A new start, and safer saving', tour: true, lines: () => [
-            'A new home page, a short tour, and the guide on {key:app.guide}',
+            'A new Home, a short tour, and the guide on {key:app.guide}',
             'Edits are kept in jEditor, with a count of what’s unsaved; {key:edit.saveOver} writes them into the file',
             'A proper Export window'] },
         { kicker: 'And more', title: 'Everything else in 2.0', more: [

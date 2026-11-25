@@ -5394,7 +5394,7 @@ const app = {
         ['app.shortcuts', 'global', 'App', 'Keyboard shortcuts', ['?']],
         ['app.guide', 'global', 'App', 'Guide: how-tos and shortcuts', ['F1']],
         ['app.tour', 'global', 'App', 'Take the tour', []],
-        ['app.home', 'global', 'App', 'Home page', ['Ctrl+Shift+H']],
+        ['app.home', 'global', 'App', 'Home', ['Ctrl+Shift+H']],
         ['app.settings', 'global', 'App', 'Settings', ['Ctrl+,']],
         ['app.debug', 'global', 'App', 'Debug console', ['Ctrl+Shift+D']],
         ['crop.save', 'crop', 'Crop & Straighten', 'Save', ['Enter']],

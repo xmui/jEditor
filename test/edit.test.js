@@ -847,7 +847,7 @@ const PROJECT = `
                 step = 'named';
                 const act = app.KEY_ACTIONS.find(a => a[0] === 'app.home');
                 out.named = [act && act[3], (app.keyBindings['app.home'] || []).join(), app.KEY_ACTIONS.filter(a => a[0] !== 'app.home' && a[4].includes('Ctrl+Shift+H')).length];
-                out.menu = MenuBar.MENUS.File.some(m => Array.isArray(m) && m[0] === 'Home page' && m[1] === 'app.home');
+                out.menu = MenuBar.MENUS.File.some(m => Array.isArray(m) && m[0] === 'Home' && m[1] === 'app.home');
                 out.palette = typeof Palette !== 'undefined';
                 // When jEditor opens: Home page is a choice, in Settings and the gear's menu alike
                 step = 'choices';
@@ -887,9 +887,9 @@ const PROJECT = `
             !r.error && r.fromGrid && JSON.stringify(r.fromAdjust) === '[true,true,"photos"]' && JSON.stringify(r.fromPaint) === '[true,"photos"]', JSON.stringify(r));
         check('home: not while typing in a box', r.typing === true, JSON.stringify(r.typing));
         check('home: a named command (so Find anything, the guide and the shortcuts list have it), on no other command, and in the File menu',
-            !!r.named && r.named[0] === 'Home page' && r.named[1] === 'Ctrl+Shift+H' && r.named[2] === 0 && r.menu, JSON.stringify([r.named, r.menu]));
-        check('home: When jEditor opens offers Home page first, the same in Settings and the gear\'s menu',
-            r.settingsChoices === 'Home page,The last project' && r.gearChoices === 'Home page,The last project', JSON.stringify([r.settingsChoices, r.gearChoices]));
+            !!r.named && r.named[0] === 'Home' && r.named[1] === 'Ctrl+Shift+H' && r.named[2] === 0 && r.menu, JSON.stringify([r.named, r.menu]));
+        check('home: When jEditor opens offers Home first, the same in Settings and the gear\'s menu',
+            r.settingsChoices === 'Home,The last project' && r.gearChoices === 'Home,The last project', JSON.stringify([r.settingsChoices, r.gearChoices]));
         check('home: a last project on Z: or a network share that can\'t be reached leaves the home page, saying its drive may not be connected',
             !!r.fallback && r.fallback.length === 2 && r.fallback.every(f => f[1] && f[2]), JSON.stringify(r.fallback));
         check('home: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
