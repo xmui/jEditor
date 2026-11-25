@@ -1400,6 +1400,9 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         // again from home and from the sidebar
         console.log('mac: the Photos library from home, macOS asking first');
         {
+            // Every photo in it (the earlier test added an album)
+            const all = fs.readdirSync(lib, { withFileTypes: true }).filter(d => d.isDirectory() && !d.name.startsWith('.'))
+                .reduce((n, d) => n + fs.readdirSync(path.join(lib, d.name)).filter(f => /\.jpe?g$/i.test(f)).length, 0);
             const asked = await launch(path.join(tmp, 'profile-photos-ask'), [], { JEDITOR_PHOTOS_LIBRARY: lib, JEDITOR_PHOTOS_AUTH: 'ask' });
             const shown = () => asked.page.evaluate(() => ({
                 home: !document.getElementById('drop-zone').classList.contains('hidden'),
@@ -1411,16 +1414,16 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await asked.page.waitForSelector('#start-places .sb-row[data-path="photos-library:"] [data-act="open"]', { timeout: 10000 }).catch(() => { });
             const before = await asked.page.evaluate(async () => (await JEditorNative.photosAccess(false)));
             await asked.page.click('#start-places .sb-row[data-path="photos-library:"] [data-act="open"]');
-            await loaded(asked.page, 6).catch(() => { });
+            await loaded(asked.page, all).catch(() => { });
             const first = await shown();
-            check('home: Open on the Photos library asks macOS, then opens it, and home goes', before === 'ask' && first.name === 'Photos library' && first.n === 6 && first.grid && !first.home && !first.sheet, JSON.stringify({ before, first }));
+            check('home: Open on the Photos library asks macOS, then opens it, and home goes', before === 'ask' && first.name === 'Photos library' && first.n === all && first.grid && !first.home && !first.sheet, JSON.stringify({ before, first }));
             // Home, and open it again from there
             await asked.page.evaluate(() => app.goHome());
             await asked.page.waitForSelector('#drop-zone:not(.hidden)', { timeout: 5000 }).catch(() => { });
             await asked.page.evaluate(() => Places.open('photos-library:'));
-            await loaded(asked.page, 6).catch(() => { });
+            await loaded(asked.page, all).catch(() => { });
             const again = await shown();
-            check('... and again from home after going back to it', again.name === 'Photos library' && again.n === 6 && again.grid && !again.home, JSON.stringify(again));
+            check('... and again from home after going back to it', again.name === 'Photos library' && again.n === all && again.grid && !again.home, JSON.stringify(again));
             // Its stack on home's table opens it too
             await asked.page.evaluate(() => app.goHome());
             await asked.page.waitForSelector('#drop-zone:not(.hidden)', { timeout: 5000 }).catch(() => { });
@@ -1432,9 +1435,9 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 li.querySelector('.recent-open').click();
                 return { pics, ghost };
             });
-            await loaded(asked.page, 6).catch(() => { });
+            await loaded(asked.page, all).catch(() => { });
             const fromStack = await shown();
-            check('... and from its stack on home, which shows its photos (not empty prints)', !!stack && stack.pics > 0 && !stack.ghost && fromStack.name === 'Photos library' && fromStack.n === 6 && !fromStack.home, JSON.stringify({ stack, fromStack }));
+            check('... and from its stack on home, which shows its photos (not empty prints)', !!stack && stack.pics > 0 && !stack.ghost && fromStack.name === 'Photos library' && fromStack.n === all && !fromStack.home, JSON.stringify({ stack, fromStack }));
             // A folder project open, then the library from the sidebar
             const pics = makeOrder(tmp, 'Pictures', 2);
             await asked.page.evaluate((p) => JEditorNative.openPath(p), pics);
