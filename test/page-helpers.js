@@ -248,7 +248,12 @@ async function floatingBoxes(page, { tour = true } = {}) {
         ['Settings', () => app.keyHandlers()['app.settings'](), '.dialog-overlay:not(.hidden) .dialog'],
         ['a question (UI.confirm)', () => { UI.confirm('A question, to see where it shows?'); }, '#ui-dialog:not(.hidden) .dialog'],
         ['the guide', () => Guide.open(), '.guide'],
-        ['Find anything', () => Palette.open(), '.palette'],
+        // (not while another dialog shows: the guide, just closed, can still
+        // be going, and Find anything never opens over one: palette.js)
+        ['Find anything', async () => {
+            for (let i = 0; i < 40 && Palette.otherDialog(); i++) await new Promise(r => setTimeout(r, 50));
+            Palette.open();
+        }, '.palette'],
         ['the first-time questions', () => { FirstOpen.welcome(); }, '.first-open'],
         ['the Open a folder card', () => { if (typeof OpenCard !== 'undefined' && OpenCard.available()) OpenCard.open(); }, '#open-card:not(.hidden) .dialog'],
         // (the apps': a click on the project's name in the sidebar)
