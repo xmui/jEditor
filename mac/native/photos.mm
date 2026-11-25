@@ -185,11 +185,11 @@ static Napi::Value Collections(const Napi::CallbackInfo &info) {
     });
 }
 
-static PHAssetResource *MainResource(PHAsset *a) {
-    NSArray<PHAssetResource *> *rs = [PHAssetResource assetResourcesForAsset:a];
-    for (PHAssetResource *r in rs) if (r.type == PHAssetResourceTypePhoto) return r;
-    return rs.firstObject;
-}
+// A library this big is listed without each photo's size: reading every
+// photo's resources took minutes there (the owner's beta 173: the whole
+// library didn't open, while an album did). A size of 0 is read when the
+// photo is (bridge.js: libraryFile)
+static const NSUInteger kSizesUpTo = 3000;
 
 static Napi::Value Assets(const Napi::CallbackInfo &info) {
     NSString *cid = Arg(info, 0);
@@ -197,27 +197,44 @@ static Napi::Value Assets(const Napi::CallbackInfo &info) {
         if (!Allowed()) return Fail(@"jEditor isn't allowed to see the Photos library");
         PHFetchResult<PHAsset *> *found;
         if (!cid.length) {
-            found = [PHAsset fetchAssetsWithOptions:PhotosOnly(YES)];
+            // All of it, as an album is listed: the library's own album
+            // (Photos' Library), else every photo
+            PHAssetCollection *lib = [PHAssetCollection fetchAssetCollectionsWithType:PHAssetCollectionTypeSmartAlbum subtype:PHAssetCollectionSubtypeSmartAlbumUserLibrary options:nil].firstObject;
+            found = lib ? [PHAsset fetchAssetsInAssetCollection:lib options:PhotosOnly(YES)] : [PHAsset fetchAssetsWithOptions:PhotosOnly(YES)];
         } else {
             PHAssetCollection *c = [PHAssetCollection fetchAssetCollectionsWithLocalIdentifiers:@[cid] options:nil].firstObject;
             if (!c) return Fail(@"That album isn't there any more");
             found = [PHAsset fetchAssetsInAssetCollection:c options:PhotosOnly(YES)];
         }
+        BOOL sizes = found.count <= kSizesUpTo;
         NSMutableArray *out = [NSMutableArray arrayWithCapacity:found.count];
         for (PHAsset *a in found) {
             @autoreleasepool {
-                PHAssetResource *r = MainResource(a);
-                // The size of the photo as it is now: an edited one's is its
-                // full-size rendering, so it changes when it's edited (jEditor's
-                // kept edits for it are then out of date, as for a changed file)
-                PHAssetResource *now = r;
-                for (PHAssetResource *x in [PHAssetResource assetResourcesForAsset:a]) if (x.type == PHAssetResourceTypeFullSizePhoto) now = x;
+                NSString *fname = nil;
                 id size = nil;
-                // Not in the headers, but how every photo app gets it
-                @try { size = [now valueForKey:@"fileSize"]; } @catch (NSException *e) { size = nil; }
+                if (sizes) {
+                    // Its resources once: the original's name, and the size of
+                    // the photo as it is now (an edited one's full-size
+                    // rendering, so it changes when it's edited)
+                    PHAssetResource *orig = nil, *now = nil;
+                    NSArray<PHAssetResource *> *rs = [PHAssetResource assetResourcesForAsset:a];
+                    for (PHAssetResource *x in rs) {
+                        if (x.type == PHAssetResourceTypePhoto && !orig) orig = x;
+                        if (x.type == PHAssetResourceTypeFullSizePhoto) now = x;
+                    }
+                    if (!orig) orig = rs.firstObject;
+                    if (!now) now = orig;
+                    fname = orig.originalFilename;
+                    // Not in the headers, but how every photo app gets it
+                    @try { size = [now valueForKey:@"fileSize"]; } @catch (NSException *e) { size = nil; }
+                } else {
+                    // The name without asking for its resources
+                    @try { fname = [a valueForKey:@"filename"]; } @catch (NSException *e) { fname = nil; }
+                    if (![fname isKindOfClass:[NSString class]]) fname = nil;
+                }
                 [out addObject:@{
                     @"id": a.localIdentifier,
-                    @"originalFilename": r.originalFilename ?: @"Photo.jpg",
+                    @"originalFilename": fname ?: @"Photo.jpg",
                     @"created": @(a.creationDate ? a.creationDate.timeIntervalSince1970 * 1000 : 0),
                     @"fileSize": [size isKindOfClass:[NSNumber class]] ? size : @0,
                     @"modified": @(a.modificationDate ? a.modificationDate.timeIntervalSince1970 * 1000 : 0),

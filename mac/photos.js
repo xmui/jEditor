@@ -20,6 +20,7 @@ const PHOTO = /\.(jpe?g|png|gif|webp|heic|heif|tiff?)$/i;
 const TYPES = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' };
 
 function standIn(root) {
+    let auth = process.env.JEDITOR_PHOTOS_AUTH || 'granted';
     const photosIn = (dir) => {
         let names = [];
         try { names = fs.readdirSync(dir, { withFileTypes: true }).filter(d => d.isFile() && PHOTO.test(d.name)).map(d => d.name); } catch (e) { /* none */ }
@@ -47,8 +48,13 @@ function standIn(root) {
         return { id, originalFilename: path.basename(file), created: born, modified: st.mtimeMs, fileSize: st.size, w, h };
     };
     return {
-        authStatus: () => process.env.JEDITOR_PHOTOS_AUTH || 'granted',
-        requestAuth: async () => process.env.JEDITOR_PHOTOS_AUTH || 'granted',
+        // JEDITOR_PHOTOS_AUTH: what macOS says to start with ('ask' until
+        // it's asked, then JEDITOR_PHOTOS_ANSWER, 'granted' unless told)
+        authStatus: () => auth,
+        requestAuth: async () => {
+            if (auth === 'ask') auth = process.env.JEDITOR_PHOTOS_ANSWER || 'granted';
+            return auth;
+        },
         async collections() {
             const kind = (n) => (/^favou?rites$/i.test(n) ? 'favourites' : /^recently added$/i.test(n) ? 'recent' : 'album');
             const all = albums().map(n => ({ id: 'album:' + n, kind: kind(n), name: n, count: photosIn(path.join(root, n)).length }));
