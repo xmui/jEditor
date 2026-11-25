@@ -551,6 +551,15 @@ const app = {
         customize: 'Settings'
     },
 
+    // Adjust's and Paint's own buttons that can be on their bar (the pill
+    // at the top right; on the Mac, macOS 26's toolbar, whose Customize
+    // Toolbar sheet changes this too: mac/bridge.js). Off it, each is still
+    // under ⋯ and on its key. [key, the button's id, its name]
+    MODE_BAR: {
+        adjust: [['before', 'adj-before', 'Before and after'], ['reset', 'adj-reset', 'Reset'], ['copy', 'adj-copy', 'Copy adjustments'], ['paste', 'adj-paste', 'Paste adjustments']],
+        paint: [['undo', 'paint-undo', 'Undo'], ['redo', 'paint-redo', 'Redo']]
+    },
+
     // Allowed values for the appearance settings; the first is the default
     APPEARANCE: {
         theme: ['system', 'dark', 'light'], // 2.0: follows the system to start with (audit H4)
@@ -572,6 +581,8 @@ const app = {
                 scan: 'main', camera: 'main', info: 'main', view: 'more', refresh: 'more', crop: 'main', adjust: 'more', paint: 'more', history: 'more',
                 fit: 'more', strip: 'more', fullscreen: 'more', dupes: 'more', convert: 'more', keys: 'more', whatsnew: 'more', customize: 'main'
             },
+            // Adjust's and Paint's bar (MODE_BAR): what's on it, in order
+            modeBar: { adjust: ['before'], paint: ['undo', 'redo'] },
             vertical: false,
             scale: 1,
             stripHeight: 80,
@@ -641,6 +652,12 @@ const app = {
                         if (['main', 'more', 'hidden'].includes(saved.placement[k])) {
                             this.uiPrefs.placement[k] = saved.placement[k];
                         }
+                    }
+                }
+                if (saved.modeBar && typeof saved.modeBar === 'object') {
+                    for (const [m, list] of Object.entries(this.MODE_BAR)) {
+                        const known = list.map(([k]) => k);
+                        if (Array.isArray(saved.modeBar[m])) this.uiPrefs.modeBar[m] = [...new Set(saved.modeBar[m].filter(k => known.includes(k)))];
                     }
                 }
                 if (typeof saved.vertical === 'boolean') this.uiPrefs.vertical = saved.vertical;
@@ -764,6 +781,18 @@ const app = {
         this.openContextMenu(rows, e.clientX, e.clientY);
     },
 
+    // One of Adjust's or Paint's buttons on its bar or off it (Settings →
+    // Toolbar, or the Mac's Customize Toolbar: bridge.js). On, it goes where
+    // MODE_BAR has it among those on
+    setModeBar(mode, key, on) {
+        const all = this.MODE_BAR[mode].map(([k]) => k);
+        const bar = this.uiPrefs.modeBar[mode].filter(k => k !== key);
+        if (on) bar.push(key);
+        this.uiPrefs.modeBar[mode] = on ? all.filter(k => bar.includes(k)) : bar;
+        this.saveUiPrefs();
+        this.applyUiPrefs();
+    },
+
     headerButton(key) {
         return this.elements.headerControls.querySelector(`[data-hc="${key}"]`);
     },
@@ -792,6 +821,14 @@ const app = {
         });
         // No overflow items → no expander
         this.elements.btnMore.classList.toggle('hidden', !hasMore);
+        // Adjust's and Paint's bar: what's on it (the rest is under ⋯)
+        for (const [m, list] of Object.entries(this.MODE_BAR)) {
+            const on = (p.modeBar && p.modeBar[m]) || [];
+            for (const [k, id] of list) {
+                const b = document.getElementById(id);
+                if (b) { b.classList.toggle('on-bar', on.includes(k)); b.classList.toggle('off-bar', !on.includes(k)); }
+            }
+        }
 
         container.classList.toggle('vertical', !!p.vertical);
         document.documentElement.style.setProperty('--ui-scale', p.scale);
@@ -1086,7 +1123,7 @@ const app = {
         });
         $('cust-reset').addEventListener('click', () => {
             const d = this.defaultUiPrefs();
-            Object.assign(this.uiPrefs, { order: d.order, placement: d.placement, vertical: d.vertical });
+            Object.assign(this.uiPrefs, { order: d.order, placement: d.placement, vertical: d.vertical, modeBar: d.modeBar });
             this.saveUiPrefs();
             this.applyUiPrefs();
             this.renderCustomizePanel();
@@ -1194,6 +1231,37 @@ const app = {
         $('cust-glass-strength').value = this.uiPrefs.glassStrength;
         $('cust-glass-strength-out').textContent = `${this.uiPrefs.glassStrength}%`;
         this.syncBackdropControls();
+
+        // Adjust's and Paint's bar: on it, or under ⋯
+        {
+            const ml = $('mode-bar-list');
+            if (ml) {
+                ml.innerHTML = '';
+                for (const [m, list] of Object.entries(this.MODE_BAR)) {
+                    for (const [k, , label] of list) {
+                        const li = document.createElement('li');
+                        li.dataset.key = `${m}:${k}`;
+                        const name = document.createElement('span');
+                        name.className = 'cust-name';
+                        name.textContent = `${m === 'adjust' ? 'Adjust' : 'Paint'}: ${label}`;
+                        const sel = document.createElement('select');
+                        sel.className = 'field sm';
+                        sel.setAttribute('aria-label', `Where ${label} goes in ${m === 'adjust' ? 'Adjust' : 'Paint'}`);
+                        for (const [v, l] of [['main', 'Toolbar'], ['more', 'Under ⋯']]) {
+                            const o = document.createElement('option');
+                            o.value = v;
+                            o.textContent = l;
+                            sel.appendChild(o);
+                        }
+                        const bar = this.uiPrefs.modeBar[m];
+                        sel.value = bar.includes(k) ? 'main' : 'more';
+                        sel.onchange = () => this.setModeBar(m, k, sel.value === 'main');
+                        li.append(name, sel);
+                        ml.appendChild(li);
+                    }
+                }
+            }
+        }
 
         this.uiPrefs.order.forEach(key => {
             if ((key === 'scan' || key === 'camera') && !Host.has(key)) return; // only where the app can

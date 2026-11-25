@@ -1026,9 +1026,11 @@ const Adjust = {
         const box = this.el('adj-stage').getBoundingClientRect();
         let top = this.PAD;
         const head = this.root && this.root.querySelector('.adj-head');
-        if (head && head.offsetParent !== null && !document.documentElement.dataset.skin) {
+        // (its pills: under the Mac's own toolbar they're in it, not here)
+        const pills = head && head.offsetParent !== null ? [...head.querySelectorAll('.mode-file, .mode-head-acts')].filter(e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden') : [];
+        if (pills.length && !document.documentElement.dataset.skin) {
             const gutter = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gutter')) || 20;
-            top = Math.max(top, head.getBoundingClientRect().bottom - box.top + gutter);
+            top = Math.max(top, Math.max(...pills.map(e => e.getBoundingClientRect().bottom)) - box.top + gutter);
         }
         // At the right, clear of the panel, which floats over the stage in
         // jEditor's own look: zoomed in, the photo runs on under it

@@ -1011,7 +1011,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 const am = inAdjust.items.find(i => i.id === 'modes');
                 // (the sidebar shown beside Adjust: the same buttons; not shown, the mode's own button)
                 const railBeside = await page.evaluate(() => { const r = document.querySelector('.folder-rail'); return !!r && !!r.getClientRects().length; });
-                const sameButtons = railBeside ? inAdjust.items[0] && inAdjust.items[0].id === 'modes' && !!am && am.selected === 1 : inAdjust.items[0] && inAdjust.items[0].id === 'mode' && inAdjust.items[0].menu.includes('✓Adjust');
+                const sameButtons = railBeside ? inAdjust.items[0] && inAdjust.items[0].id === 'modes' && !!am && am.selected === 1 : inAdjust.items[0] && inAdjust.items[0].id === 'rail' && inAdjust.items[1] && inAdjust.items[1].id === 'mode' && inAdjust.items[1].menu.includes('✓Adjust');
                 check('... its Adjust there opens Adjust, the same buttons in the same places (or the mode\'s own, the sidebar not beside it)', await page.evaluate(() => Modes.current()) === 'adjust' && sameButtons, JSON.stringify([railBeside, inAdjust.items]));
                 await page.evaluate(() => Modes.go('photos'));
                 await page.waitForFunction(() => Modes.current() === 'photos', null, { timeout: 15000 }).catch(() => null);
@@ -1087,7 +1087,58 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await settle();
             d = await describe();
             const sent = await app.evaluate(() => global.sentModels.slice(-4));
-            check('... choosing Adjust there opens it; the toolbar stays, with the same mode button first, and no page chip', d.visible === true && d.items[0] && d.items[0].id === 'mode' && d.items[0].menu.includes('✓Adjust') && !!photosMode && d.items[0].menu.length === photosMode.menu.length && !await page.evaluate(() => document.getElementById('mode-float').getClientRects().length), JSON.stringify([d.visible, d.items, photosMode, sent]));
+            // (the sidebar's button first, in every mode: the owner's pick, 25 November)
+            const adjMode = d.items[1];
+            check('... choosing Adjust there opens it; the toolbar stays, with the sidebar\'s button and the same mode button first, and no page chip', d.visible === true && d.items[0] && d.items[0].id === 'rail' && adjMode && adjMode.id === 'mode' && adjMode.menu.includes('✓Adjust') && !!photosMode && adjMode.menu.length === photosMode.menu.length && !await page.evaluate(() => document.getElementById('mode-float').getClientRects().length), JSON.stringify([d.visible, d.items, photosMode, sent]));
+            // One row (the owner's pick A, 25 November): Adjust's own buttons,
+            // Settings, ⋯ and Done in the toolbar, the file its title and its size
+            // the subtitle, no pills of the page's own under it, and the photo
+            // fitted from the top of what's under the toolbar
+            {
+                const ids = d.items.map(i => i.id);
+                const p = await page.evaluate(() => ({
+                    file: document.getElementById('adj-file').textContent, dims: document.getElementById('adj-dims').textContent.trim(),
+                    pill: document.querySelector('#adjust-editor .mode-file').getClientRects().length,
+                    acts: getComputedStyle(document.querySelector('#adjust-editor .mode-head-acts')).visibility,
+                    fitTop: Math.round(Adjust.fitBox().y)
+                }));
+                check('Adjust, one row: the sidebar, the mode, then Before and after, Settings, ⋯ and Done last; the file the title, its size the subtitle; no pills of its own, the photo fitted from the top', ['mb:before', 'mset', 'mmore', 'mdone'].every(x => ids.includes(x)) && ids[ids.length - 1] === 'mdone' && d.title === p.file && d.subtitle === p.dims && !p.pill && p.acts === 'hidden' && p.fitTop <= Adjust.PAD + 1, JSON.stringify([ids, d.title, d.subtitle, p]));
+                await click('mb:before');
+                await settle();
+                const before = await page.evaluate(() => document.getElementById('adj-before').getAttribute('aria-pressed'));
+                const pressed = (await describe()).items.find(i => i.id === 'mb:before');
+                await click('mb:before');
+                await settle();
+                check('... its Before and after is the page\'s own, and shows it\'s on', before === 'true' && !!pressed, JSON.stringify([before, pressed]));
+                // Apple's Customize Toolbar sheet: what's left in the toolbar when it
+                // closes is what Settings → Toolbar keeps (Reset added, Before off)
+                await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.send('jeditor', { type: 'toolbar', id: 'customized', value: 'rail,mode,mb:reset,mset,mmore,mdone' }));
+                await settle();
+                await settle();
+                const c = await describe();
+                const bar = await page.evaluate(() => ({ pref: app.uiPrefs.modeBar.adjust.join(), reset: document.getElementById('adj-reset').classList.contains('on-bar'), before: document.getElementById('adj-before').classList.contains('off-bar') }));
+                check('... Customize Toolbar: what\'s added or taken off there is Settings → Toolbar\'s (Reset on, Before under ⋯)', c.customize === true && c.items.some(i => i.id === 'mb:reset') && !c.items.some(i => i.id === 'mb:before') && (c.allowed || []).includes('mb:before') && bar.pref === 'reset' && bar.reset && bar.before, JSON.stringify([c.items.map(i => i.id), c.allowed, bar]));
+                await page.evaluate(() => { app.uiPrefs.modeBar.adjust = ['before']; app.saveUiPrefs(); app.applyUiPrefs(); });
+                await settle();
+                await click('mdone');
+                await page.waitForFunction(() => Modes.current() === 'photos', null, { timeout: 15000 }).catch(() => null);
+                check('... its Done goes back to Photos, as Enter does', await page.evaluate(() => Modes.current()) === 'photos');
+                // Paint: Undo and Redo (none to undo yet), Settings, ⋯, Done
+                await page.evaluate(() => { app.uiPrefs.railIn = { ...(app.uiPrefs.railIn || {}), paint: false }; app.saveUiPrefs(); Modes.go('paint'); });
+                await page.waitForFunction(() => !document.getElementById('paint-editor').classList.contains('hidden'), null, { timeout: 15000 }).catch(() => null);
+                await settle();
+                await settle();
+                const pd = await describe();
+                const pids = pd.items.map(i => i.id);
+                const undo = pd.items.find(i => i.id === 'mb:undo');
+                check('Paint, one row: the sidebar, the mode, then Undo and Redo, Settings, ⋯ and Done last; nothing to undo yet, Undo is off', pids[0] === 'rail' && pids[1] === 'mode' && ['mb:undo', 'mb:redo', 'mset', 'mmore', 'mdone'].every(x => pids.includes(x)) && pids[pids.length - 1] === 'mdone' && !!undo && undo.enabled === false, JSON.stringify(pd.items));
+                await page.evaluate(() => Modes.go('photos'));
+                await page.waitForFunction(() => Modes.current() === 'photos', null, { timeout: 15000 }).catch(() => null);
+                await settle();
+                await click('mode', 'adjust');
+                await page.waitForFunction(() => !document.getElementById('adjust-editor').classList.contains('hidden'), null, { timeout: 15000 });
+                await settle();
+            }
             // Measured at every Toolbar size, sidebar open and closed, in and out
             // of full screen: the toolbar's mode button is there, the page's chip
             // isn't, and the head (its buttons) starts below the toolbar
@@ -1108,13 +1159,14 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                 for (let i = 0; i < 60 && document.getElementById(`${where}-editor`).classList.contains('hidden'); i++) await wait(50);
                                 await wait(400);
                                 const head = document.querySelector(`#${where}-editor .mode-head`).getBoundingClientRect();
-                                const acts = [...document.querySelectorAll(`#${where}-editor .mode-head :is(button, input, select)`)].filter(b => b.getClientRects().length).map(b => b.getBoundingClientRect().top);
+                                // (what shows: the head's own buttons are in the toolbar now, laid out unseen)
+                                const acts = [...document.querySelectorAll(`#${where}-editor .mode-head :is(button, input, select)`)].filter(b => b.getClientRects().length && getComputedStyle(b).visibility !== 'hidden').map(b => b.getBoundingClientRect().top);
                                 return { float: document.getElementById('mode-float').getClientRects().length, headTop: head.top, firstControl: acts.length ? Math.min(...acts) : null };
                             }, [scale, rail, where]);
                             d = await describe();
                             const name = `${where} at ${scale * 100}%${rail ? ', sidebar open' : ''}${fs_ ? ', full screen' : ''}`;
                             // (the sidebar open: Photos · Adjust · Paint as its icons, the mode's chosen)
-                            const item = d.items[0];
+                            const item = d.items.find(i => i.id === 'mode' || i.id === 'modes');
                             const label = where[0].toUpperCase() + where.slice(1);
                             const ok = !!item && (item.id === 'mode' ? item.menu.includes('✓' + label) : item.id === 'modes' && item.selected === (where === 'adjust' ? 1 : 2));
                             if (!d.visible || !ok) modeMiss.push(`${name}: no mode button in the toolbar ${JSON.stringify([d.visible, d.items])}`);

@@ -1509,7 +1509,7 @@ const PaintEditor = {
             const g = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gutter')) || 20;
             const over = (el) => { if (!el || !el.getClientRects().length) return null; const r = el.getBoundingClientRect(); return r.width && r.right > st.left && r.left < st.right && r.bottom > st.top && r.top < st.bottom ? r : null; };
             const head = this.root.querySelector('.paint-head');
-            const pills = head ? [...head.querySelectorAll('.mode-file, .mode-head-acts')].map(over).filter(Boolean) : [];
+            const pills = head ? [...head.querySelectorAll('.mode-file, .mode-head-acts')].filter(e => getComputedStyle(e).visibility !== 'hidden').map(over).filter(Boolean) : [];
             if (pills.length) box.t = Math.max(pad, Math.max(...pills.map(r => r.bottom)) - st.top + g);
             const tools = over(this.el('paint-tools'));
             if (tools) box.l = Math.max(pad, tools.right - st.left + g);

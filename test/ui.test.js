@@ -6308,6 +6308,42 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- 7t4a1. Settings → Toolbar: Adjust's and Paint's buttons ----
+    // Which of their buttons are on their pill (the rest under ⋯): the same
+    // setting the Mac's Customize Toolbar sheet changes (mac/bridge.js)
+    console.log('settings: Adjust\'s and Paint\'s toolbar buttons');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1200, height: 760 });
+        const r = await page.evaluate(async () => {
+            const out = {};
+            app.toggleCustomizePanel(true);
+            if (app.showSettingsPage) app.showSettingsPage('toolbar');
+            const rows = [...document.querySelectorAll('#mode-bar-list li')];
+            out.rows = rows.map(li => li.querySelector('.cust-name').textContent + '=' + li.querySelector('select').value).join('|');
+            const reset = rows.find(li => li.dataset.key === 'adjust:reset').querySelector('select');
+            reset.value = 'main';
+            reset.dispatchEvent(new Event('change'));
+            const undo = document.querySelector('#mode-bar-list li[data-key="paint:undo"] select');
+            undo.value = 'more';
+            undo.dispatchEvent(new Event('change'));
+            out.pref = JSON.stringify(app.uiPrefs.modeBar);
+            out.resetOn = document.getElementById('adj-reset').classList.contains('on-bar');
+            out.undoOff = document.getElementById('paint-undo').classList.contains('off-bar');
+            const saved = JSON.parse(localStorage.getItem('jeditor.ui'));
+            out.saved = JSON.stringify(saved.modeBar);
+            document.getElementById('cust-reset').click();
+            out.reset = JSON.stringify(app.uiPrefs.modeBar);
+            app.toggleCustomizePanel(false);
+            return out;
+        });
+        check('settings: Toolbar lists Adjust\'s and Paint\'s buttons, Before, Undo and Redo on to start with', r.rows === 'Adjust: Before and after=main|Adjust: Reset=more|Adjust: Copy adjustments=more|Adjust: Paste adjustments=more|Paint: Undo=main|Paint: Redo=main', r.rows);
+        check('... a change there puts a button on its pill or under ⋯, and is kept', r.pref === '{"adjust":["before","reset"],"paint":["redo"]}' && r.resetOn && r.undoOff && r.saved === r.pref, JSON.stringify(r));
+        check('... Reset toolbar layout puts them back', r.reset === '{"adjust":["before"],"paint":["undo","redo"]}', r.reset);
+        check('mode bar settings: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7t4a. Home: Settings clicks, every time ----
     // Real clicks on Home's Settings: right after jEditor starts, with the
     // window settling as it opens (a resize just after the click), back on

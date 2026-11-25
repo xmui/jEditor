@@ -5255,8 +5255,20 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     padding: 0 6px;
 }
 
-:root:not([data-skin]) .adj-head :is(#adj-reset, #adj-copy, #adj-paste, .mode-head-sep) {
+:root:not([data-skin]) .adj-head :is(#adj-reset, #adj-copy, #adj-paste):not(.on-bar),
+:root:not([data-skin]) .adj-head .mode-head-sep {
     display: none;
+}
+
+/* Adjust's and Paint's buttons off their bar (Settings → Toolbar: script.js,
+   MODE_BAR): under ⋯ only */
+.mode-head-acts .off-bar,
+.paint-undo-redo:not(:has(.on-bar)) {
+    display: none !important;
+}
+
+.mode-bar-list li {
+    cursor: default;
 }
 
 .mode-head-sep {
@@ -10133,6 +10145,23 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
    toolbar too) */
 :root.native-toolbar:not([data-skin]) :is(.adj-head, .paint-head) {
     top: var(--top-row);
+}
+
+/* One row (the owner's pick A, 25 November): the toolbar has Adjust's and
+   Paint's buttons, their file's name and Done (bridge.js), so their own
+   pills don't show and the photo has the room. Their buttons stay laid
+   out, unseen, up in the toolbar's corner: ⋯'s menu opens from there, under
+   the toolbar's own ⋯ */
+:root.native-toolbar:not([data-skin]) :is(.adj-head, .paint-head) .mode-file {
+    display: none;
+}
+
+:root.native-toolbar:not([data-skin]) :is(.adj-head, .paint-head) .mode-head-acts {
+    position: fixed;
+    top: 10px;
+    right: 12px;
+    visibility: hidden;
+    pointer-events: none;
 }
 
 /* The page lies under the toolbar (Electron's hidden title bar), so it,
