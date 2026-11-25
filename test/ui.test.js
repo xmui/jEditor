@@ -6266,6 +6266,62 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- 7t4a. Home: Settings clicks, every time ----
+    // Real clicks on Home's Settings: right after jEditor starts, with the
+    // window settling as it opens (a resize just after the click), back on
+    // Home with Ctrl+Shift+H, and after What's new is closed. A resize just
+    // as its menu opened closed it again, so the click seemed to do nothing
+    // (the owner, beta 173: "sometimes won't click", on several systems)
+    console.log('home: Settings clicks, every time');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1280, height: 800 });
+        const gear = () => page.evaluate(() => {
+            const b = document.getElementById('btn-settings-start');
+            const r = b.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+            const top = document.elementFromPoint(x, y);
+            return { x, y, onTop: !!top && b.contains(top), top: top ? `${top.tagName}#${top.id}.${[...top.classList].join('.')}` : '' };
+        });
+        const menuOpen = () => page.evaluate(() => !!document.getElementById('context-menu'));
+        const misses = [];
+        const tryIt = async (name, after) => {
+            const g = await gear();
+            if (!g.onTop) misses.push(`${name}: ${g.top} lies over it`);
+            await page.mouse.click(g.x, g.y);
+            if (after) await after();
+            await page.waitForTimeout(300);
+            if (!await menuOpen()) misses.push(`${name}: no menu`);
+            await page.keyboard.press('Escape');
+            await page.waitForTimeout(150);
+        };
+        await tryIt('just started, the window settling', () => page.setViewportSize({ width: 1260, height: 790 }));
+        await page.evaluate(async () => {
+            const dir = makeDir('Settle');
+            for (let i = 1; i <= 2; i++) { const f = makeFakeFile(`p${i}.jpg`, makeJpegBytes(), 'image/jpeg'); dir._files.set(`p${i}.jpg`, f.handle); }
+            await app.openDirectory(dir);
+        });
+        await page.waitForTimeout(600);
+        await page.keyboard.press('Control+Shift+H');
+        await page.waitForFunction(() => !document.getElementById('drop-zone').classList.contains('hidden'), null, { timeout: 10000 }).catch(() => null);
+        await tryIt('back on Home (Ctrl+Shift+H)');
+        await page.evaluate(() => document.getElementById('btn-whatsnew-start').click());
+        await page.waitForTimeout(500);
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(300);
+        await tryIt('What\'s new closed');
+        // ...and the window resized a while after, it closes, as before
+        const g = await gear();
+        await page.mouse.click(g.x, g.y);
+        await page.waitForTimeout(800);
+        await page.setViewportSize({ width: 1280, height: 800 });
+        await page.waitForTimeout(200);
+        const closedLater = !await menuOpen();
+        check('home: Settings opens its menu on a real click: just started (the window settling), back on Home, after What\'s new', misses.length === 0, misses.join('; '));
+        check('... a resize a while after it opened still closes it', closedLater);
+        check('home Settings suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7t4b. Home: a project clicked opens ----
     // A project opened once lies on the home page as a stack; jEditor
     // opened again, a real click on it (the mouse, so whatever lies over

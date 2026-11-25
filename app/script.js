@@ -8594,7 +8594,16 @@ const app = {
         window.addEventListener('contextmenu', off, true);
         window.addEventListener('blur', () => this.closeContextMenu());
         window.addEventListener('scroll', () => this.closeContextMenu(), true);
-        window.addEventListener('resize', () => this.closeContextMenu());
+        // A resize closes it, as the window's own menus do, but not one that
+        // comes just as it opens: the window settling (its size restored or
+        // maximised after jEditor starts, the Mac's toolbar coming or going)
+        // closed Home's Settings menu as it opened, so a click on it seemed
+        // to do nothing (the owner, beta 173: "sometimes won't click")
+        window.addEventListener('resize', () => {
+            const menu = document.getElementById('context-menu');
+            if (menu && performance.now() - menu._openedAt < 600) return;
+            this.closeContextMenu();
+        });
     },
 
     // The right-click menu on Crop's, Adjust's or Paint's photo, or null
@@ -8957,6 +8966,7 @@ const app = {
         // The press and the click it opened on, which don't close it again
         menu._press = this._press;
         menu._click = this._click;
+        menu._openedAt = performance.now();
         if (document.documentElement.dataset.skin) items = items.flatMap(it => Array.isArray(it[1]) ? it[1] : [it]);
         this.fillMenu(menu, items);
         if (menu.lastChild && menu.lastChild.className === 'ctx-divider') menu.lastChild.remove();

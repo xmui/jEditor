@@ -1248,6 +1248,30 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await settle();
             d = await describe();
             check('on the start screen, no toolbar', d.visible === false, JSON.stringify(d).slice(0, 200));
+            // ...and nothing of the window's over Home's top row: the drag view
+            // there took the press on its Settings, top half and all (the
+            // owner, beta 173: "sometimes won't click")
+            await page.waitForTimeout(400);
+            const g = await page.evaluate(() => { const r = document.getElementById('btn-settings-start').getBoundingClientRect(); return { x: r.left + r.width / 2, top: r.top + 3, mid: r.top + r.height / 2 }; });
+            const over = [];
+            for (const y of [g.top, g.mid]) {
+                const chain = await app.evaluate(({ BrowserWindow }, [x, y]) => global.jeditorToolbar.hitAt(BrowserWindow.getAllWindows()[0].getNativeWindowHandle(), x, y), [Math.round(g.x), Math.round(y)]);
+                if (!(chain || []).some(c => /RenderWidgetHost|WebContents/.test(c))) over.push(`${Math.round(y)}: ${(chain || []).slice(0, 3).join(' < ')}`);
+            }
+            check('... and Home\'s Settings is the page\'s, top to middle: no drag view over it', over.length === 0, over.join('; '));
+            if (spot !== null) {
+                const b = await win();
+                const { execFileSync } = require('child_process');
+                const click = path.join(tmp, 'click.swift');
+                fs.writeFileSync(click, ['import CoreGraphics', 'import Foundation', 'let a = CommandLine.arguments.dropFirst().map { Double($0)! }',
+                    'func post(_ t: CGEventType) { CGEvent(mouseEventSource: nil, mouseType: t, mouseCursorPosition: CGPoint(x: a[0], y: a[1]), mouseButton: .left)?.post(tap: .cghidEventTap); usleep(60000) }',
+                    'post(.mouseMoved); post(.leftMouseDown); post(.leftMouseUp)'].join('\n'));
+                try { execFileSync('swift', [click, String(b.x + g.x), String(b.y + g.top + 2)], { timeout: 180000 }); } catch (e) { /* reported below */ }
+                await page.waitForTimeout(500);
+                const menu = await page.evaluate(() => !!document.getElementById('context-menu'));
+                check('... a real click near its top opens its menu', menu, JSON.stringify(g));
+                await page.keyboard.press('Escape');
+            }
         }
         check('no JS errors', errors.length === 0, errors.join('; '));
         await app.close();
