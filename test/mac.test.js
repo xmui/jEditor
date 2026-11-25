@@ -1804,19 +1804,23 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 // The letters' box read from the layer's pixels, on a copy
                 const inked = (l) => { const c = P.newCanvas(); c.getContext('2d').drawImage(l.canvas, 0, 0); return P.contentBox(c); };
                 const out = { W: P.W, H: P.H, dpr: devicePixelRatio, fonts: {} };
-                // jEditor's own, then fonts every Mac has (#309's system fonts)
-                for (const font of ['Sans', 'Serif', 'Helvetica', 'Georgia', 'Menlo']) {
-                    step = font;
+                // jEditor's own (as the Font list keeps them), then fonts every
+                // Mac has (#309's system fonts), each its own layer, a row apart
+                const FONTS = [['Sans', 'system-ui, sans-serif'], ['Serif', 'Georgia, serif'], ['Mono', '"Courier New", monospace'], ['Helvetica', 'Helvetica'], ['Menlo', 'Menlo']];
+                for (const [name, font] of FONTS) {
+                    const y = 12 + FONTS.findIndex(([n]) => n === name) * 56;
+                    step = name;
                     P.setTool('text');
                     Object.assign(P.opts, { font, fontSize: 40, bold: false, italic: false, opacity: 100, outline: 0, align: 'left' });
-                    click({ x: 60, y: 120 });
+                    P.cur = 0;
+                    click({ x: 60, y });
                     await new Promise(res => setTimeout(res, 30));
                     ta.value = 'Warp me';
                     ta.dispatchEvent(new Event('input'));
                     ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, metaKey: true, bubbles: true }));
                     await new Promise(res => setTimeout(res, 30));
                     const l = P.layer();
-                    if (!l.text) { out.fonts[font] = 'no text layer'; continue; }
+                    if (!l.text || l.text.font !== font) { out.fonts[name] = 'no new text layer'; continue; }
                     // Its pixels as drawn, the box from its words, and the
                     // box Free transform and Warp give it (in layer px)
                     const px = inked(l), ink = P.textInk(l.text);
@@ -1828,7 +1832,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                     const m = P.float && P.float.mesh;
                     const warp = m ? (() => { const q = [m[0], m[3], m[15], m[12]].map(v => P.Ci.transformPoint(v)); return { x: Math.round(q[0].x), y: Math.round(q[0].y), w: Math.round(q[1].x - q[0].x), h: Math.round(q[3].y - q[0].y) }; })() : null;
                     P.cancelFloat();
-                    out.fonts[font] = { px, ink, tf, warp };
+                    out.fonts[name] = { px, ink, tf, warp };
                 }
                 app.cancelPaint();
                 return out;
@@ -1840,6 +1844,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         // Within a few px of where the letters are (anti-aliasing, the outline's pad)
         const near = (a, b, d = 4) => a && b && Math.abs(a.x - b.x) <= d && Math.abs(a.y - b.y) <= d && Math.abs(a.w - b.w) <= 2 * d && Math.abs(a.h - b.h) <= 2 * d;
         check('Free transform on a text layer: its box is the letters\', not the canvas, in jEditor\'s fonts and the Mac\'s', !r.error && fonts.length === 5 && fonts.every(x => x.px && x.tf && near(x.tf, x.px) && x.tf.w < r.W / 2 && x.tf.h < r.H / 2), R);
+        check('... each in its own font (the fonts measured aren\'t all one)', !r.error && new Set(fonts.map(x => x.px && x.px.w)).size >= 3, R);
         check('... and Warp\'s 16 points go over just the letters too', !r.error && fonts.every(x => x.warp && near(x.warp, x.px)), R);
         check('Paint text box: no JS errors', errors.length === 0, errors.join('; '));
         await app.close();
