@@ -1782,6 +1782,16 @@ body.slideshow #image-container:has(.slide-ctl.show) {
     margin: 0;
 }
 
+/* The folder list dragged narrow (its narrowest is 200px: script.js,
+   SIDEBARS): the names end in … (the whole name is in each row's tooltip),
+   and the counts, the dates and the drives' free space go, so nothing
+   wraps or runs over its edge */
+@container rail (max-width: 207px) {
+    .folder-rail :is(.fr-count, .sb-meta, .sb-free) {
+        display: none;
+    }
+}
+
 /* A sidebar that's hidden leaves a thin line at the window's edge: drag
    from it to bring the sidebar back out (script.js: initSidebarResize).
    The line is narrow; what takes the pointer is a little wider. */

@@ -1303,7 +1303,10 @@ const app = {
     // style.css and the themes take before their own; double-click goes
     // back to the sidebar's own width.
 
-    SIDEBARS: { rail: [180, 520], adjust: [260, 560], paint: [220, 560] },
+    // (The folder list's narrowest is what its top row needs: the modes,
+    // its button and Find anything, beside the Mac's lights too; narrow,
+    // its names end in … and its counts go: style.css)
+    SIDEBARS: { rail: [200, 520], adjust: [260, 560], paint: [220, 560] },
 
     // The sidebars that hide: dragged in past half its narrowest, one snaps
     // hidden, and a thin line is left at the window's edge (.side-edge,
