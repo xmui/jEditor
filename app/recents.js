@@ -229,7 +229,11 @@ const Recents = {
             if (await this.sameFolder(rec, handle, path)) { same = rec; break; }
         }
         const openedAt = Math.max(Date.now(), list.length ? list[0].openedAt + 1 : 0);
-        const rec = { ...(same || {}), id: same ? same.id : `${openedAt}-${Math.random().toString(36).slice(2, 8)}`, name: handle.name, handle, ...(path ? { path } : {}), openedAt };
+        // The Photos library (an album, or all of it) is kept by its path
+        // alone: its handle is the app's, made again when it's opened
+        const library = typeof handle.photosLibrary === 'string';
+        if (library && !path) return;
+        const rec = { ...(same || {}), id: same ? same.id : `${openedAt}-${Math.random().toString(36).slice(2, 8)}`, name: handle.name, handle: library ? null : handle, ...(path ? { path } : {}), openedAt };
         const stale = list.filter(r => r !== same).slice(this.MAX - 1);
         await this.tx('readwrite', s => {
             s.put(rec);
@@ -496,6 +500,13 @@ const Recents = {
         // (Z:, \\server\share) in WebView2 158 the kept one's permission
         // and listing never answered: the click did nothing (the owner's
         // beta 154, 22 November)
+        // The Photos library (an album, or all of it): opened as the sidebar
+        // opens it, asking macOS first; it isn't a folder to open by its path
+        if (rec.path && typeof Places !== 'undefined' && Places.isLibrary(rec.path)) {
+            if (typeof Modes !== 'undefined') Modes.next = 'photos';
+            await Places.open(rec.path);
+            return;
+        }
         const native = typeof FolderCache !== 'undefined' && FolderCache.native();
         if (rec.kind !== 'photo' && native && typeof native.openPath === 'function') {
             let path = rec.path || null;

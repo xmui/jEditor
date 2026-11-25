@@ -33,6 +33,20 @@ const JPEG = Buffer.from(
     '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAAQABgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwCjRRRXz59kFFFFAH//2Q==',
     'base64');
 
+// A plain PNG, w×h, one color (for a picture big enough to put text on)
+function makePng(w, h, [r, g, b]) {
+    const zlib = require('zlib');
+    const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+    const crc = (buf) => { let c = 0xffffffff; for (const x of buf) c = crcTable[(c ^ x) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+    const chunk = (kind, data) => { const len = Buffer.alloc(4), body = Buffer.concat([Buffer.from(kind, 'latin1'), data]), sum = Buffer.alloc(4); len.writeUInt32BE(data.length); sum.writeUInt32BE(crc(body)); return Buffer.concat([len, body, sum]); };
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
+    const row = Buffer.alloc(1 + w * 3);
+    for (let x = 0; x < w; x++) { row[1 + x * 3] = r; row[2 + x * 3] = g; row[3 + x * 3] = b; }
+    const raw = Buffer.concat(Array.from({ length: h }, () => row));
+    return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
+
 function makeOrder(dir, name, n = 3) {
     const order = path.join(dir, name);
     fs.mkdirSync(path.join(order, 'Ceremony'), { recursive: true });
@@ -1502,7 +1516,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 menu: Places.cardItems().map(i => i[0]).join('|'),
                 writable, files, made, toast: toast(), fixed: app.fixedFiles,
                 active: !!document.querySelector('.sb-row.active[data-path="photos-library:album:Wedding"]'),
-                recent: JSON.stringify(localStorage).includes('Wedding')
+                recent: await (async () => { for (let i = 0; i < 40; i++) { const l = await Recents.list(); const r = l.find(x => x.path === 'photos-library:album:Wedding'); if (r && (r.thumbs || []).length) return { name: r.name, thumbs: r.thumbs.length, handle: !!r.handle }; await new Promise(res => setTimeout(res, 250)); } return null; })()
             };
         });
         check('an album opens as the project: its photos, its name, its path photos-library:<id>', o.name === 'Wedding' && o.n === 3 && o.names === 'IMG_0001.jpg,IMG_0002.jpg,IMG_0003.jpg' && !o.readOnly && o.library && o.fixed && o.path === 'photos-library:album:Wedding', JSON.stringify(o));
@@ -1538,7 +1552,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             return { photo: labels(app.buildContextItems(null, true)), grid: labels(app.buildContextItems(null, false)) };
         });
         check('... its menus have no Move, Rename, Convert or Delete, and no Add to Photos (it\'s there)', /Turn and flip|Rotate left/.test(menus.photo) && /Adjust/.test(menus.photo) && !/Move|Rename|Convert|Delete|Add to Photos/.test(menus.photo) && !/New folder|Rename all|Clean up|Add all/.test(menus.grid) && !/—\|—/.test(menus.photo), JSON.stringify(menus));
-        check('... it\'s marked in the sidebar, and it isn\'t in Recent', o.active && !o.recent, JSON.stringify(o));
+        check('... it\'s marked in the sidebar, and it lies on home\'s table as a stack of its photos, kept by its path', o.active && o.recent && o.recent.name === 'Wedding' && o.recent.thumbs > 0 && !o.recent.handle, JSON.stringify(o));
         const whole = await page.evaluate(async () => {
             await Places.open('photos-library:');
             for (let i = 0; i < 50 && app.files.length !== 6; i++) await new Promise(r => setTimeout(r, 100));
@@ -1563,6 +1577,88 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         check('Add to Photos library: a project\'s photos go in as they are, in an album named after it', add.can && add.added === 2 && fs.existsSync(album) && fs.readdirSync(album).sort().join() === 'scan 1.jpg,scan 2.jpg' && fs.readFileSync(path.join(album, 'scan 1.jpg')).equals(JPEG) && /Added 2 photos to the Photos library \(the album “Order 1207”\)/.test(add.toast), JSON.stringify(add));
         check('no JS errors', errors.length === 0, errors.join('; '));
         await app.close();
+
+        // The owner's beta 173: macOS asks, and once allowed the library
+        // opens from home, home goes (never left over the grid), and it opens
+        // again from home and from the sidebar
+        console.log('mac: the Photos library from home, macOS asking first');
+        {
+            // Every photo in it (the earlier test added an album)
+            const all = fs.readdirSync(lib, { withFileTypes: true }).filter(d => d.isDirectory() && !d.name.startsWith('.'))
+                .reduce((n, d) => n + fs.readdirSync(path.join(lib, d.name)).filter(f => /\.jpe?g$/i.test(f)).length, 0);
+            const asked = await launch(path.join(tmp, 'profile-photos-ask'), [], { JEDITOR_PHOTOS_LIBRARY: lib, JEDITOR_PHOTOS_AUTH: 'ask' });
+            const shown = () => asked.page.evaluate(() => ({
+                home: !document.getElementById('drop-zone').classList.contains('hidden'),
+                sheet: !document.getElementById('home-places').classList.contains('hidden'),
+                grid: !document.getElementById('main-interface').classList.contains('hidden'),
+                name: app.dirHandle && app.dirHandle.name, n: app.files.length
+            }));
+            await asked.page.click('#home-all');
+            await asked.page.waitForSelector('#start-places .sb-row[data-path="photos-library:"] [data-act="open"]', { timeout: 10000 }).catch(() => { });
+            const before = await asked.page.evaluate(async () => (await JEditorNative.photosAccess(false)));
+            await asked.page.click('#start-places .sb-row[data-path="photos-library:"] [data-act="open"]');
+            await loaded(asked.page, all).catch(() => { });
+            const first = await shown();
+            check('home: Open on the Photos library asks macOS, then opens it, and home goes', before === 'ask' && first.name === 'Photos library' && first.n === all && first.grid && !first.home && !first.sheet, JSON.stringify({ before, first }));
+            // Home, and open it again from there
+            await asked.page.evaluate(() => app.goHome());
+            await asked.page.waitForSelector('#drop-zone:not(.hidden)', { timeout: 5000 }).catch(() => { });
+            await asked.page.evaluate(() => Places.open('photos-library:'));
+            await loaded(asked.page, all).catch(() => { });
+            const again = await shown();
+            check('... and again from home after going back to it', again.name === 'Photos library' && again.n === all && again.grid && !again.home, JSON.stringify(again));
+            // Its stack on home's table opens it too (its photos kept once
+            // they're made, while it's open: recents.js keepThumbs)
+            await asked.page.evaluate(async () => {
+                for (let i = 0; i < 60; i++) {
+                    const r = (await Recents.list()).find(x => x.path === 'photos-library:');
+                    if (r && (r.thumbs || []).length) return;
+                    await new Promise(res => setTimeout(res, 250));
+                }
+            });
+            await asked.page.evaluate(() => app.goHome());
+            await asked.page.waitForSelector('#drop-zone:not(.hidden)', { timeout: 5000 }).catch(() => { });
+            const stack = await asked.page.evaluate(async () => {
+                // Its photos are kept in the background once they're made (recents.js: keepThumbs)
+                const find = () => [...document.querySelectorAll('#recent-list li')].find(l => l.querySelector('.recent-name').textContent === 'Photos library');
+                for (let i = 0; i < 60 && !(find() && find().querySelector('.recent-print img')); i++) await new Promise(r => setTimeout(r, 250));
+                const li = find();
+                if (!li) return null;
+                const pics = li.querySelectorAll('.recent-print img').length, ghost = li.classList.contains('ghosted');
+                li.querySelector('.recent-open').click();
+                return { pics, ghost };
+            });
+            await loaded(asked.page, all).catch(() => { });
+            const fromStack = await shown();
+            check('... and from its stack on home, which shows its photos (not empty prints)', !!stack && stack.pics > 0 && !stack.ghost && fromStack.name === 'Photos library' && fromStack.n === all && !fromStack.home, JSON.stringify({ stack, fromStack }));
+            // A folder project open, then the library from the sidebar
+            const pics = makeOrder(tmp, 'Pictures', 2);
+            await asked.page.evaluate((p) => JEditorNative.openPath(p), pics);
+            await loaded(asked.page, 3).catch(() => { });
+            await asked.page.evaluate(() => Places.open('photos-library:album:Birthday'));
+            await loaded(asked.page, 2).catch(() => { });
+            const side = await shown();
+            check('... from the sidebar over a folder project: the album, with home hidden', side.name === 'Birthday' && side.n === 2 && side.grid && !side.home, JSON.stringify(side));
+            check('... no JS errors', asked.errors.length === 0, asked.errors.join('; '));
+            await asked.app.close();
+        }
+        console.log('mac: the Photos library, not allowed');
+        {
+            const no = await launch(path.join(tmp, 'profile-photos-no'), [], { JEDITOR_PHOTOS_LIBRARY: lib, JEDITOR_PHOTOS_AUTH: 'denied' });
+            const r = await no.page.evaluate(async () => {
+                let asked = null;
+                UI.confirm = async (o) => { asked = o; return false; };
+                await Places.open('photos-library:');
+                return {
+                    asked: asked && asked.title, ok: asked && asked.ok, open: !!app.dirHandle, n: app.files.length,
+                    home: !document.getElementById('drop-zone').classList.contains('hidden'),
+                    grid: !document.getElementById('main-interface').classList.contains('hidden')
+                };
+            });
+            check('not allowed: it says so and offers System Settings, opens nothing, and home stays', /isn't allowed to see the Photos library/.test(r.asked || '') && r.ok === 'Open Settings' && !r.open && r.n === 0 && r.home && !r.grid, JSON.stringify(r));
+            check('... no JS errors', no.errors.length === 0, no.errors.join('; '));
+            await no.app.close();
+        }
     }
 
         console.log('mac: permissions, the first time');
@@ -1932,6 +2028,76 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         check('... and when it isn\'t installed (no password), it opens with the software installer instead', r2.inPlace === false && !main2.relaunched && main2.opened.length === 1 && fs.readFileSync(main2.opened[0]).equals(deb), JSON.stringify({ r2, main2 }));
         check('no JS errors', errors.length === 0, errors.join('; '));
         await app.evaluate(({ app }) => { app.quit = global.realQuit; });
+        await app.close();
+    }
+
+    console.log('mac: Paint: Free transform and Warp on a text layer hug its letters');
+    {
+        const dir = path.join(tmp, 'Text box');
+        fs.mkdirSync(dir);
+        fs.writeFileSync(path.join(dir, 'plain.png'), makePng(400, 300, [128, 128, 128]));
+        const { app, page, errors } = await launch(profile, [dir]);
+        await loaded(page, 1);
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const until = async (fn, ms = 15000) => { const t0 = Date.now(); while (!fn()) { if (Date.now() - t0 > ms) throw new Error('timed out'); await new Promise(res => setTimeout(res, 50)); } };
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor, ta = document.getElementById('paint-text'), st = document.getElementById('paint-stage');
+                P.opts.snap = false;
+                const sc = (q) => { const sp = P.V().transformPoint(q); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                const click = (q) => {
+                    st.dispatchEvent(new PointerEvent('pointerdown', { ...sc(q), pointerId: 1, bubbles: true, button: 0 }));
+                    st.dispatchEvent(new PointerEvent('pointerup', { ...sc(q), pointerId: 1, bubbles: true }));
+                };
+                // The letters' box read from the layer's pixels, on a copy
+                const inked = (l) => { const c = P.newCanvas(); c.getContext('2d').drawImage(l.canvas, 0, 0); return P.contentBox(c); };
+                const out = { W: P.W, H: P.H, dpr: devicePixelRatio, fonts: {} };
+                // jEditor's own (as the Font list keeps them), then fonts every
+                // Mac has (#309's system fonts), each its own layer, a row apart
+                const FONTS = [['Sans', 'system-ui, sans-serif'], ['Serif', 'Georgia, serif'], ['Mono', '"Courier New", monospace'], ['Helvetica', 'Helvetica'], ['Menlo', 'Menlo']];
+                for (const [name, font] of FONTS) {
+                    const y = 12 + FONTS.findIndex(([n]) => n === name) * 56;
+                    step = name;
+                    P.setTool('text');
+                    Object.assign(P.opts, { font, fontSize: 40, bold: false, italic: false, opacity: 100, outline: 0, align: 'left' });
+                    P.cur = 0;
+                    click({ x: 60, y });
+                    await new Promise(res => setTimeout(res, 30));
+                    ta.value = 'Warp me';
+                    ta.dispatchEvent(new Event('input'));
+                    ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, metaKey: true, bubbles: true }));
+                    await new Promise(res => setTimeout(res, 30));
+                    const l = P.layer();
+                    if (!l.text || l.text.font !== font) { out.fonts[name] = 'no new text layer'; continue; }
+                    // Its pixels as drawn, the box from its words, and the
+                    // box Free transform and Warp give it (in layer px)
+                    const px = inked(l), ink = P.textInk(l.text);
+                    P.freeTransform();
+                    const f = P.float;
+                    const tf = f && f.from ? { ...f.from } : null;
+                    const box = document.getElementById('paint-options'), mode = box.querySelector('.paint-tf-mode');
+                    if (mode) { mode.value = 'warp'; mode.dispatchEvent(new Event('change')); }
+                    const m = P.float && P.float.mesh;
+                    const warp = m ? (() => { const q = [m[0], m[3], m[15], m[12]].map(v => P.Ci.transformPoint(v)); return { x: Math.round(q[0].x), y: Math.round(q[0].y), w: Math.round(q[1].x - q[0].x), h: Math.round(q[3].y - q[0].y) }; })() : null;
+                    P.cancelFloat();
+                    out.fonts[name] = { px, ink, tf, warp };
+                }
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        const R = JSON.stringify(r);
+        console.log('    ' + R);
+        const fonts = r.fonts ? Object.values(r.fonts) : [];
+        // Within a few px of where the letters are (anti-aliasing, the outline's pad)
+        const near = (a, b, d = 4) => a && b && Math.abs(a.x - b.x) <= d && Math.abs(a.y - b.y) <= d && Math.abs(a.w - b.w) <= 2 * d && Math.abs(a.h - b.h) <= 2 * d;
+        check('Free transform on a text layer: its box is the letters\', not the canvas, in jEditor\'s fonts and the Mac\'s', !r.error && fonts.length === 5 && fonts.every(x => x.px && x.tf && near(x.tf, x.px) && x.tf.w < r.W / 2 && x.tf.h < r.H / 2), R);
+        check('... each in its own font (the fonts measured aren\'t all one)', !r.error && new Set(fonts.map(x => x.px && x.px.w)).size >= 3, R);
+        check('... and Warp\'s 16 points go over just the letters too', !r.error && fonts.every(x => x.warp && near(x.warp, x.px)), R);
+        check('Paint text box: no JS errors', errors.length === 0, errors.join('; '));
         await app.close();
     }
 

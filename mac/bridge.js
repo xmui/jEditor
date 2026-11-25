@@ -261,6 +261,16 @@
             async abort() { done = true; }
         };
     }
+    // What Photos said, in plain words: its own errors are numbers
+    // ("PHPhotosErrorDomain error 3300")
+    function photosSaid(e) {
+        const m = String((e && e.message) || e || '');
+        if (/isn't allowed|not authori[sz]ed|3311|denied/i.test(m)) return 'jEditor isn\'t allowed to change photos in the Photos library (System Settings → Privacy & Security → Photos)';
+        if (/network|iCloud|3164|3169|offline/i.test(m)) return 'the photo is in iCloud and couldn\'t be downloaded just now';
+        if (/isn't there|not found|3201|3300/i.test(m)) return 'that photo isn\'t in the Photos library any more';
+        if (/PHPhotosErrorDomain|error \d+|NSCocoaErrorDomain/i.test(m)) return 'Photos didn\'t take the change';
+        return m || 'Photos didn\'t take the change';
+    }
     function libraryFile(a, name) {
         const created = a.created || 0;
         const when = () => a.modified || created;
@@ -270,6 +280,8 @@
             photosAsset: a.id,
             async getFile() {
                 const blob = await fetched(photoUrl('full', a.id));
+                // (listed without its size, in a big library: photos.mm)
+                if (!a.fileSize) a.fileSize = blob.size;
                 return new File([blob], name, { type: blob.type, lastModified: when() });
             },
             getThumbnail: (w) => fetched(photoUrl('thumb', a.id) + '?w=' + Math.round(w || 320) + '&v=' + when()),
@@ -282,8 +294,15 @@
             async createWritable(o) {
                 const start = o && o.keepExistingData ? new Uint8Array(await (await this.getFile()).arrayBuffer()) : new Uint8Array(0);
                 return memoryWritable(start, async (bytes) => {
-                    const r = await answer('photosSave', { id: a.id, bytes });
+                    let r;
+                    try {
+                        r = await answer('photosSave', { id: a.id, bytes });
+                    } catch (e) {
+                        throw new Error(photosSaid(e));
+                    }
                     Object.assign(a, { modified: r.modified || Date.now(), fileSize: r.fileSize || bytes.length, w: r.w || a.w, h: r.h || a.h });
+                    // Saved back: the page says so, quietly (script.js)
+                    window.dispatchEvent(new CustomEvent('jeditor-photos-saved', { detail: { name } }));
                 });
             },
             async move() { throw denied(name); },
