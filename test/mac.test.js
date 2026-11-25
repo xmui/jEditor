@@ -1122,9 +1122,9 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                     file: document.getElementById('adj-file').textContent, dims: document.getElementById('adj-dims').textContent.trim(),
                     pill: document.querySelector('#adjust-editor .mode-file').getClientRects().length,
                     acts: getComputedStyle(document.querySelector('#adjust-editor .mode-head-acts')).visibility,
-                    fitTop: Math.round(Adjust.fitBox().y)
+                    fitTop: Math.round(Adjust.fitBox().y), pad: Adjust.PAD
                 }));
-                check('Adjust, one row: the sidebar, the mode, then Before and after, Settings, ⋯ and Done last; the file the title, its size the subtitle; no pills of its own, the photo fitted from the top', ['mb:before', 'mset', 'mmore', 'mdone'].every(x => ids.includes(x)) && ids[ids.length - 1] === 'mdone' && d.title === p.file && d.subtitle === p.dims && !p.pill && p.acts === 'hidden' && p.fitTop <= Adjust.PAD + 1, JSON.stringify([ids, d.title, d.subtitle, p]));
+                check('Adjust, one row: the sidebar, the mode, then Before and after, Settings, ⋯ and Done last; the file the title, its size the subtitle; no pills of its own, the photo fitted from the top', ['mb:before', 'mset', 'mmore', 'mdone'].every(x => ids.includes(x)) && ids[ids.length - 1] === 'mdone' && d.title === p.file && d.subtitle === p.dims && !p.pill && p.acts === 'hidden' && p.fitTop <= p.pad + 1, JSON.stringify([ids, d.title, d.subtitle, p]));
                 await click('mb:before');
                 await settle();
                 const before = await page.evaluate(() => document.getElementById('adj-before').getAttribute('aria-pressed'));
