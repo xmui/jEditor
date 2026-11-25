@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The README's screenshots (docs/images/): the real desktop app (the
 // Electron one, mac/), driven by Playwright, at 1280×800 and twice the
-// pixels, in light and dark: the grid, the viewer, Adjust and Paint (and
+// pixels, in light and dark: the grid, the viewer, Convert, Adjust and Paint (and
 // Home, when asked for).
 // The photos are Unsplash's, from Lorem Picsum (downloaded to a temp folder).
 //
@@ -50,9 +50,9 @@ async function launch(args) {
     await app.evaluate(({ BrowserWindow }, [w, h]) => { const b = BrowserWindow.getAllWindows()[0]; b.setContentSize(w, h); b.center(); }, [W, H]);
     return { app, page, errors };
 }
-const shot = async (page, name) => {
+const shot = async (page, name, clip) => {
     await page.waitForTimeout(900);
-    await page.screenshot({ path: path.join(OUT, name + '.jpg'), type: 'jpeg', quality: 82 });
+    await page.screenshot({ path: path.join(OUT, name + '.jpg'), type: 'jpeg', quality: 82, ...(clip ? { clip } : {}) });
     console.log('shot', name);
 };
 const theme = (page, t) => page.evaluate((t) => { app.uiPrefs.theme = t; app.applyAppearance(); }, t);
@@ -129,6 +129,26 @@ const byName = (n) => `app.files.find(f => f.name.includes(${JSON.stringify(n)})
             await shot(page, `paint-${t}`);
             await page.evaluate(async () => { await app.cancelPaint(); });
             await page.waitForTimeout(500);
+        }
+        if (want('convert')) {
+            await page.evaluate(() => { app.setView('grid'); app.clearSelection(); Convert.open({}); });
+            // (its storage, worked out from a sample, and the close-up)
+            await page.waitForFunction(() => { const a = [...document.querySelectorAll('*')].find(e => e.children.length === 0 && /^After$/.test(e.textContent.trim())); const o = [...document.querySelectorAll('*')].find(e => e.children.length === 0 && /^Original$/.test(e.textContent.trim())); return a && o && a.parentElement.textContent !== o.parentElement.textContent.replace('Original', 'After'); }, null, { timeout: 30000 }).catch(() => { });
+            await page.waitForTimeout(1500);
+            await tidy(page);
+            // The window down to its quality slider: these sample photos
+            // are squeezed hard already, so the sizes under it would
+            // undersell what it saves on a camera's photos
+            const clip = await page.evaluate(() => {
+                const leaf = (t) => [...document.querySelectorAll('body *')].filter(e => e.children.length === 0 && e.textContent.trim() === t && e.getClientRects().length).map(e => e.getBoundingClientRect());
+                const small = leaf('Smaller')[0], better = leaf('Better')[0];
+                const title = leaf('Convert').filter(r => r.bottom < small.top && r.left < small.left + 40).sort((a, b) => b.top - a.top).pop();
+                const x = small.left - 28, y = title.top - 28;
+                return { x, y, width: better.right + 44 - x, height: small.bottom + 14 - y };
+            });
+            await shot(page, `convert-${t}`, clip);
+            await page.keyboard.press('Escape');
+            await page.waitForTimeout(400);
         }
         if (want('adjust')) {
             await page.evaluate(async (s) => { app.openSingle(eval(s)); await app.enterAdjust(); }, byName('Falls'));

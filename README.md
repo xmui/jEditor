@@ -5,8 +5,9 @@
 <h1 align="center">jEditor</h1>
 
 <p align="center">
-  <b>One fast app to look at, cull, fix and paint your photos.</b><br>
-  Open a folder and get to work. Nothing to import, nothing uploaded, never cluttered.
+  <b>The quick, simple editor for a folder of photos.</b><br>
+  Open a folder, fix your photos one at a time or all at once, and convert them to save space.<br>
+  All the essentials, and nothing in your way.
 </p>
 
 <p align="center">
@@ -22,6 +23,14 @@
   </picture>
 </p>
 
+## Everything you need, nothing you don't
+
+- **Open a folder and go.** Every photo shows up straight away. There's nothing to import and nothing uploaded, and your files stay where they are.
+- **Quick fixes.** Rotate, crop and straighten. Fix the light and color with a few sliders or one-click Auto, or pick a look.
+- **Fix a whole batch at once.** Rotate every selected photo in one go, crop them all like the last one, or copy one photo's adjustments onto as many as you like. Rename a whole folder in one step.
+- **Sort as you go.** Flag the keepers, move them into folders, find duplicates, and delete with undo.
+- **Undo anything.** Every step can be undone and redone, even a delete. Your originals stay safe until you save.
+
 <table>
   <tr>
     <td width="33%" valign="top">
@@ -29,35 +38,43 @@
         <source media="(prefers-color-scheme: dark)" srcset="docs/images/viewer-dark.jpg">
         <img src="docs/images/viewer-light.jpg" alt="Photos: one photo, with the film strip below">
       </picture>
-      <p><b>Photos.</b> Look, cull, crop and sort. Every step can be undone.</p>
+      <p><b>Photos.</b> Look, flag, rotate, crop and sort.</p>
     </td>
     <td width="33%" valign="top">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/images/adjust-dark.jpg">
         <img src="docs/images/adjust-light.jpg" alt="Adjust: a waterfall photo, with the histogram and the light and color controls">
       </picture>
-      <p><b>Adjust.</b> Fix light and color. Your original stays safe until you save.</p>
+      <p><b>Adjust.</b> Light, color and looks, on one photo or many.</p>
     </td>
     <td width="33%" valign="top">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/images/paint-dark.jpg">
         <img src="docs/images/paint-light.jpg" alt="Paint: a lake photo with a text layer and a glow layer, and the Layers panel">
       </picture>
-      <p><b>Paint.</b> Add text, shapes and brushwork on layers you can change later.</p>
+      <p><b>Paint.</b> Text, shapes and brushes, on layers.</p>
     </td>
   </tr>
 </table>
 
-## Built for scanning and archives
+## Convert to save space
 
-jEditor grew up working through boxes of scanned prints, so it handles the big, slow jobs well.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/convert-dark.jpg">
+    <img src="docs/images/convert-light.jpg" width="760" alt="The Convert window: the photos to convert, the formats (AVIF, JPEG XL, WebP, JPEG, PNG, TIFF) and the quality slider, with the point where it looks the same marked">
+  </picture>
+</p>
 
-- **Scan straight into a folder.** Scan or shoot tethered into the open folder, and each new photo shows up in the grid as it lands. (Scanning and capture are in the Windows app.)
-- **Big folders and network drives.** An order of 2,000 photos opens fast, on a network drive too, and once it's been opened it rescans in a moment.
-- **Dates and details, in batches.** Give a whole scanned order one date, shift dates when a camera's clock was wrong, or number them in the order they were scanned. Every EXIF, IPTC and XMP field is there when you need it.
-- **Bring old photos back.** Restore color takes the fade off a print or slide, a whole roll at once if you like. Find dust and scratches finds them for you, a drag along a crease takes it off, and Descreen removes the dots from a magazine scan.
-- **Take less space.** Convert a folder to AVIF, JPEG XL or WebP. If you replace the originals, undo brings them back.
-- **Know what's unsaved.** Edits are kept until you're ready. A count shows how many photos have changes, and one click saves or exports them.
+- **A whole folder at once,** to AVIF, JPEG XL, WebP, JPEG, PNG or TIFF. iPhone HEIC photos too, so any app can open them.
+- **See before you commit.** The quality slider marks where a photo still looks the same, a close-up shows the original beside the result, and you see how much space you'll free.
+- **Nothing lost.** Dates, camera details, flags and edits go with each photo. Keep both, or replace the originals and get them back with one undo.
+
+## Great with scans and old photos
+
+- **Scan straight into the folder,** and each scan shows up as it lands. (The Windows app.)
+- **Bring old prints back.** Take the fade off with Restore color, find dust and scratches for you, and remove the dots from a magazine scan.
+- **Dates in batches.** Give a scanned order one date, shift dates when a camera's clock was wrong, or number them in scan order.
 
 ## Get it
 
@@ -85,10 +102,10 @@ It only asks once. More in [Installing](docs/installing.md).
 
 1. **Open a folder**, or drop one onto the window.
 2. **Look and sort.** `S` shows one photo, `G` the grid, `←` `→` move between them. `P` flags a keeper, `[` `]` rotate, `C` crops.
-3. **Fix and paint.** `E` opens Adjust, `B` opens Paint.
-4. **Find anything** with `Ctrl+K` (`⌘K` on a Mac). `Ctrl+Z` undoes any step.
+3. **Fix one, then the rest.** `E` opens Adjust, and `Ctrl+Shift+C` copies what you did. In the grid, select the others and `Ctrl+Shift+V` pastes it onto them all.
+4. **Convert** from the home page or the ⋯ menu.
 
-Press `F1` in the app for the guide, or read [Using jEditor](docs/using-jeditor.md).
+`Ctrl+K` (`⌘K` on a Mac) finds any command, photo or folder. Press `F1` in the app for the guide, or read [Using jEditor](docs/using-jeditor.md).
 
 ## Platforms
 
