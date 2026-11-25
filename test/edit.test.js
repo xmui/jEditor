@@ -245,6 +245,30 @@ const PROJECT = `
                 det.dispatchEvent(new Event('toggle'));
                 await until(() => Adjust.fullCanvas && Adjust._fullKey === Adjust.fullKey());
                 out.full = Adjust.fullCtx.getImageData(200, 240, 1, 1).data[1] > 80;
+                // Before and after: Before is the photo with no spots or
+                // dust taken out, After with them, in the same place, at
+                // fit, zoomed in and in the 1:1 view
+                step = 'before';
+                const fullAt = async (x, y) => {
+                    await until(() => Adjust.fullCanvas && Adjust._fullKey === Adjust.fullKey());
+                    return Adjust.fullCtx.getImageData(x, y, 1, 1).data[1];
+                };
+                const look = async () => {
+                    Adjust.draw();
+                    const fit = [shownAt(200, 240), shownAt(520, 380)];
+                    pressKey('1', { ctrlKey: true });
+                    Adjust.draw();
+                    const zoomed = [shownAt(200, 240), shownAt(520, 380)];
+                    Adjust.zoomFit();
+                    Adjust.draw();
+                    return { fit, zoomed, full: [await fullAt(200, 240), await fullAt(520, 380)], box: JSON.stringify(Adjust.canvas.getBoundingClientRect()) };
+                };
+                const after0 = await look();
+                Adjust.toggleBefore(true);
+                const was = await look();
+                Adjust.toggleBefore(false);
+                const after1 = await look();
+                out.beforeAfter = { after0, was, after1 };
                 det.open = false;
                 det.dispatchEvent(new Event('toggle'));
                 // Done: kept with the photo; the file isn't touched
@@ -291,6 +315,12 @@ const PROJECT = `
         check('spots: dragging from a speck chooses the source; right-click takes it off; Ctrl+Z brings it back', r.dragged && r.removed && r.undone, JSON.stringify(r));
         check('dust: Find dust adds the specks it finds, leaving spots already made; Clear found takes them off', r.dust && r.countShown && r.cleared, JSON.stringify(r));
         check('spots: the 1:1 view shows them', r.full, JSON.stringify(r));
+        {
+            const b = r.beforeAfter || {}, all = (o) => o ? [...o.fit, ...o.zoomed, ...o.full] : [];
+            check('dust: Before shows the specks (no spots or dust taken out) at fit, zoomed and 1:1; After has them healed again, in the same place',
+                b.was && all(b.was).every(v => v < 60) && all(b.after0).every(v => v > 80) && all(b.after1).every(v => v > 80)
+                && b.was.box === b.after0.box && b.after1.box === b.after0.box, JSON.stringify(b));
+        }
         check('spots: Done keeps them with the photo, the file untouched; the viewer shows them healed', r.keptEdit && r.fileSame && r.viewer && r.viewer.every(v => v > 60 && v < 200), JSON.stringify(r));
         check('spots: copying adjustments onto another photo leaves its spots behind', r.pasted, JSON.stringify(r));
         check('spots: a crop afterwards doesn\'t move them; Export writes them', r.cropped && r.cropped[1] > 80 && r.exported && r.exported[1] > 80, JSON.stringify(r));
@@ -384,6 +414,26 @@ const PROJECT = `
                 out.before = [JSON.stringify(Adjust.view) === v0, !sharp.classList.contains('hidden'), Math.round(mean(grab(sharp, sx, sy, 32, 8)))];
                 Adjust.toggleBefore(false);
                 Adjust.a.exposure = 0; Adjust.changed();
+                // A spot over the checker, copied from the flat grey: the
+                // sharp part has it smooth, and Before has the checker back
+                step = 'before, a spot';
+                const pu = (atX - cr().left) / cr().width, pv = (atY - cr().top) / cr().height;
+                Adjust.a.spots = [{ t: 'clone', x: pu, y: pv, r: 0.04, sx: 0.8, sy: pv, f: 0, o: 1 }];
+                Adjust.changed();
+                const sharpNow = async () => {
+                    Adjust.draw();
+                    await until(() => Adjust._sharp && Adjust._fullKey === Adjust.fullKey() && !sharp.classList.contains('hidden'));
+                    await sleep(50);
+                    const r2 = sharp.getBoundingClientRect();
+                    return Math.round(contrast(grab(sharp, Math.round((atX - r2.left) / r2.width * sharp.width), Math.round((atY - r2.top) / r2.height * sharp.height), 32, 1)));
+                };
+                const spotAfter = await sharpNow();
+                Adjust.toggleBefore(true);
+                const spotBefore = await sharpNow();
+                Adjust.toggleBefore(false);
+                out.spotSharp = [spotAfter, spotBefore, await sharpNow(), JSON.stringify(Adjust.view) === v0];
+                Adjust.a.spots = [];
+                Adjust.changed();
                 // Overlays stay on the photo: a spot drawn where it is on the
                 // canvas, the overlay no bigger than the stage
                 step = 'overlays';
@@ -410,6 +460,7 @@ const PROJECT = `
         check('zoom: sharp at 100%: fine detail the screen-sized copy loses is there', z.inChecker && z.contrast && z.contrast[0] > 100 && z.contrast[0] > z.contrast[1] * 2, JSON.stringify(z.contrast));
         check('zoom: the sharp part is adjusted as the picture under it is', z.same && Math.abs(z.same[0] - z.same[1]) <= 6 && z.same[0] > 150, JSON.stringify(z.same));
         check('zoom: Before stays zoomed, and shows the photo as it was there', z.before && z.before[0] && z.before[1] && Math.abs(z.before[2] - 130) <= 8, JSON.stringify(z.before));
+        check('zoom: zoomed in, a spot shows in the sharp part, Before shows the photo without it, After has it again', z.spotSharp && z.spotSharp[0] < 30 && z.spotSharp[1] > 80 && z.spotSharp[2] < 30 && z.spotSharp[3], JSON.stringify(z.spotSharp));
         check('zoom: masks and spots stay on the photo zoomed in, their overlays only the size of the stage', z.overlay && String(z.overlay) === 'true,true,true,true', JSON.stringify(z.overlay));
 
         // With the real mouse and keys
