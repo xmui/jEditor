@@ -298,6 +298,17 @@ const app = {
         Flags.init(this);
         Edits.init(this);
         MetaEditor.init(this);
+        // An edit saved back into the Photos library (bridge.js): said once,
+        // quietly, however many photos a step saved
+        window.addEventListener('jeditor-photos-saved', () => {
+            this._photosSaved = (this._photosSaved || 0) + 1;
+            clearTimeout(this._photosSavedT);
+            this._photosSavedT = setTimeout(() => {
+                const n = this._photosSaved;
+                this._photosSaved = 0;
+                this.showToast(n === 1 ? 'Saved to Photos' : `Saved ${n.toLocaleString()} photos to Photos`, 1600, 'photos-saved');
+            }, 400);
+        });
         Unsaved.init(this);
         Paint.init(this);
         Import.init(this);
@@ -2049,8 +2060,9 @@ const app = {
                 // scrolling only ever hits already-generated thumbnails
                 this.precacheThumbnails();
 
-                // Top of Recent on the start screen
-                if (this.dirHandle && !this.fixedFiles) Recents.remember(this.dirHandle);
+                // Top of Recent on the start screen (the Photos library too:
+                // a stack of its photos, opened again from there)
+                if (this.dirHandle && (!this.fixedFiles || this.library)) Recents.remember(this.dirHandle);
 
                 // Flags saved with the order, then keep an eye on the folder
                 // (not the Photos library's: it isn't a folder)
@@ -6892,7 +6904,7 @@ const app = {
             fileEntry.pendingRotation = 0;
             fileEntry.savingRotation = 0;
             this.applyPreviewRotation(fileEntry);
-            this.showToast('Rotation failed: File may be in use');
+            this.showToast(this.library ? `Couldn't save it back to Photos: ${err.message}` : 'Rotation failed: File may be in use', this.library ? 5000 : 3000);
             return false;
         } finally {
             fileEntry.isBusy = false;

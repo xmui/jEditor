@@ -229,7 +229,11 @@ const Recents = {
             if (await this.sameFolder(rec, handle, path)) { same = rec; break; }
         }
         const openedAt = Math.max(Date.now(), list.length ? list[0].openedAt + 1 : 0);
-        const rec = { ...(same || {}), id: same ? same.id : `${openedAt}-${Math.random().toString(36).slice(2, 8)}`, name: handle.name, handle, ...(path ? { path } : {}), openedAt };
+        // The Photos library (an album, or all of it) is kept by its path
+        // alone: its handle is the app's, made again when it's opened
+        const library = typeof handle.photosLibrary === 'string';
+        if (library && !path) return;
+        const rec = { ...(same || {}), id: same ? same.id : `${openedAt}-${Math.random().toString(36).slice(2, 8)}`, name: handle.name, handle: library ? null : handle, ...(path ? { path } : {}), openedAt };
         const stale = list.filter(r => r !== same).slice(this.MAX - 1);
         await this.tx('readwrite', s => {
             s.put(rec);

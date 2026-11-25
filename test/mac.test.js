@@ -1333,7 +1333,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 menu: Places.cardItems().map(i => i[0]).join('|'),
                 writable, files, made, toast: toast(), fixed: app.fixedFiles,
                 active: !!document.querySelector('.sb-row.active[data-path="photos-library:album:Wedding"]'),
-                recent: JSON.stringify(localStorage).includes('Wedding')
+                recent: await (async () => { for (let i = 0; i < 40; i++) { const l = await Recents.list(); const r = l.find(x => x.path === 'photos-library:album:Wedding'); if (r && (r.thumbs || []).length) return { name: r.name, thumbs: r.thumbs.length, handle: !!r.handle }; await new Promise(res => setTimeout(res, 250)); } return null; })()
             };
         });
         check('an album opens as the project: its photos, its name, its path photos-library:<id>', o.name === 'Wedding' && o.n === 3 && o.names === 'IMG_0001.jpg,IMG_0002.jpg,IMG_0003.jpg' && !o.readOnly && o.library && o.fixed && o.path === 'photos-library:album:Wedding', JSON.stringify(o));
@@ -1369,7 +1369,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             return { photo: labels(app.buildContextItems(null, true)), grid: labels(app.buildContextItems(null, false)) };
         });
         check('... its menus have no Move, Rename, Convert or Delete, and no Add to Photos (it\'s there)', /Turn and flip|Rotate left/.test(menus.photo) && /Adjust/.test(menus.photo) && !/Move|Rename|Convert|Delete|Add to Photos/.test(menus.photo) && !/New folder|Rename all|Clean up|Add all/.test(menus.grid) && !/—\|—/.test(menus.photo), JSON.stringify(menus));
-        check('... it\'s marked in the sidebar, and it isn\'t in Recent', o.active && !o.recent, JSON.stringify(o));
+        check('... it\'s marked in the sidebar, and it lies on home\'s table as a stack of its photos, kept by its path', o.active && o.recent && o.recent.name === 'Wedding' && o.recent.thumbs > 0 && !o.recent.handle, JSON.stringify(o));
         const whole = await page.evaluate(async () => {
             await Places.open('photos-library:');
             for (let i = 0; i < 50 && app.files.length !== 6; i++) await new Promise(r => setTimeout(r, 100));
@@ -1421,6 +1421,20 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await loaded(asked.page, 6).catch(() => { });
             const again = await shown();
             check('... and again from home after going back to it', again.name === 'Photos library' && again.n === 6 && again.grid && !again.home, JSON.stringify(again));
+            // Its stack on home's table opens it too
+            await asked.page.evaluate(() => app.goHome());
+            await asked.page.waitForSelector('#drop-zone:not(.hidden)', { timeout: 5000 }).catch(() => { });
+            const stack = await asked.page.evaluate(async () => {
+                for (let i = 0; i < 40 && ![...document.querySelectorAll('#recent-list .recent-name')].some(n => n.textContent === 'Photos library'); i++) await new Promise(r => setTimeout(r, 250));
+                const li = [...document.querySelectorAll('#recent-list li')].find(l => l.querySelector('.recent-name').textContent === 'Photos library');
+                if (!li) return null;
+                const pics = li.querySelectorAll('.recent-print img').length, ghost = li.classList.contains('ghosted');
+                li.querySelector('.recent-open').click();
+                return { pics, ghost };
+            });
+            await loaded(asked.page, 6).catch(() => { });
+            const fromStack = await shown();
+            check('... and from its stack on home, which shows its photos (not empty prints)', !!stack && stack.pics > 0 && !stack.ghost && fromStack.name === 'Photos library' && fromStack.n === 6 && !fromStack.home, JSON.stringify({ stack, fromStack }));
             // A folder project open, then the library from the sidebar
             const pics = makeOrder(tmp, 'Pictures', 2);
             await asked.page.evaluate((p) => JEditorNative.openPath(p), pics);
