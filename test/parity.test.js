@@ -121,6 +121,34 @@ check('Reset jEditor forgets each app\'s settings file (window.json; mac.json in
     !!winReset && winReset.includes('window.json') && !!macReset && macReset.includes('mac.json') && JSON.stringify(macReset) === JSON.stringify(tauriReset),
     JSON.stringify({ windows: winReset, mac: macReset, tauri: tauriReset }));
 
+// What's new on the web doesn't promise what only the apps have
+// (app/changelog.js: CHANGELOG_NEEDS): each marked line is there, its
+// feature is one the table has and the web hasn't, and a line about
+// scanning, the camera, the sidebar's drives and pins, windows, the bin or
+// updates is marked, unless it names its system itself
+{
+    const vm = require('vm');
+    const ctx = {};
+    vm.runInNewContext(read('app/changelog.js') + '\n;this.CHANGELOG = CHANGELOG; this.NEEDS = CHANGELOG_NEEDS;', ctx);
+    const bad = [];
+    for (const [v, list] of Object.entries(ctx.NEEDS || {})) {
+        const e = ctx.CHANGELOG.find(x => x.version === v);
+        for (const [start, f] of list) {
+            const n = e ? e.items.filter(t => t.startsWith(start)).length : 0;
+            if (n !== 1) bad.push(`${v} "${start}": ${n} lines start so`);
+            if (!doc[f] || doc[f].web) bad.push(`${v} "${start}": ${f} isn't an apps-only feature in the table`);
+        }
+    }
+    check('What\'s new: each line marked as the apps\' (CHANGELOG_NEEDS) is one line, of a feature the web hasn\'t', !!ctx.NEEDS && !bad.length, bad.join('; '));
+    const about = /\bTWAIN\b|\bWIA\b|\bscan (dock|helper)\b|\bscanners?\b.*\b(driver|feeder|list|window|plugged)\b|\btether|\bcamera dock\b|\bRecycle Bin\b|\bSettings → Updates\b|\bUSB (drive|stick)\b|\bpinned\b|\bpin it\b|\bNew window\b|\bone window only\b/i;
+    const named = /^(On (the Mac|Linux|Windows)|(Mac|Windows|Linux)( and (Linux|Mac))?:|Windows, Mac and Linux:|In the Windows app|jEditor for (Mac|Linux)|Themes on the Mac|New, as an experiment in the Windows app|Ready for a Mac app|jEditor is (on the web|moving))/;
+    const unmarked = [];
+    for (const e of ctx.CHANGELOG) e.items.forEach((t, i) => {
+        if (about.test(t) && !named.test(t) && !(e.needs && e.needs[i])) unmarked.push(`${e.version} "${t.slice(0, 60)}…"`);
+    });
+    check('What\'s new: lines about what only the apps have are marked for the web (CHANGELOG_NEEDS)', !unmarked.length, unmarked.join('; '));
+}
+
 // What runs where, as the code has it
 const names = [...inBuild].sort((a, b) => (has[b] ? has[b].size : 0) - (has[a] ? has[a].size : 0) || a.localeCompare(b));
 const col = (s, w) => String(s).padEnd(w);

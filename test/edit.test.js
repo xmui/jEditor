@@ -724,6 +724,8 @@ const PROJECT = `
                 const sec = $('set-page-general'), heads = [...sec.querySelectorAll('.set-group')];
                 out.rows = [heads[heads.length - 1].textContent, !!$('set-reset-cache').getClientRects().length, !!$('set-reset-all').getClientRects().length,
                     sec.lastElementChild.contains($('set-reset-all'))];
+                // The web reloads: no restart, no install and no pins promised
+                out.webWords = [$('set-reset-cache-t').textContent, $('set-reset-cache').textContent, $('set-reset-cache-s').textContent, $('set-reset-all-s').textContent].join(' | ');
                 // What's kept: a setting, a pin, a recent, the edits store; what's a cache
                 step = 'seed';
                 const idb = (name) => new Promise(res => { const q = indexedDB.open(name); q.onsuccess = () => { const db = q.result; const stores = [...db.objectStoreNames]; db.close(); res(stores); }; q.onerror = () => res(null); });
@@ -790,11 +792,13 @@ const PROJECT = `
         });
         check('reset: Troubleshooting, the last group in Settings → General, has Clear cache and restart and Reset…',
             !r.error && r.rows && r.rows[0] === 'Troubleshooting' && r.rows[1] && r.rows[2] && r.rows[3], JSON.stringify(r));
+        check('reset: on the web it says reload, not restart, and promises no install or pins',
+            !!r.webWords && /Clear cache and reload \| Clear and reload/.test(r.webWords) && !/restart|install|pins/.test(r.webWords), r.webWords);
         check('reset: Clear cache and restart takes the thumbnails, previews and offline copy, keeps settings, pins and recents, and reloads (the web)',
             !!r.cleared && r.cleared[0] === 1 && !/(^|,)jeditor(,|$)/.test(r.cleared[1]) && /jeditor-recents/.test(r.cleared[1]) && r.cleared[2] && r.cleared[3] && r.cleared[4] === null && r.cleared[5] === 0 && r.cleared[6] === 0,
             JSON.stringify([r.before, r.cleared]));
-        check('reset: Reset jEditor… asks first, saying what goes, in red; Cancel changes nothing',
-            !!r.ask && r.ask[0] === 'Reset jEditor?' && /settings/.test(r.ask[1]) && /Recent projects/.test(r.ask[1]) && /photos/.test(r.ask[1]) && r.ask[2] === 'Reset jEditor' && r.ask[3] && r.cancelled[0] === 1 && r.cancelled[1],
+        check('reset: Reset jEditor… asks first, saying what goes (the web: it reloads, with no pins), in red; Cancel changes nothing',
+            !!r.ask && r.ask[0] === 'Reset jEditor?' && /settings/.test(r.ask[1]) && /Recent projects/.test(r.ask[1]) && /photos/.test(r.ask[1]) && /reloads/.test(r.ask[1]) && !/installed|pinned/.test(r.ask[1]) && r.ask[2] === 'Reset jEditor' && r.ask[3] && r.cancelled[0] === 1 && r.cancelled[1],
             JSON.stringify([r.ask, r.cancelled]));
         check('reset: ...OK: every setting, pin and recent gone, then a reload', !!r.reset && r.reset[0] === 2 && r.reset[1] === '' && !/jeditor-recents/.test(r.reset[2]), JSON.stringify(r.reset));
         check('reset: the apps\' Recent on disk (recent.json) is left empty, so it doesn\'t come back from the projects\' folders', !!r.disk && r.disk[0] === '[]' && r.disk[1] === 0, JSON.stringify(r.disk));

@@ -50,6 +50,14 @@ if (!SITE) {
     html = html.replace(/<script>\s*\/\/ Service workers[^]*?<\/script>/, '');
     const iconDataUri = 'data:image/png;base64,' + fs.readFileSync(path.join(APP, 'icon.png')).toString('base64');
     html = html.split('icon.png').join(iconDataUri);
+    // What's new's pictures (highlights.js), in the file too: there's no
+    // folder beside it to load them from
+    const art = {};
+    for (const f of fs.readdirSync(path.join(APP, 'whatsnew')).filter(f => f.endsWith('.webp'))) {
+        art[f.replace(/\.webp$/, '')] = 'data:image/webp;base64,' + fs.readFileSync(path.join(APP, 'whatsnew', f)).toString('base64');
+    }
+    if (!html.includes('</head>')) fail('no </head> to put the pictures before');
+    html = html.replace('</head>', () => `<script>const WHATSNEW_ART = ${JSON.stringify(art)};</script>\n</head>`);
     const out = path.join(ROOT, 'standalone.html');
     fs.writeFileSync(out, html);
     console.log(`Built ${path.relative(ROOT, out)} (${(html.length / 1024 / 1024).toFixed(2)} MB)`);

@@ -3693,6 +3693,13 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     font-weight: var(--fw-semibold);
 }
 
+.wn-tag.wn-apps {
+    background: var(--bg-selected);
+    color: var(--text-2);
+    font-weight: var(--fw-regular);
+    white-space: nowrap;
+}
+
 .wn-tag.current {
     background: var(--accent-soft);
     color: var(--accent-text);
