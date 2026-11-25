@@ -1162,6 +1162,75 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 }
             }
 
+            // Each sidebar's edge resizes the sidebar, and a hidden one's line
+            // drags it back out, in every mode: never the window (Needs fixing,
+            // 25 November: in Paint, dragging the sidebar's edge resized the
+            // window). Real drags, as the one above.
+            if (spot !== null) {
+                const { execFileSync } = require('child_process');
+                const swift = path.join(tmp, 'drag.swift');
+                const drag = (x, y, dx) => { try { return execFileSync('swift', [swift, String(x), String(y), String(dx)], { timeout: 180000 }).toString().trim(); } catch (e) { return 'failed: ' + e.message.split('\n')[0]; } };
+                const hit = (x, y) => app.evaluate(({ BrowserWindow }, [x, y]) => global.jeditorToolbar.hitAt(BrowserWindow.getAllWindows()[0].getNativeWindowHandle(), x, y), [x, y]);
+                const state = () => page.evaluate(() => {
+                    const w = (s) => { const e = document.querySelector(s); return e && e.getClientRects().length ? Math.round(e.getBoundingClientRect().width) : 0; };
+                    return { rail: Folders.railOpen() ? w('.folder-rail') : 0, adjust: app.uiPrefs.panelsHidden.adjust ? 0 : w('#adj-panel'), paint: app.uiPrefs.panelsHidden.paint ? 0 : w('#paint-panel') };
+                });
+                await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.setBounds({ x: 160, y: 100, width: 1200, height: 800 }); });
+                await page.waitForTimeout(500);
+                const misses = [], seen = [];
+                let posted = true;
+                for (const where of ['photos', 'adjust', 'paint']) {
+                    for (const hidden of [false, true]) {
+                        // The sidebar and the mode's panel open (or both hidden), each at its own width
+                        await page.evaluate(async ([where, hidden]) => {
+                            const wait = (ms) => new Promise(r => setTimeout(r, ms));
+                            if (Modes.current() !== where) { await Modes.go(where); for (let i = 0; i < 60 && Modes.current() !== where; i++) await wait(50); }
+                            if (where === 'photos') app.setView('grid');
+                            for (const s of ['rail', 'adjust', 'paint']) app.setSideWidth(s, null);
+                            if (Folders.railOpen() === hidden) app.keyHandlers()['folders.rail']();
+                            if (where !== 'photos') app.showPanel(where, !hidden);
+                            await wait(700);
+                        }, [where, hidden]);
+                        const grips = await page.evaluate(() => [...document.querySelectorAll('.side-grip, .side-edge')].filter(g => g.getClientRects().length && getComputedStyle(g).visibility !== 'hidden').map(g => {
+                            const r = g.getBoundingClientRect();
+                            return { side: g.dataset.side, edge: g.classList.contains('side-edge'), dir: g.dataset.edge === 'left' ? -1 : 1, left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+                        }).filter(g => g.right > 0 && g.left < innerWidth && g.bottom > 80));
+                        for (const g of grips) {
+                            // For a hidden one's line: on it, as people aim, and a little in
+                            const xs = g.edge ? (g.dir > 0 ? [g.left + 2, g.left + 8] : [g.right - 2, g.right - 8]) : [(g.left + g.right) / 2];
+                            for (const x0 of xs) {
+                                const x = Math.round(x0), y = Math.round(Math.max(g.top, 80) + (g.bottom - Math.max(g.top, 80)) * 0.5);
+                                const name = `${where}, ${g.side}'s ${g.edge ? 'line (hidden)' : 'edge'} at x ${x}`;
+                                const before = await state(), b0 = await win();
+                                const chain = await hit(x, y);
+                                const out = drag(b0.x + x, b0.y + y, 70 * g.dir);
+                                if (out !== 'trusted') posted = false;
+                                await page.waitForTimeout(700);
+                                const after = await state(), b1 = await win();
+                                const moved = b1.x !== b0.x || b1.y !== b0.y || b1.width !== b0.width || b1.height !== b0.height;
+                                const grew = after[g.side] > before[g.side] + 20;
+                                seen.push(`${name}: ${grew ? 'sidebar' : '-'}${moved ? ' WINDOW' : ''} [${(chain || []).slice(0, 2).join('<')}]`);
+                                if (moved || !grew) misses.push(`${name}: ${moved ? 'the window changed ' + JSON.stringify([b0, b1]) : 'the sidebar didn\'t ' + JSON.stringify([before, after])} (under it: ${(chain || []).slice(0, 3).join(' < ')})`);
+                                if (moved) await app.evaluate(({ BrowserWindow }, b) => BrowserWindow.getAllWindows()[0].setBounds(b), b0);
+                                // Back as it was, for the next
+                                await page.evaluate(([hidden, where]) => {
+                                    for (const s of ['rail', 'adjust', 'paint']) app.setSideWidth(s, null);
+                                    if (Folders.railOpen() === hidden) app.keyHandlers()['folders.rail']();
+                                    if (where !== 'photos') app.showPanel(where, !hidden);
+                                }, [hidden, where]);
+                                await page.waitForTimeout(500);
+                            }
+                        }
+                        if (!grips.length) misses.push(`${where}${hidden ? ', hidden' : ''}: no sidebar edge to drag`);
+                    }
+                }
+                console.log('        ' + seen.join('\n        '));
+                if (posted) check('every sidebar\'s edge resizes it, and a hidden one\'s line drags it out, in Photos, Adjust and Paint: never the window', misses.length === 0, misses.slice(0, 10).join('; '));
+                else console.log('        (no real drags: this Mac doesn\'t let the test post mouse events)');
+                await page.evaluate(async () => { for (const s of ['rail', 'adjust', 'paint']) app.setSideWidth(s, null); if (Modes.current() !== 'photos') await Modes.go('photos'); app.setView('single'); });
+                await page.waitForTimeout(800);
+            }
+
             // What it looks like: the window, toolbar and all (CI keeps these)
             const shots = process.env.JEDITOR_SCREENSHOTS;
             if (shots) {
