@@ -6552,7 +6552,10 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const disk = async () => { try { return JSON.parse(await (await (await store.getFileHandle('recent.json')).getFile()).text()).folders.map(f => f.name); } catch (e) { return null; } };
             try {
                 // (a folder opened just before, guard-failing, may still be
-                // being added to Recent: after the wipe it came back)
+                // being added to Recent: after the wipe it came back. Its
+                // open adds it a little after its photos are listed, so
+                // Recents.saving can still be empty here: wait for it there)
+                for (let i = 0; i < 60 && !(await Recents.list()).some(r => r.name === 'guard-failing'); i++) await sleep(50);
                 if (Recents.saving) await Recents.saving;
                 await wipe();
                 out.first = await Recents.restore();
