@@ -5,7 +5,7 @@
 <h1 align="center">jEditor</h1>
 
 <p align="center">
-  <b>A photo viewer, a photo editor and a paint app, in one.</b><br>
+  <b>View, edit and paint your photos, in one app.</b><br>
   Simple to pick up, and never too much on the screen. It works on your photos right where they are: nothing to import, nothing uploaded.
 </p>
 
@@ -22,13 +22,13 @@
   </picture>
 </p>
 
-## Three apps in one
+## Three modes
 
 Switch between them with the buttons at the top left. Each mode shows only what it needs; the rest is in menus.
 
-- **Photos.** Open a folder and every photo is there, in the grid or one at a time with a film strip. Rotate, crop and straighten, flag the keepers, rename, move and delete, all with undo. It's the quick viewer you open a hundred times a day.
-- **Adjust.** Light and color, non-destructive: exposure, contrast, highlights and shadows, white balance, levels and curves with a live histogram, a color mixer, color grading, looks, masks for the sky and the subject, and tools that bring old prints back.
-- **Paint.** A layers editor over the photo, or on a new canvas: brushes, selections, shapes, text, masks, groups, adjustment layers and filters.
+- **Photos: view, cull, crop and organize.** Open a folder and every photo is there, in the grid or one at a time with a film strip. Rotate, crop and straighten, flag the keepers, rename, move and delete, all with undo.
+- **Adjust: non-destructive photo editing.** Exposure, contrast, highlights and shadows, white balance, levels and curves with a live histogram, a color mixer, color grading, looks, masks for the sky and the subject, and tools that bring old prints back. The original is never changed until you save.
+- **Paint: layers, brushes, text and shapes.** Over the photo, or on a new canvas, with selections, masks, groups, adjustment layers and filters.
 
 <table>
   <tr>
