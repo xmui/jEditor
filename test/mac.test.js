@@ -33,6 +33,20 @@ const JPEG = Buffer.from(
     '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAAQABgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwCjRRRXz59kFFFFAH//2Q==',
     'base64');
 
+// A plain PNG, w×h, one color (for a picture big enough to put text on)
+function makePng(w, h, [r, g, b]) {
+    const zlib = require('zlib');
+    const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+    const crc = (buf) => { let c = 0xffffffff; for (const x of buf) c = crcTable[(c ^ x) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+    const chunk = (kind, data) => { const len = Buffer.alloc(4), body = Buffer.concat([Buffer.from(kind, 'latin1'), data]), sum = Buffer.alloc(4); len.writeUInt32BE(data.length); sum.writeUInt32BE(crc(body)); return Buffer.concat([len, body, sum]); };
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
+    const row = Buffer.alloc(1 + w * 3);
+    for (let x = 0; x < w; x++) { row[1 + x * 3] = r; row[2 + x * 3] = g; row[3 + x * 3] = b; }
+    const raw = Buffer.concat(Array.from({ length: h }, () => row));
+    return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
+
 function makeOrder(dir, name, n = 3) {
     const order = path.join(dir, name);
     fs.mkdirSync(path.join(order, 'Ceremony'), { recursive: true });
@@ -1845,6 +1859,76 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         check('... and when it isn\'t installed (no password), it opens with the software installer instead', r2.inPlace === false && !main2.relaunched && main2.opened.length === 1 && fs.readFileSync(main2.opened[0]).equals(deb), JSON.stringify({ r2, main2 }));
         check('no JS errors', errors.length === 0, errors.join('; '));
         await app.evaluate(({ app }) => { app.quit = global.realQuit; });
+        await app.close();
+    }
+
+    console.log('mac: Paint: Free transform and Warp on a text layer hug its letters');
+    {
+        const dir = path.join(tmp, 'Text box');
+        fs.mkdirSync(dir);
+        fs.writeFileSync(path.join(dir, 'plain.png'), makePng(400, 300, [128, 128, 128]));
+        const { app, page, errors } = await launch(profile, [dir]);
+        await loaded(page, 1);
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const until = async (fn, ms = 15000) => { const t0 = Date.now(); while (!fn()) { if (Date.now() - t0 > ms) throw new Error('timed out'); await new Promise(res => setTimeout(res, 50)); } };
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor, ta = document.getElementById('paint-text'), st = document.getElementById('paint-stage');
+                P.opts.snap = false;
+                const sc = (q) => { const sp = P.V().transformPoint(q); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                const click = (q) => {
+                    st.dispatchEvent(new PointerEvent('pointerdown', { ...sc(q), pointerId: 1, bubbles: true, button: 0 }));
+                    st.dispatchEvent(new PointerEvent('pointerup', { ...sc(q), pointerId: 1, bubbles: true }));
+                };
+                // The letters' box read from the layer's pixels, on a copy
+                const inked = (l) => { const c = P.newCanvas(); c.getContext('2d').drawImage(l.canvas, 0, 0); return P.contentBox(c); };
+                const out = { W: P.W, H: P.H, dpr: devicePixelRatio, fonts: {} };
+                // jEditor's own (as the Font list keeps them), then fonts every
+                // Mac has (#309's system fonts), each its own layer, a row apart
+                const FONTS = [['Sans', 'system-ui, sans-serif'], ['Serif', 'Georgia, serif'], ['Mono', '"Courier New", monospace'], ['Helvetica', 'Helvetica'], ['Menlo', 'Menlo']];
+                for (const [name, font] of FONTS) {
+                    const y = 12 + FONTS.findIndex(([n]) => n === name) * 56;
+                    step = name;
+                    P.setTool('text');
+                    Object.assign(P.opts, { font, fontSize: 40, bold: false, italic: false, opacity: 100, outline: 0, align: 'left' });
+                    P.cur = 0;
+                    click({ x: 60, y });
+                    await new Promise(res => setTimeout(res, 30));
+                    ta.value = 'Warp me';
+                    ta.dispatchEvent(new Event('input'));
+                    ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, metaKey: true, bubbles: true }));
+                    await new Promise(res => setTimeout(res, 30));
+                    const l = P.layer();
+                    if (!l.text || l.text.font !== font) { out.fonts[name] = 'no new text layer'; continue; }
+                    // Its pixels as drawn, the box from its words, and the
+                    // box Free transform and Warp give it (in layer px)
+                    const px = inked(l), ink = P.textInk(l.text);
+                    P.freeTransform();
+                    const f = P.float;
+                    const tf = f && f.from ? { ...f.from } : null;
+                    const box = document.getElementById('paint-options'), mode = box.querySelector('.paint-tf-mode');
+                    if (mode) { mode.value = 'warp'; mode.dispatchEvent(new Event('change')); }
+                    const m = P.float && P.float.mesh;
+                    const warp = m ? (() => { const q = [m[0], m[3], m[15], m[12]].map(v => P.Ci.transformPoint(v)); return { x: Math.round(q[0].x), y: Math.round(q[0].y), w: Math.round(q[1].x - q[0].x), h: Math.round(q[3].y - q[0].y) }; })() : null;
+                    P.cancelFloat();
+                    out.fonts[name] = { px, ink, tf, warp };
+                }
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        const R = JSON.stringify(r);
+        console.log('    ' + R);
+        const fonts = r.fonts ? Object.values(r.fonts) : [];
+        // Within a few px of where the letters are (anti-aliasing, the outline's pad)
+        const near = (a, b, d = 4) => a && b && Math.abs(a.x - b.x) <= d && Math.abs(a.y - b.y) <= d && Math.abs(a.w - b.w) <= 2 * d && Math.abs(a.h - b.h) <= 2 * d;
+        check('Free transform on a text layer: its box is the letters\', not the canvas, in jEditor\'s fonts and the Mac\'s', !r.error && fonts.length === 5 && fonts.every(x => x.px && x.tf && near(x.tf, x.px) && x.tf.w < r.W / 2 && x.tf.h < r.H / 2), R);
+        check('... each in its own font (the fonts measured aren\'t all one)', !r.error && new Set(fonts.map(x => x.px && x.px.w)).size >= 3, R);
+        check('... and Warp\'s 16 points go over just the letters too', !r.error && fonts.every(x => x.warp && near(x.warp, x.px)), R);
+        check('Paint text box: no JS errors', errors.length === 0, errors.join('; '));
         await app.close();
     }
 
