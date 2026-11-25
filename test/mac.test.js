@@ -1264,6 +1264,18 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 const { execFileSync } = require('child_process');
                 const swift = path.join(tmp, 'drag.swift');
                 const drag = (x, y, dx) => { try { return execFileSync('swift', [swift, String(x), String(y), String(dx)], { timeout: 180000 }).toString().trim(); } catch (e) { return 'failed: ' + e.message.split('\n')[0]; } };
+                // What the page hears of a real press: its target and how many moves
+                const listen = () => page.evaluate(() => {
+                    window._evlog = { down: null, moves: 0, up: null, at: null };
+                    if (!window._evlogOn) {
+                        window._evlogOn = true;
+                        const name = (t) => t ? `${t.tagName}${t.id ? '#' + t.id : ''}${t.classList && t.classList.length ? '.' + [...t.classList].join('.') : ''}` : '';
+                        addEventListener('pointerdown', (e) => { window._evlog.down = name(e.target); window._evlog.at = [e.clientX, e.clientY]; }, true);
+                        addEventListener('pointermove', (e) => { if (e.buttons) window._evlog.moves++; }, true);
+                        addEventListener('pointerup', (e) => { window._evlog.up = name(e.target); }, true);
+                    }
+                });
+                const heard = () => page.evaluate(() => window._evlog);
                 const hit = (x, y) => app.evaluate(({ BrowserWindow }, [x, y]) => global.jeditorToolbar.hitAt(BrowserWindow.getAllWindows()[0].getNativeWindowHandle(), x, y), [x, y]);
                 const state = () => page.evaluate(() => {
                     const w = (s) => { const e = document.querySelector(s); return e && e.getClientRects().length ? Math.round(e.getBoundingClientRect().width) : 0; };
@@ -1298,13 +1310,17 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                 const name = `${where}, ${g.side}'s ${g.edge ? 'line (hidden)' : 'edge'} at x ${x}`;
                                 const before = await state(), b0 = await win();
                                 const chain = await hit(x, y);
-                                const out = drag(b0.x + x, b0.y + y, 70 * g.dir);
+                                const under = await page.evaluate(([x, y]) => document.elementsFromPoint(x, y).slice(0, 2).map(e => e.id || String(e.className)).join(' > '), [x, y]);
+                                await listen();
+                                // (out far enough that a hidden one comes back: past half its narrowest, and more)
+                                const out = drag(b0.x + x, b0.y + y, (g.edge ? 170 : 70) * g.dir);
                                 if (out !== 'trusted') posted = false;
                                 await page.waitForTimeout(700);
                                 const after = await state(), b1 = await win();
                                 const moved = b1.x !== b0.x || b1.y !== b0.y || b1.width !== b0.width || b1.height !== b0.height;
                                 const grew = after[g.side] > before[g.side] + 20;
-                                seen.push(`${name}: ${grew ? 'sidebar' : '-'}${moved ? ' WINDOW' : ''} [${(chain || []).slice(0, 2).join('<')}]`);
+                                const ev = await heard();
+                                seen.push(`${name}: ${grew ? 'sidebar' : '-'}${moved ? ' WINDOW' : ''} [${(chain || []).slice(0, 2).join('<')}] page: ${under}; heard ${JSON.stringify(ev)}`);
                                 if (moved || !grew) misses.push(`${name}: ${moved ? 'the window changed ' + JSON.stringify([b0, b1]) : 'the sidebar didn\'t ' + JSON.stringify([before, after])} (under it: ${(chain || []).slice(0, 3).join(' < ')})`);
                                 if (moved) await app.evaluate(({ BrowserWindow }, b) => BrowserWindow.getAllWindows()[0].setBounds(b), b0);
                                 // Back as it was, for the next
@@ -1364,10 +1380,15 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 // (the app in front first: on an app behind, a first click only brings it forward)
                 await app.evaluate(({ app: a, BrowserWindow }) => { a.focus({ steal: true }); BrowserWindow.getAllWindows()[0].focus(); });
                 await page.waitForTimeout(400);
+                await page.evaluate(() => {
+                    window._clk = [];
+                    for (const t of ['pointerdown', 'mousedown', 'click', 'blur', 'resize']) addEventListener(t, (e) => window._clk.push(t + ':' + (e.target && (e.target.id || e.target.nodeName))), true);
+                });
                 try { execFileSync('swift', [click, String(b.x + g.x), String(b.y + g.top + 2)], { timeout: 180000 }); } catch (e) { /* reported below */ }
                 await page.waitForTimeout(500);
                 const menu = await page.evaluate(() => !!document.getElementById('context-menu'));
-                check('... a real click near its top opens its menu', menu, JSON.stringify(g));
+                const clk = await page.evaluate(() => window._clk);
+                check('... a real click near its top opens its menu', menu, JSON.stringify([g, b, clk, await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isFocused())]));
                 await page.keyboard.press('Escape');
             }
         }
