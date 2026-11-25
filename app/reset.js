@@ -39,7 +39,19 @@ const AppReset = {
         const on = (id, fn) => { const b = this.el(id); if (b) b.addEventListener('click', (e) => { e.currentTarget.blur(); fn(); }); };
         on('set-reset-cache', () => this.clearCache());
         on('set-reset-all', () => this.resetAll());
+        // The web has no restart, no install and no pins (appReset, places):
+        // it reloads, and is as it was the first time it was opened
+        if (!this.restarts()) {
+            const say = (id, t) => { const e = this.el(id); if (e) e.textContent = t; };
+            say('set-reset-cache-t', 'Clear cache and reload');
+            say('set-reset-cache', 'Clear and reload');
+            say('set-reset-cache-s', 'Thumbnails and the rest are made again. Your projects, recents and settings stay.');
+            say('set-reset-all-s', 'Back to how it was the first time you opened it: settings and recents go. Your photos aren\'t touched.');
+        }
     },
+
+    // The app starts again (appReset); the web reloads instead
+    restarts() { return Host.has('appReset'); },
 
     // ---- Clear cache and restart ----
 
@@ -61,11 +73,12 @@ const AppReset = {
         if (this.busy) return;
         const ok = await UI.confirm({
             title: 'Reset jEditor?',
-            message: 'jEditor goes back to how it was when it was first installed, and restarts. This goes:',
+            message: this.restarts() ? 'jEditor goes back to how it was when it was first installed, and restarts. This goes:'
+                : 'jEditor goes back to how it was the first time you opened it, and reloads. This goes:',
             items: [
                 'Your settings, keyboard shortcuts and toolbar',
                 'Your saved looks, presets, brushes and colors',
-                'Recent projects, pinned folders and the projects folder chosen',
+                Host.has('places') ? 'Recent projects, pinned folders and the projects folder chosen' : 'Recent projects',
                 'Thumbnails and every other cache'
             ],
             note: 'Your photos and their folders aren\'t touched, and nor are your projects\' flags, edits and deleted photos: open a project again and they\'re there.',

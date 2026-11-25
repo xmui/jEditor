@@ -8,7 +8,8 @@
 // (highlights.js), so the numbers there can't go stale: { card: '…' } is
 // told by one of its six cards, { big: '…' } is a big upgrade and
 // { polish: '…' } polish or a fix. They're plain lines again below, as
-// every other entry's are, with what each is in kinds.
+// every other entry's are, with what each is in kinds. What only the apps
+// have is in needs (CHANGELOG_NEEDS, below).
 
 const CHANGELOG = [
     {
@@ -879,7 +880,46 @@ const CHANGELOG = [
     }
 ];
 
+// Lines about what only the apps have (host.js features): by version, the
+// start of the line and the feature. On the web What's new marks them "In
+// the apps", and in an app without it "Not in this app", rather than
+// promising them
+// (script.js: renderWhatsNew). A line that names its system already ("On
+// the Mac, …", "Windows: …") says so itself. test/parity.test.js checks
+// each one is a line here, and that a line about scanning, the camera, the
+// sidebar's drives and pins, windows, the bin or updates is marked.
+const CHANGELOG_NEEDS = {
+    '1.51.0': [['Scan and Camera ask the first questions first', 'scan'], ["The sidebar's folder trees start folded", 'places']],
+    '1.50.2': [["The sidebar's Projects list is shorter", 'places'], ['Scanning: Turn upright turns each photo', 'scan'], ['Copying a project to a USB drive no longer', 'places'], ['Right-click a USB drive or card in the sidebar', 'places']],
+    '1.45.0': [['Export is one window, from the Export button', 'places'], ['Move to… and Copy to… go to any folder', 'places'], ['The scanner list has only the scanners', 'scan'], ['Resolutions in the scan window', 'scan'], ['The scan window can be resized', 'scan'], ['Auto crop each photo in the scan window', 'scan']],
+    '1.44.1': [['Scanning on an Epson sheet feeder (the FastFoto)', 'scan'], ['Scanning on an Epson sheet feeder starts', 'scan'], ['The scan window\'s choices', 'scan'], ['The scan window always opens', 'scan']],
+    '1.44.0': [['Copy a project to a USB drive or card in one step', 'places'], ['The scanner window is cleaner', 'scan']],
+    '1.43.1': [['Scanning on a sheet feeder that crops', 'scan'], ['Auto crop on a feeder scan', 'scan']],
+    '1.41.0': [['Beta builds: Settings → Updates', 'updates']],
+    '1.35.0': [['Drag a folder onto a drive', 'places'], ['Drag a folder onto the rest of the sidebar', 'places'], ['A USB drive in the sidebar', 'places'], ['The New badge on a drive', 'places']],
+    '1.34.0': [['Fewer explainers in the sidebar', 'places']],
+    '1.31.1': [['FastFoto scans no longer', 'scan'], ['The scan helper asks', 'scan']],
+    '1.30.3': [['Deleting a photo on a network or USB drive', 'recycle']],
+    '1.30.0': [['Scanner\'s own settings…', 'scan'], ['Details lists the scanner\'s own settings', 'scan']],
+    '1.29.1': [['FastFoto colors', 'scan']],
+    '1.29.0': [['Scan whole glass', 'scan'], ['The scan and camera docks', 'scan'], ['A project opens in one window only', 'windows'], ['Scan more and Try again', 'scan'], ['A tethered shot', 'camera']],
+    '1.27.0': [['The FastFoto crops each photo itself', 'scan'], ['Preview and crop: click a print', 'scan'], ['A scanner unplugged', 'scan'], ['Settings are remembered for each scanner', 'scan'], ['New project in the sidebar', 'places'], ['Rename projects and folders', 'places']],
+    '1.26.0': [['Scanners whose driver', 'scan']],
+    '1.25.0': [['Scanning uses jEditor\'s own settings', 'scan'], ['Settings in the scan dock', 'scan'], ['The feeder (FastFoto)', 'scan']],
+    '1.24.1': [['Browsing in the sidebar no longer', 'places']],
+    '1.24.0': [['Tethered shooting', 'camera'], ['The camera dock', 'camera']],
+    '1.23.0': [['Preview and crop, for a flatbed', 'scan'], ['Adjust the boxes: drag on the glass', 'scan'], ['Scan more previews the glass', 'scan']],
+    '1.22.1': [['Details in the scan dock', 'scan'], ['The log now also says how each TWAIN', 'scan']],
+    '1.22.0': [['Two projects at once', 'windows'], ['The scan dock', 'scan']],
+    '1.21.0': [['A new sidebar. At the top', 'places'], ['Projects: every project in your projects folder', 'places'], ['Pinned: folders you pin', 'places'], ['The start screen shows the same projects', 'places'], ['While a scan runs', 'scan'], ['Compatibility mode in the Scan box', 'scan'], ['Settings → Updates → Show log', 'log']],
+    '1.20.1': [['TWAIN scanners', 'scan'], ['Auto crop each photo (on to start with, in the Scan box)', 'scan']],
+    '1.20.0': [['Scan straight into the open order', 'scan'], ['Browse other orders, folders and drives', 'places'], ['Orders on a USB stick', 'places']],
+    '1.19.0': [['Deleted photos go to the Windows Recycle Bin', 'recycle'], ['Updates: jEditor looks for a new version', 'updates']]
+};
+
 for (const entry of CHANGELOG) {
     entry.kinds = entry.items.map(it => typeof it === 'string' ? null : Object.keys(it)[0]);
     entry.items = entry.items.map(it => typeof it === 'string' ? it : Object.values(it)[0]);
+    const needs = CHANGELOG_NEEDS[entry.version] || [];
+    entry.needs = entry.items.map(t => (needs.find(([start]) => t.startsWith(start)) || [])[1] || null);
 }

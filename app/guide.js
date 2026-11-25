@@ -19,7 +19,8 @@ const Guide = {
         ['files', 'Files and folders'], ['adjust', 'Adjust'], ['paint', 'Paint'], ['keys', 'Keyboard shortcuts']
     ],
 
-    // [topics, clip, title, line, keys (action ids), the feature it needs]
+    // [topics, clip, title, line, keys (action ids), the feature it needs
+    // (host.js), or '!feature' for where it isn't: the web's own words]
     CARDS: [
         ['start files', 'folder', 'Open a folder', 'Open one on the home page, or drop it on the window. Subfolders come too.', []],
         ['start photos', 'turn', 'Turn a photo', 'Upright in one key. In the grid, every selected photo turns.', ['edit.rotateLeft', 'edit.rotateRight']],
@@ -38,7 +39,8 @@ const Guide = {
         ['crop', 'undo', 'Undo a crop', 'Any time, even after you\'ve moved on.', ['edit.undo']],
         ['flags', 'label', 'Color labels', 'Red, yellow, green, blue and purple. The same key again takes it off.', ['flag.red']],
         ['flags', 'filter', 'Show only the flagged', 'Click a flag in the sidebar\'s Flags list; Ctrl+A then selects just those.', []],
-        ['files', 'sidebar', 'The sidebar', 'The project\'s folders, your projects, pinned folders and drives. Drag its edge to resize it; drag it right in to hide it, and from the line at the window\'s edge to bring it back.', ['folders.rail']],
+        ['files', 'sidebar', 'The sidebar', 'The project\'s folders, your projects, pinned folders and drives. Drag its edge to resize it; drag it right in to hide it, and from the line at the window\'s edge to bring it back.', ['folders.rail'], 'places'],
+        ['files', 'sidebar', 'The sidebar', 'The project\'s folders and its flags. Drag its edge to resize it; drag it right in to hide it, and from the line at the window\'s edge to bring it back.', ['folders.rail'], '!places'],
         ['files', 'convert', 'Convert to save room', 'AVIF, WebP or JPEG XL, for some photos or a whole folder.', []],
         ['files', 'export', 'Export copies', 'Where they go, what they\'re called, the format and the size, with the edits in them.', []],
         ['files adjust', 'export', 'Write edits to file', 'Edits are kept in jEditor and the photos stay as they are (a small dot marks the edited ones). Write edits to file writes an edit into its photo file, and Ctrl+Z puts the original back. Export makes edited copies instead.', ['edit.saveOver']],
@@ -62,7 +64,10 @@ const Guide = {
         if (!k) return '';
         return app.formatCombo(k).split(' + ').map(p => this.kbd(p)).join('');
     },
-    shown(card) { return !card[5] || Host.has(card[5]); },
+    shown(card) {
+        const f = card[5];
+        return !f || (f[0] === '!' ? !Host.has(f.slice(1)) : Host.has(f));
+    },
 
     // The little looping pictures (style.css, .gclip)
     clip(kind) {
