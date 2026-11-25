@@ -5313,7 +5313,10 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             // The switches in Settings: one per kind, as set; changing one is kept
             app.toggleCustomizePanel(true);
             const sw = (k) => document.querySelector(`input[data-toast="${k}"]`);
-            out.switches = document.querySelectorAll('#cust-toasts input[data-toast]').length === app.TOAST_KINDS.length && !sw('rotate').checked && sw('flags').checked;
+            // (the web has no scanning or camera, so not that one)
+            const listed = app.TOAST_KINDS.filter(([, , , , needs]) => !needs || needs.some(f => Host.has(f)));
+            out.switches = document.querySelectorAll('#cust-toasts input[data-toast]').length === listed.length && listed.length === app.TOAST_KINDS.length - 1
+                && !sw('scan') && !sw('rotate').checked && sw('flags').checked;
             sw('flags').checked = false;
             sw('flags').dispatchEvent(new Event('change'));
             sw('rotate').checked = true;
@@ -5330,7 +5333,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         });
         check('messages: rotation off to start with, the rest on; a kind turned off doesn\'t show', r.defaults && r.rotateHidden && r.flagsShown, JSON.stringify(r));
         check('messages: errors show even when their kind is off', r.errorShown);
-        check('messages: a switch per kind in Settings; changes are saved and kept', r.switches && r.saved && r.kept && r.flagsNowHidden, JSON.stringify(r));
+        check('messages: a switch per kind in Settings (not Scanning and the camera on the web); changes are saved and kept', r.switches && r.saved && r.kept && r.flagsNowHidden, JSON.stringify(r));
         check('messages suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }

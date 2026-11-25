@@ -1281,7 +1281,9 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                     const w = (s) => { const e = document.querySelector(s); return e && e.getClientRects().length ? Math.round(e.getBoundingClientRect().width) : 0; };
                     return { rail: Folders.railOpen() ? w('.folder-rail') : 0, adjust: app.uiPrefs.panelsHidden.adjust ? 0 : w('#adj-panel'), paint: app.uiPrefs.panelsHidden.paint ? 0 : w('#paint-panel') };
                 });
-                await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.setBounds({ x: 160, y: 100, width: 1200, height: 800 }); });
+                // On the screen, all of it: a real press posted off the screen (this
+                // runner's is small) never reaches the window
+                await app.evaluate(({ BrowserWindow, screen }) => { const a = screen.getPrimaryDisplay().workArea; const w = BrowserWindow.getAllWindows()[0]; w.setBounds({ x: a.x, y: a.y, width: Math.min(1200, a.width), height: Math.min(800, a.height) }); });
                 await page.waitForTimeout(500);
                 const misses = [], seen = [];
                 let posted = true;
@@ -1371,24 +1373,27 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             }
             check('... and Home\'s Settings is the page\'s, top to middle: no drag view over it', over.length === 0, over.join('; '));
             if (spot !== null) {
-                const b = await win();
                 const { execFileSync } = require('child_process');
                 const click = path.join(tmp, 'click.swift');
                 fs.writeFileSync(click, ['import CoreGraphics', 'import Foundation', 'let a = CommandLine.arguments.dropFirst().map { Double($0)! }',
                     'func post(_ t: CGEventType) { CGEvent(mouseEventSource: nil, mouseType: t, mouseCursorPosition: CGPoint(x: a[0], y: a[1]), mouseButton: .left)?.post(tap: .cghidEventTap); usleep(60000) }',
                     'post(.mouseMoved); post(.leftMouseDown); post(.leftMouseUp)'].join('\n'));
-                // (the app in front first: on an app behind, a first click only brings it forward)
-                await app.evaluate(({ app: a, BrowserWindow }) => { a.focus({ steal: true }); BrowserWindow.getAllWindows()[0].focus(); });
-                await page.waitForTimeout(400);
+                // (the app in front first: on an app behind, a first click only brings
+                // it forward; and the window on the screen, all of it, or a press
+                // posted off it never reaches the window)
+                await app.evaluate(({ app: a, BrowserWindow, screen }) => { const wa = screen.getPrimaryDisplay().workArea; const w = BrowserWindow.getAllWindows()[0]; w.setBounds({ x: wa.x, y: wa.y, width: Math.min(1200, wa.width), height: Math.min(800, wa.height) }); a.focus({ steal: true }); w.focus(); });
+                await page.waitForTimeout(600);
+                const b = await win();
+                const g2 = await page.evaluate(() => { const r = document.getElementById('btn-settings-start').getBoundingClientRect(); return { x: r.left + r.width / 2, top: r.top + 3 }; });
                 await page.evaluate(() => {
                     window._clk = [];
                     for (const t of ['pointerdown', 'mousedown', 'click', 'blur', 'resize']) addEventListener(t, (e) => window._clk.push(t + ':' + (e.target && (e.target.id || e.target.nodeName))), true);
                 });
-                try { execFileSync('swift', [click, String(b.x + g.x), String(b.y + g.top + 2)], { timeout: 180000 }); } catch (e) { /* reported below */ }
+                try { execFileSync('swift', [click, String(b.x + g2.x), String(b.y + g2.top + 2)], { timeout: 180000 }); } catch (e) { /* reported below */ }
                 await page.waitForTimeout(500);
                 const menu = await page.evaluate(() => !!document.getElementById('context-menu'));
                 const clk = await page.evaluate(() => window._clk);
-                check('... a real click near its top opens its menu', menu, JSON.stringify([g, b, clk, await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isFocused())]));
+                check('... a real click near its top opens its menu', menu, JSON.stringify([g2, b, clk, await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isFocused())]));
                 await page.keyboard.press('Escape');
             }
         }

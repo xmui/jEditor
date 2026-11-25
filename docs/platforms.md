@@ -54,6 +54,17 @@ Some things work everywhere but are kept in a different place:
 - **A project's data** (flags, edits, the thumbnail cache, Auto crop's originals): in the apps it's kept in jEditor's own storage (`dataDir`). In a browser it's kept in a `.jeditor` folder inside the project (`app/folder-cache.js`).
 - **Auto crop's test scans:** the app's storage, or the browser's private storage.
 
+## Checking the web
+
+The web is the lighter version, so it must never offer what only the apps have. `test/web.test.js` (part of `npm test`) clicks through the GitHub Pages build and `standalone.html`: the home page, Settings, What's new, the guide, a project and its right-click menus, the viewer, Crop, Adjust, Paint, Find anything and Export. It fails on a JS error, on anything that offers an app-only feature (Show in Explorer, Scan, Camera, windows, drives, burning, updates, the log), and on any `data-needs` element the web lacks that's still on screen.
+
+What the web says follows the same rule:
+
+- **What's new** marks a changelog line about an app-only feature "In the apps" on the web, and "Not in this app" in an app that lacks the feature. `CHANGELOG_NEEDS` in `app/changelog.js` lists those lines, by version, the start of the line and the feature. A line that names its system itself ("On the Mac, …") needs no mark. `test/parity.test.js` checks that every listed line exists, and that a new line about scanning, the camera, the sidebar's drives and pins, windows, the bin or updates is listed.
+- **Settings → Messages** lists Scanning and the camera only where the app scans or shoots. **Troubleshooting** says Clear and reload, and Reset doesn't speak of an install or of pins, where there's no `appReset` restart and no `places` sidebar.
+- **The guide**'s sidebar card describes the web's sidebar (the project's folders and flags) where there's no `places`.
+- **`standalone.html`** (one file, opened from disk) has What's new's pictures inside it. It can't load the codec worker (`Codec.ready()`), so Export offers only the formats the browser writes itself, and Convert says it needs the app or the web page.
+
 ## Only on the web
 
 | What | Where | Why |

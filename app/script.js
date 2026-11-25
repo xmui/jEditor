@@ -630,7 +630,8 @@ const app = {
     },
 
     // Messages for things done, each kind on or off in Settings → Messages:
-    // [kind, label, on to start with, help]
+    // [kind, label, on to start with, help, the features it's for (any one;
+    // host.js), so an app without them, or the web, doesn't list it]
     TOAST_KINDS: [
         ['rotate', 'Rotating', false, 'Turned 1 photo right…'],
         ['flags', 'Flags and labels', true, 'Picked, rejected, needs rescan, color labels'],
@@ -640,7 +641,7 @@ const app = {
         ['delete', 'Deleting', true, 'Moved to {bin} (Ctrl+Z still restores)'],
         ['rename', 'Renaming', true, 'Renamed photos and folders'],
         ['undo', 'Undo', true, 'What Ctrl+Z put back'],
-        ['scan', 'Scanning and the camera', true, 'Scanned, camera connected'],
+        ['scan', 'Scanning and the camera', true, 'Scanned, camera connected', ['scan', 'camera']],
         ['load', 'Photos loaded and found', true, 'Loaded, previews ready, new photos in the folder']
     ],
 
@@ -1048,7 +1049,8 @@ const app = {
         // Messages: a switch per kind
         const toastList = $('cust-toasts');
         if (toastList) {
-            for (const [kind, label, , help] of this.TOAST_KINDS) {
+            for (const [kind, label, , help, needs] of this.TOAST_KINDS) {
+                if (needs && !needs.some(f => Host.has(f))) continue;
                 const row = document.createElement('div');
                 row.className = 'set-row';
                 const id = 'cust-toast-' + kind;
@@ -6383,7 +6385,7 @@ const app = {
             else if (this._newSince && this.compareVersions(entry.version, this._newSince) > 0) tag('New', 'new');
             sec.appendChild(h);
             const ul = document.createElement('ul');
-            for (const item of entry.items) {
+            entry.items.forEach((item, n) => {
                 const li = document.createElement('li');
                 // `key` → a key cap; everything else stays plain text
                 String(item).split('`').forEach((part, i) => {
@@ -6396,8 +6398,19 @@ const app = {
                         li.appendChild(document.createTextNode(part));
                     }
                 });
+                // What only the apps have (changelog.js: needs), where it isn't
+                const needs = entry.needs && entry.needs[n];
+                if (needs && !Host.has(needs)) {
+                    const t = document.createElement('span');
+                    t.className = 'wn-tag wn-apps';
+                    // (an app without it: another system's)
+                    const inApp = !!Host.get();
+                    t.textContent = inApp ? 'Not in this app' : 'In the apps';
+                    t.title = inApp ? 'This is in jEditor on another system' : 'This needs the Windows, Mac or Linux app';
+                    li.append(' ', t);
+                }
                 ul.appendChild(li);
-            }
+            });
             sec.appendChild(ul);
             list.appendChild(sec);
         }

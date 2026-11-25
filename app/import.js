@@ -147,7 +147,8 @@ const Import = {
         const day = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
         this.el('import-name').value = `${day(first)} ${d.name}`.replace(/[<>:"/\\|?*]/g, '_');
         (projects ? this.el('import-to-new') : here ? this.el('import-to-here') : this.el('import-to-pick')).checked = true;
-        this.el('import-eject-row').classList.toggle('hidden', !(d.path && this.native()));
+        // Ejecting is the sidebar's drives' (places.js: Places.eject)
+        this.el('import-eject-row').classList.toggle('hidden', !(d.path && Host.has('places')));
         this.el('import-new-only').checked = true;
         this.sync();
         panel.classList.remove('hidden');
