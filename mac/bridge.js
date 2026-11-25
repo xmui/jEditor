@@ -732,6 +732,11 @@
         scan: 'scanner', camera: 'camera'
     };
     const MODE_SYMBOLS = { photos: 'square.grid.2x2', adjust: 'slider.horizontal.3', paint: 'paintbrush' };
+    // Adjust's and Paint's own buttons (script.js: MODE_BAR), pressed and not
+    const BAR_SYMBOLS = {
+        before: ['square.split.2x1', 'square.split.2x1.fill'], reset: ['arrow.counterclockwise'], copy: ['doc.on.doc'], paste: ['doc.on.clipboard'],
+        undo: ['arrow.uturn.backward'], redo: ['arrow.uturn.forward']
+    };
     const PRESSED = { info: 'info.circle.fill', strip: 'film.fill', fit: 'rectangle.inset.filled', fullscreen: 'arrow.down.right.and.arrow.up.left' };
     const $ = (id) => document.getElementById(id);
     const shown = (el) => !!el && !el.classList.contains('hidden') && !el.classList.contains('host-missing') && !el.classList.contains('exp-off');
@@ -782,12 +787,15 @@
             ];
         };
         const titleAt = side ? Math.round(railEl.getBoundingClientRect().right + 12) : 0;
-        if (typeof Modes !== 'undefined' && Modes.current() !== 'photos') return { visible: true, title: $('file-name-text').textContent || a.dirHandle.name, subtitle: '', titleAt, items: side ? [...lead(), { kind: 'flexible' }, ...findLater] : [modeItem(), { kind: 'flexible' }] };
+        // The sidebar's button beside the lights in every mode, open or
+        // closed (the owner's pick, 25 November), as Finder's and Mail's
+        const railItem = { id: 'rail', kind: 'button', symbol: 'sidebar.left', label: 'Sidebar', tooltip: said($('fb-rail').title), navigational: true };
+        if (typeof Modes !== 'undefined' && Modes.current() !== 'photos') return modeModel(a, Modes.current(), side ? lead() : [railItem, modeItem()], titleAt, findLater);
         if (side && typeof Modes !== 'undefined') return sideModel(a, [...lead(), { kind: 'flexible' }], titleAt, findLater);
         const items = [];
         const bar = $('folder-bar');
         const browsing = shown(bar);
-        if (browsing) items.push({ id: 'rail', kind: 'button', symbol: 'sidebar.left', label: 'Folder list', tooltip: said($('fb-rail').title), navigational: true });
+        if (typeof Folders !== 'undefined' && Folders.enabled()) items.push({ ...railItem, label: 'Folder list' });
         // The mode chip, as in the folder pill (or on its own in the single
         // view): not while the sidebar shows its own switch
         // (In jEditor's own look it's the row of modes, floating while the
@@ -825,8 +833,81 @@
             visible: true,
             title: $('file-name-text').textContent || a.dirHandle.name,
             subtitle: [a.dirHandle.name, where, $('file-count').textContent].filter(Boolean).join(' · '),
-            items
+            items,
+            ...photosCustomize(a, items)
         };
+    }
+
+    // Photos' toolbar buttons in Apple's Customize Toolbar sheet: the same
+    // as Settings → Toolbar's (script.js: placement), so one setting, two
+    // ways to it. Taken off, a button goes under More; added, it's on
+    function photosCustomize(a, items) {
+        const customizable = items.filter(i => /^hc:/.test(i.id || '')).map(i => i.id);
+        const extra = [];
+        for (const key of a.uiPrefs.order) {
+            const b = a.headerButton(key);
+            if (!b || customizable.includes('hc:' + key) || b.classList.contains('host-missing') || b.classList.contains('exp-off')) continue;
+            if ((key === 'scan' || key === 'camera') && !Host.has(key)) continue;
+            extra.push({ id: 'hc:' + key, kind: 'button', symbol: SYMBOLS[key] || (key === 'view' ? 'square.grid.2x2' : 'circle'), label: a.HC_LABELS[key] || key, tooltip: said(b.title) });
+        }
+        return { customize: true, customizable: [...customizable, ...extra.map(e => e.id)], extra };
+    }
+
+    // Adjust and Paint (the owner's pick A, 25 November): one row. The file's
+    // name is the title and its size the subtitle; their buttons, Settings,
+    // ⋯ and Done at the right, as in Apple Photos' edit view. Their own
+    // pills don't show under it (style.css). Their buttons (MODE_BAR) can
+    // be added and taken off in Apple's sheet, as in Settings → Toolbar
+    function modeModel(a, mode, leadItems, titleAt, findLater) {
+        const pre = mode === 'adjust' ? 'adj' : 'paint';
+        const list = (a.MODE_BAR && a.MODE_BAR[mode]) || [];
+        const onBar = (a.uiPrefs.modeBar && a.uiPrefs.modeBar[mode]) || [];
+        const item = ([key, id, label]) => {
+            const b = $(id);
+            const on = !!b && b.getAttribute('aria-pressed') === 'true';
+            const sym = BAR_SYMBOLS[key] || ['circle'];
+            return { id: 'mb:' + key, kind: 'button', symbol: (on && sym[1]) || sym[0], label, tooltip: said(b ? b.title : label), enabled: !!b && !b.disabled };
+        };
+        const bar = onBar.map(k => list.find(x => x[0] === k)).filter(Boolean).map(item);
+        const extra = list.filter(([k]) => !onBar.includes(k)).map(item);
+        const done = $(pre + '-done');
+        const file = ($(pre + '-file') || {}).textContent || $('file-name-text').textContent || (a.dirHandle && a.dirHandle.name) || '';
+        return {
+            visible: true, title: file, subtitle: (($(pre + '-dims') || {}).textContent || '').trim(), titleAt,
+            customize: true, customizable: list.map(([k]) => 'mb:' + k), extra,
+            items: [
+                ...leadItems, { kind: 'flexible' }, ...bar, ...findLater,
+                { id: 'mset', kind: 'button', symbol: 'gearshape', label: 'Settings', tooltip: said(($(pre + '-settings') || {}).title || 'Settings') },
+                { id: 'mmore', kind: 'button', symbol: 'ellipsis.circle', label: 'More', tooltip: said(($(pre + '-more') || {}).title || 'More') },
+                { id: 'mdone', kind: 'button', prominent: true, label: 'Done', tooltip: said(done ? done.title : 'Done'), enabled: !!done && !done.disabled }
+            ]
+        };
+    }
+
+    // What Apple's sheet left in the toolbar ('id,id,…', in order), kept
+    // where Settings → Toolbar keeps it
+    function customized(list) {
+        const a = jeditor();
+        if (!a) return;
+        const now = String(list || '').split(',').filter(Boolean);
+        const mode = typeof Modes !== 'undefined' ? Modes.current() : 'photos';
+        if (mode !== 'photos') {
+            const known = ((a.MODE_BAR || {})[mode] || []).map(([k]) => k);
+            a.uiPrefs.modeBar[mode] = now.filter(id => /^mb:/.test(id)).map(id => id.slice(3)).filter(k => known.includes(k));
+        } else {
+            const keys = now.filter(id => /^hc:/.test(id)).map(id => id.slice(3));
+            const p = a.uiPrefs;
+            for (const k of p.order) {
+                if (keys.includes(k)) p.placement[k] = 'main';
+                else if (p.placement[k] === 'main') p.placement[k] = 'more';
+            }
+            // In the toolbar's order, in the places those had in Settings'
+            const slots = p.order.map((k, i) => keys.includes(k) ? i : -1).filter(i => i >= 0);
+            slots.forEach((at, n) => { p.order[at] = keys[n]; });
+        }
+        a.saveUiPrefs();
+        a.applyUiPrefs();
+        if (a.renderCustomizePanel && a.elements.customizePanel && !a.elements.customizePanel.classList.contains('hidden')) a.renderCustomizePanel();
     }
 
     // The sidebar open: the right-hand items as always (sort, the page's
@@ -857,7 +938,8 @@
             title: $('file-name-text').textContent || a.dirHandle.name,
             subtitle: [a.dirHandle.name, where, $('file-count').textContent].filter(Boolean).join(' · '),
             titleAt,
-            items
+            items,
+            ...photosCustomize(a, items)
         };
     }
 
@@ -891,6 +973,12 @@
             s.dispatchEvent(new Event('change', { bubbles: true }));
         } else if (id === 'find') Palette.open();
         else if (id === 'more' && value === 'rename') click($('file-name'));
+        else if (id === 'customized') customized(value);
+        else if (/^mb:/.test(id) || /^m(set|more|done)$/.test(id)) {
+            const mode = Modes.current(), pre = mode === 'adjust' ? 'adj' : 'paint';
+            const entry = /^mb:/.test(id) && ((jeditor().MODE_BAR || {})[mode] || []).find(([k]) => k === id.slice(3));
+            click(entry ? $(entry[1]) : $(pre + '-' + { mset: 'settings', mmore: 'more', mdone: 'done' }[id]));
+        }
         else {
             const key = String(id === 'more' ? value : id).replace(/^hc:/, '');
             click($('header-controls').querySelector(`button[data-hc="${key}"]`));
@@ -909,6 +997,9 @@
             // Adjust and Paint opened or closed: the toolbar steps aside or
             // comes back then, not when something else on the page changes
             for (const el of [$('adjust-editor'), $('paint-editor')].filter(Boolean)) watch.observe(el, { attributes: true, attributeFilter: ['class'] });
+            // ...and their own buttons and file, which the toolbar has now:
+            // Before pressed, Undo there or not, the file's name and size
+            for (const el of document.querySelectorAll('.adj-head, .paint-head')) watch.observe(el, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['aria-pressed', 'disabled', 'title', 'class'] });
             $('sort-mode').addEventListener('change', sendToolbar);
             // The sidebar's width: where the title starts (titleAt)
             const railEl = document.querySelector('.folder-rail');

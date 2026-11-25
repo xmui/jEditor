@@ -1040,7 +1040,7 @@ function menu() {
                 // jEditor's own (menubar.js): Close Window, and Reload (it asks
                 // first if something isn't kept: the page's Modes.reload)
                 ...(front.menusOwn && m.label === 'File' ? [{ type: 'separator' }, { role: 'close' }] : []),
-                ...(front.menusOwn && m.label === 'View' ? [{ type: 'separator' }, { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: send('reload') }, ...(DEV ? [{ role: 'toggleDevTools' }] : [])] : []),
+                ...(front.menusOwn && m.label === 'View' ? [{ type: 'separator' }, ...customizeToolbar(), { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: send('reload') }, ...(DEV ? [{ role: 'toggleDevTools' }] : [])] : []),
                 // Cut, copy and paste in text fields go by these on a Mac
                 ...(m.label === 'Edit' ? [{ type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }] : [])
             ]
@@ -1056,6 +1056,20 @@ function menu() {
     menuFor = themed ? JSON.stringify(themed) : '';
 }
 let menuFor = '';
+
+// View → Customize Toolbar…: Apple's sheet for macOS 26's toolbar, as a
+// right-click on it opens (toolbar.mm); what it changes is Settings →
+// Toolbar's (bridge.js). Not on the home page, where there's no toolbar
+function customizeToolbar() {
+    if (!NATIVE_TOOLBAR) return [];
+    return [{
+        label: 'Customize Toolbar…',
+        click: () => {
+            const w = BrowserWindow.getFocusedWindow() || (lastFocused() && lastFocused().win);
+            if (w && !w.isDestroyed()) toolbar.customize(w.getNativeWindowHandle());
+        }
+    }, { type: 'separator' }];
+}
 
 function appMenu() {
     const send = (action) => () => {
@@ -1104,6 +1118,7 @@ function ownMenus(send) {
         {
             label: 'View',
             submenu: [
+                ...customizeToolbar(),
                 // Reload asks first if something isn't kept (the page's Modes.reload)
                 { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: send('reload') },
                 ...(DEV ? [{ role: 'toggleDevTools' }] : []),
