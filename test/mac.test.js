@@ -1424,7 +1424,15 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await loaded(asked.page, all).catch(() => { });
             const again = await shown();
             check('... and again from home after going back to it', again.name === 'Photos library' && again.n === all && again.grid && !again.home, JSON.stringify(again));
-            // Its stack on home's table opens it too
+            // Its stack on home's table opens it too (its photos kept once
+            // they're made, while it's open: recents.js keepThumbs)
+            await asked.page.evaluate(async () => {
+                for (let i = 0; i < 60; i++) {
+                    const r = (await Recents.list()).find(x => x.path === 'photos-library:');
+                    if (r && (r.thumbs || []).length) return;
+                    await new Promise(res => setTimeout(res, 250));
+                }
+            });
             await asked.page.evaluate(() => app.goHome());
             await asked.page.waitForSelector('#drop-zone:not(.hidden)', { timeout: 5000 }).catch(() => { });
             const stack = await asked.page.evaluate(async () => {
