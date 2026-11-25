@@ -323,7 +323,10 @@ static void Send(JEToolbar *t, NSString *ident, id value) {
     BOOL visible = B(model, @"visible", YES);
     w.titleVisibility = visible ? NSWindowTitleVisible : NSWindowTitleHidden;
     self.toolbar.visible = visible;
-    EnsureDragView(w);
+    // Only under the toolbar: without it (Home) the page's own top row is
+    // there, and the view took the press on its buttons (Home's Settings
+    // didn't click where the title bar lies over it: the owner, beta 173)
+    if (visible) EnsureDragView(w); else RemoveDragView(w);
     id at = model[@"titleAt"];
     self.titleAt = [at isKindOfClass:[NSNumber class]] ? [at doubleValue] : 0;
     self.fitting = 0;
@@ -423,7 +426,8 @@ static Napi::Value Attach(const Napi::CallbackInfo &info) {
         __weak NSWindow *weak = w;
         for (NSNotificationName name in @[NSWindowDidEnterFullScreenNotification, NSWindowDidExitFullScreenNotification]) {
             [obs addObject:[NSNotificationCenter.defaultCenter addObserverForName:name object:w queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n) {
-                if (weak) EnsureDragView(weak);
+                JEToolbar *t = weak ? [controllers objectForKey:weak] : nil;
+                if (weak && t.toolbar.visible) EnsureDragView(weak);
             }]];
         }
         t.observers = obs;

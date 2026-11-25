@@ -998,6 +998,34 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 // (the sidebar made as wide as its buttons there, if they're wider: the title at its edge)
                 const titleAt = d.titleBox && p.rail ? Math.abs(d.titleBox.left - (p.rail.right + 12)) <= 6 : false;
                 check('one row, the sidebar open: its buttons beside the lights (the modes, its button, Find anything), the title from its edge, the lights centered, its own row gone and its list right under the toolbar', ids[0] === 'modes' && ids[1] === 'rail' && ids[2] === 'find' && !!modes && modes.selected === 0 && !ids.includes('mode') && centred && titleAt && !p.row && !!p.first && p.first.top < d.toolbarHeight + 12, JSON.stringify([ids, modes, lights, d.toolbarHeight, d.titleBox, p]));
+                // Dragged to its narrowest (200px: the owner, 25 November), its
+                // buttons up there make room (the one mode button, Find anything
+                // at the far end), and it's as narrow as they let it be: macOS
+                // 26's own buttons are bigger than the page's, so under its
+                // toolbar that's more than 200 (the page's own row fits 200)
+                {
+                    const narrow = [];
+                    const lead = () => page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--rail-lead')) || 0);
+                    const full = await lead();
+                    let compact = 0;
+                    for (const w of [220, 200]) {
+                        await page.evaluate((w) => { app.setSideWidth('rail', w); }, w);
+                        for (let i = 0; i < 5; i++) await settle();
+                        const n = await describe();
+                        const r = await page.evaluate(() => ({ rail: document.querySelector('.folder-rail').getBoundingClientRect().width, lead: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--rail-lead')) || 0 }));
+                        const ids_ = n.items.map(i => i.id);
+                        if (r.rail > Math.max(w, r.lead) + 6) narrow.push(`${w}: the sidebar is ${Math.round(r.rail)}, its buttons need ${r.lead}`);
+                        if (ids_[0] !== 'mode' && w === 200) narrow.push(`${w}: not the one mode button (${ids_.join(',')})`);
+                        if (ids_.indexOf('find') < ids_.indexOf('space')) narrow.push(`${w}: Find anything not at the far end (${ids_.join(',')})`);
+                        if (n.titleBox && n.titleBox.left < r.rail + 4) narrow.push(`${w}: the title (${Math.round(n.titleBox.left)}) over the sidebar (${Math.round(r.rail)})`);
+                        if (w === 200) compact = r.lead;
+                    }
+                    if (!(compact < full - 30)) narrow.push(`its buttons need as much room narrow (${compact}) as at its own width (${full})`);
+                    console.log(`        (the sidebar's narrowest under macOS 26's toolbar: ${compact}pt, from ${full}pt)`);
+                    await page.evaluate(() => { app.setSideWidth('rail', null); });
+                    for (let i = 0; i < 4; i++) await settle();
+                    check('the sidebar drags narrower under the toolbar: its buttons there make room (the one mode button, Find anything at the far end), and it\'s as narrow as they let it be, the title still after it', narrow.length === 0, narrow.join('; '));
+                }
                 await click('modes', 1);
                 await page.waitForFunction(() => Modes.current() === 'adjust', null, { timeout: 15000 }).catch(() => null);
                 await settle();
@@ -1176,6 +1204,94 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 }
             }
 
+            // Each sidebar's edge resizes the sidebar, and a hidden one's line
+            // drags it back out, in every mode: never the window (Needs fixing,
+            // 25 November: in Paint, dragging the sidebar's edge resized the
+            // window). Real drags, as the one above.
+            if (spot !== null) {
+                const { execFileSync } = require('child_process');
+                const swift = path.join(tmp, 'drag.swift');
+                const drag = (x, y, dx) => { try { return execFileSync('swift', [swift, String(x), String(y), String(dx)], { timeout: 180000 }).toString().trim(); } catch (e) { return 'failed: ' + e.message.split('\n')[0]; } };
+                // What the page hears of a real press: its target and how many moves
+                const listen = () => page.evaluate(() => {
+                    window._evlog = { down: null, moves: 0, up: null, at: null };
+                    if (!window._evlogOn) {
+                        window._evlogOn = true;
+                        const name = (t) => t ? `${t.tagName}${t.id ? '#' + t.id : ''}${t.classList && t.classList.length ? '.' + [...t.classList].join('.') : ''}` : '';
+                        addEventListener('pointerdown', (e) => { window._evlog.down = name(e.target); window._evlog.at = [e.clientX, e.clientY]; }, true);
+                        addEventListener('pointermove', (e) => { if (e.buttons) window._evlog.moves++; }, true);
+                        addEventListener('pointerup', (e) => { window._evlog.up = name(e.target); }, true);
+                    }
+                });
+                const heard = () => page.evaluate(() => window._evlog);
+                const hit = (x, y) => app.evaluate(({ BrowserWindow }, [x, y]) => global.jeditorToolbar.hitAt(BrowserWindow.getAllWindows()[0].getNativeWindowHandle(), x, y), [x, y]);
+                const state = () => page.evaluate(() => {
+                    const w = (s) => { const e = document.querySelector(s); return e && e.getClientRects().length ? Math.round(e.getBoundingClientRect().width) : 0; };
+                    return { rail: Folders.railOpen() ? w('.folder-rail') : 0, adjust: app.uiPrefs.panelsHidden.adjust ? 0 : w('#adj-panel'), paint: app.uiPrefs.panelsHidden.paint ? 0 : w('#paint-panel') };
+                });
+                // On the screen, all of it: a real press posted off the screen (this
+                // runner's is small) never reaches the window
+                await app.evaluate(({ BrowserWindow, screen }) => { const a = screen.getPrimaryDisplay().workArea; const w = BrowserWindow.getAllWindows()[0]; w.setBounds({ x: a.x, y: a.y, width: Math.min(1200, a.width), height: Math.min(800, a.height) }); });
+                await page.waitForTimeout(500);
+                const misses = [], seen = [];
+                let posted = true;
+                for (const where of ['photos', 'adjust', 'paint']) {
+                    for (const hidden of [false, true]) {
+                        // The sidebar and the mode's panel open (or both hidden), each at its own width
+                        await page.evaluate(async ([where, hidden]) => {
+                            const wait = (ms) => new Promise(r => setTimeout(r, ms));
+                            if (Modes.current() !== where) { await Modes.go(where); for (let i = 0; i < 60 && Modes.current() !== where; i++) await wait(50); }
+                            if (where === 'photos') app.setView('grid');
+                            for (const s of ['rail', 'adjust', 'paint']) app.setSideWidth(s, null);
+                            if (Folders.railOpen() === hidden) Folders.setRail(!hidden);
+                            if (where !== 'photos') app.showPanel(where, !hidden);
+                            await wait(700);
+                        }, [where, hidden]);
+                        const grips = await page.evaluate(() => [...document.querySelectorAll('.side-grip, .side-edge')].filter(g => g.getClientRects().length && getComputedStyle(g).visibility !== 'hidden').map(g => {
+                            const r = g.getBoundingClientRect();
+                            return { side: g.dataset.side, edge: g.classList.contains('side-edge'), dir: g.dataset.edge === 'left' ? -1 : 1, left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+                        }).filter(g => g.right > 0 && g.left < innerWidth && g.bottom > 80));
+                        for (const g of grips) {
+                            // For a hidden one's line: on it, where it's drawn, as people aim
+                            // (5px in from the window's edge: its outer points resize the window)
+                            const xs = g.edge ? [g.dir > 0 ? g.left + 6 : g.right - 6] : [(g.left + g.right) / 2];
+                            for (const x0 of xs) {
+                                const x = Math.round(x0), y = Math.round(Math.max(g.top, 80) + (g.bottom - Math.max(g.top, 80)) * 0.5);
+                                const name = `${where}, ${g.side}'s ${g.edge ? 'line (hidden)' : 'edge'} at x ${x}`;
+                                const before = await state(), b0 = await win();
+                                const chain = await hit(x, y);
+                                const under = await page.evaluate(([x, y]) => document.elementsFromPoint(x, y).slice(0, 2).map(e => e.id || String(e.className)).join(' > '), [x, y]);
+                                await listen();
+                                // (out far enough that a hidden one comes back: past half its narrowest, and more)
+                                const out = drag(b0.x + x, b0.y + y, (g.edge ? 170 : 70) * g.dir);
+                                if (out !== 'trusted') posted = false;
+                                await page.waitForTimeout(700);
+                                const after = await state(), b1 = await win();
+                                const moved = b1.x !== b0.x || b1.y !== b0.y || b1.width !== b0.width || b1.height !== b0.height;
+                                const grew = after[g.side] > before[g.side] + 20;
+                                const ev = await heard();
+                                seen.push(`${name}: ${grew ? 'sidebar' : '-'}${moved ? ' WINDOW' : ''} [${(chain || []).slice(0, 2).join('<')}] page: ${under}; heard ${JSON.stringify(ev)}`);
+                                if (moved || !grew) misses.push(`${name}: ${moved ? 'the window changed ' + JSON.stringify([b0, b1]) : 'the sidebar didn\'t ' + JSON.stringify([before, after])} (under it: ${(chain || []).slice(0, 3).join(' < ')})`);
+                                if (moved) await app.evaluate(({ BrowserWindow }, b) => BrowserWindow.getAllWindows()[0].setBounds(b), b0);
+                                // Back as it was, for the next
+                                await page.evaluate(([hidden, where]) => {
+                                    for (const s of ['rail', 'adjust', 'paint']) app.setSideWidth(s, null);
+                                    if (Folders.railOpen() === hidden) Folders.setRail(!hidden);
+                                    if (where !== 'photos') app.showPanel(where, !hidden);
+                                }, [hidden, where]);
+                                await page.waitForTimeout(500);
+                            }
+                        }
+                        if (!grips.length) misses.push(`${where}${hidden ? ', hidden' : ''}: no sidebar edge to drag`);
+                    }
+                }
+                console.log('        ' + seen.join('\n        '));
+                if (posted) check('every sidebar\'s edge resizes it, and a hidden one\'s line drags it out, in Photos, Adjust and Paint: never the window', misses.length === 0, misses.slice(0, 10).join('; '));
+                else console.log('        (no real drags: this Mac doesn\'t let the test post mouse events)');
+                await page.evaluate(async () => { for (const s of ['rail', 'adjust', 'paint']) app.setSideWidth(s, null); if (Modes.current() !== 'photos') await Modes.go('photos'); app.setView('single'); });
+                await page.waitForTimeout(800);
+            }
+
             // What it looks like: the window, toolbar and all (CI keeps these)
             const shots = process.env.JEDITOR_SCREENSHOTS;
             if (shots) {
@@ -1193,6 +1309,41 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await settle();
             d = await describe();
             check('on the start screen, no toolbar', d.visible === false, JSON.stringify(d).slice(0, 200));
+            // ...and nothing of the window's over Home's top row: the drag view
+            // there took the press on its Settings, top half and all (the
+            // owner, beta 173: "sometimes won't click")
+            await page.waitForTimeout(400);
+            const g = await page.evaluate(() => { const r = document.getElementById('btn-settings-start').getBoundingClientRect(); return { x: r.left + r.width / 2, top: r.top + 3, mid: r.top + r.height / 2 }; });
+            const over = [];
+            for (const y of [g.top, g.mid]) {
+                const chain = await app.evaluate(({ BrowserWindow }, [x, y]) => global.jeditorToolbar.hitAt(BrowserWindow.getAllWindows()[0].getNativeWindowHandle(), x, y), [Math.round(g.x), Math.round(y)]);
+                if (!(chain || []).some(c => /RenderWidgetHost|WebContents/.test(c))) over.push(`${Math.round(y)}: ${(chain || []).slice(0, 3).join(' < ')}`);
+            }
+            check('... and Home\'s Settings is the page\'s, top to middle: no drag view over it', over.length === 0, over.join('; '));
+            if (spot !== null) {
+                const { execFileSync } = require('child_process');
+                const click = path.join(tmp, 'click.swift');
+                fs.writeFileSync(click, ['import CoreGraphics', 'import Foundation', 'let a = CommandLine.arguments.dropFirst().map { Double($0)! }',
+                    'func post(_ t: CGEventType) { CGEvent(mouseEventSource: nil, mouseType: t, mouseCursorPosition: CGPoint(x: a[0], y: a[1]), mouseButton: .left)?.post(tap: .cghidEventTap); usleep(60000) }',
+                    'post(.mouseMoved); post(.leftMouseDown); post(.leftMouseUp)'].join('\n'));
+                // (the app in front first: on an app behind, a first click only brings
+                // it forward; and the window on the screen, all of it, or a press
+                // posted off it never reaches the window)
+                await app.evaluate(({ app: a, BrowserWindow, screen }) => { const wa = screen.getPrimaryDisplay().workArea; const w = BrowserWindow.getAllWindows()[0]; w.setBounds({ x: wa.x, y: wa.y, width: Math.min(1200, wa.width), height: Math.min(800, wa.height) }); a.focus({ steal: true }); w.focus(); });
+                await page.waitForTimeout(600);
+                const b = await win();
+                const g2 = await page.evaluate(() => { const r = document.getElementById('btn-settings-start').getBoundingClientRect(); return { x: r.left + r.width / 2, top: r.top + 3 }; });
+                await page.evaluate(() => {
+                    window._clk = [];
+                    for (const t of ['pointerdown', 'mousedown', 'click', 'blur', 'resize']) addEventListener(t, (e) => window._clk.push(t + ':' + (e.target && (e.target.id || e.target.nodeName))), true);
+                });
+                try { execFileSync('swift', [click, String(b.x + g2.x), String(b.y + g2.top + 2)], { timeout: 180000 }); } catch (e) { /* reported below */ }
+                await page.waitForTimeout(500);
+                const menu = await page.evaluate(() => !!document.getElementById('context-menu'));
+                const clk = await page.evaluate(() => window._clk);
+                check('... a real click near its top opens its menu', menu, JSON.stringify([g2, b, clk, await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isFocused())]));
+                await page.keyboard.press('Escape');
+            }
         }
         check('no JS errors', errors.length === 0, errors.join('; '));
         await app.close();

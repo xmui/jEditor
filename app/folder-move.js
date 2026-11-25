@@ -238,7 +238,7 @@ const FolderMove = {
         const bytes = await this.cacheBytes();
         const ok = await UI.confirm({
             title: 'Clear the cache?',
-            message: `Frees ${this.bytes(bytes)}. Thumbnails are made again as projects are opened, so each opens a bit slower the first time. Until then the projects on the home page are ghost prints with their names.`,
+            message: `Frees ${this.bytes(bytes)}. Thumbnails are made again as projects are opened, so each opens a bit slower the first time. Until then the projects on Home are ghost prints with their names.`,
             note: 'Your photos, flags and edits aren\'t touched.',
             ok: 'Clear cache'
         });

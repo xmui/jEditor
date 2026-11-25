@@ -1502,7 +1502,7 @@ const Picker = {
             const recent = this.list.filter(p => p.current || p.recent).slice(0, P.RECENT + 1);
             html += '<div class="sb-picker-head">Recents</div>' + recent.map(row).join('');
             html += sep + action('all', 'All projects…') + action('new', 'New project…') + action('folder', 'Open a folder…') +
-                action('home', 'Home page', `Home page (${P.app.keyText((P.app.keyBindings['app.home'] || ['Ctrl+Shift+H'])[0])})`);
+                action('home', 'Home', `Home (${P.app.keyText((P.app.keyBindings['app.home'] || ['Ctrl+Shift+H'])[0])})`);
         }
         this.box.innerHTML = html;
         // Marked for Enter: the first match, or the last project before this one

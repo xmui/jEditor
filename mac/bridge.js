@@ -760,18 +760,30 @@
         // row doesn't show under the toolbar (style.css)
         const railEl = document.querySelector('.folder-rail');
         const side = typeof Folders !== 'undefined' && Folders.railOpen() && !!railEl && !!railEl.getClientRects().length;
+        // The sidebar dragged narrow (to 200px, script.js: SIDEBARS), its
+        // buttons up there make room, as the page's own row does (style.css):
+        // Find anything goes to the toolbar's other end, then the three modes
+        // become the one mode button. By the width it was dragged to, not the
+        // width it is (which is at least theirs: main.js, toolbarLead)
+        const css = getComputedStyle(document.documentElement);
+        const wanted = (a.uiPrefs.sides || {}).rail || parseFloat(css.getPropertyValue('--rail-w')) || 232;
+        const findHere = wanted >= 228, threeModes = wanted >= 212;
+        const findItem = typeof Palette !== 'undefined' ? [{ id: 'find', kind: 'button', symbol: 'magnifyingglass', label: 'Find anything', tooltip: 'Find a photo or folder (⌘F)', navigational: true }] : [];
+        const findLater = side && !findHere ? findItem : [];
         const lead = () => {
             const shownModes = Modes.shown();
             return [
-                { id: 'modes', kind: 'segment', segments: shownModes.map(([, l]) => l), symbols: shownModes.map(([m]) => MODE_SYMBOLS[m] || 'circle'), selected: shownModes.findIndex(([m]) => m === Modes.current()), navigational: true },
+                threeModes
+                    ? { id: 'modes', kind: 'segment', segments: shownModes.map(([, l]) => l), symbols: shownModes.map(([m]) => MODE_SYMBOLS[m] || 'circle'), selected: shownModes.findIndex(([m]) => m === Modes.current()), navigational: true }
+                    : modeItem(),
                 { id: 'rail', kind: 'button', symbol: 'sidebar.left', label: 'Sidebar', tooltip: said($('fb-rail').title), navigational: true },
-                ...(typeof Palette !== 'undefined' ? [{ id: 'find', kind: 'button', symbol: 'magnifyingglass', label: 'Find anything', tooltip: 'Find a photo or folder (⌘F)', navigational: true }] : []),
+                ...(findHere ? findItem : []),
                 { id: 'space', kind: 'space', navigational: true }
             ];
         };
         const titleAt = side ? Math.round(railEl.getBoundingClientRect().right + 12) : 0;
-        if (typeof Modes !== 'undefined' && Modes.current() !== 'photos') return { visible: true, title: $('file-name-text').textContent || a.dirHandle.name, subtitle: '', titleAt, items: side ? [...lead(), { kind: 'flexible' }] : [modeItem(), { kind: 'flexible' }] };
-        if (side && typeof Modes !== 'undefined') return sideModel(a, [...lead(), { kind: 'flexible' }], titleAt);
+        if (typeof Modes !== 'undefined' && Modes.current() !== 'photos') return { visible: true, title: $('file-name-text').textContent || a.dirHandle.name, subtitle: '', titleAt, items: side ? [...lead(), { kind: 'flexible' }, ...findLater] : [modeItem(), { kind: 'flexible' }] };
+        if (side && typeof Modes !== 'undefined') return sideModel(a, [...lead(), { kind: 'flexible' }], titleAt, findLater);
         const items = [];
         const bar = $('folder-bar');
         const browsing = shown(bar);
@@ -819,7 +831,7 @@
 
     // The sidebar open: the right-hand items as always (sort, the page's
     // own buttons, More), after the sidebar's own at the left
-    function sideModel(a, items, titleAt) {
+    function sideModel(a, items, titleAt, findLater = []) {
         const chip = $('fb-filter-chip');
         if (shown(chip)) items.push({ id: 'filter', kind: 'button', symbol: 'line.3.horizontal.decrease.circle.fill', label: chip.textContent.trim(), tooltip: chip.title });
         const sort = $('sort-mode');
@@ -837,7 +849,7 @@
             if (b.classList.contains('hc-extra')) more.push(entry);
             else items.push({ ...entry, kind: 'button', tooltip: said(b.title) });
         }
-        items.push({ id: 'more', kind: 'menu', symbol: 'ellipsis.circle', label: 'More', menu: more });
+        items.push({ id: 'more', kind: 'menu', symbol: 'ellipsis.circle', label: 'More', menu: more }, ...findLater);
         const crumbs = $('fb-crumbs');
         const where = shown($('folder-bar')) && crumbs ? crumbs.textContent.replace(/\s+/g, ' ').trim() : '';
         return {
@@ -901,6 +913,9 @@
             // The sidebar's width: where the title starts (titleAt)
             const railEl = document.querySelector('.folder-rail');
             if (railEl && typeof ResizeObserver === 'function') new ResizeObserver(sendToolbar).observe(railEl);
+            // ...and the width it's dragged to (--side-rail), which can be
+            // narrower than it is: its buttons up there make room for it
+            new MutationObserver(sendToolbar).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
             sendToolbar();
         });
     }

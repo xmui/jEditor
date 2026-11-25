@@ -4006,7 +4006,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.mouse.move(x0, 400); await page.mouse.down();
         await page.mouse.move(300, 400, { steps: 4 }); await page.mouse.up();
         const wide = await st();
-        // In: it stops at its narrowest (180), then past half of that it's gone
+        // In: it stops at its narrowest (200), then past half of that it's gone
         await page.mouse.move(300, 400); await page.mouse.down();
         await page.mouse.move(120, 400, { steps: 4 });
         const narrow = await st();
@@ -4045,9 +4045,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.mouse.up();
 
         check('sidebar hides: its edge still drags it wider', s0.open && !s0.edge && wide.w === 300 && wide.width === 300, JSON.stringify([s0, wide]));
-        check('sidebar hides: dragged in, it stops at its narrowest', narrow.open && narrow.w === 180, JSON.stringify(narrow));
+        check('sidebar hides: dragged in, it stops at its narrowest', narrow.open && narrow.w === 200, JSON.stringify(narrow));
         check('sidebar hides: past half its narrowest it snaps hidden, sliding out', !snapped.open && snapped.drawn && snapped.pref === false, JSON.stringify(snapped));
-        check('sidebar hides: dragged back out in the same drag, it\'s back', backOut.open && backOut.w === 180 && backOut.pref === true, JSON.stringify(backOut));
+        check('sidebar hides: dragged back out in the same drag, it\'s back', backOut.open && backOut.w === 200 && backOut.pref === true, JSON.stringify(backOut));
         check('sidebar hides: hidden, it keeps the width it had before the drag', !hidden.open && !hidden.drawn && hidden.pref === false && hidden.width === 300, JSON.stringify(hidden));
         check('sidebar hides: a thin line at the window\'s edge, with a resize pointer', hidden.edge && hidden.edgeBox === '0 6 800' && hidden.cursor === 'ew-resize', JSON.stringify(hidden));
         check('sidebar hides: dragging from the line brings it out, as wide as dragged', !short.open && dragged.open && !dragged.edge && Math.abs(dragged.w - 258) <= 2 && dragged.pref === true, JSON.stringify([short, dragged]));
@@ -6269,6 +6269,104 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- 7t4a0. Adjust's and Paint's panel: its edge drags it ----
+    // A real drag on the panel's inner edge makes it wider, in Adjust and
+    // Paint. The panel floats over the photo and lay over most of its own
+    // edge, so a drag there did nothing (the owner, beta 173)
+    console.log('sidebars: Adjust\'s and Paint\'s panel edge drags it');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1200, height: 760 });
+        await page.evaluate(async () => {
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('paneledge', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('paneledge', { create: true });
+            for (let i = 1; i <= 2; i++) { const fh = await dir.getFileHandle(`p${i}.jpg`, { create: true }); const w = await fh.createWritable(); await w.write(new Blob([await makeRealJpeg(600, 400)])); await w.close(); }
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            for (let i = 0; i < 60 && app.files.length < 2; i++) await new Promise(r => setTimeout(r, 50));
+        });
+        const misses = [];
+        for (const mode of ['adjust', 'paint']) {
+            await page.evaluate(async (m) => { await Modes.go(m); app.setSideWidth(m, null); app.showPanel(m, true); }, mode);
+            await page.waitForTimeout(1200);
+            const g = await page.evaluate((m) => {
+                const e = document.querySelector(`.${m === 'adjust' ? 'adj' : 'paint'}-body > .side-grip`);
+                const r = e.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+                const top = document.elementFromPoint(x, y);
+                return { x, y, onTop: top === e, top: top ? (top.id || String(top.className)) : '', w: document.getElementById(m === 'adjust' ? 'adj-panel' : 'paint-panel').getBoundingClientRect().width };
+            }, mode);
+            await page.mouse.move(g.x, g.y);
+            await page.mouse.down();
+            for (let i = 1; i <= 10; i++) await page.mouse.move(g.x - 6 * i, g.y);
+            await page.mouse.up();
+            await page.waitForTimeout(200);
+            const w = await page.evaluate((m) => document.getElementById(m === 'adjust' ? 'adj-panel' : 'paint-panel').getBoundingClientRect().width, mode);
+            if (!g.onTop) misses.push(`${mode}: ${g.top} lies over its edge`);
+            if (w < g.w + 40) misses.push(`${mode}: ${Math.round(g.w)} → ${Math.round(w)}`);
+            await page.evaluate((m) => { app.setSideWidth(m, null); app.saveUiPrefs(); }, mode);
+        }
+        check('sidebars: a drag on Adjust\'s and Paint\'s panel edge widens it, nothing over the edge', misses.length === 0, misses.join('; '));
+        check('panel edge suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7t4a. Home: Settings clicks, every time ----
+    // Real clicks on Home's Settings: right after jEditor starts, with the
+    // window settling as it opens (a resize just after the click), back on
+    // Home with Ctrl+Shift+H, and after What's new is closed. A resize just
+    // as its menu opened closed it again, so the click seemed to do nothing
+    // (the owner, beta 173: "sometimes won't click", on several systems)
+    console.log('home: Settings clicks, every time');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1280, height: 800 });
+        const gear = () => page.evaluate(() => {
+            const b = document.getElementById('btn-settings-start');
+            const r = b.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+            const top = document.elementFromPoint(x, y);
+            return { x, y, onTop: !!top && b.contains(top), top: top ? `${top.tagName}#${top.id}.${[...top.classList].join('.')}` : '' };
+        });
+        const menuOpen = () => page.evaluate(() => !!document.getElementById('context-menu'));
+        const misses = [];
+        const tryIt = async (name, after) => {
+            const g = await gear();
+            if (!g.onTop) misses.push(`${name}: ${g.top} lies over it`);
+            await page.mouse.click(g.x, g.y);
+            if (after) await after();
+            await page.waitForTimeout(300);
+            if (!await menuOpen()) misses.push(`${name}: no menu`);
+            await page.keyboard.press('Escape');
+            await page.waitForTimeout(150);
+        };
+        await tryIt('just started, the window settling', () => page.setViewportSize({ width: 1260, height: 790 }));
+        await page.evaluate(async () => {
+            const dir = makeDir('Settle');
+            for (let i = 1; i <= 2; i++) { const f = makeFakeFile(`p${i}.jpg`, makeJpegBytes(), 'image/jpeg'); dir._files.set(`p${i}.jpg`, f.handle); }
+            await app.openDirectory(dir);
+        });
+        await page.waitForTimeout(600);
+        await page.keyboard.press('Control+Shift+H');
+        await page.waitForFunction(() => !document.getElementById('drop-zone').classList.contains('hidden'), null, { timeout: 10000 }).catch(() => null);
+        await tryIt('back on Home (Ctrl+Shift+H)');
+        await page.evaluate(() => document.getElementById('btn-whatsnew-start').click());
+        await page.waitForTimeout(500);
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(300);
+        await tryIt('What\'s new closed');
+        // ...and the window resized a while after, it closes, as before
+        const g = await gear();
+        await page.mouse.click(g.x, g.y);
+        await page.waitForTimeout(800);
+        await page.setViewportSize({ width: 1280, height: 800 });
+        await page.waitForTimeout(200);
+        const closedLater = !await menuOpen();
+        check('home: Settings opens its menu on a real click: just started (the window settling), back on Home, after What\'s new', misses.length === 0, misses.join('; '));
+        check('... a resize a while after it opened still closes it', closedLater);
+        check('home Settings suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7t4b. Home: a project clicked opens ----
     // A project opened once lies on the home page as a stack; jEditor
     // opened again, a real click on it (the mouse, so whatever lies over
@@ -6457,7 +6555,10 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const disk = async () => { try { return JSON.parse(await (await (await store.getFileHandle('recent.json')).getFile()).text()).folders.map(f => f.name); } catch (e) { return null; } };
             try {
                 // (a folder opened just before, guard-failing, may still be
-                // being added to Recent: after the wipe it came back)
+                // being added to Recent: after the wipe it came back. Its
+                // open adds it a little after its photos are listed, so
+                // Recents.saving can still be empty here: wait for it there)
+                for (let i = 0; i < 60 && !(await Recents.list()).some(r => r.name === 'guard-failing'); i++) await sleep(50);
                 if (Recents.saving) await Recents.saving;
                 await wipe();
                 out.first = await Recents.restore();

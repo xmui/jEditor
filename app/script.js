@@ -1316,7 +1316,10 @@ const app = {
     // style.css and the themes take before their own; double-click goes
     // back to the sidebar's own width.
 
-    SIDEBARS: { rail: [180, 520], adjust: [260, 560], paint: [220, 560] },
+    // (The folder list's narrowest is what its top row needs: the modes,
+    // its button and Find anything, beside the Mac's lights too; narrow,
+    // its names end in … and its counts go: style.css)
+    SIDEBARS: { rail: [200, 520], adjust: [260, 560], paint: [220, 560] },
 
     // The sidebars that hide: dragged in past half its narrowest, one snaps
     // hidden, and a thin line is left at the window's edge (.side-edge,
@@ -5438,7 +5441,7 @@ const app = {
         ['app.shortcuts', 'global', 'App', 'Keyboard shortcuts', ['?']],
         ['app.guide', 'global', 'App', 'Guide: how-tos and shortcuts', ['F1']],
         ['app.tour', 'global', 'App', 'Take the tour', []],
-        ['app.home', 'global', 'App', 'Home page', ['Ctrl+Shift+H']],
+        ['app.home', 'global', 'App', 'Home', ['Ctrl+Shift+H']],
         ['app.settings', 'global', 'App', 'Settings', ['Ctrl+,']],
         ['app.debug', 'global', 'App', 'Debug console', ['Ctrl+Shift+D']],
         ['crop.save', 'crop', 'Crop & Straighten', 'Save', ['Enter']],
@@ -8649,7 +8652,16 @@ const app = {
         window.addEventListener('contextmenu', off, true);
         window.addEventListener('blur', () => this.closeContextMenu());
         window.addEventListener('scroll', () => this.closeContextMenu(), true);
-        window.addEventListener('resize', () => this.closeContextMenu());
+        // A resize closes it, as the window's own menus do, but not one that
+        // comes just as it opens: the window settling (its size restored or
+        // maximised after jEditor starts, the Mac's toolbar coming or going)
+        // closed Home's Settings menu as it opened, so a click on it seemed
+        // to do nothing (the owner, beta 173: "sometimes won't click")
+        window.addEventListener('resize', () => {
+            const menu = document.getElementById('context-menu');
+            if (menu && performance.now() - menu._openedAt < 600) return;
+            this.closeContextMenu();
+        });
     },
 
     // The right-click menu on Crop's, Adjust's or Paint's photo, or null
@@ -9012,6 +9024,7 @@ const app = {
         // The press and the click it opened on, which don't close it again
         menu._press = this._press;
         menu._click = this._click;
+        menu._openedAt = performance.now();
         if (document.documentElement.dataset.skin) items = items.flatMap(it => Array.isArray(it[1]) ? it[1] : [it]);
         this.fillMenu(menu, items);
         if (menu.lastChild && menu.lastChild.className === 'ctx-divider') menu.lastChild.remove();

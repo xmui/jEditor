@@ -1782,6 +1782,16 @@ body.slideshow #image-container:has(.slide-ctl.show) {
     margin: 0;
 }
 
+/* The folder list dragged narrow (its narrowest is 200px: script.js,
+   SIDEBARS): the names end in … (the whole name is in each row's tooltip),
+   and the counts, the dates and the drives' free space go, so nothing
+   wraps or runs over its edge */
+@container rail (max-width: 207px) {
+    .folder-rail :is(.fr-count, .sb-meta, .sb-free) {
+        display: none;
+    }
+}
+
 /* A sidebar that's hidden leaves a thin line at the window's edge: drag
    from it to bring the sidebar back out (script.js: initSidebarResize).
    The line is narrow; what takes the pointer is a little wider. */
@@ -1848,6 +1858,24 @@ body.slideshow #image-container:has(.slide-ctl.show) {
 
 .side-edge.side-edge-right::after {
     inset: 0 0 0 auto;
+}
+
+/* On the Mac the window's own edge (its outer few points) resizes the
+   window, and took the press on the line drawn there (the owner, beta 173:
+   dragging the sidebar out resized the window). So the line is drawn a
+   little in from the edge, inside what the page gets, and the strip that
+   takes the drag is wider */
+:root[data-platform="mac"] .side-edge {
+    width: 14px;
+}
+
+:root[data-platform="mac"] .side-edge::after {
+    left: 5px;
+}
+
+:root[data-platform="mac"] .side-edge.side-edge-right::after {
+    left: auto;
+    right: 5px;
 }
 
 :is(.adj-panel, .paint-panel) {
@@ -13529,9 +13557,12 @@ body.touring .controls.idle button { pointer-events: auto; }
         grid-area: 1 / 1 / 2 / -1;
     }
 
+    /* (Above the panel, which it overlaps by half: under it, most of the
+       edge was the panel's, and a drag there did nothing: the owner,
+       beta 173, "can't drag the sidebar in Paint") */
     :root:not([data-skin]) :is(.adj-body, .paint-body) > .side-grip {
         grid-area: 1 / 2;
-        z-index: 3;
+        z-index: 4;
     }
 
     :root:not([data-skin]) :is(.adj-panel, .paint-panel) {
