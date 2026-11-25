@@ -557,6 +557,13 @@ const Adjust = {
         return c;
     },
 
+    // The spots shown: none for Before, which is the photo with no spots
+    // or dust taken out (its perspective, lens and crop kept, so it's in
+    // the same place as After)
+    shownSpots() {
+        return this.before ? [] : (this.a.spots || []);
+    },
+
     // The picture made again if the spots changed: true when it was
     usePicture() {
         if (!this.base) return false;
@@ -574,7 +581,7 @@ const Adjust = {
             AdjustSpots._Y = null;
             this.hideSharp();
         }
-        const spots = this.a.spots || [];
+        const spots = this.shownSpots();
         const key = JSON.stringify(spots);
         if (key === this._pictureKey) return false;
         this._pictureKey = key;
@@ -800,6 +807,9 @@ const Adjust = {
         this.before = on;
         this.el('adj-before').setAttribute('aria-pressed', String(on));
         this.el('adj-before-tag').classList.toggle('hidden', !on);
+        // Zoomed in, the full-size part is made again without (or with)
+        // the spots: hidden till then, so it's never the other one's
+        this.hideSharp();
         this.schedule();
     },
 
@@ -1485,14 +1495,14 @@ const Adjust = {
     // What the full-size picture is made from: its spots, perspective, lens
     // and geometry (it's made again when they change)
     fullKey() {
-        return JSON.stringify([this.a.spots || [], Retouch.cleanPersp(this.a.persp), Retouch.cleanLens(this.a.lens), this.geo]);
+        return JSON.stringify([this.shownSpots(), Retouch.cleanPersp(this.a.persp), Retouch.cleanLens(this.a.lens), this.geo]);
     },
 
     // The photo at full size, cropped as it's being adjusted (for 1:1)
     loadFull() {
         const file = this.file;
         // Made again when what it's made from changes (fullKey)
-        const spots = this.a.spots, persp = this.a.persp, lens = this.a.lens, geo = this.geo;
+        const spots = this.shownSpots(), persp = this.a.persp, lens = this.a.lens, geo = this.geo;
         const key = this.fullKey();
         if (this._fullFor === file && this._fullKey === key) return this._fullPromise;
         this._fullFor = file;
