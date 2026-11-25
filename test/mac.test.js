@@ -998,25 +998,33 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 // (the sidebar made as wide as its buttons there, if they're wider: the title at its edge)
                 const titleAt = d.titleBox && p.rail ? Math.abs(d.titleBox.left - (p.rail.right + 12)) <= 6 : false;
                 check('one row, the sidebar open: its buttons beside the lights (the modes, its button, Find anything), the title from its edge, the lights centered, its own row gone and its list right under the toolbar', ids[0] === 'modes' && ids[1] === 'rail' && ids[2] === 'find' && !!modes && modes.selected === 0 && !ids.includes('mode') && centred && titleAt && !p.row && !!p.first && p.first.top < d.toolbarHeight + 12, JSON.stringify([ids, modes, lights, d.toolbarHeight, d.titleBox, p]));
-                // Dragged to its narrowest (200px: the owner, 25 November), the
-                // sidebar is that wide: its buttons up there make room (the one
-                // mode button, Find anything at the far end), none past its edge
+                // Dragged to its narrowest (200px: the owner, 25 November), its
+                // buttons up there make room (the one mode button, Find anything
+                // at the far end), and it's as narrow as they let it be: macOS
+                // 26's own buttons are bigger than the page's, so under its
+                // toolbar that's more than 200 (the page's own row fits 200)
                 {
                     const narrow = [];
+                    const lead = () => page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--rail-lead')) || 0);
+                    const full = await lead();
+                    let compact = 0;
                     for (const w of [220, 200]) {
                         await page.evaluate((w) => { app.setSideWidth('rail', w); }, w);
-                        for (let i = 0; i < 4; i++) await settle();
+                        for (let i = 0; i < 5; i++) await settle();
                         const n = await describe();
-                        const r = await page.evaluate(() => ({ rail: document.querySelector('.folder-rail').getBoundingClientRect().width, lead: getComputedStyle(document.documentElement).getPropertyValue('--rail-lead') }));
+                        const r = await page.evaluate(() => ({ rail: document.querySelector('.folder-rail').getBoundingClientRect().width, lead: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--rail-lead')) || 0 }));
                         const ids_ = n.items.map(i => i.id);
-                        if (r.rail > w + 6) narrow.push(`${w}: the sidebar is ${Math.round(r.rail)} (its buttons need ${r.lead}; ${ids_.join(',')})`);
+                        if (r.rail > Math.max(w, r.lead) + 6) narrow.push(`${w}: the sidebar is ${Math.round(r.rail)}, its buttons need ${r.lead}`);
                         if (ids_[0] !== 'mode' && w === 200) narrow.push(`${w}: not the one mode button (${ids_.join(',')})`);
-                        if (!ids_.includes('find') || ids_.indexOf('find') < ids_.indexOf('space')) narrow.push(`${w}: Find anything not at the far end (${ids_.join(',')})`);
+                        if (ids_.indexOf('find') < ids_.indexOf('space')) narrow.push(`${w}: Find anything not at the far end (${ids_.join(',')})`);
                         if (n.titleBox && n.titleBox.left < r.rail + 4) narrow.push(`${w}: the title (${Math.round(n.titleBox.left)}) over the sidebar (${Math.round(r.rail)})`);
+                        if (w === 200) compact = r.lead;
                     }
+                    if (!(compact < full - 30)) narrow.push(`its buttons need as much room narrow (${compact}) as at its own width (${full})`);
+                    console.log(`        (the sidebar's narrowest under macOS 26's toolbar: ${compact}pt, from ${full}pt)`);
                     await page.evaluate(() => { app.setSideWidth('rail', null); });
                     for (let i = 0; i < 4; i++) await settle();
-                    check('the sidebar drags to 200px under the toolbar: its buttons there make room, the title still after it', narrow.length === 0, narrow.join('; '));
+                    check('the sidebar drags narrower under the toolbar: its buttons there make room (the one mode button, Find anything at the far end), and it\'s as narrow as they let it be, the title still after it', narrow.length === 0, narrow.join('; '));
                 }
                 await click('modes', 1);
                 await page.waitForFunction(() => Modes.current() === 'adjust', null, { timeout: 15000 }).catch(() => null);
