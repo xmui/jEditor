@@ -1207,7 +1207,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                             if (Modes.current() !== where) { await Modes.go(where); for (let i = 0; i < 60 && Modes.current() !== where; i++) await wait(50); }
                             if (where === 'photos') app.setView('grid');
                             for (const s of ['rail', 'adjust', 'paint']) app.setSideWidth(s, null);
-                            if (Folders.railOpen() === hidden) app.keyHandlers()['folders.rail']();
+                            if (Folders.railOpen() === hidden) Folders.setRail(!hidden);
                             if (where !== 'photos') app.showPanel(where, !hidden);
                             await wait(700);
                         }, [where, hidden]);
@@ -1216,8 +1216,9 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                             return { side: g.dataset.side, edge: g.classList.contains('side-edge'), dir: g.dataset.edge === 'left' ? -1 : 1, left: r.left, right: r.right, top: r.top, bottom: r.bottom };
                         }).filter(g => g.right > 0 && g.left < innerWidth && g.bottom > 80));
                         for (const g of grips) {
-                            // For a hidden one's line: on it, as people aim, and a little in
-                            const xs = g.edge ? (g.dir > 0 ? [g.left + 2, g.left + 8] : [g.right - 2, g.right - 8]) : [(g.left + g.right) / 2];
+                            // For a hidden one's line: on it, where it's drawn, as people aim
+                            // (5px in from the window's edge: its outer points resize the window)
+                            const xs = g.edge ? [g.dir > 0 ? g.left + 6 : g.right - 6] : [(g.left + g.right) / 2];
                             for (const x0 of xs) {
                                 const x = Math.round(x0), y = Math.round(Math.max(g.top, 80) + (g.bottom - Math.max(g.top, 80)) * 0.5);
                                 const name = `${where}, ${g.side}'s ${g.edge ? 'line (hidden)' : 'edge'} at x ${x}`;
@@ -1235,7 +1236,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                 // Back as it was, for the next
                                 await page.evaluate(([hidden, where]) => {
                                     for (const s of ['rail', 'adjust', 'paint']) app.setSideWidth(s, null);
-                                    if (Folders.railOpen() === hidden) app.keyHandlers()['folders.rail']();
+                                    if (Folders.railOpen() === hidden) Folders.setRail(!hidden);
                                     if (where !== 'photos') app.showPanel(where, !hidden);
                                 }, [hidden, where]);
                                 await page.waitForTimeout(500);
@@ -1286,6 +1287,9 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 fs.writeFileSync(click, ['import CoreGraphics', 'import Foundation', 'let a = CommandLine.arguments.dropFirst().map { Double($0)! }',
                     'func post(_ t: CGEventType) { CGEvent(mouseEventSource: nil, mouseType: t, mouseCursorPosition: CGPoint(x: a[0], y: a[1]), mouseButton: .left)?.post(tap: .cghidEventTap); usleep(60000) }',
                     'post(.mouseMoved); post(.leftMouseDown); post(.leftMouseUp)'].join('\n'));
+                // (the app in front first: on an app behind, a first click only brings it forward)
+                await app.evaluate(({ app: a, BrowserWindow }) => { a.focus({ steal: true }); BrowserWindow.getAllWindows()[0].focus(); });
+                await page.waitForTimeout(400);
                 try { execFileSync('swift', [click, String(b.x + g.x), String(b.y + g.top + 2)], { timeout: 180000 }); } catch (e) { /* reported below */ }
                 await page.waitForTimeout(500);
                 const menu = await page.evaluate(() => !!document.getElementById('context-menu'));

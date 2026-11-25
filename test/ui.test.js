@@ -6266,6 +6266,48 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- 7t4a0. Adjust's and Paint's panel: its edge drags it ----
+    // A real drag on the panel's inner edge makes it wider, in Adjust and
+    // Paint. The panel floats over the photo and lay over most of its own
+    // edge, so a drag there did nothing (the owner, beta 173)
+    console.log('sidebars: Adjust\'s and Paint\'s panel edge drags it');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1200, height: 760 });
+        await page.evaluate(async () => {
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('paneledge', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('paneledge', { create: true });
+            for (let i = 1; i <= 2; i++) { const fh = await dir.getFileHandle(`p${i}.jpg`, { create: true }); const w = await fh.createWritable(); await w.write(new Blob([await makeRealJpeg(600, 400)])); await w.close(); }
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            for (let i = 0; i < 60 && app.files.length < 2; i++) await new Promise(r => setTimeout(r, 50));
+        });
+        const misses = [];
+        for (const mode of ['adjust', 'paint']) {
+            await page.evaluate(async (m) => { await Modes.go(m); app.setSideWidth(m, null); app.showPanel(m, true); }, mode);
+            await page.waitForTimeout(1200);
+            const g = await page.evaluate((m) => {
+                const e = document.querySelector(`.${m === 'adjust' ? 'adj' : 'paint'}-body > .side-grip`);
+                const r = e.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+                const top = document.elementFromPoint(x, y);
+                return { x, y, onTop: top === e, top: top ? (top.id || String(top.className)) : '', w: document.getElementById(m === 'adjust' ? 'adj-panel' : 'paint-panel').getBoundingClientRect().width };
+            }, mode);
+            await page.mouse.move(g.x, g.y);
+            await page.mouse.down();
+            for (let i = 1; i <= 10; i++) await page.mouse.move(g.x - 6 * i, g.y);
+            await page.mouse.up();
+            await page.waitForTimeout(200);
+            const w = await page.evaluate((m) => document.getElementById(m === 'adjust' ? 'adj-panel' : 'paint-panel').getBoundingClientRect().width, mode);
+            if (!g.onTop) misses.push(`${mode}: ${g.top} lies over its edge`);
+            if (w < g.w + 40) misses.push(`${mode}: ${Math.round(g.w)} → ${Math.round(w)}`);
+            await page.evaluate((m) => { app.setSideWidth(m, null); app.saveUiPrefs(); }, mode);
+        }
+        check('sidebars: a drag on Adjust\'s and Paint\'s panel edge widens it, nothing over the edge', misses.length === 0, misses.join('; '));
+        check('panel edge suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7t4a. Home: Settings clicks, every time ----
     // Real clicks on Home's Settings: right after jEditor starts, with the
     // window settling as it opens (a resize just after the click), back on

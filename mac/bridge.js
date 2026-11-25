@@ -894,6 +894,9 @@
             // The sidebar's width: where the title starts (titleAt)
             const railEl = document.querySelector('.folder-rail');
             if (railEl && typeof ResizeObserver === 'function') new ResizeObserver(sendToolbar).observe(railEl);
+            // ...and the width it's dragged to (--side-rail), which can be
+            // narrower than it is: its buttons up there make room for it
+            new MutationObserver(sendToolbar).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
             sendToolbar();
         });
     }
