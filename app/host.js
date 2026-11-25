@@ -5,7 +5,8 @@
 // folderPath, openPath, exists): the order's data is kept by the app, not
 // in a .jeditor folder (folder-cache.js). The rest are features, and each
 // app lists the ones it has (JEditorNative.features). The UI asks for the
-// one it needs, so an app without it never shows it:
+// one it needs, so an app without it never shows it (and the web, which
+// has none of them: test/web.test.js clicks through it to check):
 //
 //   recycle      deleted photos to the system's bin, and back (Ctrl+Z)
 //   reveal       show a folder in Explorer / Finder
