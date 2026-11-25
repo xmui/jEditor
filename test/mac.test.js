@@ -1428,8 +1428,10 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await asked.page.evaluate(() => app.goHome());
             await asked.page.waitForSelector('#drop-zone:not(.hidden)', { timeout: 5000 }).catch(() => { });
             const stack = await asked.page.evaluate(async () => {
-                for (let i = 0; i < 40 && ![...document.querySelectorAll('#recent-list .recent-name')].some(n => n.textContent === 'Photos library'); i++) await new Promise(r => setTimeout(r, 250));
-                const li = [...document.querySelectorAll('#recent-list li')].find(l => l.querySelector('.recent-name').textContent === 'Photos library');
+                // Its photos are kept in the background once they're made (recents.js: keepThumbs)
+                const find = () => [...document.querySelectorAll('#recent-list li')].find(l => l.querySelector('.recent-name').textContent === 'Photos library');
+                for (let i = 0; i < 60 && !(find() && find().querySelector('.recent-print img')); i++) await new Promise(r => setTimeout(r, 250));
+                const li = find();
                 if (!li) return null;
                 const pics = li.querySelectorAll('.recent-print img').length, ghost = li.classList.contains('ghosted');
                 li.querySelector('.recent-open').click();
