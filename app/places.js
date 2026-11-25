@@ -479,6 +479,25 @@ const Places = {
 
     // An album of the Photos library (its path), opened as the project
     async openLibrary(path) {
+        // May jEditor see it? macOS asks the first time; once it's said
+        // no, System Settings is where to allow it
+        const native = this.native();
+        let status = await native.photosAccess(false).catch(() => 'denied');
+        if (status === 'ask') status = await native.photosAccess(true).catch(() => 'denied');
+        if (status !== 'granted' && status !== 'limited') {
+            const go = await UI.confirm({
+                title: 'jEditor isn\'t allowed to see the Photos library',
+                message: 'Allow it in System Settings → Privacy & Security → Photos, then open it again.',
+                ok: 'Open Settings', cancel: 'Not now'
+            });
+            if (go) await native.openPermissionSettings('photos').catch(() => { });
+            return;
+        }
+        // Allowed just now: its albums, as they are
+        if (!this.libraryList) {
+            try { this.libraryList = await native.photosCollections(); } catch (e) { this.libraryList = null; }
+            this.draw();
+        }
         const id = path.slice(this.LIBRARY.length);
         const c = (this.libraryList || []).find(x => x.id === id);
         const name = !id ? 'Photos library' : c ? ({ favourites: 'Favorites', recent: 'Recently added' }[c.kind] || c.name) : 'Album';
@@ -934,7 +953,10 @@ const Places = {
     },
 
     async open(path) {
-        if (this.key(path) === this.key(this.current())) return;
+        // Already open, and on screen (not a library or folder whose open
+        // came to nothing, which is opened again)
+        const app = this.app;
+        if (this.key(path) === this.key(this.current()) && app.files.length && !app.elements.mainInterface.classList.contains('hidden')) return;
         if (this.isLibrary(path)) return this.openLibrary(path);
         const ok = await this.native().openPath(path).catch(() => false);
         if (!ok) {
