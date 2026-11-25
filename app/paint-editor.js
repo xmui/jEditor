@@ -4535,6 +4535,33 @@ const PaintEditor = {
         return { w, h: lines.length * t.size * 1.2 };
     },
 
+    // Where its letters are, in layer px (whole px, on the layer), from the
+    // words themselves: each line's ink as the font draws it, its outline
+    // round it, through its matrix. Null: nothing there
+    textInk(t) {
+        if (!t || !t.v || !t.v.trim()) return null;
+        const g = this.canvas.getContext('2d');
+        g.save();
+        g.font = this.textFont(t);
+        g.textBaseline = 'top';
+        const lines = t.v.split('\n'), ms = lines.map(line => g.measureText(line)), w = Math.max(...ms.map(m => m.width));
+        g.restore();
+        const f = { center: 0.5, right: 1 }[t.align] || 0, pad = (t.outline || 0) + 1, M = this.textM(t), pts = [];
+        ms.forEach((m, i) => {
+            if (!lines[i].trim()) return;
+            const lx = (w - m.width) * f, ly = i * t.size * 1.2 + t.size * 0.1;
+            // (no ink measures: the line's own box, as tall as the font)
+            const ink = isFinite(m.actualBoundingBoxLeft) && isFinite(m.actualBoundingBoxDescent);
+            const x0 = lx - (ink ? m.actualBoundingBoxLeft : 0) - pad, x1 = lx + (ink ? m.actualBoundingBoxRight : m.width) + pad;
+            const y0 = ly - (ink ? m.actualBoundingBoxAscent : 0) - pad, y1 = ly + (ink ? m.actualBoundingBoxDescent : t.size * 1.2) + pad;
+            for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) pts.push(M.transformPoint({ x, y }));
+        });
+        if (!pts.length) return null;
+        const x0 = Math.max(0, Math.floor(Math.min(...pts.map(q => q.x)))), y0 = Math.max(0, Math.floor(Math.min(...pts.map(q => q.y))));
+        const x1 = Math.min(this.W, Math.ceil(Math.max(...pts.map(q => q.x)))), y1 = Math.min(this.H, Math.ceil(Math.max(...pts.map(q => q.y))));
+        return x1 > x0 && y1 > y0 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
+    },
+
     // The layer's pixels drawn from its text (all else on it cleared)
     drawText(t, canvas) {
         const g = canvas.getContext('2d');
@@ -4717,7 +4744,9 @@ const PaintEditor = {
         }
         // Into the picture as shown, its bounds there: the selection's, or
         // just what's on the layer (its box fits it, not the whole canvas)
-        const lb = this.sel ? this.sel.box : this.contentBox(lifted) || { x: 0, y: 0, w: this.W, h: this.H };
+        // (a text layer: its letters' own box, from the words, not read
+        // back from its pixels)
+        const lb = this.sel ? this.sel.box : (l.text && this.textInk(l.text)) || this.contentBox(lifted) || { x: 0, y: 0, w: this.W, h: this.H };
         const corners = [[lb.x, lb.y], [lb.x + lb.w, lb.y], [lb.x, lb.y + lb.h], [lb.x + lb.w, lb.y + lb.h]].map(([x, y]) => this.C.transformPoint({ x, y }));
         const x0 = Math.floor(Math.min(...corners.map(q => q.x))), y0 = Math.floor(Math.min(...corners.map(q => q.y)));
         const x1 = Math.ceil(Math.max(...corners.map(q => q.x))), y1 = Math.ceil(Math.max(...corners.map(q => q.y)));
@@ -4738,7 +4767,7 @@ const PaintEditor = {
     // px), what's on it in that turned frame. Null: not turned (lifted
     // straight, as before)
     liftTurned(l) {
-        const from = this.contentBox(l.canvas);
+        const from = (l.text && this.textInk(l.text)) || this.contentBox(l.canvas);
         if (!from) return null;
         const base = { layer: l, sel: null, from, mode: 'free', quad: null };
         if (l.src && !l.text && !l.shape) {
