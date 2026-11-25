@@ -4006,7 +4006,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.mouse.move(x0, 400); await page.mouse.down();
         await page.mouse.move(300, 400, { steps: 4 }); await page.mouse.up();
         const wide = await st();
-        // In: it stops at its narrowest (180), then past half of that it's gone
+        // In: it stops at its narrowest (200), then past half of that it's gone
         await page.mouse.move(300, 400); await page.mouse.down();
         await page.mouse.move(120, 400, { steps: 4 });
         const narrow = await st();
@@ -4045,9 +4045,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.mouse.up();
 
         check('sidebar hides: its edge still drags it wider', s0.open && !s0.edge && wide.w === 300 && wide.width === 300, JSON.stringify([s0, wide]));
-        check('sidebar hides: dragged in, it stops at its narrowest', narrow.open && narrow.w === 180, JSON.stringify(narrow));
+        check('sidebar hides: dragged in, it stops at its narrowest', narrow.open && narrow.w === 200, JSON.stringify(narrow));
         check('sidebar hides: past half its narrowest it snaps hidden, sliding out', !snapped.open && snapped.drawn && snapped.pref === false, JSON.stringify(snapped));
-        check('sidebar hides: dragged back out in the same drag, it\'s back', backOut.open && backOut.w === 180 && backOut.pref === true, JSON.stringify(backOut));
+        check('sidebar hides: dragged back out in the same drag, it\'s back', backOut.open && backOut.w === 200 && backOut.pref === true, JSON.stringify(backOut));
         check('sidebar hides: hidden, it keeps the width it had before the drag', !hidden.open && !hidden.drawn && hidden.pref === false && hidden.width === 300, JSON.stringify(hidden));
         check('sidebar hides: a thin line at the window\'s edge, with a resize pointer', hidden.edge && hidden.edgeBox === '0 6 800' && hidden.cursor === 'ew-resize', JSON.stringify(hidden));
         check('sidebar hides: dragging from the line brings it out, as wide as dragged', !short.open && dragged.open && !dragged.edge && Math.abs(dragged.w - 258) <= 2 && dragged.pref === true, JSON.stringify([short, dragged]));
