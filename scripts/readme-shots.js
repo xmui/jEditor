@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // The README's screenshots (docs/images/): the real desktop app (the
 // Electron one, mac/), driven by Playwright, at 1280×800 and twice the
-// pixels, in light and dark: the grid, the viewer, Adjust, Paint and Home.
+// pixels, in light and dark: the grid, the viewer, Adjust and Paint (and
+// Home, when asked for).
 // The photos are Unsplash's, from Lorem Picsum (downloaded to a temp folder).
 //
 //   npm ci && (cd mac && npm ci)
@@ -75,7 +76,7 @@ const byName = (n) => `app.files.find(f => f.name.includes(${JSON.stringify(n)})
         app.clearSelection();
         app.setGridSize(150);
     }, projects);
-    const want = (n) => !only.length || only.includes(n);
+    const want = (n) => only.length ? only.includes(n) : n !== 'home'; // (home: only when asked)
     for (const t of ['light', 'dark']) {
         await theme(page, t);
         if (want('grid')) {

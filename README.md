@@ -5,8 +5,8 @@
 <h1 align="center">jEditor</h1>
 
 <p align="center">
-  <b>View, edit and paint your photos, in one app.</b><br>
-  Simple to pick up, and never too much on the screen. It works on your photos right where they are: nothing to import, nothing uploaded.
+  <b>One fast app to look at, cull, fix and paint your photos.</b><br>
+  Open a folder and get to work. Nothing to import, nothing uploaded, never cluttered.
 </p>
 
 <p align="center">
@@ -18,64 +18,46 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/grid-dark.jpg">
-    <img src="docs/images/grid-light.jpg" width="860" alt="jEditor's Photos mode: a folder of photos in the grid, with the sidebar showing the project's folders and flags">
+    <img src="docs/images/grid-light.jpg" width="860" alt="jEditor showing a folder of photos in the grid, with the folders and flags in the sidebar">
   </picture>
 </p>
 
-## Three modes
-
-Switch between them with the buttons at the top left. Each mode shows only what it needs; the rest is in menus.
-
-- **Photos: view, cull, crop and organize.** Open a folder and every photo is there, in the grid or one at a time with a film strip. Rotate, crop and straighten, flag the keepers, rename, move and delete, all with undo.
-- **Adjust: non-destructive photo editing.** Exposure, contrast, highlights and shadows, white balance, levels and curves with a live histogram, a color mixer, color grading, looks, masks for the sky and the subject, and tools that bring old prints back. The original is never changed until you save.
-- **Paint: layers, brushes, text and shapes.** Over the photo, or on a new canvas, with selections, masks, groups, adjustment layers and filters.
-
 <table>
   <tr>
-    <td width="50%">
+    <td width="33%" valign="top">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/images/viewer-dark.jpg">
-        <img src="docs/images/viewer-light.jpg" alt="Photos mode: one photo with the film strip below">
+        <img src="docs/images/viewer-light.jpg" alt="Photos: one photo, with the film strip below">
       </picture>
-      <p align="center"><b>Photos</b>: one at a time, with the film strip</p>
+      <p><b>Photos.</b> Look, cull, crop and sort. Every step can be undone.</p>
     </td>
-    <td width="50%">
+    <td width="33%" valign="top">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/images/adjust-dark.jpg">
-        <img src="docs/images/adjust-light.jpg" alt="Adjust mode: a waterfall photo with the histogram and the Basic panel">
+        <img src="docs/images/adjust-light.jpg" alt="Adjust: a waterfall photo, with the histogram and the light and color controls">
       </picture>
-      <p align="center"><b>Adjust</b>: the histogram, looks and every slider</p>
+      <p><b>Adjust.</b> Fix light and color. Your original stays safe until you save.</p>
     </td>
-  </tr>
-  <tr>
-    <td width="50%">
+    <td width="33%" valign="top">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/images/paint-dark.jpg">
-        <img src="docs/images/paint-light.jpg" alt="Paint mode: a lake photo with a text layer and a glow layer, and the Layers panel">
+        <img src="docs/images/paint-light.jpg" alt="Paint: a lake photo with a text layer and a glow layer, and the Layers panel">
       </picture>
-      <p align="center"><b>Paint</b>: layers, text that stays editable, the tools down the left</p>
-    </td>
-    <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/home-dark.jpg">
-        <img src="docs/images/home-light.jpg" alt="The home page: the last project, and Open a folder, New project and Convert">
-      </picture>
-      <p align="center"><b>Home</b>: back to your last project in one click</p>
+      <p><b>Paint.</b> Add text, shapes and brushwork on layers you can change later.</p>
     </td>
   </tr>
 </table>
 
-## What's new in 2.0
+## Built for scanning and archives
 
-- **A new look.** Glass and pills, and the photo is never under them. One top bar in every mode, a docked sidebar, simpler menus that show their keys, and a light mode.
-- **Paint is a layers editor now.** Masks, groups, adjustment layers and filters as layers. Text in your computer's fonts, and text and shapes stay editable. Free transform and Warp (with ready-made styles), Heal and Clone, Symmetry.
-- **Adjust goes much further.** Looks you dial in, then keep as your own. Texture, Clarity and Dehaze. Perspective and lens fixes.
-- **Bring old prints back.** Restore color finds the fade and takes it off. Drag along a scratch or a crease and it's gone. Descreen takes the dots off a magazine or newspaper scan.
-- **Find it, undo it, redo it.** Find anything (`Ctrl+K`) for commands, photos and folders. Redo for every step, even a delete. iPhone photos show in seconds, and on a Mac, your Photos library is in the sidebar.
-- **A new start, and safer saving.** A new home page, a short tour and a guide. Edits are kept in jEditor, with a count of what's unsaved, until you write them into the file. A proper Export window.
-- **And more.** Culling with flag keys, full screen, a slideshow, glass strength, and smoother scrolling and sharper zoom throughout.
+jEditor grew up working through boxes of scanned prints, so it handles the big, slow jobs well.
 
-The whole list is under **What's new** in the app, and in [the changelog](app/changelog.js).
+- **Scan straight into a folder.** Scan or shoot tethered into the open folder, and each new photo shows up in the grid as it lands. (Scanning and capture are in the Windows app.)
+- **Big folders and network drives.** An order of 2,000 photos opens fast, on a network drive too, and once it's been opened it rescans in a moment.
+- **Dates and details, in batches.** Give a whole scanned order one date, shift dates when a camera's clock was wrong, or number them in the order they were scanned. Every EXIF, IPTC and XMP field is there when you need it.
+- **Bring old photos back.** Restore color takes the fade off a print or slide, a whole roll at once if you like. Find dust and scratches finds them for you, a drag along a crease takes it off, and Descreen removes the dots from a magazine scan.
+- **Take less space.** Convert a folder to AVIF, JPEG XL or WebP. If you replace the originals, undo brings them back.
+- **Know what's unsaved.** Edits are kept until you're ready. A count shows how many photos have changes, and one click saves or exports them.
 
 ## Get it
 
@@ -86,7 +68,7 @@ The whole list is under **What's new** in the app, and in [the changelog](app/ch
 | **Linux** | [**AppImage**](https://github.com/xmui/jEditor/releases/latest) for any distribution (updates itself), `.deb` for Ubuntu, Debian and Mint, `.pacman` for Arch |
 | **Web** | [**xmui.github.io/jEditor**](https://xmui.github.io/jEditor/) in Chrome or Edge. Nothing to install. |
 
-The Mac app also comes in a lighter build on Tauri (`jEditor-x.y.z-mac-tauri.dmg`). For now it's only in the betas: turn on **Settings → Updates → Beta builds**, or take it from a [prerelease](https://github.com/xmui/jEditor/releases).
+A lighter Mac build on Tauri (`jEditor-x.y.z-mac-tauri.dmg`) is in the [betas](https://github.com/xmui/jEditor/releases) for now.
 
 <details>
 <summary>"Windows protected your PC" or "jEditor can't be opened"?</summary>
@@ -101,52 +83,32 @@ It only asks once. More in [Installing](docs/installing.md).
 
 ## Quick start
 
-1. **Open a folder** from the home page, or drop a folder or some photos onto the window. Every photo in it shows in the grid.
-2. **Look and sort.** Double-click a photo, or press `S`, to see it large; `←` and `→` move between photos, `G` goes back to the grid. `P` flags a keeper, `[` and `]` rotate, `C` crops.
-3. **Edit.** `E` opens Adjust on the photo you're on, and `B` opens Paint. **Done** keeps your edits in jEditor; **Write edits to file** (or Export) puts them into a file.
-4. **Find anything** with `Ctrl+K` (`⌘K` on a Mac): any command, photo or folder. `Ctrl+Z` undoes any step.
+1. **Open a folder**, or drop one onto the window.
+2. **Look and sort.** `S` shows one photo, `G` the grid, `←` `→` move between them. `P` flags a keeper, `[` `]` rotate, `C` crops.
+3. **Fix and paint.** `E` opens Adjust, `B` opens Paint.
+4. **Find anything** with `Ctrl+K` (`⌘K` on a Mac). `Ctrl+Z` undoes any step.
 
-The full guide is in the app (`F1`, or Help → Guide) and in [Using jEditor](docs/using-jeditor.md).
+Press `F1` in the app for the guide, or read [Using jEditor](docs/using-jeditor.md).
 
-## Every platform
+## Platforms
 
-The desktop apps (Windows, Mac and Linux) come first and keep up with each other. The web is a lighter version.
+The Windows, Mac and Linux apps have everything and keep up with each other. The web version is lighter: it has no sidebar of your drives and no extra windows, and scanning is in the Windows app only. The full list is in [Platforms](docs/platforms.md).
 
-| | Windows | Mac | Linux | Web |
-|---|:-:|:-:|:-:|:-:|
-| Photos, Adjust and Paint | ✓ | ✓ | ✓ | ✓ |
-| Open folders with no permission prompts | ✓ | ✓ | ✓ | |
-| Sidebar: projects, pinned folders, drives | ✓ | ✓ | ✓ | |
-| Several windows and Split | ✓ | ✓ | ✓ | |
-| A menu bar with every command and its key | ✓ | ✓ | ✓ | |
-| Paint's Text in your computer's fonts | ✓ | ✓ | ✓ | Chrome, Edge |
-| Updates itself | ✓ | ✓ | ✓ | always current |
-| Recycle Bin, scanning and camera tethering | ✓ | | | |
-| The Photos library in the sidebar | | ✓ | | |
-| Open photos and save through the share sheet (iPhone, iPad, Android) | | | | ✓ |
+## Learn more
 
-Everything that's only on some platforms, and why: [Platforms](docs/platforms.md).
+- [Using jEditor](docs/using-jeditor.md): every tool and key
+- [Installing](docs/installing.md): where things go, updating, removing
+- [Platforms](docs/platforms.md): what runs where, and why
+- [Roadmap](PLAN.md): what's next
 
 ## Build and test
 
 ```sh
-npm ci                     # the tests' tools
-npm start                  # the web app at http://localhost:3000
-npm test                   # the tests, in headless Chrome
+npm ci && npm test         # the tests, in headless Chrome
+npm start                  # the web version at http://localhost:3000
+cd mac && npm ci && cd .. && npm run mac   # the Mac and Linux app
 ```
 
-- **Windows:** `./scripts/build.ps1` builds the app, the portable zip and the installer into `dist\`.
-- **Mac and Linux:** `cd mac && npm ci`, then `npm run mac` runs the app from this checkout, and `node mac/build.js` builds the .dmg (on a Mac) or the AppImage, .deb and .pacman (on Linux). `npm run test:mac` runs the desktop app's tests (`xvfb-run -a` without a screen).
-- **Screenshots:** `node scripts/readme-shots.js` takes this page's pictures again from the real app.
-
-How it's put together, releases and betas: [Developing](docs/developing.md).
-
-## Learn more
-
-- [Using jEditor](docs/using-jeditor.md): the keys, the views and every tool
-- [Installing](docs/installing.md): where things go, updating, removing
-- [Developing](docs/developing.md): how it's built, building it yourself, releasing
-- [Platforms](docs/platforms.md): what runs where, and how that's decided
-- [Roadmap](PLAN.md): what's next
+Windows builds with `./scripts/build.ps1`. [Developing](docs/developing.md) has the rest: building each app, releases and betas. `node scripts/readme-shots.js` takes this page's screenshots again.
 
 <sub>Photos in the screenshots: [Unsplash](https://unsplash.com), via [Lorem Picsum](https://picsum.photos).</sub>
