@@ -28,7 +28,7 @@
 - **Open a folder and go.** Every photo shows up straight away. There's nothing to import and nothing uploaded, and your files stay where they are.
 - **Quick fixes.** Rotate, crop and straighten. Fix the light and color with a few sliders or one-click Auto, or pick a look.
 - **Fix a whole batch at once.** Rotate every selected photo in one go, crop them all like the last one, or copy one photo's adjustments onto as many as you like. Rename a whole folder in one step.
-- **Sort as you go.** Flag the keepers, move them into folders, find duplicates, and delete with undo.
+- **Sort as you go.** Flag the keepers, move them into folders, and delete with undo.
 - **Undo anything.** Every step can be undone and redone, even a delete. Your originals stay safe until you save.
 
 <table>
@@ -75,6 +75,88 @@
 - **Scan straight into the folder,** and each scan shows up as it lands. (The Windows app.)
 - **Bring old prints back.** Take the fade off with Restore color, find dust and scratches for you, and remove the dots from a magazine scan.
 - **Dates in batches.** Give a scanned order one date, shift dates when a camera's clock was wrong, or number them in scan order.
+
+## Every feature
+
+<details>
+<summary><b>The full list</b>, by what you're doing</summary>
+
+**Looking and sorting**
+- Grid and single view, a film strip, zoom, full screen and a slideshow
+- Flags: pick, reject, needs rescan, and five color labels, with a count of each in the sidebar
+- Search and Find anything (`Ctrl+K`): photos, folders, projects and commands
+- Rename one, rename many with a pattern (`Smith_001`, `Smith_002`…), or find and replace in names
+- Move and copy into folders, make new folders, delete to the bin
+- Find duplicates (still being finished)
+- Info: size, camera details and the place it was taken; edit the title, caption, keywords, rating, date, author and copyright, or every EXIF, IPTC and XMP field
+- Undo and redo for every step, with a history to jump back through
+- The folder is watched, so new and changed photos show up on their own
+
+**Rotating and cropping**
+- Rotate and flip, one photo or a whole selection
+- Turn upright: finds sideways photos and turns them the right way up
+- Crop and straighten, with aspect presets (4×6, 5×7, 8×10, square and more), a level line and a loupe
+- Auto crop finds a print on a scan, straightens it and crops it (an experiment, in Settings)
+- Crop a whole selection like the last crop
+
+**Batch edits**
+- Rotate, turn upright, flag, move, rename, export or convert a whole selection
+- Copy and paste adjustments onto many photos, or Sync from one
+- Restore color on a selection, or on a whole roll at once
+- Dates for scans: set one date for all, shift by an amount, or number them in grid order
+- Write edits into the files, or export, for every unsaved photo at once
+
+**Adjust**
+- Quick fixes: Auto, Auto color, Restore color and Backlight
+- Histogram and levels, exposure, contrast, highlights, shadows, whites and blacks
+- White balance with a gray picker, vibrance and saturation
+- Texture, Clarity and Dehaze
+- Tone curve, color mixer and color grading
+- Looks: film stocks and creative looks you can dial in and save as your own
+- Masks: linear, radial and brush, plus the sky and the subject found for you
+- Sharpening, noise reduction, vignette and grain
+- Perspective and lens fixes
+- Before and after, presets, and RAW and HEIC photos
+
+**Old photos**
+- Restore color for faded prints and slides
+- Find dust, spot removal with heal or clone, and red-eye
+- Scratches and creases: drag along one, or find them for you
+- Descreen takes the printed dots off a magazine or newspaper scan
+
+**Paint**
+- Layers with opacity and blend modes, masks, groups, clipping and adjustment layers
+- Brushes: soft and hard round, pencil, ink, marker, airbrush, spray, charcoal, watercolor, texture, mixer, retro brushes and your own
+- Eraser, spot heal, heal, clone stamp, dodge, burn, sponge, blur, sharpen and smudge
+- Selections: rectangle, ellipse, lasso and magic wand, with grow, shrink and feather
+- Shapes, lines and arrows, fill, gradient and recolor
+- Text in any of your computer's fonts; text and shapes stay editable
+- Free transform, distort, perspective and Warp, with ready-made warp styles
+- Filters: blur, sharpen, noise and more; symmetry, QuickShape, pen pressure
+- A new blank canvas, canvas size and crop
+
+**Convert and export**
+- Convert to AVIF, JPEG XL, WebP, JPEG, PNG or TIFF, with the quality that looks the same marked and the space saved shown
+- Export copies for the web, for print or as you set them: size, format, quality, naming and metadata, with presets
+- Export or copy a project onto a USB drive or card, or burn it to a disc (Windows)
+
+**Folders, drives and projects**
+- A sidebar with your projects, pinned folders, drives and cards
+- Several windows side by side, and moving photos between them (the desktop apps)
+- Big folders and network drives
+- Import from a camera's card
+- The Photos library in the sidebar (Mac)
+
+**Scanning**
+- Scan straight into the folder, find the prints on the glass, and tethered camera capture (Windows)
+
+**Make it yours**
+- Light and dark, accent color, glass strength, toolbar layout and your own keyboard shortcuts
+- A menu bar with every command and its key
+- A home page, a short tour and a guide (`F1`)
+
+Every tool and key is in [Using jEditor](docs/using-jeditor.md).
+</details>
 
 ## Get it
 
