@@ -247,6 +247,80 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await app.close();
     }
 
+    // The owner's friend's fresh Mac (beta, 26 November): every open said
+    // "The folder didn't arrive". The app's drop of the folder never came;
+    // JEDITOR_MINT_FAIL makes it never come here, and the page falls back
+    // on the app's own handles (bridge.js: handleFor), and keeps them
+    console.log('mac: a fresh Mac where the folder doesn\'t arrive');
+    {
+        const fresh = path.join(tmp, 'profile-fresh');
+        const desk = makeOrder(path.join(tmp, 'FreshHome', 'Desktop'), 'Birthday', 2);
+        const other = makeOrder(tmp, 'Elsewhere', 1);
+        const first = await launch(fresh, [], { JEDITOR_MINT_FAIL: '1' });
+        const open = async (page, how, arg) => {
+            const t = Date.now();
+            if (how === 'path') await page.evaluate((p) => JEditorNative.openPath(p), arg);
+            else await page.evaluate(() => app.browseFolder());
+            await page.waitForFunction(() => !app.isLoading && app.files.length > 0 && !!app.dirHandle, null, { timeout: 20000 }).catch(() => { });
+            return page.evaluate(async (ms) => ({
+                name: app.dirHandle && app.dirHandle.name, n: app.files.length, ours: HostHandles.isOurs(app.dirHandle),
+                path: app.dirHandle && await JEditorNative.folderPath(app.dirHandle), kept: localStorage.getItem('jeditor.hostHandles'),
+                home: !document.getElementById('drop-zone').classList.contains('hidden'),
+                alerts: [...document.querySelectorAll('#ui-dialog:not(.hidden) #uid-title')].map(t => t.textContent).join(), ms
+            }), Date.now() - t);
+        };
+        const a = await open(first.page, 'path', desk);
+        check('a fresh Mac, the drop never coming: the folder opens anyway, with the app\'s own handle', a.name === 'Birthday' && a.n === 3 && a.ours && a.path === desk && !a.home && !a.alerts && a.kept === '1', JSON.stringify(a));
+        // Writing works through it: a turn saved into the photo on disk
+        const before = fs.readFileSync(path.join(desk, 'photo1.jpg'));
+        await first.page.evaluate(async () => {
+            const f = app.files.find(x => x.name === 'photo1.jpg');
+            await app.rotateImage(f, 90);
+            for (let i = 0; i < 50 && (f.isBusy || f._rotationQueue || f.savingRotation); i++) await new Promise(r => setTimeout(r, 100));
+        });
+        check('... and a turn is saved into the photo on disk through it', !fs.readFileSync(path.join(desk, 'photo1.jpg')).equals(before));
+        // The next one: no waiting for a drop again
+        const b = await open(first.page, 'path', other);
+        check('... the next folder opens at once, the same way', b.name === 'Elsewhere' && b.n === 2 && b.ours && b.ms < 4000, JSON.stringify(b));
+        // Open a folder… (the Mac's picker, answered here)
+        await first.app.evaluate(({ dialog }, p) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] }); }, desk);
+        const c = await open(first.page, 'picker');
+        check('... and from Open a folder (the Mac\'s picker)', c.name === 'Birthday' && c.n === 3 && c.ours, JSON.stringify(c));
+        // A folder macOS won't let it read (after an update in place, the app
+        // is new to macOS's privacy settings): said plainly, with where to
+        // allow it, not a drop that never comes (as root, everything reads)
+        if (!(process.getuid && process.getuid() === 0)) {
+            const shut = makeOrder(tmp, 'Not allowed', 1);
+            fs.chmodSync(shut, 0o000);
+            const d = await first.page.evaluate(async (p) => {
+                let said = null;
+                const was = UI.alert;
+                UI.alert = async (o) => { said = o.message; };
+                const t = Date.now();
+                await JEditorNative.openPath(p);
+                for (let i = 0; i < 100 && !said; i++) await new Promise(r => setTimeout(r, 50));
+                UI.alert = was;
+                return { said, ms: Date.now() - t };
+            }, shut);
+            fs.chmodSync(shut, 0o755);
+            check('a folder it may not read says so, and where to allow it, at once', /isn't letting jEditor see what's in “Not allowed”.*Privacy & Security/.test(d.said || '') && d.ms < 4000, JSON.stringify(d));
+        }
+        check('... no JS errors', first.errors.length === 0, first.errors.join('; '));
+        await first.app.close();
+        // Started again: the app's own handles from the start, and Recent opens
+        const again = await launch(fresh, [], { JEDITOR_MINT_FAIL: '1' });
+        const r = await again.page.evaluate(async () => {
+            const t = Date.now();
+            const rec = (await Recents.list()).find(x => x.name === 'Elsewhere');
+            if (rec) await Recents.open(rec);
+            for (let i = 0; i < 200 && (app.isLoading || !app.files.length); i++) await new Promise(res => setTimeout(res, 50));
+            return { rec: !!rec, name: app.dirHandle && app.dirHandle.name, n: app.files.length, ours: HostHandles.isOurs(app.dirHandle), ms: Date.now() - t };
+        });
+        check('... started again, Recent opens it at once with the app\'s own handle', r.rec && r.name === 'Elsewhere' && r.n === 2 && r.ours && r.ms < 4000, JSON.stringify(r));
+        check('... no JS errors', again.errors.length === 0, again.errors.join('; '));
+        await again.app.close();
+    }
+
     console.log('mac: a theme\'s menus in the Mac\'s menu bar');
     {
         const { app, page, errors } = await launch(profile, [smith]);

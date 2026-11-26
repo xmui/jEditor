@@ -41,15 +41,31 @@
     // ---- The app's own folder handles (handles.js), with the switch on ----
     // (main.js: HOST_HANDLES). Then a path's handle is simply made, and
     // the pickers and drops give them too
-    const host = mac.hostHandles && window.HostHandles ? window.HostHandles.install({
-        call: (op, data) => mac.request('fs', { op, data }),
-        fileUrl: (p) => '/__fs?p=' + encodeURIComponent(p),
-        pathOf: (file) => mac.pathForFile(file),
-        pick: {
-            files: async (o) => { const r = await answer('pickFiles', o); return r.cancelled ? null : r.paths; },
-            save: async (o) => { const r = await answer('pickSave', o); return r.cancelled ? null : r.path; }
+    // Also what a Mac falls back on when Chromium's folder doesn't arrive
+    // (handleFor): from then on, and on later starts, these are used
+    // (the owner's beta on a fresh Mac: "The folder didn't arrive")
+    const HOST_KEY = 'jeditor.hostHandles';
+    let host = null;
+    function useHost(why) {
+        if (host || !window.HostHandles) return host;
+        host = window.HostHandles.install({
+            call: (op, data) => mac.request('fs', { op, data }),
+            fileUrl: (p) => '/__fs?p=' + encodeURIComponent(p),
+            pathOf: (file) => mac.pathForFile(file),
+            pick: {
+                files: async (o) => { const r = await answer('pickFiles', o); return r.cancelled ? null : r.paths; },
+                save: async (o) => { const r = await answer('pickSave', o); return r.cancelled ? null : r.path; }
+            }
+        });
+        if (why) {
+            log('warn', `Folders: the app's own handles from now on (${why})`);
+            try { localStorage.setItem(HOST_KEY, '1'); } catch (e) { /* kept for this run only */ }
         }
-    }) : null;
+        return host;
+    }
+    let hostBefore = false;
+    try { hostBefore = localStorage.getItem(HOST_KEY) === '1'; } catch (e) { /* none kept */ }
+    if (mac.hostHandles || hostBefore) useHost(null);
 
     // ---- A folder handle for a path ----
     // With Chromium's handles, the app drops the folder onto the page; the drop (and the drag before
@@ -74,17 +90,27 @@
         got.then(h => (h && h.kind === 'directory' ? w.resolve(h) : w.reject(new Error('Not a folder'))), w.reject);
     }, true);
 
+    // May it read this folder? Asked of the app (main.js); a host that
+    // doesn't ask (the Tauri app's) is taken at its word
+    const canRead = (path) => answer('canRead', { path }).catch(e => {
+        if (/Unknown request/.test(e && e.message)) return null;
+        throw e;
+    });
+
     function handleFor(path) {
         if (host) {
-            const h = host.folder(path);
-            remember(h, path);
-            return Promise.resolve(h);
+            // What macOS won't let it read is said now, not found empty later
+            return canRead(path).then(() => {
+                const h = host.folder(path);
+                remember(h, path);
+                return h;
+            });
         }
         const run = queue.then(() => new Promise((resolve, reject) => {
             const timer = setTimeout(() => {
                 waiting = null;
                 reject(new Error('The folder didn\'t arrive: ' + path));
-            }, 10000);
+            }, 5000);
             waiting = {
                 resolve: (h) => { clearTimeout(timer); resolve(h); },
                 reject: (e) => { clearTimeout(timer); reject(e); }
@@ -92,7 +118,29 @@
             answer('mint', { path }).catch(e => { if (waiting) waiting.reject(e); waiting = null; });
         }));
         queue = run.catch(() => { });
-        return run.then(h => { remember(h, path); return h; });
+        return run.catch(async (e) => {
+            // Not there, or not a folder: that's the answer. Anything else
+            // (the drop never came): the app's own handle for it instead
+            if (/^Not a folder|^macOS isn't letting/.test(e && e.message) || !window.HostHandles) throw e;
+            const stat = await mac.request('fs', { op: 'stat', data: { path } }).catch(() => null);
+            if (!stat || stat.kind !== 'directory') throw e;
+            useHost(e && e.message || 'no folder came');
+            return host.folder(path);
+        }).then(h => { remember(h, path); return h; });
+    }
+
+    // A folder opened by its path (Recent, the sidebar, one the app was
+    // given): what stops it is said, in a dialog, as Open a folder says it
+    // → true, or the error
+    async function openByPath(a, path) {
+        try {
+            await a.openDirectory(await handleFor(path));
+            return true;
+        } catch (e) {
+            log('error', 'Opening the folder failed: ' + (e && e.message || e));
+            if (typeof UI !== 'undefined' && UI.alert) UI.alert({ title: 'Couldn\'t open the folder', message: String(e && e.message || e) });
+            return e;
+        }
     }
 
     // ---- The folder picker: the Mac's own ----
@@ -467,7 +515,8 @@
             const a = await whenReady();
             const ok = (await answer('exists', { paths: [path] })).exists[0];
             if (!ok) return false;
-            await a.openDirectory(await handleFor(path));
+            // (there, but not opened: said here, so it isn't "not found")
+            await openByPath(a, path);
             return true;
         },
         // Which of these folders are still there
@@ -1028,12 +1077,10 @@
         if (msg.type === 'openFolder') {
             const a = await whenReady();
             while (a.isLoading) await new Promise(r => setTimeout(r, 100));
-            try {
-                await a.openDirectory(await handleFor(msg.path));
-                if (msg.smoke) await smokeTest(a);
-            } catch (e) {
-                log('error', 'Opening the folder failed: ' + (e && e.message || e));
-                if (msg.smoke) mac.request('smoke', { ok: false, error: String(e && e.message || e), errors });
+            const ok = await openByPath(a, msg.path);
+            if (msg.smoke) {
+                if (ok === true) await smokeTest(a);
+                else mac.request('smoke', { ok: false, error: String(ok && ok.message || ok), errors });
             }
         } else if (msg.type === 'toolbar') {
             onToolbar(msg.id, msg.value);
