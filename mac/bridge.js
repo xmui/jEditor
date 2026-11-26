@@ -111,12 +111,26 @@
         return run.catch(async (e) => {
             // Not there, or not a folder: that's the answer. Anything else
             // (the drop never came): the app's own handle for it instead
-            if (/^Not a folder/.test(e && e.message) || !window.HostHandles) throw e;
+            if (/^Not a folder|^macOS isn't letting/.test(e && e.message) || !window.HostHandles) throw e;
             const stat = await mac.request('fs', { op: 'stat', data: { path } }).catch(() => null);
             if (!stat || stat.kind !== 'directory') throw e;
             useHost(e && e.message || 'no folder came');
             return host.folder(path);
         }).then(h => { remember(h, path); return h; });
+    }
+
+    // A folder opened by its path (Recent, the sidebar, one the app was
+    // given): what stops it is said, in a dialog, as Open a folder says it
+    // → true, or the error
+    async function openByPath(a, path) {
+        try {
+            await a.openDirectory(await handleFor(path));
+            return true;
+        } catch (e) {
+            log('error', 'Opening the folder failed: ' + (e && e.message || e));
+            if (window.UI && UI.alert) UI.alert({ title: 'Couldn\'t open the folder', message: String(e && e.message || e) });
+            return e;
+        }
     }
 
     // ---- The folder picker: the Mac's own ----
@@ -491,7 +505,8 @@
             const a = await whenReady();
             const ok = (await answer('exists', { paths: [path] })).exists[0];
             if (!ok) return false;
-            await a.openDirectory(await handleFor(path));
+            // (there, but not opened: said here, so it isn't "not found")
+            await openByPath(a, path);
             return true;
         },
         // Which of these folders are still there
@@ -1052,12 +1067,10 @@
         if (msg.type === 'openFolder') {
             const a = await whenReady();
             while (a.isLoading) await new Promise(r => setTimeout(r, 100));
-            try {
-                await a.openDirectory(await handleFor(msg.path));
-                if (msg.smoke) await smokeTest(a);
-            } catch (e) {
-                log('error', 'Opening the folder failed: ' + (e && e.message || e));
-                if (msg.smoke) mac.request('smoke', { ok: false, error: String(e && e.message || e), errors });
+            const ok = await openByPath(a, msg.path);
+            if (msg.smoke) {
+                if (ok === true) await smokeTest(a);
+                else mac.request('smoke', { ok: false, error: String(ok && ok.message || ok), errors });
             }
         } else if (msg.type === 'toolbar') {
             onToolbar(msg.id, msg.value);

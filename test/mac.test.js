@@ -286,6 +286,25 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await first.app.evaluate(({ dialog }, p) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] }); }, desk);
         const c = await open(first.page, 'picker');
         check('... and from Open a folder (the Mac\'s picker)', c.name === 'Birthday' && c.n === 3 && c.ours, JSON.stringify(c));
+        // A folder macOS won't let it read (after an update in place, the app
+        // is new to macOS's privacy settings): said plainly, with where to
+        // allow it, not a drop that never comes (as root, everything reads)
+        if (!(process.getuid && process.getuid() === 0)) {
+            const shut = makeOrder(tmp, 'Not allowed', 1);
+            fs.chmodSync(shut, 0o000);
+            const d = await first.page.evaluate(async (p) => {
+                let said = null;
+                const was = UI.alert;
+                UI.alert = async (o) => { said = o.message; };
+                const t = Date.now();
+                await JEditorNative.openPath(p);
+                for (let i = 0; i < 100 && !said; i++) await new Promise(r => setTimeout(r, 50));
+                UI.alert = was;
+                return { said, ms: Date.now() - t };
+            }, shut);
+            fs.chmodSync(shut, 0o755);
+            check('a folder it may not read says so, and where to allow it, at once', /isn't letting jEditor see what's in “Not allowed”.*Privacy & Security/.test(d.said || '') && d.ms < 4000, JSON.stringify(d));
+        }
         check('... no JS errors', first.errors.length === 0, first.errors.join('; '));
         await first.app.close();
         // Started again: the app's own handles from the start, and Recent opens

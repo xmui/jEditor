@@ -229,9 +229,25 @@ function permissions() {
 
 // ---- A folder handle for a path: drop the folder onto the page ----
 let minting = Promise.resolve();
+// Can jEditor read the folder? macOS's privacy settings (Desktop,
+// Documents, Downloads, a drive) can say no: after an update in place the
+// app is new to macOS, and what was allowed may not be any more. Said in
+// plain words, with where to allow it, rather than a drop that never comes
+async function canRead(dir) {
+    try {
+        await fs.promises.readdir(dir);
+    } catch (e) {
+        if (e.code === 'EPERM' || e.code === 'EACCES') {
+            throw new Error(`macOS isn't letting jEditor see what's in “${path.basename(dir)}”. Allow jEditor in System Settings → Privacy & Security → Files and Folders (or Full Disk Access), then open it again.`);
+        }
+        throw e;
+    }
+}
+
 function mint(wc, dir) {
     const run = minting.then(async () => {
         if (!fs.statSync(dir).isDirectory()) throw new Error('Not a folder: ' + dir);
+        await canRead(dir);
         const dbg = wc.debugger;
         const attached = !dbg.isAttached();
         if (attached) dbg.attach('1.3');
