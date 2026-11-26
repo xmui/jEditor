@@ -138,7 +138,7 @@
             return true;
         } catch (e) {
             log('error', 'Opening the folder failed: ' + (e && e.message || e));
-            if (window.UI && UI.alert) UI.alert({ title: 'Couldn\'t open the folder', message: String(e && e.message || e) });
+            if (typeof UI !== 'undefined' && UI.alert) UI.alert({ title: 'Couldn\'t open the folder', message: String(e && e.message || e) });
             return e;
         }
     }
