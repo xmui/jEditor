@@ -662,6 +662,9 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await page.evaluate(async ([t, i, glass]) => {
                 app.uiPrefs.theme = t;
                 app.uiPrefs.glass = glass;
+                // (from 75% up the glass alone does it, with no shadow: 25%, the
+                // start, has a faint one, measured in test/ui.test.js)
+                app.uiPrefs.glassStrength = 75;
                 app.applyUiPrefs();
                 app.setView('single');
                 app.loadIndex(i);

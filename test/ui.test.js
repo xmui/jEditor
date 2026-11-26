@@ -1327,15 +1327,16 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             r.saved.glass === 'opaque' && r.saved.surround === 'grey', JSON.stringify(r));
         check('the glass is fixed: it no longer follows the photo', r.noSampler && r.noGlassClasses);
         {
-            // Settings → Glass strength (the owner, 22 November): 75% to start
-            // with, live, remembered; off for Opaque, which has none
+            // Settings → Glass strength (the owner, 22 November): 25% to start
+            // with (26 November; 75% before, and a saved 75 is moved to 25
+            // once), live, remembered; off for Opaque, which has none
             const g = await page.evaluate(async () => {
                 const out = {};
                 const root = document.documentElement;
                 localStorage.removeItem('jeditor.ui');
                 app.loadUiPrefs(); app.applyUiPrefs();
                 out.start = app.uiPrefs.glassStrength;
-                out.want = [String(app.glassK(75)), String(app.glassK(30)), app.glassK(0), app.glassK(100)];
+                out.want = [String(app.glassK(25)), String(app.glassK(30)), app.glassK(0), app.glassK(100)];
                 out.k0 = root.style.getPropertyValue('--glass-k');
                 const range = document.getElementById('cust-glass-strength');
                 range.value = '30';
@@ -1349,10 +1350,17 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                 app.uiPrefs.glass = 'crystal'; app.uiPrefs.glassStrength = 75; app.applyUiPrefs();
                 out.onAgain = !range.disabled;
                 out.filter75 = getComputedStyle(root).getPropertyValue('--glass-filter').trim();
+                // Saved before 2.0's 25%: the old start (75) moves to 25, once;
+                // any other strength, or a 75 chosen since, stays
+                const loaded = (saved) => { localStorage.setItem('jeditor.ui', JSON.stringify(saved)); app.loadUiPrefs(); return app.uiPrefs.glassStrength; };
+                out.moved = [loaded({ glassStrength: 75 }), loaded({ glassStrength: 60 }), loaded({ glassStrength: 75, glassV: 2 }), loaded({ glassStrength: 100 })].join();
+                localStorage.removeItem('jeditor.ui');
+                app.loadUiPrefs(); app.applyUiPrefs();
                 return out;
             });
-            check('Settings → Glass strength: 75% to start with, changes the glass live and is remembered; off with Opaque glass',
-                g.start === 75 && g.k0 === g.want[0] && g.k === g.want[1] && g.want[2] === 0 && g.want[3] === 1 && +g.want[0] > 0.8 && g.label === '30%' && g.saved === 30 && g.filter30 !== g.filter75 && g.offForOpaque && g.onAgain, JSON.stringify(g));
+            check('Settings → Glass strength: 25% to start with, changes the glass live and is remembered; off with Opaque glass',
+                g.start === 25 && g.k0 === g.want[0] && g.k === g.want[1] && g.want[2] === 0 && g.want[3] === 1 && g.label === '30%' && g.saved === 30 && g.filter30 !== g.filter75 && g.offForOpaque && g.onAgain, JSON.stringify(g));
+        check('... saved before 2.0, the old 75% start moves to 25% once; a strength chosen otherwise stays', g.moved === '25,60,75,100', g.moved);
         }
         check('window background: not in a browser, solid; bad saved values ignored',
             r.backdropHidden && r.solidWindow && r.badBackdrop === 'none,50', JSON.stringify(r));
@@ -1692,15 +1700,17 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             if (!Object.keys(res).length) lows.push(`nothing measured (${glass}, ${theme}, ${i})`);
         }
         check('Glass strength 100%: words on glass keep 4.5:1, icons and dimmed controls 3:1, even against the lightest glass behind them, over a white and a black photo (Crystal and Liquid, light and dark)', lows.length === 0, lows.join('; '));
-        // Settings → Glass strength at 75%, where it starts: the words keep
-        // 4.5:1 over any photo with no shadow behind them (the owner, 23
-        // November: none there). Each word's own color against the glass
-        // right under its letters, as drawn (WCAG's measure)
+        // Settings → Glass strength at 25%, where it starts (the owner, 26
+        // November), with the faint shadow tight round the letters, and at
+        // 75%, with no shadow behind them (the owner, 23 November): the
+        // words keep 4.5:1 over any photo. Each word's own color against the
+        // glass right under its letters, as drawn (WCAG's measure)
         const clear = [];
+        for (const STRENGTH of [25, 75]) {
         const WORDS = { 'the name': '#paint-file', 'the size': '#paint-dims', 'the hint': '#paint-options .paint-hint', 'Layers': '.paint-layers-sec .paint-sec-head > span', 'the zoom': '#paint-zoom-1' };
         for (const glass of ['crystal', 'liquid']) for (const theme of ['light', 'dark']) for (const i of [0, 1]) {
-            const boxes = await page.evaluate(async ([glass, theme, i, WORDS]) => {
-                app.uiPrefs.glass = glass; app.uiPrefs.theme = theme; app.uiPrefs.glassStrength = 75; app.applyUiPrefs();
+            const boxes = await page.evaluate(async ([glass, theme, i, WORDS, STRENGTH]) => {
+                app.uiPrefs.glass = glass; app.uiPrefs.theme = theme; app.uiPrefs.glassStrength = STRENGTH; app.applyUiPrefs();
                 if (Modes.current() !== 'photos') { Modes.go('photos'); for (let k = 0; k < 100 && Modes.current() !== 'photos'; k++) await new Promise(r => setTimeout(r, 50)); }
                 app.setView('single'); app.loadIndex(i);
                 await new Promise(r => setTimeout(r, 400));
@@ -1718,7 +1728,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                     out[name] = { x: r.x, y: r.y, w: r.width, h: r.height, rgb: m.slice(0, 3), a: (m[3] ?? 1) * o };
                 }
                 return out;
-            }, [glass, theme, i, WORDS]);
+            }, [glass, theme, i, WORDS, STRENGTH]);
             await page.waitForTimeout(120);
             const a = (await page.screenshot()).toString('base64');
             await page.evaluate(() => { const st = document.createElement('style'); st.id = 'hide-words'; st.textContent = '#paint-editor * { color: transparent !important; transition: none !important; }'; document.head.appendChild(st); });
@@ -1747,8 +1757,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                 }
                 return out;
             }, [a, b, boxes]);
-            for (const [name, cr] of Object.entries(res)) if (cr < 4.5) clear.push(`${name} ${cr}:1 (${glass}, ${theme}, over ${i ? 'black' : 'white'})`);
-            if (!Object.keys(res).length) clear.push(`nothing measured (${glass}, ${theme}, ${i})`);
+            for (const [name, cr] of Object.entries(res)) if (cr < 4.5) clear.push(`${name} ${cr}:1 (${STRENGTH}%, ${glass}, ${theme}, over ${i ? 'black' : 'white'})`);
+            if (!Object.keys(res).length) clear.push(`nothing measured (${STRENGTH}%, ${glass}, ${theme}, ${i})`);
+        }
         }
         // No shadow behind them at 75% and up; a faint one below
         const shadows = await page.evaluate(() => {
@@ -1757,7 +1768,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.uiPrefs.glassStrength = 75; app.applyUiPrefs();
             return out;
         });
-        check('Glass strength 75% (to start with): words on glass 4.5:1 against what\'s right under them, with no shadow (Crystal and Liquid, light and dark, over white and black)', clear.length === 0, clear.join('; '));
+        check('Glass strength 25% (to start with), with its faint shadow, and 75%, with none: words on glass 4.5:1 against what\'s right under them (Crystal and Liquid, light and dark, over white and black)', clear.length === 0, clear.join('; '));
         check('no shadow behind the words on glass from 75% up; a faint one only below', shadows.at75 && shadows.at100 && shadows.at50 && shadows.at0, JSON.stringify(shadows));
         check('words on glass: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();

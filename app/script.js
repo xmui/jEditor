@@ -623,7 +623,8 @@ const app = {
             surround: 'auto',
             backdrop: 'none', // Settings → Window background: none (solid), mica or acrylic
             transparency: 50, // how much of the window background shows through (10-100%)
-            glassStrength: 75, // Settings → Glass strength: 0 the clearest glass, 100 the most held back (tokens.css: --glass-k)
+            glassStrength: 25, // Settings → Glass strength: 0 the clearest glass, 100 the most held back (tokens.css: --glass-k); 25% the owner's pick for 2.0
+            glassV: 2, // 2: 25% to start with (75% before): a saved 75 is moved to it once (loadUiPrefs)
             // Which messages show for things done (TOAST_KINDS); errors always do
             toasts: Object.fromEntries(this.TOAST_KINDS.map(([k, , on]) => [k, on]))
         };
@@ -732,6 +733,9 @@ const app = {
                 }
                 if (saved.transparency >= 10 && saved.transparency <= 100) this.uiPrefs.transparency = saved.transparency;
                 if (saved.glassStrength >= 0 && saved.glassStrength <= 100) this.uiPrefs.glassStrength = Math.round(saved.glassStrength);
+                // 2.0: 25% to start with (the owner, 26 November). Anyone still on
+                // the old 75% start gets it, once; a strength chosen otherwise stays
+                if (!(saved.glassV >= 2) && this.uiPrefs.glassStrength === 75) this.uiPrefs.glassStrength = 25;
                 // The theme (themes.js checks it's one it knows) and each theme's own settings
                 if (typeof saved.skin === 'string' && /^[a-z0-9]+\/[a-z0-9]+$/.test(saved.skin)) this.uiPrefs.skin = saved.skin;
                 if (saved.skinSettings && typeof saved.skinSettings === 'object') {
@@ -894,7 +898,7 @@ const app = {
         root.style.setProperty('--window-tint', `${100 - p.transparency}%`);
         // (on a gentle curve: 0 the clearest glass, 100 the most held back,
         // and 75, where it starts, enough to keep words 4.5:1 with no shadow)
-        root.style.setProperty('--glass-k', String(this.glassK(p.glassStrength ?? 75)));
+        root.style.setProperty('--glass-k', String(this.glassK(p.glassStrength ?? 25)));
         // (Opaque glass has no strength to set)
         const gs = document.getElementById('cust-glass-strength');
         if (gs) gs.disabled = p.glass === 'opaque';
