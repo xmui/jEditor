@@ -90,10 +90,17 @@
         got.then(h => (h && h.kind === 'directory' ? w.resolve(h) : w.reject(new Error('Not a folder'))), w.reject);
     }, true);
 
+    // May it read this folder? Asked of the app (main.js); a host that
+    // doesn't ask (the Tauri app's) is taken at its word
+    const canRead = (path) => answer('canRead', { path }).catch(e => {
+        if (/Unknown request/.test(e && e.message)) return null;
+        throw e;
+    });
+
     function handleFor(path) {
         if (host) {
             // What macOS won't let it read is said now, not found empty later
-            return answer('canRead', { path }).then(() => {
+            return canRead(path).then(() => {
                 const h = host.folder(path);
                 remember(h, path);
                 return h;
