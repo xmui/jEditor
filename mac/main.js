@@ -772,6 +772,10 @@ async function handle(rec, type, data) {
         // ---- The page's own handles (HOST_HANDLES; handles.js) ----
         case 'fs':
             return fsHost.request(data.op, data.data);
+        // May it read this folder? (bridge.js: handleFor, either way)
+        case 'canRead':
+            await canRead(String(data.path || ''));
+            return { ok: true };
         case 'pickFiles': {
             const r = await dialog.showOpenDialog(rec.win, {
                 defaultPath: settings.lastPicked || app.getPath('pictures'),

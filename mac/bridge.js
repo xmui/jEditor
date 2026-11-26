@@ -92,9 +92,12 @@
 
     function handleFor(path) {
         if (host) {
-            const h = host.folder(path);
-            remember(h, path);
-            return Promise.resolve(h);
+            // What macOS won't let it read is said now, not found empty later
+            return answer('canRead', { path }).then(() => {
+                const h = host.folder(path);
+                remember(h, path);
+                return h;
+            });
         }
         const run = queue.then(() => new Promise((resolve, reject) => {
             const timer = setTimeout(() => {
