@@ -417,6 +417,7 @@ const app = {
             this.log(`Folder selected: ${dirHandle.name}`);
             await this.openDirectory(dirHandle);
         } catch (err) {
+            if (err.name === 'AbortError') this._afterOpen = null;
             if (err.name === 'AbortError') {
                 // User canceled the picker
                 this.log('Folder selection canceled');
@@ -2342,10 +2343,18 @@ const app = {
         if (sheet) sheet.classList.add('hidden');
         this.elements.dropZone.classList.add('hidden');
         this.elements.mainInterface.classList.remove('hidden');
+        // Picked on home to scan or capture into (start.js: capture): on
+        // into Scan or Camera, once it's open
+        const after = this._afterOpen;
+        this._afterOpen = null;
+        if (after && Date.now() - after.at < 5 * 60 * 1000 && this.dirHandle && !this.fixedFiles) {
+            setTimeout(() => { if (after.mode === 'scan') Scan.open(); else Camera.open(); }, 0);
+        }
     },
 
     // Home, with nothing open
     showHome() {
+        this._afterOpen = null;
         this.files = [];
         this.dirHandle = null;
         this.currentFile = null;
@@ -2357,6 +2366,7 @@ const app = {
     // A huge folder not opened after all: back to the start screen
     openCancelled(gen) {
         if (gen !== this._openGen) return;
+        this._afterOpen = null;
         this.isLoading = false;
         this.files = [];
         this.dirHandle = null;

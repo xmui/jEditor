@@ -7554,6 +7554,104 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // Home's Scan or Capture with no project open (the owner, 26 November:
+    // "it just says pick a folder"): Scan or Capture, then where to (the
+    // Open a folder card, with New project…), then straight into it
+    console.log('home: Scan or Capture into a project');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const until = async (fn, n = 100) => { for (let i = 0; i < n && !(await fn()); i++) await sleep(50); };
+            // As the Windows app has them (scanning and tethering)
+            const has = Host.has.bind(Host);
+            let feats = ['scan', 'camera'];
+            Host.has = (n) => feats.includes(n) || has(n);
+            const opened = [];
+            Scan.open = () => { opened.push('scan:' + (app.dirHandle && app.dirHandle.name)); };
+            Camera.open = () => { opened.push('camera:' + (app.dirHandle && app.dirHandle.name)); };
+            const opfs = await navigator.storage.getDirectory();
+            const order = async (name) => {
+                try { await opfs.removeEntry(name, { recursive: true }); } catch (e) { /* fresh */ }
+                return opfs.getDirectoryHandle(name, { create: true });
+            };
+            const tile = document.getElementById('start-capture');
+            const card = () => document.getElementById('open-card');
+            const shown = () => card() && !card().classList.contains('hidden');
+
+            // Both: Scan or Capture first
+            Start.capture(tile);
+            await sleep(50);
+            out.menu = [...document.querySelectorAll('#context-menu [role^="menuitem"]')].map(b => b.textContent.trim()).join('|');
+            [...document.querySelectorAll('#context-menu [role^="menuitem"]')].find(b => /Scan/.test(b.textContent)).click();
+            await until(shown);
+            out.scanCard = shown() && document.getElementById('oc-title').textContent;
+            out.newShown = !document.getElementById('oc-new').classList.contains('hidden') === Host.has('places');
+            // Browse… picks a folder: it opens, and Scan opens on it
+            const empty = await order('Scan here');
+            window.showDirectoryPicker = async () => empty;
+            document.getElementById('oc-browse').click();
+            await until(() => opened.length);
+            out.scanned = opened.join();
+            out.open = app.dirHandle && app.dirHandle.name;
+            await app.closeFolder();
+
+            // Picker cancelled: nothing follows a folder opened later
+            opened.length = 0;
+            feats = ['scan'];
+            Start.capture(tile);
+            await until(shown);
+            window.showDirectoryPicker = async () => { throw new DOMException('cancelled', 'AbortError'); };
+            document.getElementById('oc-browse').click();
+            await sleep(200);
+            const other = await order('Just open');
+            window.showDirectoryPicker = async () => other;
+            await app.browseFolder();
+            await until(() => app.dirHandle && app.dirHandle.name === 'Just open');
+            await sleep(200);
+            out.cancelled = opened.length === 0 && app.dirHandle.name === 'Just open';
+            await app.closeFolder();
+
+            // Capture: a recent folder from the card, then Camera
+            feats = ['scan', 'camera'];
+            opened.length = 0;
+            Start.capture(tile);
+            await sleep(50);
+            [...document.querySelectorAll('#context-menu [role^="menuitem"]')].find(b => /camera/.test(b.textContent)).click();
+            await until(shown);
+            out.camCard = document.getElementById('oc-title').textContent;
+            await until(() => card().querySelector('[data-oc="recent"]'));
+            const rec = [...card().querySelectorAll('[data-oc="recent"]')].find(b => /Scan here/.test(b.textContent));
+            if (rec) rec.click();
+            await until(() => opened.length, 200);
+            out.captured = opened.join();
+
+            // With a project open, straight in (no card)
+            opened.length = 0;
+            feats = ['scan'];
+            Start.capture(tile);
+            await sleep(50);
+            out.direct = opened.join() + (shown() ? ' +card' : '');
+            // The normal Open a folder card has none of it
+            await app.closeFolder();
+            await OpenCard.open();
+            out.plain = document.getElementById('oc-title').textContent === 'Open a folder' && document.getElementById('oc-new').classList.contains('hidden');
+            OpenCard.close();
+            return out;
+        });
+        check('home: Scan or Capture asks which first, when there are both', r.menu === 'Scan…|Capture with a camera…', r.menu);
+        check('... then where to: the Open a folder card, as Scan into a project', r.scanCard === 'Scan into a project', String(r.scanCard));
+        check('... with New project… where projects can be made', r.newShown);
+        check('... a folder picked there opens, and Scan opens on it', r.scanned === 'scan:Scan here' && r.open === 'Scan here', JSON.stringify(r));
+        check('... the picker cancelled, a folder opened later doesn\'t start a scan', r.cancelled, JSON.stringify(r));
+        check('... Capture: a recent folder from the card, and Camera opens on it', r.camCard === 'Capture into a project' && r.captured === 'camera:Scan here', JSON.stringify(r));
+        check('... with a project open, Scan opens at once (no card)', r.direct === 'scan:Scan here', r.direct);
+        check('... and Open a folder is as it was', r.plain);
+        check('home Scan or Capture: no JS errors', !issues.errors.length, issues.errors.join(' | '));
+        await page.close();
+    }
+
     console.log('adjust (develop.js, adjust.js)');
     {
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
