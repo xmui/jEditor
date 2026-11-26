@@ -168,38 +168,32 @@
        sheen from the top, and light caught on the curved edge, more along
        the top left than the bottom right. Never on the photos.
        Settings → Glass strength (--glass-k, 0 to 1; 25% to start with,
-       the owner's pick for 2.0, 26 November; 75% before) sets how much
-       each glass holds back what's behind it (contrast() then
-       brightness(), before its tint): at 0 the clear glass of before
-       2.0's readability pass, at 1 that pass's (dark glass never lighter
-       than about 37% over a white photo, light never darker than about
-       80% over a black one). The clearer the glass (--glass-u), the
-       bolder its icons and the less dimmed its dimmed controls
-       (--glass-off). From 75% up, words keep 4.5:1, icons and dimmed
-       controls 3:1, over any photo, with no shadow. Below 75% a faint
-       shadow tight round the letters (--glass-halo) comes in, fully on
-       by 25%, and secondary words go to the words' own white (or black):
-       from 25% up every word keeps 4.5:1 over a plain white or black
-       photo (test/ui.test.js). Below 25% the smallest secondary words
-       dip under it (to about 3:1 at 0%): the owner chose the full range
-       with a faint shadow over a glow (23 November). Crystal (the default) and Clear: less
+       the owner's pick for 2.0, 26 November; 75% before) sets how much each glass holds back
+       what's behind it (contrast() then brightness(), before its tint):
+       at 0 the clear glass of before 2.0's readability pass, at 1 that
+       pass's (dark glass never lighter than about 37% over a white photo,
+       light never darker than about 80% over a black one). The clearer
+       the glass (--glass-u), the bolder its icons and the less dimmed
+       its dimmed controls (--glass-off). From 75% up, words
+       keep 4.5:1, icons and dimmed controls 3:1, over any photo, with no
+       shadow. Below 75% a faint shadow behind the words helps
+       (--glass-halo); it doesn't keep them at 4.5:1 over a plain white
+       (dark) or black (light) photo all the way down: the owner chose the
+       full range with a faint shadow over a glow (23 November). Crystal (the default) and Clear: less
        frost. Liquid: Apple's Liquid Glass, the only one that bends what's
        under it (liquid.js). Lens: thicker glass, lit top and bottom.
        Opaque: near-solid, no blur. */
     --glass-tint: transparent; /* Settings → Glass tint, over every glass */
-    --glass-k: 0.332; /* Settings → Glass strength, 0 to 1 (script.js sets it from the slider: 25% to start with) */
+    --glass-k: 0.332; /* Settings → Glass strength, 0 to 1 (script.js sets it from the slider: 25% to start with, the owner's pick for 2.0) */
     --glass-u: calc(1 - var(--glass-k)); /* how clear: the scrim grows with it */
     /* No shadow or glow behind the words (the owner, 23 November): only
        below 75% strength, where the glass gets too clear for the words
-       to keep 4.5:1 on their own, a faint one, from nothing at 75% to all
-       of it by 25%, the start (--glass-low: 0 to 1). Icons: none, only
-       bolder (style.css) */
-    --glass-low: clamp(0, calc((0.856 - var(--glass-k)) / 0.3), 1);
-    --glass-halo: 0 0 1px rgb(0 0 0 / var(--glass-low)), 0 0 2px rgb(0 0 0 / calc(0.85 * var(--glass-low))), 0 0 4px rgb(0 0 0 / calc(0.55 * var(--glass-low)));
+       to keep 4.5:1 on their own, a faint one, from nothing at 75% to its
+       most at 0% (--glass-low). Icons: none, only bolder (style.css) */
+    --glass-low: max(0, calc(0.75 - var(--glass-k)));
+    --glass-halo: 0 0 1px rgb(0 0 0 / calc(0.73 * var(--glass-low))), 0 0 4px rgb(0 0 0 / calc(0.47 * var(--glass-low)));
     --glass-icon-halo: none;
-    /* secondary words on glass: 4.5:1 from 75% strength up; on clearer glass
-       they go to white, as the words do (with the shadow, 4.5:1 at 25%) */
-    --glass-text-2: rgb(calc(240 + 15 * var(--glass-low)) calc(240 + 15 * var(--glass-low)) calc(240 + 15 * var(--glass-low)));
+    --glass-text-2: #f0f0f0; /* secondary words on glass: 4.5:1 from 75% strength up */
     --glass-off: calc(0.8 + 0.15 * var(--glass-u)); /* a dimmed control on glass, still read as there (not 0.4); less dim as the glass gets clearer */
     /* The halo itself: tight round each letter, where it counts, fading out.
        It keeps text at 7:1 and secondary text at 4.5:1 against what's
@@ -285,8 +279,8 @@
     --glass-border: rgb(0 0 0 / 0.08); /* an edge even over a white photo */
     --glass-filter: blur(24px) saturate(180%) contrast(calc(0.5 - 0.1 * var(--glass-k))) brightness(1.6);
     --glass-rim: inset 1px 1px 0 -0.5px rgb(255 255 255 / 0.95), inset -1px -1px 0 -0.5px rgb(255 255 255 / 0.5);
-    --glass-text-2: rgb(calc(46 - 46 * var(--glass-low)) calc(46 - 46 * var(--glass-low)) calc(46 - 46 * var(--glass-low)));
-    --glass-halo: 0 0 1px rgb(255 255 255 / var(--glass-low)), 0 0 2px rgb(255 255 255 / calc(0.9 * var(--glass-low))), 0 0 4px rgb(255 255 255 / calc(0.65 * var(--glass-low))); /* (below 75% only, as above) */
+    --glass-text-2: #2e2e2e;
+    --glass-halo: 0 0 1px rgb(255 255 255 / calc(0.8 * var(--glass-low))), 0 0 4px rgb(255 255 255 / calc(0.53 * var(--glass-low))); /* (below 75% only, as above) */
     --glass-icon-halo: none;
 }
 

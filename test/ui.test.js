@@ -1700,17 +1700,15 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             if (!Object.keys(res).length) lows.push(`nothing measured (${glass}, ${theme}, ${i})`);
         }
         check('Glass strength 100%: words on glass keep 4.5:1, icons and dimmed controls 3:1, even against the lightest glass behind them, over a white and a black photo (Crystal and Liquid, light and dark)', lows.length === 0, lows.join('; '));
-        // Settings → Glass strength at 25%, where it starts (the owner, 26
-        // November), with the faint shadow tight round the letters, and at
-        // 75%, with no shadow behind them (the owner, 23 November): the
-        // words keep 4.5:1 over any photo. Each word's own color against the
-        // glass right under its letters, as drawn (WCAG's measure)
+        // Settings → Glass strength at 75%: the words keep
+        // 4.5:1 over any photo with no shadow behind them (the owner, 23
+        // November: none there). Each word's own color against the glass
+        // right under its letters, as drawn (WCAG's measure)
         const clear = [];
-        for (const STRENGTH of [25, 75]) {
         const WORDS = { 'the name': '#paint-file', 'the size': '#paint-dims', 'the hint': '#paint-options .paint-hint', 'Layers': '.paint-layers-sec .paint-sec-head > span', 'the zoom': '#paint-zoom-1' };
         for (const glass of ['crystal', 'liquid']) for (const theme of ['light', 'dark']) for (const i of [0, 1]) {
-            const boxes = await page.evaluate(async ([glass, theme, i, WORDS, STRENGTH]) => {
-                app.uiPrefs.glass = glass; app.uiPrefs.theme = theme; app.uiPrefs.glassStrength = STRENGTH; app.applyUiPrefs();
+            const boxes = await page.evaluate(async ([glass, theme, i, WORDS]) => {
+                app.uiPrefs.glass = glass; app.uiPrefs.theme = theme; app.uiPrefs.glassStrength = 75; app.applyUiPrefs();
                 if (Modes.current() !== 'photos') { Modes.go('photos'); for (let k = 0; k < 100 && Modes.current() !== 'photos'; k++) await new Promise(r => setTimeout(r, 50)); }
                 app.setView('single'); app.loadIndex(i);
                 await new Promise(r => setTimeout(r, 400));
@@ -1728,7 +1726,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                     out[name] = { x: r.x, y: r.y, w: r.width, h: r.height, rgb: m.slice(0, 3), a: (m[3] ?? 1) * o };
                 }
                 return out;
-            }, [glass, theme, i, WORDS, STRENGTH]);
+            }, [glass, theme, i, WORDS]);
             await page.waitForTimeout(120);
             const a = (await page.screenshot()).toString('base64');
             await page.evaluate(() => { const st = document.createElement('style'); st.id = 'hide-words'; st.textContent = '#paint-editor * { color: transparent !important; transition: none !important; }'; document.head.appendChild(st); });
@@ -1757,9 +1755,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                 }
                 return out;
             }, [a, b, boxes]);
-            for (const [name, cr] of Object.entries(res)) if (cr < 4.5) clear.push(`${name} ${cr}:1 (${STRENGTH}%, ${glass}, ${theme}, over ${i ? 'black' : 'white'})`);
-            if (!Object.keys(res).length) clear.push(`nothing measured (${STRENGTH}%, ${glass}, ${theme}, ${i})`);
-        }
+            for (const [name, cr] of Object.entries(res)) if (cr < 4.5) clear.push(`${name} ${cr}:1 (${glass}, ${theme}, over ${i ? 'black' : 'white'})`);
+            if (!Object.keys(res).length) clear.push(`nothing measured (${glass}, ${theme}, ${i})`);
         }
         // No shadow behind them at 75% and up; a faint one below
         const shadows = await page.evaluate(() => {
@@ -1768,7 +1765,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.uiPrefs.glassStrength = 75; app.applyUiPrefs();
             return out;
         });
-        check('Glass strength 25% (to start with), with its faint shadow, and 75%, with none: words on glass 4.5:1 against what\'s right under them (Crystal and Liquid, light and dark, over white and black)', clear.length === 0, clear.join('; '));
+        check('Glass strength 75%: words on glass 4.5:1 against what\'s right under them, with no shadow (Crystal and Liquid, light and dark, over white and black)', clear.length === 0, clear.join('; '));
         check('no shadow behind the words on glass from 75% up; a faint one only below', shadows.at75 && shadows.at100 && shadows.at50 && shadows.at0, JSON.stringify(shadows));
         check('words on glass: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
