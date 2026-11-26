@@ -44,6 +44,7 @@ const OpenCard = {
             `<div id="oc-drop" class="oc-drop"><span class="oc-drop-icon">${this.icons.drop}</span>` +
             `<span class="oc-drop-text"><span class="oc-drop-name">Drag a folder here</span><span class="oc-drop-sub">or a card, a drive or photos</span></span>` +
             `<button id="oc-browse" class="btn primary">Browse…</button></div>` +
+            `<button id="oc-new" class="btn secondary oc-new hidden" type="button">New project…</button>` +
             `<div id="oc-recent-box" class="oc-section hidden"><h3 class="oc-sub">Recent</h3><div id="oc-recents" class="oc-recents"></div></div>` +
             `</div>` +
             `<div id="oc-list" class="oc-list"></div>` +
@@ -52,7 +53,8 @@ const OpenCard = {
         document.body.appendChild(box);
         this.box = box;
         this.el('oc-close').addEventListener('click', () => this.close());
-        this.el('oc-browse').addEventListener('click', () => { this.close(); app.browseFolder(); });
+        this.el('oc-browse').addEventListener('click', () => { this.picked(); this.close(); app.browseFolder(); });
+        this.el('oc-new').addEventListener('click', () => { this.picked(); this.close(); Places.newFolder(); });
         box.addEventListener('mousedown', (e) => { if (e.target === box) this.close(); });
         box.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.close(); }
@@ -69,7 +71,7 @@ const OpenCard = {
         const drop = this.el('oc-drop');
         box.addEventListener('dragover', () => drop.classList.add('over'));
         box.addEventListener('dragleave', (e) => { if (!box.contains(e.relatedTarget)) drop.classList.remove('over'); });
-        box.addEventListener('drop', () => { drop.classList.remove('over'); this.close(); });
+        box.addEventListener('drop', () => { drop.classList.remove('over'); this.picked(); this.close(); });
         box.addEventListener('click', (e) => {
             const b = e.target.closest('[data-oc]');
             if (b) this.choose(b.dataset.oc, b.dataset.id);
@@ -78,13 +80,26 @@ const OpenCard = {
 
     isOpen() { return !!this.box && !this.box.classList.contains('hidden'); },
 
-    async open() {
+    // then: 'scan' or 'camera' (the home page's Scan or Capture): the card
+    // asks where to, and what's opened from it goes straight on to that
+    async open({ then = null } = {}) {
         if (!this.box) return;
+        this.then = then;
+        if (!then) this.app._afterOpen = null;
+        const title = this.el('oc-title');
+        title.textContent = then === 'scan' ? 'Scan into a project' : then === 'camera' ? 'Capture into a project' : 'Open a folder';
+        this.el('oc-new').classList.toggle('hidden', !then || !Host.has('places'));
         this.query = '';
         this.el('oc-search').value = '';
         this.box.classList.remove('hidden');
         this.el('oc-search').focus({ preventScroll: true });
         await this.refresh();
+    },
+
+    // A project was picked from the card: Scan or Camera follows its opening
+    // (script.js: finalizeLoad, afterOpen)
+    picked() {
+        if (this.then) this.app._afterOpen = { mode: this.then, at: Date.now() };
     },
 
     close() {
@@ -155,7 +170,8 @@ const OpenCard = {
             `<span class="oc-text"><span class="oc-name">${this.esc(r.name)}</span><span class="oc-meta">${this.esc(Recents.when(r.openedAt))}</span></span></button>`).join('');
 
         let html = '';
-        if (Host.has('photosLibrary') && this.match('Photos library')) {
+        // (not to scan or capture into: it isn't a folder)
+        if (Host.has('photosLibrary') && !this.then && this.match('Photos library')) {
             html += `<button class="oc-row oc-library" data-oc="library" title="The Photos library: its albums, to look through (read-only)">` +
                 `<span class="oc-pics one oc-icon">${this.icons.photos}</span><span class="oc-name">Photos library</span><span class="oc-meta">Albums, read-only</span></button>`;
         }
@@ -234,6 +250,7 @@ const OpenCard = {
     },
 
     choose(kind, id) {
+        this.picked();
         this.close();
         if (kind === 'recent') {
             const rec = (this.recents || []).find(r => r.id === id);

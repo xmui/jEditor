@@ -11538,6 +11538,12 @@ body.touring .controls.idle button { pointer-events: auto; }
     outline: none;
 }
 
+/* Scan or Capture into: a new project, under where to drag one */
+.oc-new {
+    align-self: flex-start;
+}
+.oc-new.hidden { display: none; }
+
 .oc-drop {
     display: flex;
     align-items: center;

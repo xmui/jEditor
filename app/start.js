@@ -253,18 +253,27 @@ const Start = {
         }
     },
 
+    // With no project open, which one to scan or capture into first: the
+    // Open a folder card (Recent, Browse…, New project…), and what's
+    // opened from it goes straight into Scan or Camera
     capture(btn) {
         const app = this.app;
         if (this.card) { Import.open(this.card); return; }
         const scan = Host.has('scan'), cam = Host.has('camera');
+        const go = (mode) => {
+            if (app.dirHandle && !app.fixedFiles) return mode === 'scan' ? Scan.open() : Camera.open();
+            if (typeof OpenCard !== 'undefined' && OpenCard.available()) return OpenCard.open({ then: mode });
+            app._afterOpen = { mode, at: Date.now() };
+            app.browseFolder();
+        };
         if (scan && cam) {
             const r = btn.getBoundingClientRect();
             app.openContextMenu([
-                ['Scan…', () => Scan.open()],
-                ['Capture with a camera…', () => Camera.open()]
+                ['Scan…', () => go('scan')],
+                ['Capture with a camera…', () => go('camera')]
             ], r.left, r.top - 6, { above: true });
-        } else if (scan) Scan.open();
-        else if (cam) Camera.open();
+        } else if (scan) go('scan');
+        else if (cam) go('camera');
     },
 
     // Adjust a photo (or Paint's Open a file): one photo, opened on its
