@@ -199,9 +199,11 @@ function serve() {
         if (url.host !== HOST) return new Response('Not found', { status: 404 });
         let rel = decodeURIComponent(url.pathname);
         if (rel === '/__host/bridge.js') return fileResponse(path.join(__dirname, 'bridge.js'));
-        if (HOST_HANDLES && rel === '/__host/handles.js') return fileResponse(path.join(__dirname, 'handles.js'));
+        // The app's own handles: with the switch, always; without it, when
+        // the hand-off of Chromium's doesn't arrive (bridge.js: handleFor)
+        if (rel === '/__host/handles.js') return fileResponse(path.join(__dirname, 'handles.js'));
         // A file's bytes, for a handle's getFile()
-        if (HOST_HANDLES && rel === '/__fs') return fsHost.respond(url.searchParams.get('p') || '', req.headers.get('range'));
+        if (rel === '/__fs') return fsHost.respond(url.searchParams.get('p') || '', req.headers.get('range'));
         if (rel.startsWith('/__photos/')) return (await photos.respond(url)) || new Response('Not found', { status: 404 });
         if (rel === '/') rel = '/index.html';
         const file = path.join(UI, rel);
@@ -210,7 +212,7 @@ function serve() {
             // bridge.js (and with the switch, handles.js) runs before jEditor's own scripts
             let html;
             try { html = await fs.promises.readFile(file, 'utf8'); } catch (e) { return fileResponse(file); }
-            const ours = (HOST_HANDLES ? '<script src="/__host/handles.js"></script>\n    ' : '') + '<script src="/__host/bridge.js"></script>';
+            const ours = '<script src="/__host/handles.js"></script>\n    <script src="/__host/bridge.js"></script>';
             return fileResponse(file, html.replace(/<script\b/, ours + '\n    <script'));
         }
         return fileResponse(file);
@@ -234,9 +236,17 @@ function mint(wc, dir) {
         const attached = !dbg.isAttached();
         if (attached) dbg.attach('1.3');
         try {
+            // JEDITOR_MINT_FAIL: the drop never comes, as on the owner's
+            // friend's fresh Mac (the tests; bridge.js falls back)
+            if (process.env.JEDITOR_MINT_FAIL === '1') return;
             const data = { items: [], files: [dir], dragOperationsMask: 1 };
+            // In the middle of the page, not its corner: the top is the
+            // window's title strip (and on macOS 26 its own toolbar)
+            const win = BrowserWindow.fromWebContents(wc);
+            const b = win ? win.getContentBounds() : { width: 400, height: 300 };
+            const x = Math.round(b.width / 2), y = Math.round(b.height / 2);
             for (const type of ['dragEnter', 'dragOver', 'drop']) {
-                await dbg.sendCommand('Input.dispatchDragEvent', { type, x: 4, y: 4, data });
+                await dbg.sendCommand('Input.dispatchDragEvent', { type, x, y, data });
             }
         } finally {
             if (attached) dbg.detach();
@@ -745,7 +755,6 @@ async function handle(rec, type, data) {
         }
         // ---- The page's own handles (HOST_HANDLES; handles.js) ----
         case 'fs':
-            if (!HOST_HANDLES) throw new Error('Unknown request: fs');
             return fsHost.request(data.op, data.data);
         case 'pickFiles': {
             const r = await dialog.showOpenDialog(rec.win, {

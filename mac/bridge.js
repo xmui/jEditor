@@ -41,15 +41,31 @@
     // ---- The app's own folder handles (handles.js), with the switch on ----
     // (main.js: HOST_HANDLES). Then a path's handle is simply made, and
     // the pickers and drops give them too
-    const host = mac.hostHandles && window.HostHandles ? window.HostHandles.install({
-        call: (op, data) => mac.request('fs', { op, data }),
-        fileUrl: (p) => '/__fs?p=' + encodeURIComponent(p),
-        pathOf: (file) => mac.pathForFile(file),
-        pick: {
-            files: async (o) => { const r = await answer('pickFiles', o); return r.cancelled ? null : r.paths; },
-            save: async (o) => { const r = await answer('pickSave', o); return r.cancelled ? null : r.path; }
+    // Also what a Mac falls back on when Chromium's folder doesn't arrive
+    // (handleFor): from then on, and on later starts, these are used
+    // (the owner's beta on a fresh Mac: "The folder didn't arrive")
+    const HOST_KEY = 'jeditor.hostHandles';
+    let host = null;
+    function useHost(why) {
+        if (host || !window.HostHandles) return host;
+        host = window.HostHandles.install({
+            call: (op, data) => mac.request('fs', { op, data }),
+            fileUrl: (p) => '/__fs?p=' + encodeURIComponent(p),
+            pathOf: (file) => mac.pathForFile(file),
+            pick: {
+                files: async (o) => { const r = await answer('pickFiles', o); return r.cancelled ? null : r.paths; },
+                save: async (o) => { const r = await answer('pickSave', o); return r.cancelled ? null : r.path; }
+            }
+        });
+        if (why) {
+            log('warn', `Folders: the app's own handles from now on (${why})`);
+            try { localStorage.setItem(HOST_KEY, '1'); } catch (e) { /* kept for this run only */ }
         }
-    }) : null;
+        return host;
+    }
+    let hostBefore = false;
+    try { hostBefore = localStorage.getItem(HOST_KEY) === '1'; } catch (e) { /* none kept */ }
+    if (mac.hostHandles || hostBefore) useHost(null);
 
     // ---- A folder handle for a path ----
     // With Chromium's handles, the app drops the folder onto the page; the drop (and the drag before
@@ -84,7 +100,7 @@
             const timer = setTimeout(() => {
                 waiting = null;
                 reject(new Error('The folder didn\'t arrive: ' + path));
-            }, 10000);
+            }, 5000);
             waiting = {
                 resolve: (h) => { clearTimeout(timer); resolve(h); },
                 reject: (e) => { clearTimeout(timer); reject(e); }
@@ -92,7 +108,15 @@
             answer('mint', { path }).catch(e => { if (waiting) waiting.reject(e); waiting = null; });
         }));
         queue = run.catch(() => { });
-        return run.then(h => { remember(h, path); return h; });
+        return run.catch(async (e) => {
+            // Not there, or not a folder: that's the answer. Anything else
+            // (the drop never came): the app's own handle for it instead
+            if (/^Not a folder/.test(e && e.message) || !window.HostHandles) throw e;
+            const stat = await mac.request('fs', { op: 'stat', data: { path } }).catch(() => null);
+            if (!stat || stat.kind !== 'directory') throw e;
+            useHost(e && e.message || 'no folder came');
+            return host.folder(path);
+        }).then(h => { remember(h, path); return h; });
     }
 
     // ---- The folder picker: the Mac's own ----
