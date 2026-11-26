@@ -167,14 +167,14 @@
        The frosted glass the others start from: deeply blurred, a faint
        sheen from the top, and light caught on the curved edge, more along
        the top left than the bottom right. Never on the photos.
-       Settings → Glass strength (--glass-k, 0 to 1; 0.75 to start with,
-       the owner's pick, 22 November) sets how much each glass holds back
+       Settings → Glass strength (--glass-k, 0 to 1; 25% to start with,
+       the owner's pick for 2.0, 26 November; 75% before) sets how much each glass holds back
        what's behind it (contrast() then brightness(), before its tint):
        at 0 the clear glass of before 2.0's readability pass, at 1 that
        pass's (dark glass never lighter than about 37% over a white photo,
        light never darker than about 80% over a black one). The clearer
        the glass (--glass-u), the bolder its icons and the less dimmed
-       its dimmed controls (--glass-off). From 75% up (the default), words
+       its dimmed controls (--glass-off). From 75% up, words
        keep 4.5:1, icons and dimmed controls 3:1, over any photo, with no
        shadow. Below 75% a faint shadow behind the words helps
        (--glass-halo); it doesn't keep them at 4.5:1 over a plain white
@@ -184,7 +184,7 @@
        under it (liquid.js). Lens: thicker glass, lit top and bottom.
        Opaque: near-solid, no blur. */
     --glass-tint: transparent; /* Settings → Glass tint, over every glass */
-    --glass-k: 0.856; /* Settings → Glass strength, 0 to 1 (script.js sets it from the slider: 75% to start with) */
+    --glass-k: 0.332; /* Settings → Glass strength, 0 to 1 (script.js sets it from the slider: 25% to start with, the owner's pick for 2.0) */
     --glass-u: calc(1 - var(--glass-k)); /* how clear: the scrim grows with it */
     /* No shadow or glow behind the words (the owner, 23 November): only
        below 75% strength, where the glass gets too clear for the words
