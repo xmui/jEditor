@@ -270,7 +270,10 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             }), Date.now() - t);
         };
         const a = await open(first.page, 'path', desk);
-        check('a fresh Mac, the drop never coming: the folder opens anyway, with the app\'s own handle', a.name === 'Birthday' && a.n === 3 && a.ours && a.path === desk && !a.home && !a.alerts && a.kept === '1', JSON.stringify(a));
+        // Kept for later starts; with the app's own handles on already
+        // (JEDITOR_HOST_HANDLES, CI's second run) there's nothing to keep
+        const keeps = process.env.JEDITOR_HOST_HANDLES === '1' ? null : '1';
+        check('a fresh Mac, the drop never coming: the folder opens anyway, with the app\'s own handle', a.name === 'Birthday' && a.n === 3 && a.ours && a.path === desk && !a.home && !a.alerts && a.kept === keeps, JSON.stringify(a));
         // Writing works through it: a turn saved into the photo on disk
         const before = fs.readFileSync(path.join(desk, 'photo1.jpg'));
         await first.page.evaluate(async () => {
