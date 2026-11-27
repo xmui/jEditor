@@ -32,6 +32,9 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
+      # WebKit, for the app's own folder handles in it (test/handles.test.js),
+      # as in build.yml's tests
+      - run: npx playwright-core install --with-deps webkit
       - run: npm test
         env:
           CHROME_PATH: /usr/bin/google-chrome
