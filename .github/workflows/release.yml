@@ -295,7 +295,10 @@ jobs:
   # as GitHub has it for the release, committed to main
   cask:
     needs: [tag, release]
-    if: needs.tag.outputs.beta == 'false'
+    # !cancelled(): the Tauri Mac app is left out of releases (betas only),
+    # and a job skipped anywhere up its needs skips this one too, unless its
+    # if asks for the results itself (2.0.0's cask was skipped that way)
+    if: ${{ !cancelled() && needs.release.result == 'success' && needs.tag.outputs.beta == 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
