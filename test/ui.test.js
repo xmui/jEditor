@@ -273,8 +273,22 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.evaluate(() => localStorage.removeItem('jeditor.seenVersion'));
         await page.reload({ waitUntil: 'networkidle' });
         const firstVisit = await notice();
+        // From 1.x to 2.x: the 2.0 cards, by themselves, and no notice
         await page.evaluate(() => localStorage.setItem('jeditor.seenVersion', '1.11.0'));
         await page.reload({ waitUntil: 'networkidle' });
+        const fromOne = await page.evaluate(async () => {
+            const toast = await new Promise(res => setTimeout(() => res(document.querySelector('#toast-stack [data-key="whatsnew"]')), 900));
+            for (let t = 0; t < 20 && !Highlights.isOpen(); t++) await new Promise(res => setTimeout(res, 50));
+            const cards = Highlights.isOpen();
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            return cards && !toast;
+        });
+        // Any other update: the notice (as from 2.x to a later 2.x)
+        await page.evaluate(() => {
+            localStorage.setItem('jeditor.seenVersion', '1.11.0');
+            Highlights.firstTime = () => false;
+            app.checkForUpdateNotice();
+        });
         const afterUpdate = await notice();
         const marked = await page.evaluate(() => {
             document.querySelector('#toast-stack [data-key="whatsnew"] .toast-action').click();
@@ -303,6 +317,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check("What's New lists every version, this one marked", r.open && r.sections === log.length && r.firstIsCurrent, JSON.stringify(r));
         check("What's New shows `keys` as key caps", r.keys > 0 && r.noRawBackticks);
         check("Esc closes What's New; control sits in More", r.closed && r.inMore);
+        check("from 1.x, the 2.0 cards come by themselves, with no notice", fromOne, String(fromOne));
         check('no update notice on a first visit', firstVisit === null, String(firstVisit));
         check('update notice once after an update, links to What\'s New', afterUpdate && afterUpdate.includes('Updated to') && marked.open && nextVisit === null,
             `${afterUpdate} / ${nextVisit}`);
