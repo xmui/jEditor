@@ -13,7 +13,7 @@
 
 const CHANGELOG = [
     {
-        version: '1.51.0', date: '2026-11-08',
+        version: '2.0.0', date: '2026-11-26',
         items: [
             { polish: 'On macOS 26, Adjust and Paint have one row at the top, as Photos does: the Mac\'s own toolbar has their buttons (Before and after in Adjust, Undo and Redo in Paint), Settings, ⋯ and Done, with the photo\'s name as its title, so the photo gets the room their second row took. The sidebar\'s button is beside the window\'s buttons in every mode.' },
             { polish: 'Customize the Mac\'s toolbar the Mac way: right-click it, or View → Customize Toolbar…, and drag buttons in or out. It\'s the same setting as Settings → Toolbar & keys, which now also chooses which of Adjust\'s and Paint\'s buttons are on their pill, on every platform.' },
@@ -174,7 +174,7 @@ const CHANGELOG = [
     {
         version: '1.50.2', date: '2026-10-31', beta: true,
         items: [
-            'Save edits when done is a switch on the project card, where you can see it. (In 1.51.0 it became Keep edits in jEditor, export copies, and edits are now always kept in jEditor.)',
+            'Save edits when done is a switch on the project card, where you can see it. (In 2.0.0 it became Keep edits in jEditor, export copies, and edits are now always kept in jEditor.)',
             'Sync is in the grid\'s selection bar: select two or more photos, click the one to sync from last, then Sync… (beside Rename…) to put its crop and adjustments onto the rest. It\'s the same as `Ctrl+Shift+S`.',
             'Windows: scanning at high resolutions (1200 dpi and up) no longer makes jEditor lag. The scan is turned into a picture away from the window, the scan window\'s strip shows small copies instead of the full scans, and Turn upright looks at each photo in the background.',
             'Adjust zooms: `Ctrl`+wheel (`Cmd` on a Mac) or a pinch zooms about the pointer, `Ctrl+=` and `Ctrl+-` zoom in and out, `Ctrl+0` fits and `Ctrl+1` is 100%, and a double-click goes between Fit and 100%. Zoomed in, drag (or `Space`+drag) to move about. At 100% the photo is drawn from its full size, so it\'s sharp, and masks, spots and Before zoom with it. A small Fit · 100% chip in the corner shows the zoom.',
@@ -891,7 +891,7 @@ const CHANGELOG = [
 // each one is a line here, and that a line about scanning, the camera, the
 // sidebar's drives and pins, windows, the bin or updates is marked.
 const CHANGELOG_NEEDS = {
-    '1.51.0': [['Scan and Camera ask the first questions first', 'scan'], ["The sidebar's folder trees start folded", 'places']],
+    '2.0.0': [['Scan and Camera ask the first questions first', 'scan'], ["The sidebar's folder trees start folded", 'places']],
     '1.50.2': [["The sidebar's Projects list is shorter", 'places'], ['Scanning: Turn upright turns each photo', 'scan'], ['Copying a project to a USB drive no longer', 'places'], ['Right-click a USB drive or card in the sidebar', 'places']],
     '1.45.0': [['Export is one window, from the Export button', 'places'], ['Move to… and Copy to… go to any folder', 'places'], ['The scanner list has only the scanners', 'scan'], ['Resolutions in the scan window', 'scan'], ['The scan window can be resized', 'scan'], ['Auto crop each photo in the scan window', 'scan']],
     '1.44.1': [['Scanning on an Epson sheet feeder (the FastFoto)', 'scan'], ['Scanning on an Epson sheet feeder starts', 'scan'], ['The scan window\'s choices', 'scan'], ['The scan window always opens', 'scan']],
