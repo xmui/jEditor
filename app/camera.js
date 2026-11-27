@@ -29,6 +29,11 @@ const Camera = {
         this.el('cam-x').addEventListener('click', () => this.close());
         this.el('cam-min').addEventListener('click', () => this.setSmall(!panel.classList.contains('small')));
         this.el('cam-big').addEventListener('click', () => this.setBig(!panel.classList.contains('big')));
+        // A double-click on the live view makes it bigger, and back (audit A6)
+        this.el('cam-view').addEventListener('dblclick', (e) => {
+            if (e.target.closest('#cam-shoot')) return;
+            this.setBig(!panel.classList.contains('big'));
+        });
         this.el('cam-cancel').addEventListener('click', () => this.close());
         this.el('cam-stop').addEventListener('click', () => this.native().tetherStop());
         this.el('cam-take').addEventListener('click', () => this.shoot());
@@ -110,7 +115,7 @@ const Camera = {
             this.setSmall(false);
             return;
         }
-        if (!app.dirHandle || app.readOnlyMode) {
+        if (!app.dirHandle || app.fixedFiles) {
             app.showToast('Open a project first: photos go into its folder', 3500);
             return;
         }

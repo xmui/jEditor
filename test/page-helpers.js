@@ -3,9 +3,25 @@
 
 const fs = require('fs');
 
+// Playwright's own Chromium, when it's been installed
+// (`npx playwright-core install chromium-headless-shell`; the cloud
+// sessions' start-up hook does it). It comes before /opt/pw-browsers because
+// the cloud containers' Chromium there (Chrome for Testing 153) crashes the
+// whole browser when a folder handle read back from IndexedDB is used, which
+// Recents does every time a test opens a folder.
+function playwrightChromium() {
+    try {
+        const p = require('playwright-core').chromium.executablePath();
+        return p && fs.existsSync(p) ? p : null;
+    } catch (e) {
+        return null;
+    }
+}
+
 function launchOptions() {
     const candidates = [
         process.env.CHROME_PATH,
+        playwrightChromium(),
         '/opt/pw-browsers/chromium',
         '/usr/bin/chromium',
         '/usr/bin/chromium-browser',
@@ -20,6 +36,8 @@ function launchOptions() {
 
 // Shared in-page helpers, injected into every test page.
 const PAGE_HELPERS = `
+    // Settings → Saving → Keep edits in jEditor (edits.js), on or off
+    window.keepEdits = (on) => { app.uiPrefs.keepEdits = !!on; };
     // A fake FileSystemFileHandle backed by in-memory bytes.
     window.makeHandle = (name, bytes, type) => {
         const h = {
@@ -176,8 +194,23 @@ const PAGE_HELPERS = `
     };
 `;
 
+// The first-time questions (first-open.js) answered already, so they
+// don't cover what a test clicks; the tests of them clear this. And Keep
+// edits in jEditor off (Settings → Saving; edits.js), so a turn or a crop
+// is written into the photo as the tests check; the tests of keeping turn
+// it on (keepEdits(true))
+const QUIET_FIRST_OPEN = () => {
+    // (asked: the welcome; askSaving: a project's first time, first-open.js)
+    try { if (!localStorage.getItem('jeditor.firstOpen')) localStorage.setItem('jeditor.firstOpen', JSON.stringify({ asked: true, askSaving: false })); } catch (e) { /* no storage */ }
+    try {
+        const ui = JSON.parse(localStorage.getItem('jeditor.ui') || '{}') || {};
+        if (typeof ui.keepEdits !== 'boolean') localStorage.setItem('jeditor.ui', JSON.stringify({ ...ui, keepEdits: false }));
+    } catch (e) { /* no storage */ }
+};
+
 async function newPage(browser, url) {
     const page = await browser.newPage();
+    await page.addInitScript(QUIET_FIRST_OPEN);
     const issues = { errors: [], failedRequests: [] };
     page.on('pageerror', e => issues.errors.push('PAGEERROR: ' + e.message));
     page.on('console', m => { if (m.type() === 'error') issues.errors.push('CONSOLE: ' + m.text()); });
@@ -190,4 +223,105 @@ async function newPage(browser, url) {
     return { page, issues };
 }
 
-module.exports = { launchOptions, PAGE_HELPERS, newPage };
+// Everything that floats over the page, opened one at a time and measured:
+// dialogs, the guide, Find anything, right-click menus (one at the very
+// top, a long one pushed up from the bottom), a message, the first-time
+// questions, the Open a folder card, the project picker, and the tour's
+// card at each stop.
+// → [{ name, left, top, right, bottom }] of what showed. For the checks
+// that nothing goes up into the window's top bar (style.css: --top-safe).
+async function floatingBoxes(page, { tour = true } = {}) {
+    const out = [];
+    const settle = (ms = 350) => page.waitForTimeout(ms);
+    const measure = async (name, selector) => {
+        const b = await page.evaluate((sel) => {
+            const el = [...document.querySelectorAll(sel)].find(e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden');
+            if (!el) return null;
+            const r = el.getBoundingClientRect();
+            return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+        }, selector);
+        if (b) out.push({ name, ...b });
+        return !!b;
+    };
+    const esc = async () => { await page.keyboard.press('Escape'); await settle(250); };
+    const each = [
+        ['Settings', () => app.keyHandlers()['app.settings'](), '.dialog-overlay:not(.hidden) .dialog'],
+        ['a question (UI.confirm)', () => { UI.confirm('A question, to see where it shows?'); }, '#ui-dialog:not(.hidden) .dialog'],
+        ['the guide', () => Guide.open(), '.guide'],
+        // (not while another dialog shows: the guide, just closed, can still
+        // be going, and Find anything never opens over one: palette.js)
+        ['Find anything', async () => {
+            for (let i = 0; i < 40 && Palette.otherDialog(); i++) await new Promise(r => setTimeout(r, 50));
+            Palette.open();
+        }, '.palette'],
+        ['the first-time questions', () => { FirstOpen.welcome(); }, '.first-open'],
+        ['the Open a folder card', () => { if (typeof OpenCard !== 'undefined' && OpenCard.available()) OpenCard.open(); }, '#open-card:not(.hidden) .dialog'],
+        // (the apps': a click on the project's name in the sidebar)
+        // From the grid: in the single view the sidebar is beside the photo
+        // only in jEditor's own look on a wide window (folders.js:
+        // besideSingle), so at 640 wide or in a theme its name isn't there.
+        // The sidebar open for it (a test before may have left it closed,
+        // in the profile the Mac tests share: then only 14 were measured),
+        // and its card drawn: that waits on the app for the project's path
+        // (places.js: drawCard), so just after the sidebar opens the name
+        // may not be there yet, or be about to be drawn again
+        ['the project picker', async () => {
+            window.__viewWas = document.body.dataset.view;
+            if (window.__viewWas !== 'grid') app.setView('grid');
+            // (the web has no card. Until it's drawn it's empty, and
+            // hidden: .sb-card:empty)
+            if (typeof Picker === 'undefined' || !Host.has('places')) return;
+            window.__railWas = Folders.railOpen();
+            if (!window.__railWas) Folders.toggleRail();
+            const name = () => { const n = document.querySelector('#sb-card .sb-card-name'); return n && n.offsetParent ? n : null; };
+            for (let i = 0; i < 40 && !name(); i++) await new Promise(r => setTimeout(r, 50));
+            await new Promise(r => setTimeout(r, 200)); // (drawn again, if it's going to be)
+            if (name()) Picker.open(name());
+        }, '#sb-picker:not([hidden])']
+    ];
+    for (const [name, open, selector] of each) {
+        await page.evaluate(open).catch(() => null);
+        await settle();
+        await measure(name, selector);
+        await esc();
+    }
+    // The view it was in, and the sidebar as it was, back
+    await page.evaluate(() => { if (window.__railWas === false && Folders.railOpen()) Folders.toggleRail(); if (window.__viewWas && window.__viewWas !== document.body.dataset.view) app.setView(window.__viewWas); }).catch(() => null);
+    await settle(150);
+    // Right-click menus: one asked for at the very top, a long one from the bottom
+    for (const [name, at, n] of [['a right-click menu at the top', 'top', 4], ['a long right-click menu', 'bottom', 40]]) {
+        await page.evaluate(([at, n]) => {
+            const items = Array.from({ length: n }, (_, i) => [`Item ${i + 1}`, () => { }]);
+            app.openContextMenu(items, 200, at === 'top' ? 2 : innerHeight - 4, { above: at !== 'top' });
+        }, [at, n]);
+        await settle(150);
+        await measure(name, '#context-menu');
+        await page.evaluate(() => app.closeContextMenu());
+    }
+    await page.evaluate(() => app.showToast('A message, to see where it shows', 4000));
+    await settle(300);
+    await measure('a message', '.toast');
+    if (tour) {
+        const stops = await page.evaluate(() => { Tour.start(); return Tour.steps.map(s => s.id); });
+        for (let i = 0; i < stops.length; i++) {
+            await page.evaluate((i) => Tour.go(i), i);
+            await page.waitForFunction(() => !Tour.busy, null, { timeout: 10000 }).catch(() => null);
+            await settle(700); // the card slides there
+            await measure(`the tour's card (${stops[i]})`, '.tour-card');
+        }
+        await page.evaluate(() => Tour.end(true));
+        await settle(200);
+    }
+    return out;
+}
+
+// Which of those boxes go into a part of the window's top: [{ name, … }]
+// (a box: { name, left, top, right, bottom }) → ['X over Y', …]
+function overTopBar(boxes, bars) {
+    const hit = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+    const out = [];
+    for (const a of boxes) for (const b of bars) if (hit(a, b)) out.push(`${a.name} (top ${Math.round(a.top)}) over ${b.name} (to ${Math.round(b.bottom)})`);
+    return out;
+}
+
+module.exports = { launchOptions, PAGE_HELPERS, newPage, QUIET_FIRST_OPEN, floatingBoxes, overTopBar };

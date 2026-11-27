@@ -38,8 +38,37 @@
         log('error', text);
     });
 
+    // ---- The app's own folder handles (handles.js), with the switch on ----
+    // (main.js: HOST_HANDLES). Then a path's handle is simply made, and
+    // the pickers and drops give them too
+    // Also what a Mac falls back on when Chromium's folder doesn't arrive
+    // (handleFor): from then on, and on later starts, these are used
+    // (the owner's beta on a fresh Mac: "The folder didn't arrive")
+    const HOST_KEY = 'jeditor.hostHandles';
+    let host = null;
+    function useHost(why) {
+        if (host || !window.HostHandles) return host;
+        host = window.HostHandles.install({
+            call: (op, data) => mac.request('fs', { op, data }),
+            fileUrl: (p) => '/__fs?p=' + encodeURIComponent(p),
+            pathOf: (file) => mac.pathForFile(file),
+            pick: {
+                files: async (o) => { const r = await answer('pickFiles', o); return r.cancelled ? null : r.paths; },
+                save: async (o) => { const r = await answer('pickSave', o); return r.cancelled ? null : r.path; }
+            }
+        });
+        if (why) {
+            log('warn', `Folders: the app's own handles from now on (${why})`);
+            try { localStorage.setItem(HOST_KEY, '1'); } catch (e) { /* kept for this run only */ }
+        }
+        return host;
+    }
+    let hostBefore = false;
+    try { hostBefore = localStorage.getItem(HOST_KEY) === '1'; } catch (e) { /* none kept */ }
+    if (mac.hostHandles || hostBefore) useHost(null);
+
     // ---- A folder handle for a path ----
-    // The app drops the folder onto the page; the drop (and the drag before
+    // With Chromium's handles, the app drops the folder onto the page; the drop (and the drag before
     // it) is taken here, so jEditor never sees it. One at a time.
     let waiting = null; // { resolve, reject } for the drop on its way
     let queue = Promise.resolve();
@@ -61,12 +90,27 @@
         got.then(h => (h && h.kind === 'directory' ? w.resolve(h) : w.reject(new Error('Not a folder'))), w.reject);
     }, true);
 
+    // May it read this folder? Asked of the app (main.js); a host that
+    // doesn't ask (the Tauri app's) is taken at its word
+    const canRead = (path) => answer('canRead', { path }).catch(e => {
+        if (/Unknown request/.test(e && e.message)) return null;
+        throw e;
+    });
+
     function handleFor(path) {
+        if (host) {
+            // What macOS won't let it read is said now, not found empty later
+            return canRead(path).then(() => {
+                const h = host.folder(path);
+                remember(h, path);
+                return h;
+            });
+        }
         const run = queue.then(() => new Promise((resolve, reject) => {
             const timer = setTimeout(() => {
                 waiting = null;
                 reject(new Error('The folder didn\'t arrive: ' + path));
-            }, 10000);
+            }, 5000);
             waiting = {
                 resolve: (h) => { clearTimeout(timer); resolve(h); },
                 reject: (e) => { clearTimeout(timer); reject(e); }
@@ -74,7 +118,29 @@
             answer('mint', { path }).catch(e => { if (waiting) waiting.reject(e); waiting = null; });
         }));
         queue = run.catch(() => { });
-        return run.then(h => { remember(h, path); return h; });
+        return run.catch(async (e) => {
+            // Not there, or not a folder: that's the answer. Anything else
+            // (the drop never came): the app's own handle for it instead
+            if (/^Not a folder|^macOS isn't letting/.test(e && e.message) || !window.HostHandles) throw e;
+            const stat = await mac.request('fs', { op: 'stat', data: { path } }).catch(() => null);
+            if (!stat || stat.kind !== 'directory') throw e;
+            useHost(e && e.message || 'no folder came');
+            return host.folder(path);
+        }).then(h => { remember(h, path); return h; });
+    }
+
+    // A folder opened by its path (Recent, the sidebar, one the app was
+    // given): what stops it is said, in a dialog, as Open a folder says it
+    // → true, or the error
+    async function openByPath(a, path) {
+        try {
+            await a.openDirectory(await handleFor(path));
+            return true;
+        } catch (e) {
+            log('error', 'Opening the folder failed: ' + (e && e.message || e));
+            if (typeof UI !== 'undefined' && UI.alert) UI.alert({ title: 'Couldn\'t open the folder', message: String(e && e.message || e) });
+            return e;
+        }
     }
 
     // ---- The folder picker: the Mac's own ----
@@ -144,17 +210,29 @@
     }, true);
 
     // → the folder's path, or null if it never came through here
+    // Whether two handles are the same folder, asked for 1.5 seconds at most
+    function askedSame(a, b) {
+        let timer = null;
+        const late = new Promise(res => { timer = setTimeout(() => res(false), 1500); });
+        return Promise.race([Promise.resolve().then(() => a.isSameEntry(b)).catch(() => false), late])
+            .then((same) => { clearTimeout(timer); return !!same; });
+    }
+
     async function folderPath(handle) {
         if (!handle || handle.kind !== 'directory') return null;
+        if (host && host.isOurs(handle)) return host.pathOf(handle);
+        if (typeof handle.photosLibrary === 'string') return LIBRARY + handle.photosLibrary;
         const name = String(handle.name || '').toLowerCase();
         const nameOf = (p) => (p.split('/').filter(Boolean).pop() || '').toLowerCase();
+        // The very handle first (no asking); then only folders of the same
+        // name are asked, each for a moment at most: on a network drive
+        // isSameEntry can take seconds, or never answer (WebView2 158 on
+        // Z:, 22 November), which held every open up
         const look = async (list) => {
-            // Same name first: a quick check before asking each one
-            const ordered = [...list.filter(r => nameOf(r.path) === name), ...list.filter(r => nameOf(r.path) !== name)];
-            for (const r of ordered) {
-                try {
-                    if (r.handle === handle || await r.handle.isSameEntry(handle)) return r;
-                } catch (e) { /* gone */ }
+            const mine = list.find(r => r.handle === handle);
+            if (mine) return mine;
+            for (const r of list.filter(r => nameOf(r.path) === name)) {
+                if (await askedSame(r.handle, handle)) return r;
             }
             return null;
         };
@@ -178,9 +256,155 @@
         return r ? r.path : null;
     }
 
+    // ---- The Photos library (photos.js) ----
+    // An album (or the whole library: id '') as a folder handle the page can
+    // read like any other, with its photos as file handles: getFile() is the
+    // photo as it is now (from iCloud if need be), getThumbnail(w) the
+    // library's own thumbnail, peek() its size and date without reading it.
+    // A photo can be written (createWritable): what's written is saved back
+    // as a Photos edit on top of the photo as it is now, every edit before
+    // kept by Photos (photos.mm: save). Nothing can be added, renamed or
+    // removed: that's for Photos. Its path is "photos-library:<id>".
+    const LIBRARY = 'photos-library:';
+    const SHOWN = /\.(jpe?g|png|gif|webp)$/i; // served as they are; the rest come as JPEG (photos.mm)
+    const denied = (what) => new DOMException(`${what}: the Photos library can't be changed`, 'NotAllowedError');
+    const notFound = (name) => new DOMException(`${name} isn't in this album`, 'NotFoundError');
+    const photoUrl = (kind, id) => `/__photos/${kind}/${encodeURIComponent(id)}`;
+    async function fetched(url) {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error((await r.text().catch(() => '')) || 'That photo couldn\'t be read');
+        return r.blob();
+    }
+    // What a writable is given, as bytes
+    async function bytesOf(d) {
+        if (d instanceof Blob) return new Uint8Array(await d.arrayBuffer());
+        if (typeof d === 'string') return new TextEncoder().encode(d);
+        if (d instanceof ArrayBuffer) return new Uint8Array(d);
+        if (ArrayBuffer.isView(d)) return new Uint8Array(d.buffer, d.byteOffset, d.byteLength);
+        throw new TypeError('Can\'t write that');
+    }
+    // A FileSystemWritableFileStream's calls (write, seek, truncate, close,
+    // abort), kept in memory; close() hands the whole photo to save(bytes)
+    function memoryWritable(start, save) {
+        let buf = start, pos = 0, done = false;
+        const grow = (n) => { if (n > buf.length) { const b = new Uint8Array(n); b.set(buf); buf = b; } };
+        const open = () => { if (done) throw new DOMException('The writable is closed', 'InvalidStateError'); };
+        return {
+            async write(d) {
+                open();
+                if (d && typeof d === 'object' && !(d instanceof Blob) && !(d instanceof ArrayBuffer) && !ArrayBuffer.isView(d) && 'type' in d) {
+                    if (d.type === 'seek') { pos = d.position; return; }
+                    if (d.type === 'truncate') { this.truncate(d.size); return; }
+                    if (d.position != null) pos = d.position;
+                    d = d.data;
+                }
+                const b = await bytesOf(d);
+                grow(pos + b.length);
+                buf.set(b, pos);
+                pos += b.length;
+            },
+            async seek(p) { open(); pos = p; },
+            async truncate(n) { open(); if (n < buf.length) buf = buf.slice(0, n); else grow(n); if (pos > n) pos = n; },
+            async close() { open(); done = true; await save(buf); },
+            async abort() { done = true; }
+        };
+    }
+    // What Photos said, in plain words: its own errors are numbers
+    // ("PHPhotosErrorDomain error 3300")
+    function photosSaid(e) {
+        const m = String((e && e.message) || e || '');
+        if (/isn't allowed|not authori[sz]ed|3311|denied/i.test(m)) return 'jEditor isn\'t allowed to change photos in the Photos library (System Settings → Privacy & Security → Photos)';
+        if (/network|iCloud|3164|3169|offline/i.test(m)) return 'the photo is in iCloud and couldn\'t be downloaded just now';
+        if (/isn't there|not found|3201|3300/i.test(m)) return 'that photo isn\'t in the Photos library any more';
+        if (/PHPhotosErrorDomain|error \d+|NSCocoaErrorDomain/i.test(m)) return 'Photos didn\'t take the change';
+        return m || 'Photos didn\'t take the change';
+    }
+    function libraryFile(a, name) {
+        const created = a.created || 0;
+        const when = () => a.modified || created;
+        return {
+            kind: 'file',
+            name,
+            photosAsset: a.id,
+            async getFile() {
+                const blob = await fetched(photoUrl('full', a.id));
+                // (listed without its size, in a big library: photos.mm)
+                if (!a.fileSize) a.fileSize = blob.size;
+                return new File([blob], name, { type: blob.type, lastModified: when() });
+            },
+            getThumbnail: (w) => fetched(photoUrl('thumb', a.id) + '?w=' + Math.round(w || 320) + '&v=' + when()),
+            peek: () => ({ size: a.fileSize || 0, lastModified: when(), width: a.w || 0, height: a.h || 0 }),
+            async isSameEntry(o) { return !!o && o.photosAsset === a.id; },
+            async queryPermission() { return 'granted'; },
+            async requestPermission() { return 'granted'; },
+            // Saved back as a Photos edit when it's closed (the photo as it is
+            // now, then what jEditor wrote over it)
+            async createWritable(o) {
+                const start = o && o.keepExistingData ? new Uint8Array(await (await this.getFile()).arrayBuffer()) : new Uint8Array(0);
+                return memoryWritable(start, async (bytes) => {
+                    let r;
+                    try {
+                        r = await answer('photosSave', { id: a.id, bytes });
+                    } catch (e) {
+                        throw new Error(photosSaid(e));
+                    }
+                    Object.assign(a, { modified: r.modified || Date.now(), fileSize: r.fileSize || bytes.length, w: r.w || a.w, h: r.h || a.h });
+                    // Saved back: the page says so, quietly (script.js)
+                    window.dispatchEvent(new CustomEvent('jeditor-photos-saved', { detail: { name } }));
+                });
+            },
+            async move() { throw denied(name); },
+            async remove() { throw denied(name); }
+        };
+    }
+    async function photosAlbum(id = '', name = 'Photos library') {
+        id = String(id || '');
+        let files = null;
+        const list = async () => {
+            if (files) return files;
+            const { assets } = await answer('photosAssets', { id });
+            // Two photos of the same name (two cameras' IMG_0001): the second is "IMG_0001 (2)"
+            const used = new Map();
+            files = assets.map(a => {
+                let n = String(a.originalFilename || 'Photo.jpg');
+                if (!SHOWN.test(n)) n = n.replace(/\.[^.]*$/, '') + '.jpg';
+                const k = n.toLowerCase();
+                const count = (used.get(k) || 0) + 1;
+                used.set(k, count);
+                if (count > 1) n = n.replace(/(\.[^.]*)?$/, ` (${count})$1`);
+                return libraryFile(a, n);
+            });
+            return files;
+        };
+        return {
+            kind: 'directory',
+            name,
+            photosLibrary: id,
+            async *entries() { for (const f of await list()) yield [f.name, f]; },
+            async *values() { for (const f of await list()) yield f; },
+            async *keys() { for (const f of await list()) yield f.name; },
+            [Symbol.asyncIterator]() { return this.entries(); },
+            async getFileHandle(n, o) {
+                if (o && o.create) throw denied(n);
+                const f = (await list()).find(x => x.name === n);
+                if (!f) throw notFound(n);
+                return f;
+            },
+            async getDirectoryHandle(n, o) { throw o && o.create ? denied(n) : notFound(n); },
+            async removeEntry(n) { throw denied(n); },
+            async resolve() { return null; },
+            async isSameEntry(o) { return !!o && o.photosLibrary === id; },
+            // Its photos may be edited (not added to or removed: denied above)
+            async queryPermission() { return 'granted'; },
+            async requestPermission() { return 'granted'; }
+        };
+    }
+
     // ---- What the app does for jEditor ----
     let onUpdateProgress = null;
     let onClosing = null; // holdClose
+    // Settings → Projects: photo apps' libraries opened as folders (places.js)
+    const libraries = () => { const a = jeditor(); return !!(a && a.uiPrefs && a.uiPrefs.openLibraries); };
     let nextCopy = 1;
     const copying = new Map(); // folder copy id → progress(done, total)
 
@@ -236,15 +460,39 @@
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
         platform: mac.platform,
-        features: ['reveal', 'windows', 'places'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions'] : [], ['themes']),
+        // A line in the app's log (app/script.js: each step of an open)
+        log(level, text) {
+            log(level === 'error' || level === 'warn' ? level : 'info', text);
+        },
+        features: ['reveal', 'windows', 'places', 'folderMove', 'menuBar', 'systemFonts', 'appReset'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions'] : [], ['themes'], mac.platform === 'mac' && mac.photos ? ['photosLibrary', 'photosAdd'] : []),
         // jEditor's storage on this Mac: one folder per project (see
         // app/folder-cache.js), in the app's own private storage
         async dataDir() {
+            // The Tauri app: a real folder (WebKit's OPFS differs between versions)
+            if (host && mac.dataPath) return host.folder(mac.dataPath);
             const root = await navigator.storage.getDirectory();
             return root.getDirectoryHandle('jeditor-data', { create: true });
         },
-        // Where a folder handle is on disk (null: not known)
+        // Where a folder handle is on disk (null: not known); a Photos
+        // library album's is "photos-library:<id>"
         folderPath,
+        // ---- The Photos library (photosLibrary) ----
+        // Whether jEditor may see it: 'granted', 'limited', 'denied',
+        // 'restricted' or 'ask'; ask: true has macOS ask first
+        async photosAccess(ask = false) {
+            return (await answer('photosAccess', { ask: !!ask })).status;
+        },
+        // What's in it → [{ id, kind: favourites | recent | album, name, count }]
+        async photosCollections() {
+            return (await answer('photosLibrary')).collections;
+        },
+        // An album ('' : the whole library) as a folder handle (its photos editable)
+        photosAlbum,
+        // Photos on this Mac (paths) put into the library, in the album
+        // called `album` (made if there's none) → { added, album: { id, name } }
+        async photosAdd(paths, album = '') {
+            return answer('photosAdd', { paths, album });
+        },
         // A folder handle for a path, with permission to edit it
         async folderHandle(path) {
             const ok = (await answer('exists', { paths: [path] })).exists[0];
@@ -252,11 +500,23 @@
             return handleFor(path);
         },
         // Open a folder by its path (a project from the stored list)
+        // The paths of folders seen with this name (newest first): for a
+        // recent folder kept before its path was (app/recents.js), found
+        // without asking the folder itself
+        async pathsNamed(name) {
+            const want = String(name || '').toLowerCase();
+            const nameOf = (p) => (String(p).split(/[\\/]/).filter(Boolean).pop() || '').toLowerCase();
+            const all = [...known, ...(await loadStored())].sort((a, b) => b.at - a.at);
+            const out = [];
+            for (const r of all) if (r && typeof r.path === 'string' && nameOf(r.path) === want && !out.some(p => p.toLowerCase() === r.path.toLowerCase())) out.push(r.path);
+            return out;
+        },
         async openPath(path) {
             const a = await whenReady();
             const ok = (await answer('exists', { paths: [path] })).exists[0];
             if (!ok) return false;
-            await a.openDirectory(await handleFor(path));
+            // (there, but not opened: said here, so it isn't "not found")
+            await openByPath(a, path);
             return true;
         },
         // Which of these folders are still there
@@ -273,9 +533,13 @@
         async places() {
             return answer('places');
         },
+        // The font families installed on this computer → ['Avenir', 'Helvetica', …]
+        async fonts() {
+            return (await answer('fonts')).fonts || [];
+        },
         // A folder's folders → { path, name, parent, folders: [{ name, path }], photos, more }
         async listDir(path) {
-            return answer('listDir', { path });
+            return answer('listDir', { path, libraries: libraries() });
         },
         // The projects (folders) in a folder, newest first → [{ name, path, modified (ms) }]
         async listProjects(path) {
@@ -294,7 +558,7 @@
         },
         // Photos in each folder and its subfolders → { counts: [n, -1 if gone], limit }
         async countPhotos(paths) {
-            return answer('countPhotos', { paths });
+            return answer('countPhotos', { paths, libraries: libraries() });
         },
         // Ejects a drive → { ok, error? }
         async eject(path) {
@@ -320,6 +584,24 @@
                     if (progress && typeof msg.done === 'number' && msg.done > last) progress(msg.done, msg.total);
                     return { to: msg.to };
                 })
+                .finally(() => copying.delete(id));
+            done.copyId = id;
+            return done;
+        },
+        // ---- Moving the projects folder (folderMove; app/folder-move.js) ----
+        // What's in a folder: { folders, files, bytes }, and with dest the
+        // room there: { free (-1: unknown), drive, sameDrive, refused }
+        async folderSize(path, dest) {
+            return answer('folderSize', { path, dest });
+        },
+        // Everything in path into dest, each item copied, checked and only
+        // then removed; progress(done, total, moved) → { moved, left:
+        // [{ name, why }], error, stopped }. Has a copyId, for cancelCopy.
+        moveFolder(path, dest, progress) {
+            const id = nextCopy++;
+            copying.set(id, progress || (() => { }));
+            const done = answer('moveFolder', { path, dest, copy: id })
+                .then(msg => ({ moved: msg.moved || 0, left: msg.left || [], error: msg.error || null, stopped: !!msg.stopped }))
                 .finally(() => copying.delete(id));
             done.copyId = id;
             return done;
@@ -366,14 +648,14 @@
         windowAction(action) {
             if (action !== 'resizeTop') mac.request('windowAction', { action });
         },
-        // A theme's menus for the Mac's menu bar: [{ label, items: [{ id,
-        // label, key, enabled } or '—'] }], or null for the app's own. A
-        // command chosen comes back as a 'menu' message, 'theme:' + its id
-        ...(mac.platform === 'mac' ? {
-            setMenus(menus) {
-                mac.request('menus', { menus: menus || null });
-            }
-        } : {}),
+        // The menu bar's menus: [{ label, items: [{ id, label, key,
+        // enabled } or '—'] }], a theme's or (own: true) jEditor's own
+        // (menubar.js), or null for the app's usual ones. A command chosen
+        // comes back as a 'menu' message, 'theme:' + its id. Linux takes
+        // only jEditor's own: a theme draws its menus in the window there.
+        setMenus(menus, { own = false } = {}) {
+            mac.request('menus', { menus: menus || null, own: !!own });
+        },
         // The other windows' projects → [{ id, name, path, folders }]
         async windows() {
             return (await answer('windows')).windows;
@@ -396,6 +678,12 @@
         // beta: betas count too (Settings → Updates → Beta builds)
         async checkUpdate({ beta = false } = {}) {
             return answer('checkUpdate', { beta: !!beta });
+        },
+        // Settings → Troubleshooting (app/reset.js): the browser's caches
+        // cleared, for full this app's own files too, then jEditor starts
+        // again → true when it's restarting
+        async resetApp({ full = false } = {}) {
+            return !!(await answer('resetApp', { full: !!full })).ok;
         },
         // Downloads the newest .dmg, opens it in Finder and quits, so
         // jEditor can be dragged into Applications over this one.
@@ -460,7 +748,8 @@
     // The traffic lights: in line with the top row of pills (their centre:
     // the gutter plus half a pill, which the UI scale zooms), and at the
     // gutter's distance from the left edge; over Adjust and Paint, in line
-    // with the mode chip in their head. A light is 14px.
+    // with the mode chip in their head; on the home page, with jEditor in its
+    // top bar, which leaves room for them. A light is 14px.
     let lastLights = '';
     let themed = false; // a theme draws the title bar (titleBar above)
     const reportLights = () => {
@@ -469,7 +758,8 @@
         const scale = parseFloat(css.getPropertyValue('--ui-scale')) || 1;
         const gutter = px('--gutter');
         const chip = document.querySelector('.mode-float.over-mode:not(.hidden)');
-        const r = chip && chip.getBoundingClientRect();
+        const home = document.querySelector('.drop-zone:not(.hidden) .home-brand');
+        const r = chip ? chip.getBoundingClientRect() : home ? home.getBoundingClientRect() : null;
         const middle = r && r.height ? r.top + r.height / 2 : px('--mac-drag') + gutter + (px('--ctl-lg') * scale) / 2;
         const at = { x: Math.max(12, gutter), y: middle - 7 };
         const key = at.x + ',' + at.y;
@@ -491,6 +781,11 @@
         scan: 'scanner', camera: 'camera'
     };
     const MODE_SYMBOLS = { photos: 'square.grid.2x2', adjust: 'slider.horizontal.3', paint: 'paintbrush' };
+    // Adjust's and Paint's own buttons (script.js: MODE_BAR), pressed and not
+    const BAR_SYMBOLS = {
+        before: ['square.split.2x1', 'square.split.2x1.fill'], reset: ['arrow.counterclockwise'], copy: ['doc.on.doc'], paste: ['doc.on.clipboard'],
+        undo: ['arrow.uturn.backward'], redo: ['arrow.uturn.forward']
+    };
     const PRESSED = { info: 'info.circle.fill', strip: 'film.fill', fit: 'rectangle.inset.filled', fullscreen: 'arrow.down.right.and.arrow.up.left' };
     const $ = (id) => document.getElementById(id);
     const shown = (el) => !!el && !el.classList.contains('hidden') && !el.classList.contains('host-missing') && !el.classList.contains('exp-off');
@@ -500,23 +795,64 @@
         const a = jeditor();
         const open = !!(a && a.dirHandle) && shown(a.elements.mainInterface);
         if (!open) return { visible: false, title: 'jEditor', subtitle: '', items: [] };
-        // Over Adjust and Paint their head is the top row (style.css)
-        if (typeof Modes !== 'undefined' && Modes.current() !== 'photos') return { visible: false, title: $('file-name-text').textContent || a.dirHandle.name, subtitle: '', items: [] };
+        const modeItem = () => {
+            const mode = Modes.current();
+            const label = (m) => (Modes.LIST.find(x => x[0] === m) || [])[1] || m;
+            return {
+                id: 'mode', kind: 'menu', symbol: MODE_SYMBOLS[mode], label: label(mode), tooltip: ($('mode-chip-float') || {}).title || label(mode), navigational: true,
+                menu: Modes.shown().map(([m, l]) => ({ id: m, label: l, symbol: MODE_SYMBOLS[m], checked: m === mode }))
+            };
+        };
+        // Over Adjust and Paint the toolbar keeps just the mode, the same
+        // button as in Photos, and their head starts below it (style.css).
+        // (Stepped aside, the toolbar's title bar still took the press on
+        // the page's own chip there: hard to press, Needs fixing 2026-11-05)
+        // The sidebar open (the owner's pick A, 21 November): its own row's
+        // buttons are the toolbar's, beside the lights, on the one row (Photos
+        // · Adjust · Paint as icons, its button, Find anything), and the title
+        // starts at its edge (a space before it, fitted: titleAt). Its own
+        // row doesn't show under the toolbar (style.css)
+        const railEl = document.querySelector('.folder-rail');
+        const side = typeof Folders !== 'undefined' && Folders.railOpen() && !!railEl && !!railEl.getClientRects().length;
+        // The sidebar dragged narrow (to 200px, script.js: SIDEBARS), its
+        // buttons up there make room, as the page's own row does (style.css):
+        // Find anything goes to the toolbar's other end, then the three modes
+        // become the one mode button. By the width it was dragged to, not the
+        // width it is (which is at least theirs: main.js, toolbarLead)
+        const css = getComputedStyle(document.documentElement);
+        const wanted = (a.uiPrefs.sides || {}).rail || parseFloat(css.getPropertyValue('--rail-w')) || 232;
+        const findHere = wanted >= 228, threeModes = wanted >= 212;
+        const findItem = typeof Palette !== 'undefined' ? [{ id: 'find', kind: 'button', symbol: 'magnifyingglass', label: 'Find anything', tooltip: 'Find a photo or folder (⌘F)', navigational: true }] : [];
+        const findLater = side && !findHere ? findItem : [];
+        const lead = () => {
+            const shownModes = Modes.shown();
+            return [
+                threeModes
+                    ? { id: 'modes', kind: 'segment', segments: shownModes.map(([, l]) => l), symbols: shownModes.map(([m]) => MODE_SYMBOLS[m] || 'circle'), selected: shownModes.findIndex(([m]) => m === Modes.current()), navigational: true }
+                    : modeItem(),
+                { id: 'rail', kind: 'button', symbol: 'sidebar.left', label: 'Sidebar', tooltip: said($('fb-rail').title), navigational: true },
+                ...(findHere ? findItem : []),
+                { id: 'space', kind: 'space', navigational: true }
+            ];
+        };
+        const titleAt = side ? Math.round(railEl.getBoundingClientRect().right + 12) : 0;
+        // The sidebar's button beside the lights in every mode, open or
+        // closed (the owner's pick, 25 November), as Finder's and Mail's
+        const railItem = { id: 'rail', kind: 'button', symbol: 'sidebar.left', label: 'Sidebar', tooltip: said($('fb-rail').title), navigational: true };
+        if (typeof Modes !== 'undefined' && Modes.current() !== 'photos') return modeModel(a, Modes.current(), side ? lead() : [railItem, modeItem()], titleAt, findLater);
+        if (side && typeof Modes !== 'undefined') return sideModel(a, [...lead(), { kind: 'flexible' }], titleAt, findLater);
         const items = [];
         const bar = $('folder-bar');
         const browsing = shown(bar);
-        if (browsing) items.push({ id: 'rail', kind: 'button', symbol: 'sidebar.left', label: 'Folder list', tooltip: said($('fb-rail').title), navigational: true });
+        if (typeof Folders !== 'undefined' && Folders.enabled()) items.push({ ...railItem, label: 'Folder list' });
         // The mode chip, as in the folder pill (or on its own in the single
         // view): not while the sidebar shows its own switch
-        const modeChip = [$('mode-chip-bar'), $('mode-float')].find(shown);
-        if (modeChip && typeof Modes !== 'undefined') {
-            const mode = Modes.current();
-            const label = (m) => (Modes.LIST.find(x => x[0] === m) || [])[1] || m;
-            items.push({
-                id: 'mode', kind: 'menu', symbol: MODE_SYMBOLS[mode], label: label(mode), tooltip: modeChip.title, navigational: true,
-                menu: Modes.shown().map(([m, l]) => ({ id: m, label: l, symbol: MODE_SYMBOLS[m], checked: m === mode }))
-            });
-        }
+        // (In jEditor's own look it's the row of modes, floating while the
+        // sidebar's closed: under this toolbar it doesn't show, so it's here)
+        const row = $('mode-row');
+        const rowFloats = !!row && row.classList.contains('float') && !row.classList.contains('hidden');
+        const modeChip = [$('mode-chip-bar'), $('mode-float')].find(shown) || rowFloats;
+        if (modeChip && typeof Modes !== 'undefined') items.push(modeItem());
         if (browsing) items.push({ id: 'scope', kind: 'segment', segments: ['All photos', 'Folders'], selected: $('fb-all').classList.contains('active') ? 0 : 1, navigational: true });
         items.push({ kind: 'flexible' });
         const chip = $('fb-filter-chip');
@@ -537,14 +873,122 @@
             else items.push({ ...entry, kind: 'button', tooltip: said(b.title) });
         }
         items.push({ id: 'more', kind: 'menu', symbol: 'ellipsis.circle', label: 'More', menu: more });
-        if (browsing) items.push({ id: 'search', kind: 'search', value: $('fb-search').value, placeholder: 'Search' });
+        // Finding a photo or folder by name is Find anything's, as on the
+        // page (⌘F and / open it there too): the folder pill has no search box
+        if (browsing && typeof Palette !== 'undefined') items.push({ id: 'find', kind: 'button', symbol: 'magnifyingglass', label: 'Find anything', tooltip: 'Find a photo or folder (⌘F)' });
         const crumbs = $('fb-crumbs');
         const where = browsing && crumbs ? crumbs.textContent.replace(/\s+/g, ' ').trim() : '';
         return {
             visible: true,
             title: $('file-name-text').textContent || a.dirHandle.name,
             subtitle: [a.dirHandle.name, where, $('file-count').textContent].filter(Boolean).join(' · '),
-            items
+            items,
+            ...photosCustomize(a, items)
+        };
+    }
+
+    // Photos' toolbar buttons in Apple's Customize Toolbar sheet: the same
+    // as Settings → Toolbar's (script.js: placement), so one setting, two
+    // ways to it. Taken off, a button goes under More; added, it's on
+    function photosCustomize(a, items) {
+        const customizable = items.filter(i => /^hc:/.test(i.id || '')).map(i => i.id);
+        const extra = [];
+        for (const key of a.uiPrefs.order) {
+            const b = a.headerButton(key);
+            if (!b || customizable.includes('hc:' + key) || b.classList.contains('host-missing') || b.classList.contains('exp-off')) continue;
+            if ((key === 'scan' || key === 'camera') && !Host.has(key)) continue;
+            extra.push({ id: 'hc:' + key, kind: 'button', symbol: SYMBOLS[key] || (key === 'view' ? 'square.grid.2x2' : 'circle'), label: a.HC_LABELS[key] || key, tooltip: said(b.title) });
+        }
+        return { customize: true, customizable: [...customizable, ...extra.map(e => e.id)], extra };
+    }
+
+    // Adjust and Paint (the owner's pick A, 25 November): one row. The file's
+    // name is the title and its size the subtitle; their buttons, Settings,
+    // ⋯ and Done at the right, as in Apple Photos' edit view. Their own
+    // pills don't show under it (style.css). Their buttons (MODE_BAR) can
+    // be added and taken off in Apple's sheet, as in Settings → Toolbar
+    function modeModel(a, mode, leadItems, titleAt, findLater) {
+        const pre = mode === 'adjust' ? 'adj' : 'paint';
+        const list = (a.MODE_BAR && a.MODE_BAR[mode]) || [];
+        const onBar = (a.uiPrefs.modeBar && a.uiPrefs.modeBar[mode]) || [];
+        const item = ([key, id, label]) => {
+            const b = $(id);
+            const on = !!b && b.getAttribute('aria-pressed') === 'true';
+            const sym = BAR_SYMBOLS[key] || ['circle'];
+            return { id: 'mb:' + key, kind: 'button', symbol: (on && sym[1]) || sym[0], label, tooltip: said(b ? b.title : label), enabled: !!b && !b.disabled };
+        };
+        const bar = onBar.map(k => list.find(x => x[0] === k)).filter(Boolean).map(item);
+        const extra = list.filter(([k]) => !onBar.includes(k)).map(item);
+        const done = $(pre + '-done');
+        const file = ($(pre + '-file') || {}).textContent || $('file-name-text').textContent || (a.dirHandle && a.dirHandle.name) || '';
+        return {
+            visible: true, title: file, subtitle: (($(pre + '-dims') || {}).textContent || '').trim(), titleAt,
+            customize: true, customizable: list.map(([k]) => 'mb:' + k), extra,
+            items: [
+                ...leadItems, { kind: 'flexible' }, ...bar, ...findLater,
+                { id: 'mset', kind: 'button', symbol: 'gearshape', label: 'Settings', tooltip: said(($(pre + '-settings') || {}).title || 'Settings') },
+                { id: 'mmore', kind: 'button', symbol: 'ellipsis.circle', label: 'More', tooltip: said(($(pre + '-more') || {}).title || 'More') },
+                { id: 'mdone', kind: 'button', prominent: true, label: 'Done', tooltip: said(done ? done.title : 'Done'), enabled: !!done && !done.disabled }
+            ]
+        };
+    }
+
+    // What Apple's sheet left in the toolbar ('id,id,…', in order), kept
+    // where Settings → Toolbar keeps it
+    function customized(list) {
+        const a = jeditor();
+        if (!a) return;
+        const now = String(list || '').split(',').filter(Boolean);
+        const mode = typeof Modes !== 'undefined' ? Modes.current() : 'photos';
+        if (mode !== 'photos') {
+            const known = ((a.MODE_BAR || {})[mode] || []).map(([k]) => k);
+            a.uiPrefs.modeBar[mode] = now.filter(id => /^mb:/.test(id)).map(id => id.slice(3)).filter(k => known.includes(k));
+        } else {
+            const keys = now.filter(id => /^hc:/.test(id)).map(id => id.slice(3));
+            const p = a.uiPrefs;
+            for (const k of p.order) {
+                if (keys.includes(k)) p.placement[k] = 'main';
+                else if (p.placement[k] === 'main') p.placement[k] = 'more';
+            }
+            // In the toolbar's order, in the places those had in Settings'
+            const slots = p.order.map((k, i) => keys.includes(k) ? i : -1).filter(i => i >= 0);
+            slots.forEach((at, n) => { p.order[at] = keys[n]; });
+        }
+        a.saveUiPrefs();
+        a.applyUiPrefs();
+        if (a.renderCustomizePanel && a.elements.customizePanel && !a.elements.customizePanel.classList.contains('hidden')) a.renderCustomizePanel();
+    }
+
+    // The sidebar open: the right-hand items as always (sort, the page's
+    // own buttons, More), after the sidebar's own at the left
+    function sideModel(a, items, titleAt, findLater = []) {
+        const chip = $('fb-filter-chip');
+        if (shown(chip)) items.push({ id: 'filter', kind: 'button', symbol: 'line.3.horizontal.decrease.circle.fill', label: chip.textContent.trim(), tooltip: chip.title });
+        const sort = $('sort-mode');
+        items.push({
+            id: 'sort', kind: 'menu', symbol: 'arrow.up.arrow.down', label: sort.selectedOptions[0] ? sort.selectedOptions[0].textContent : 'Sort', tooltip: 'Sort by',
+            menu: [...sort.options].map(o => ({ id: o.value, label: o.textContent, checked: o.selected }))
+        });
+        const more = [{ id: 'rename', label: 'Rename…', symbol: 'pencil' }, { separator: true }];
+        for (const b of $('header-controls').querySelectorAll('button[data-hc]')) {
+            if (!shown(b)) continue;
+            const key = b.dataset.hc;
+            const on = b.getAttribute('aria-pressed') === 'true' || b.classList.contains('active');
+            const symbol = key === 'view' ? (shown(b.querySelector('.icon-grid')) ? 'square.grid.2x2' : 'photo') : (on && PRESSED[key]) || SYMBOLS[key] || 'circle';
+            const entry = { id: 'hc:' + key, label: b.getAttribute('aria-label') || b.title, symbol, enabled: !b.disabled };
+            if (b.classList.contains('hc-extra')) more.push(entry);
+            else items.push({ ...entry, kind: 'button', tooltip: said(b.title) });
+        }
+        items.push({ id: 'more', kind: 'menu', symbol: 'ellipsis.circle', label: 'More', menu: more }, ...findLater);
+        const crumbs = $('fb-crumbs');
+        const where = shown($('folder-bar')) && crumbs ? crumbs.textContent.replace(/\s+/g, ' ').trim() : '';
+        return {
+            visible: true,
+            title: $('file-name-text').textContent || a.dirHandle.name,
+            subtitle: [a.dirHandle.name, where, $('file-count').textContent].filter(Boolean).join(' · '),
+            titleAt,
+            items,
+            ...photosCustomize(a, items)
         };
     }
 
@@ -569,17 +1013,21 @@
         const click = (el) => el && el.click();
         if (id === 'rail') click($('fb-rail'));
         else if (id === 'mode') Modes.go(String(value));
+        else if (id === 'modes') { const m = Modes.shown()[Number(value)]; if (m) Modes.go(m[0]); }
         else if (id === 'scope') click(Number(value) === 0 ? $('fb-all') : $('fb-folders'));
         else if (id === 'filter') click($('fb-filter-chip'));
         else if (id === 'sort') {
             const s = $('sort-mode');
             s.value = value;
             s.dispatchEvent(new Event('change', { bubbles: true }));
-        } else if (id === 'search') {
-            const input = $('fb-search');
-            input.value = String(value);
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-        } else if (id === 'more' && value === 'rename') click($('file-name'));
+        } else if (id === 'find') Palette.open();
+        else if (id === 'more' && value === 'rename') click($('file-name'));
+        else if (id === 'customized') customized(value);
+        else if (/^mb:/.test(id) || /^m(set|more|done)$/.test(id)) {
+            const mode = Modes.current(), pre = mode === 'adjust' ? 'adj' : 'paint';
+            const entry = /^mb:/.test(id) && ((jeditor().MODE_BAR || {})[mode] || []).find(([k]) => k === id.slice(3));
+            click(entry ? $(entry[1]) : $(pre + '-' + { mset: 'settings', mmore: 'more', mdone: 'done' }[id]));
+        }
         else {
             const key = String(id === 'more' ? value : id).replace(/^hc:/, '');
             click($('header-controls').querySelector(`button[data-hc="${key}"]`));
@@ -591,19 +1039,23 @@
         document.documentElement.classList.add('native-toolbar');
         whenReady().then(() => {
             const watch = new MutationObserver(sendToolbar);
-            for (const el of [document.querySelector('header'), $('folder-bar'), $('mode-float')].filter(Boolean)) {
+            for (const el of [document.querySelector('header'), $('folder-bar'), $('mode-float'), $('mode-row')].filter(Boolean)) {
                 watch.observe(el, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class', 'aria-pressed', 'disabled', 'title', 'aria-label'] });
             }
             watch.observe(jeditor().elements.mainInterface, { attributes: true, attributeFilter: ['class'] });
             // Adjust and Paint opened or closed: the toolbar steps aside or
             // comes back then, not when something else on the page changes
             for (const el of [$('adjust-editor'), $('paint-editor')].filter(Boolean)) watch.observe(el, { attributes: true, attributeFilter: ['class'] });
+            // ...and their own buttons and file, which the toolbar has now:
+            // Before pressed, Undo there or not, the file's name and size
+            for (const el of document.querySelectorAll('.adj-head, .paint-head')) watch.observe(el, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['aria-pressed', 'disabled', 'title', 'class'] });
             $('sort-mode').addEventListener('change', sendToolbar);
-            // ⌘F and /: the toolbar's search field, not the hidden one
-            $('fb-search').addEventListener('focus', (e) => {
-                e.target.blur();
-                mac.request('toolbarSearch');
-            });
+            // The sidebar's width: where the title starts (titleAt)
+            const railEl = document.querySelector('.folder-rail');
+            if (railEl && typeof ResizeObserver === 'function') new ResizeObserver(sendToolbar).observe(railEl);
+            // ...and the width it's dragged to (--side-rail), which can be
+            // narrower than it is: its buttons up there make room for it
+            new MutationObserver(sendToolbar).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
             sendToolbar();
         });
     }
@@ -615,6 +1067,8 @@
         if (!mac.nativeToolbar) addEventListener('resize', lightsSoon);
         // Into Adjust or Paint and out: the lights follow the mode chip
         if (!mac.nativeToolbar && $('mode-float')) new MutationObserver(reportLights).observe($('mode-float'), { attributes: true, attributeFilter: ['class'] });
+        // The home page shown or left: the lights go to its top bar, and back
+        if (!mac.nativeToolbar && $('drop-zone')) new MutationObserver(lightsSoon).observe($('drop-zone'), { attributes: true, attributeFilter: ['class'] });
         mac.request('ready', { version: typeof APP_VERSION !== 'undefined' ? APP_VERSION : null });
     });
 
@@ -623,15 +1077,16 @@
         if (msg.type === 'openFolder') {
             const a = await whenReady();
             while (a.isLoading) await new Promise(r => setTimeout(r, 100));
-            try {
-                await a.openDirectory(await handleFor(msg.path));
-                if (msg.smoke) await smokeTest(a);
-            } catch (e) {
-                log('error', 'Opening the folder failed: ' + (e && e.message || e));
-                if (msg.smoke) mac.request('smoke', { ok: false, error: String(e && e.message || e), errors });
+            const ok = await openByPath(a, msg.path);
+            if (msg.smoke) {
+                if (ok === true) await smokeTest(a);
+                else mac.request('smoke', { ok: false, error: String(ok && ok.message || ok), errors });
             }
         } else if (msg.type === 'toolbar') {
             onToolbar(msg.id, msg.value);
+        } else if (msg.type === 'toolbarLead') {
+            // The sidebar at least as wide as its buttons in the toolbar (style.css: --rail-lead)
+            if (Number.isFinite(msg.width) && msg.width > 0) document.documentElement.style.setProperty('--rail-lead', msg.width + 'px');
         } else if (msg.type === 'fullscreen') {
             document.documentElement.classList.toggle('fullscreen', !!msg.on);
         } else if (msg.type === 'windowState') {
@@ -640,7 +1095,7 @@
         } else if (msg.type === 'drivesChanged') {
             dispatchEvent(new Event('jeditor-drives')); // places.js
         } else if (msg.type === 'copyProgress') {
-            if (copying.has(msg.copy)) copying.get(msg.copy)(msg.done, msg.total);
+            if (copying.has(msg.copy)) copying.get(msg.copy)(msg.done, msg.total, msg.moved);
         } else if (msg.type === 'filesChanged') {
             dispatchEvent(new Event('jeditor-files')); // another window moved photos
         } else if (msg.type === 'closing') {
@@ -655,6 +1110,7 @@
             const a = await whenReady();
             if (msg.action === 'open') a.browseFolder();
             else if (msg.action === 'settings') a.toggleCustomizePanel(true);
+            else if (msg.action === 'reload') Modes.reload();
             else if (msg.action === 'permissions') Permissions.open();
             else if (String(msg.action).startsWith('theme:')) Themes.runMenu(msg.action.slice(6));
         }
@@ -671,6 +1127,8 @@
             steps.listed = a.files.length > 1 || `${a.files.length} photos listed`;
             const bytes = async () => new Uint8Array(await (await file.handle.getFile()).arrayBuffer()).join();
             const before = file && await bytes();
+            // (writes the turn into the file, as with Settings → Saving's keeping off: the handle's write is what's checked)
+            if (a.uiPrefs) a.uiPrefs.keepEdits = false;
             steps.rotated = file && await a.rotateImage(file, 90) !== false ? true : 'not turned';
             if (file && file._rotationQueue) await Promise.race([file._rotationQueue, new Promise(r => setTimeout(r, 10000))]);
             if (steps.rotated === true && await bytes() === before) steps.rotated = 'the file didn\'t change on disk';

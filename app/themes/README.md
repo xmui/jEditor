@@ -29,6 +29,11 @@ An entry in `Themes.LIST` (`app/themes.js`):
   shown under the gallery and set on `<html>` as `data-ts-<id>`.
 - A preview for the gallery: `<theme>/preview-<variant>.jpg`, 320 × 200.
 
+How a photo opens from the grid, and goes back into it (`motion.js`):
+`--grid-zoom` on the theme's `:root`, `zoom` (jEditor's own zoom out of its
+tile: Snow Leopard), `rects` (the classic Mac's zoom outlines: 1984) or
+`none` (XP). Animations off and Reduce motion turn it off in every theme.
+
 Things a stylesheet can write in, kept up to date by `Themes.facts()`:
 `#fb-crumbs[data-folder]`, `#fb-crumbs[data-items]`, `#folder-bar[data-info]`,
 `#btn-clear-selection[data-total]`, `#selection-count[data-n]`, and each

@@ -27,6 +27,10 @@ foreach ($i in 1..3) {
     $bmp.Dispose()
 }
 
+# A HEIC beside the order (not in it): the engine's HEIC thumbnail, when
+# it has libheif (engine/tests/fixtures: 600 × 400, red and blue halves)
+Copy-Item (Join-Path $PSScriptRoot '..\engine\tests\fixtures\halves.heic') (Join-Path $work 'engine-check.heic')
+
 $log = Join-Path $work 'smoke.log'
 Write-Host "Smoke test: $Exe on $photos"
 $p = Start-Process -FilePath $Exe -ArgumentList @('--smoke-test', "`"$photos`"", '--log', "`"$log`"") -PassThru

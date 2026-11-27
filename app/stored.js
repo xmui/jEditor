@@ -214,7 +214,7 @@ const Stored = {
         const flags = sum(o => o.flags), trash = sum(o => o.usage.trash.n), originals = sum(o => o.usage.originals.n);
         const edits = sum(o => o.edits || 0);
         const items = [];
-        if (edits) items.push(`${edits} edit${edits === 1 ? '' : 's'} not saved into the photos yet (kept with Save edits when done) are lost.`);
+        if (edits) items.push(`${edits} edit${edits === 1 ? '' : 's'} not saved into the photos yet (kept with Keep edits in jEditor) are lost.`);
         if (flags) items.push(`${flags} flag${flags === 1 ? '' : 's'} (stars, rescan flags, color labels) are lost.`);
         if (trash) items.push(`${trash} deleted photo${trash === 1 ? '' : 's'} kept by jEditor will be gone for good.`);
         if (originals) items.push(`${originals} Auto crop original${originals === 1 ? '' : 's'} will be gone, so those crops can't be undone.`);

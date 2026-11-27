@@ -35,16 +35,30 @@ const AdjustSync = {
         if (!panel) return;
         this.el('sync-ok').addEventListener('click', () => this.done(true));
         this.el('sync-cancel').addEventListener('click', () => this.done(false));
-        this.el('sync-all').addEventListener('click', () => this.tickAll(true));
-        this.el('sync-none').addEventListener('click', () => this.tickAll(false));
         panel.addEventListener('mousedown', (e) => { if (e.target === panel) this.done(false); });
         panel.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') { e.preventDefault(); this.done(false); }
             else if (e.key === 'Enter' && !e.target.closest('button')) { e.preventDefault(); this.done(true); }
             e.stopPropagation();
         });
-        this.el('sync-groups').addEventListener('change', () => this.update());
+        // A section's box (or All) ticks or clears everything under it
+        this.el('sync-groups').addEventListener('change', (e) => {
+            const t = e.target;
+            if (t.id === 'sync-every') return this.tickAll(t.checked);
+            if (t.classList.contains('sync-sec-box')) {
+                for (const i of t.closest('.sync-sec').querySelectorAll('.sync-item')) i.checked = t.checked;
+            }
+            this.update();
+        });
     },
+
+    // The dialog's sections (by Develop.SYNC's ids; one not here goes under Other)
+    SECTIONS: [
+        ['Light', ['light', 'presence', 'levels', 'curve']],
+        ['Color', ['look', 'wb', 'mixer', 'grading', 'restore']],
+        ['Detail and effects', ['detail', 'effects', 'descreen']],
+        ['Geometry and retouch', ['crop', 'lens', 'spots', 'masks']]
+    ],
 
     isOpen() {
         const panel = this.el('sync-panel');
@@ -83,7 +97,10 @@ const AdjustSync = {
 
     // Sync source's settings onto files, after the dialog
     // adj: the source's settings, if not as kept (Adjust's, being made)
-    async open(source, files, { adj } = {}) {
+    // edit: the source's crop and turn, if not as kept (Adjust's Geometry,
+    // being made: before, Sync from Adjust put on the crop last saved, so
+    // a crop changed there and synced again didn't go on: the owner, 23 November)
+    async open(source, files, { adj, edit } = {}) {
         const app = this.app;
         files = files.filter(f => f && f !== source && !/\.gif$/i.test(f.name));
         if (!source || !files.length) {
@@ -96,9 +113,10 @@ const AdjustSync = {
         }
         if (app.editsSaving()) return;
         if (adj === undefined) adj = (source._edit && source._edit.adj) || null;
+        if (edit === undefined) edit = source._edit || null;
         const has = new Set(Develop.syncGroups(adj));
         // A crop box or a tilt: a quarter turn alone is each photo's own
-        const cropped = !!(source._edit && !Edits.wholePhoto({ ...source._edit, q: 0 }));
+        const cropped = !!(edit && !Edits.wholePhoto({ ...edit, q: 0 }));
         if (cropped) has.add('crop');
         const n = files.length;
         this.el('sync-text').textContent = `From ${source.name} onto ${n === 1 ? files[0].name : n.toLocaleString() + ' other photos'}. ` +
@@ -109,40 +127,73 @@ const AdjustSync = {
         // Nothing to crop like: this time only, not remembered
         const keepCrop = on.has('crop');
         if (!cropped) on.delete('crop');
-        for (const g of this.groups()) {
+        // All, then the groups in sections, each with a box of its own, as
+        // Lightroom's Synchronize Settings
+        const check = (cls, text, id) => {
             const label = document.createElement('label');
-            label.className = 'adj-check sync-check';
+            label.className = 'adj-check ' + cls;
             const input = document.createElement('input');
             input.type = 'checkbox';
+            if (id) input.id = id;
+            label.append(input, ' ' + text);
+            return [label, input];
+        };
+        box.appendChild(check('sync-every-row', 'All', 'sync-every')[0]);
+        const secs = new Map();
+        const secFor = (id) => {
+            const name = (this.SECTIONS.find(([, ids]) => ids.includes(id)) || ['Other'])[0];
+            if (!secs.has(name)) {
+                const sec = document.createElement('div');
+                sec.className = 'sync-sec';
+                const [head, input] = check('sync-head', name);
+                input.className = 'sync-sec-box';
+                sec.appendChild(head);
+                secs.set(name, sec);
+            }
+            return secs.get(name);
+        };
+        for (const g of this.groups()) {
+            const [label, input] = check('sync-check', g.name);
+            input.className = 'sync-item';
             input.value = g.id;
             input.checked = on.has(g.id);
-            label.append(input, ' ' + g.name);
             // Not changed on the source: syncing it puts the others back
             if (!has.has(g.id)) {
                 label.classList.add('sync-unset');
                 label.title = `${source.name} has no ${g.name.toLowerCase()} of its own: ticked, the others' are taken off`;
             } else if (g.note) label.title = g.note;
-            box.appendChild(label);
+            secFor(g.id).appendChild(label);
         }
+        for (const [name] of this.SECTIONS.concat([['Other']])) if (secs.has(name)) box.appendChild(secs.get(name));
         this.update();
         this.el('sync-panel').classList.remove('hidden');
         this.el('sync-ok').focus();
         const yes = await new Promise((resolve) => { this._resolve = resolve; });
         if (!yes) return;
-        const groups = [...box.querySelectorAll('input:checked')].map(i => i.value);
+        // (in the groups' own order, not the sections')
+        const ticked = new Set([...box.querySelectorAll('.sync-item:checked')].map(i => i.value));
+        const groups = this.groups().map(g => g.id).filter(id => ticked.has(id));
         this.remember(!cropped && keepCrop && !groups.includes('crop') ? [...groups, 'crop'] : groups);
-        await this.apply(source, files, groups, adj);
+        await this.apply(source, files, groups, adj, edit);
     },
 
     update() {
-        const groups = [...this.el('sync-groups').querySelectorAll('input:checked')].map(i => i.value);
+        const box = this.el('sync-groups');
+        const mark = (input, items) => {
+            const n = items.filter(i => i.checked).length;
+            input.checked = n > 0 && n === items.length;
+            input.indeterminate = n > 0 && n < items.length;
+        };
+        for (const sec of box.querySelectorAll('.sync-sec')) mark(sec.querySelector('.sync-sec-box'), [...sec.querySelectorAll('.sync-item')]);
+        if (this.el('sync-every')) mark(this.el('sync-every'), [...box.querySelectorAll('.sync-item')]);
+        const groups = [...box.querySelectorAll('.sync-item:checked')].map(i => i.value);
         this.el('sync-ok').disabled = !groups.length;
         const notes = this.groups().filter(g => g.note && groups.includes(g.id)).map(g => g.note);
         this.el('sync-note').textContent = notes.join('. ');
     },
 
     tickAll(on) {
-        for (const i of this.el('sync-groups').querySelectorAll('input')) i.checked = on;
+        for (const i of this.el('sync-groups').querySelectorAll('.sync-item')) i.checked = on;
         this.update();
     },
 
@@ -154,9 +205,9 @@ const AdjustSync = {
     },
 
     // The settings themselves: one undo step for all of them
-    async apply(source, files, groups, adj = (source._edit && source._edit.adj) || null) {
+    async apply(source, files, groups, adj = (source._edit && source._edit.adj) || null, edit = source._edit || null) {
         const app = this.app;
-        const crops = groups.includes('crop') && this.cropper() ? await app.cropEditsLike(source, files) : null;
+        const crops = groups.includes('crop') && this.cropper() ? await app.cropEditsLike(source, files, edit) : null;
         const cropped = new Map((crops || []).map(it => [it.file, it.edit]));
         const items = files.map(f => {
             const base = cropped.has(f) ? cropped.get(f) : (f._edit || null);
@@ -184,7 +235,8 @@ const AdjustSync = {
         if (!Adjust.ready) return;
         const files = this.targets();
         if (!files.length) return this.none();
-        this.open(Adjust.file, files, { adj: Adjust.result() });
+        // (its geometry as it is now, not as last saved)
+        return this.open(Adjust.file, files, { adj: Adjust.result(), edit: Adjust.withGeo(Adjust.file._edit || null) });
     },
 
     toggleAuto(on = !this.auto) {

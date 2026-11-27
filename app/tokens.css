@@ -74,6 +74,10 @@
     --ease-out: cubic-bezier(0.2, 0, 0, 1);
     --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
     --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+    /* What you press or select gives a little and comes back just past its
+       place (style.css: the 2.0 refinement, motion). Never for things that
+       only appear */
+    --ease-press: cubic-bezier(0.34, 1.4, 0.64, 1);
 
     /* ---- Layers ---- */
     --z-chrome: 10;      /* folder list, grid chrome */
@@ -83,6 +87,7 @@
     --z-toast: 45;       /* toasts and the task pill: over the crop and duplicates screens, under dialogs */
     --z-modal: 50;       /* dialogs */
     --z-menu: 60;        /* right-click menu */
+    --z-tip: 70;         /* tooltips (tips.js) */
     --z-debug: 100;
 
     /* ---- Accent (set by Settings; blue by default) ---- */
@@ -111,14 +116,22 @@
     --text-3: #8f8f8f;
     --text-disabled: #5c5c5c;
     --tile-bg: #1c1c1c;
-    /* The film strip is black in every theme, whatever the photo above it */
+    /* The film strip: black in dark; light in light (below) */
     --strip-bg: #000;
+    --hist-bg: #141414; /* Adjust's histogram well */
     --strip-text: rgb(255 255 255 / 0.62);
     --tb-hover: rgb(255 255 255 / 0.10);     /* buttons on glass toolbars */
     --tb-pressed: rgb(255 255 255 / 0.16);
     --seg-bg: rgb(255 255 255 / 0.06);       /* segmented control track */
     --seg-active: rgb(255 255 255 / 0.16);   /* its chosen segment */
     --switch-off: rgb(255 255 255 / 0.24);
+    /* The docked sidebar (style.css): a quiet tint against the window's
+       edge, a hairline down it, and one soft highlight on the chosen row */
+    --sidebar-solid: #121214;
+    --sidebar-bg: var(--sidebar-solid);
+    --sidebar-line: rgb(255 255 255 / 0.08);
+    --sidebar-hover: rgb(255 255 255 / 0.05);
+    --sidebar-sel: rgb(255 255 255 / 0.10);
     /* Labels and badges drawn on top of photos: always dark, any theme */
     --on-photo-bg: rgb(0 0 0 / 0.62);
     --on-photo-shade: rgb(0 0 0 / 0.8);      /* gradient under folder names */
@@ -136,6 +149,7 @@
     --success: #4ade80;
     --warning-text: #fde68a;
     --warning-soft: rgb(250 204 21 / 0.16);
+    --unsaved: #f5a524;     /* unsaved edits: the count's dot, the thumbnails' (unsaved.js) */
     --flag-star: #fbbf24;
     --flag-rescan: #fb923c;
 
@@ -152,14 +166,35 @@
     /* ---- Glass (floating toolbars over photos) ----
        The frosted glass the others start from: deeply blurred, a faint
        sheen from the top, and light caught on the curved edge, more along
-       the top left than the bottom right. The backdrop is darkened under
-       it, so text keeps 7:1 and secondary text 4.5:1 over a pure-white
-       photo. Never on the photos. Crystal (the default) and Clear: less
+       the top left than the bottom right. Never on the photos.
+       Settings → Glass strength (--glass-k, 0 to 1; 25% to start with,
+       the owner's pick for 2.0, 26 November; 75% before) sets how much each glass holds back
+       what's behind it (contrast() then brightness(), before its tint):
+       at 0 the clear glass of before 2.0's readability pass, at 1 that
+       pass's (dark glass never lighter than about 37% over a white photo,
+       light never darker than about 80% over a black one). The clearer
+       the glass (--glass-u), the bolder its icons and the less dimmed
+       its dimmed controls (--glass-off). From 75% up, words
+       keep 4.5:1, icons and dimmed controls 3:1, over any photo, with no
+       shadow. Below 75% a faint shadow behind the words helps
+       (--glass-halo); it doesn't keep them at 4.5:1 over a plain white
+       (dark) or black (light) photo all the way down: the owner chose the
+       full range with a faint shadow over a glow (23 November). Crystal (the default) and Clear: less
        frost. Liquid: Apple's Liquid Glass, the only one that bends what's
        under it (liquid.js). Lens: thicker glass, lit top and bottom.
        Opaque: near-solid, no blur. */
     --glass-tint: transparent; /* Settings → Glass tint, over every glass */
-    --glass-halo: none; /* behind the words, on glass too clear to keep them readable alone */
+    --glass-k: 0.332; /* Settings → Glass strength, 0 to 1 (script.js sets it from the slider: 25% to start with, the owner's pick for 2.0) */
+    --glass-u: calc(1 - var(--glass-k)); /* how clear: the scrim grows with it */
+    /* No shadow or glow behind the words (the owner, 23 November): only
+       below 75% strength, where the glass gets too clear for the words
+       to keep 4.5:1 on their own, a faint one, from nothing at 75% to its
+       most at 0% (--glass-low). Icons: none, only bolder (style.css) */
+    --glass-low: max(0, calc(0.75 - var(--glass-k)));
+    --glass-halo: 0 0 1px rgb(0 0 0 / calc(0.73 * var(--glass-low))), 0 0 4px rgb(0 0 0 / calc(0.47 * var(--glass-low)));
+    --glass-icon-halo: none;
+    --glass-text-2: #f0f0f0; /* secondary words on glass: 4.5:1 from 75% strength up */
+    --glass-off: calc(0.8 + 0.15 * var(--glass-u)); /* a dimmed control on glass, still read as there (not 0.4); less dim as the glass gets clearer */
     /* The halo itself: tight round each letter, where it counts, fading out.
        It keeps text at 7:1 and secondary text at 4.5:1 against what's
        right round them, over a white photo or a black one, and shows only
@@ -184,10 +219,16 @@
 :root.backdrop {
     --bg-window: color-mix(in srgb, var(--bg-canvas) var(--backdrop-tint), transparent);
     --bg-window-glow: color-mix(in srgb, var(--bg-surface) var(--backdrop-tint), transparent);
+    /* Mica or Acrylic through the sidebar too, a little more than the grid */
+    --sidebar-bg: color-mix(in srgb, var(--sidebar-solid) calc(var(--backdrop-tint) * 0.85), transparent);
 }
 
 /* ---- Light theme ---- */
 :root[data-theme="light"] {
+    /* Light, finished (2.0, audit H4): the film strip and the histogram
+       well are light too, as in the pro tools' light look */
+    --strip-bg: #e4e4e7;
+    --hist-bg: #ececef;
     color-scheme: light;
     --accent-text: color-mix(in oklab, var(--accent) 80%, #000);
     --accent-hover: color-mix(in oklab, var(--accent) 88%, #000);
@@ -215,11 +256,16 @@
     --seg-bg: rgb(0 0 0 / 0.06);
     --seg-active: #ffffff;
     --switch-off: rgb(0 0 0 / 0.24);
+    --sidebar-solid: #efeff1;
+    --sidebar-line: rgb(0 0 0 / 0.09);
+    --sidebar-hover: rgb(0 0 0 / 0.04);
+    --sidebar-sel: rgb(0 0 0 / 0.075);
 
     --danger-text: #b91c1c;
     --danger-soft: rgb(220 38 38 / 0.10);
     --success: #15803d;
     --warning-text: #92400e;
+    --unsaved: #b45309;     /* about 4:1 on the light grid, and still amber */
     --flag-star: #d97706;
     --flag-rescan: #ea580c;
 
@@ -231,8 +277,11 @@
 
     --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, linear-gradient(180deg, rgb(255 255 255 / 0.45), rgb(255 255 255 / 0) 45%), rgb(250 250 252 / 0.66);
     --glass-border: rgb(0 0 0 / 0.08); /* an edge even over a white photo */
-    --glass-filter: blur(24px) saturate(180%) contrast(0.5) brightness(1.6);
+    --glass-filter: blur(24px) saturate(180%) contrast(calc(0.5 - 0.1 * var(--glass-k))) brightness(1.6);
     --glass-rim: inset 1px 1px 0 -0.5px rgb(255 255 255 / 0.95), inset -1px -1px 0 -0.5px rgb(255 255 255 / 0.5);
+    --glass-text-2: #2e2e2e;
+    --glass-halo: 0 0 1px rgb(255 255 255 / calc(0.8 * var(--glass-low))), 0 0 4px rgb(255 255 255 / calc(0.53 * var(--glass-low))); /* (below 75% only, as above) */
+    --glass-icon-halo: none;
 }
 
 /* ---- Glass: liquid. Apple's Liquid Glass: thin, nearly clear glass
@@ -244,12 +293,11 @@
    bends; a halo behind the words keeps them readable, as on Crystal ---- */
 :root[data-glass="liquid"] {
     --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box,
-        radial-gradient(130% 160% at 0% 0%, rgb(255 255 255 / 0.12), rgb(255 255 255 / 0) 45%),
-        linear-gradient(180deg, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0) 40%), rgb(255 255 255 / 0.03);
-    --glass-filter: blur(1.5px) saturate(180%) brightness(0.72);
+        radial-gradient(130% 160% at 0% 0%, rgb(255 255 255 / calc(0.12 - 0.06 * var(--glass-k))), rgb(255 255 255 / 0) 45%),
+        linear-gradient(180deg, rgb(255 255 255 / calc(0.06 - 0.03 * var(--glass-k))), rgb(255 255 255 / 0) 40%), rgb(255 255 255 / calc(0.03 - 0.03 * var(--glass-k)));
+    --glass-filter: blur(1.5px) saturate(180%) contrast(calc(1 - 0.45 * var(--glass-k))) brightness(calc(0.72 - 0.3 * var(--glass-k)));
     --glass-rim: inset 1.5px 1.5px 0 -1px rgb(255 255 255 / 0.70), inset -1.5px -1.5px 0 -1px rgb(255 255 255 / 0.40),
         inset 0 0 0 0.5px rgb(255 255 255 / 0.12), inset 0 8px 14px -10px rgb(255 255 255 / 0.35), inset 0 -8px 14px -10px rgb(0 0 0 / 0.30);
-    --glass-halo: var(--halo-dark);
     --shadow-2: 0 10px 30px rgb(0 0 0 / 0.28), 0 2px 6px rgb(0 0 0 / 0.20);
     --lg-bezel: 24px; /* how far in from the edge the glass bends (liquid.js; at most half the part) */
     --lg-depth: 26px; /* how far it bends at the very edge */
@@ -258,66 +306,59 @@
 :root[data-glass="liquid"][data-theme="light"] {
     --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box,
         radial-gradient(130% 160% at 0% 0%, rgb(255 255 255 / 0.55), rgb(255 255 255 / 0) 45%),
-        linear-gradient(180deg, rgb(255 255 255 / 0.30), rgb(255 255 255 / 0) 40%), rgb(255 255 255 / 0.18);
+        linear-gradient(180deg, rgb(255 255 255 / 0.30), rgb(255 255 255 / 0) 40%), rgb(255 255 255 / calc(0.18 + 0.16 * var(--glass-k)));
     --glass-border: rgb(0 0 0 / 0.06);
-    --glass-filter: blur(1.5px) saturate(150%) contrast(0.7) brightness(1.4);
+    --glass-filter: blur(1.5px) saturate(150%) contrast(calc(0.7 - 0.4 * var(--glass-k))) brightness(calc(1.4 + 0.6 * var(--glass-k)));
     --glass-rim: inset 1.5px 1.5px 0 -1px #fff, inset -1.5px -1.5px 0 -1px rgb(255 255 255 / 0.8),
         inset 0 8px 14px -10px rgb(255 255 255 / 0.9), inset 0 -8px 14px -10px rgb(0 0 0 / 0.10);
-    --glass-halo: var(--halo-light);
     --shadow-2: 0 10px 30px rgb(0 0 0 / 0.14), 0 2px 6px rgb(0 0 0 / 0.08);
 }
 
 /* ---- Glass: lens. A bubble of thick grey glass: lit from the top,
    a bevel catching light along the top edge and fainter along the
-   bottom, and a soft halo behind the words, which keep it readable over
-   a bright photo (the glass itself is too light to) ---- */
+   bottom ---- */
 :root[data-glass="lens"] {
-    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, linear-gradient(180deg, rgb(255 255 255 / 0.18), rgb(255 255 255 / 0.06)) padding-box,
-        linear-gradient(180deg, rgb(255 255 255 / 0.5), rgb(255 255 255 / 0.08) 50%, rgb(255 255 255 / 0.18)) border-box;
+    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, linear-gradient(180deg, rgb(255 255 255 / calc(0.18 - 0.13 * var(--glass-k))), rgb(255 255 255 / calc(0.06 - 0.04 * var(--glass-k)))) padding-box,
+        linear-gradient(180deg, rgb(255 255 255 / 0.5), rgb(255 255 255 / 0) 3px, rgb(255 255 255 / 0) calc(100% - 3px), rgb(255 255 255 / 0.18)) border-box; /* the bevel: on the edge only, not under the words */
     --glass-border: transparent;
-    --glass-filter: blur(26px) saturate(170%) brightness(0.5);
+    --glass-filter: blur(16px) saturate(170%) contrast(calc(1 - 0.5 * var(--glass-k))) brightness(calc(0.5 - 0.08 * var(--glass-k)));
     --glass-rim: inset 0 1px 1px rgb(255 255 255 / 0.25), inset 0 -1px 1px rgb(0 0 0 / 0.15);
-    --glass-halo: var(--halo-dark);
     --shadow-2: 0 8px 24px rgb(0 0 0 / 0.35), 0 0 0 0.5px rgb(0 0 0 / 0.3);
 }
 
 :root[data-glass="lens"][data-theme="light"] {
-    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, linear-gradient(180deg, rgb(255 255 255 / 0.75), rgb(255 255 255 / 0.4)) padding-box,
-        linear-gradient(180deg, #fff, rgb(255 255 255 / 0.3) 50%, rgb(0 0 0 / 0.14)) border-box;
-    --glass-filter: blur(26px) saturate(110%) contrast(0.5) brightness(1.6);
+    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, linear-gradient(180deg, rgb(255 255 255 / 0.75), rgb(255 255 255 / calc(0.4 + 0.05 * var(--glass-k)))) padding-box,
+        linear-gradient(180deg, #fff, rgb(255 255 255 / 0) 3px, rgb(0 0 0 / 0) calc(100% - 3px), rgb(0 0 0 / 0.14)) border-box;
+    --glass-filter: blur(16px) saturate(110%) contrast(calc(0.5 - 0.2 * var(--glass-k))) brightness(calc(1.6 + 0.3 * var(--glass-k)));
     --glass-rim: inset 0 1px 1px #fff, inset 0 -1px 1px rgb(0 0 0 / 0.06);
-    --glass-halo: var(--halo-light);
     --shadow-2: 0 8px 24px rgb(0 0 0 / 0.14), 0 0 0 0.5px rgb(0 0 0 / 0.12);
 }
 
 /* ---- Glass: clear and crystal. Liquid with less frost: clear, the
-   photo seen through, and crystal, the clearest. Too clear to keep the
-   words readable over a bright photo alone: a halo behind them ---- */
+   photo seen through, and crystal, the clearest (its shapes and colours;
+   the band above keeps the words readable) ---- */
 :root[data-glass="clear"] {
     --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, rgb(20 20 22 / 0.30);
-    --glass-filter: blur(14px) saturate(190%) brightness(0.62);
-    --glass-halo: var(--halo-dark);
+    --glass-filter: blur(14px) saturate(190%) contrast(calc(1 - 0.5 * var(--glass-k))) brightness(calc(0.62 - 0.07 * var(--glass-k)));
     --shadow-2: 0 12px 40px rgb(0 0 0 / 0.35), 0 2px 6px rgb(0 0 0 / 0.18);
 }
 
 :root[data-glass="crystal"] {
-    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, rgb(255 255 255 / 0.06);
-    --glass-filter: blur(8px) saturate(220%) brightness(0.68);
-    --glass-halo: var(--halo-dark);
+    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, rgb(255 255 255 / calc(0.06 - 0.02 * var(--glass-k)));
+    --glass-filter: blur(8px) saturate(220%) contrast(calc(1 - 0.5 * var(--glass-k))) brightness(calc(0.68 - 0.24 * var(--glass-k)));
     --shadow-2: 0 12px 40px rgb(0 0 0 / 0.3);
 }
 
 :root[data-glass="clear"][data-theme="light"],
 :root[data-glass="crystal"][data-theme="light"] {
-    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, rgb(255 255 255 / 0.40);
-    --glass-filter: blur(14px) saturate(140%) contrast(0.6) brightness(1.5);
-    --glass-halo: var(--halo-light);
+    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, rgb(255 255 255 / calc(0.4 + 0.1 * var(--glass-k)));
+    --glass-filter: blur(14px) saturate(140%) contrast(calc(0.6 - 0.3 * var(--glass-k))) brightness(calc(1.5 + 0.3 * var(--glass-k)));
     --shadow-2: 0 12px 40px rgb(0 0 0 / 0.12);
 }
 
 :root[data-glass="crystal"][data-theme="light"] {
-    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, rgb(255 255 255 / 0.22);
-    --glass-filter: blur(8px) saturate(140%) contrast(0.7) brightness(1.4);
+    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, rgb(255 255 255 / calc(0.22 + 0.23 * var(--glass-k)));
+    --glass-filter: blur(8px) saturate(140%) contrast(calc(0.7 - 0.38 * var(--glass-k))) brightness(calc(1.4 + 0.5 * var(--glass-k)));
 }
 
 /* ---- Glass tint (Settings): a wash of colour over whichever glass ---- */
@@ -332,6 +373,8 @@
     --glass-filter: none;
     --glass-border: rgb(255 255 255 / 0.10);
     --glass-rim: var(--highlight);
+    --glass-halo: none;
+    --glass-icon-halo: none;
 }
 
 :root[data-theme="light"][data-glass="opaque"] {
@@ -344,11 +387,13 @@
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
     html:root[data-glass][data-theme] {
         --glass-halo: none;
+        --glass-icon-halo: none;
         --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, var(--bg-raised);
         --glass-filter: none;
         --glass-border: var(--border);
         --glass-rim: var(--highlight);
         --backdrop-tint: 100%;
+        --sidebar-bg: var(--sidebar-solid);
     }
 }
 
@@ -377,5 +422,84 @@
         --dur-base: 120ms;
         --dur-slow: 120ms;
         --ease-spring: var(--ease-out);
+        --ease-press: var(--ease-out);
     }
+}
+
+/* Settings → Animations off: nothing moves, including the transitions
+   no rule turns off one by one (the toasts, the tour, Info's photo) */
+:root[data-motion="off"] {
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+    --dur-slow: 0ms;
+}
+
+/* ==========================================================================
+   The 2.0 refinement, in jEditor's own look (the themes keep the values
+   above until they're dressed to match). Three surfaces, by what they're
+   for: the canvas behind photos (--bg-canvas, unchanged), the docked
+   chrome (--chrome: the sidebar's tint, shared by panels and bars) and
+   what's raised over the page (--bg-surface: dialogs and menus), with
+   --bg-raised for the controls on them. Greys beside a photo stay pure.
+   ========================================================================== */
+:root:not([data-skin]) {
+    /* Calm: what appears never overshoots; only a press or a selection
+       does, with --ease-press (style.css: the 2.0 refinement, motion) */
+    --ease-spring: var(--ease-out);
+    --chrome: var(--sidebar-bg);
+    --chrome-line: var(--sidebar-line);
+    --bg-surface: #1b1b1d;
+    --bg-raised: #252528;
+    --border-subtle: rgb(255 255 255 / 0.07);
+    --border: rgb(255 255 255 / 0.11);
+    --scrim: rgb(0 0 0 / 0.45);
+
+    /* Corners: a photo, a control, a menu or card, a dialog */
+    --r-photo: 3px;
+    --r-md: 7px;
+    --r-lg: 10px;
+    --r-xl: 12px;
+
+    --row: 28px;         /* a row in a list or a menu */
+    --ctl-lg: 40px;      /* floating toolbars */
+
+    /* The one slider: a thin track and a white knob */
+    --slider-track: rgb(255 255 255 / 0.22);
+    --slider-knob: #fff;
+    --slider-knob-edge: 0 0 0 1px rgb(0 0 0 / 0.28), 0 1px 3px rgb(0 0 0 / 0.4);
+    /* The light along the top of a filled button */
+    --btn-sheen: inset 0 1px 0 rgb(255 255 255 / 0.14);
+
+    /* Shape, jEditor's own (the owner's rule at the 2.0 sign-off): round
+       and pill. A control is a pill and an icon button a circle, as the
+       pills' own; only what holds them (a menu, a card, a dialog) keeps a
+       corner */
+    --r-ctl: var(--r-pill);
+    /* Menus: frosted glass, thick enough to read a list over any photo,
+       whichever glass Settings has */
+    --menu-bg: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+    --menu-filter: blur(40px) saturate(180%);
+}
+
+/* Opaque glass (Settings), Reduce transparency or Increase contrast: the
+   menus are solid too */
+:root:not([data-skin])[data-glass="opaque"] {
+    --menu-bg: var(--bg-surface);
+    --menu-filter: none;
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+    :root:not([data-skin]) {
+        --menu-bg: var(--bg-surface);
+        --menu-filter: none;
+    }
+}
+
+:root:not([data-skin])[data-theme="light"] {
+    --bg-surface: #ffffff;
+    --bg-raised: #f1f1f3;
+    --border-subtle: rgb(0 0 0 / 0.07);
+    --border: rgb(0 0 0 / 0.12);
+    --scrim: rgb(0 0 0 / 0.30);
+    --slider-track: rgb(0 0 0 / 0.2);
 }

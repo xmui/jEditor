@@ -6,7 +6,7 @@ jEditor is one web app (`app/`) in four places: the Windows app (`src/`), the Ma
 
 1. **Every feature is for every platform unless there's a reason it can't be.** Windows comes first (the lab runs it), so a feature is made and tested there, then brought to the others.
 2. **A feature is exclusive only for one of three reasons**, and its row in the table gives it:
-   - **system**: only that system has the thing, such as Mica, Liquid Glass, Quick Access, or the Mac's privacy settings. These stay exclusive by design.
+   - **system**: only that system has the thing, such as Mica, Liquid Glass, or the Mac's privacy settings. These stay exclusive by design.
    - **not yet**: it needs native work that hasn't been done for the other systems, such as a scanner, a camera or disc burning. The **Gaps** section below says what it would take to bring each one over.
    - **browser**: a browser can't do it (paths on disk, its own windows, the system's bin).
 3. **Code asks for the feature, never the platform.** The app lists what it has in `JEditorNative.features` (`src/bridge.js`, `mac/bridge.js`), the page asks `Host.has('feature')` or marks the element `data-needs="feature"`, and an app without it never shows it (`app/host.js`). Checking `Host.platform()` or `Host.mac()` is only for wording and feel: the names of things, the keys, how a trackpad scrolls.
@@ -28,23 +28,42 @@ Checked by `test/parity.test.js`: each ✓ must match the app's `features` list,
 | `camera` | Tethered shooting | ✓ | | | | not yet on Mac and Linux; browser |
 | `log` | The app's log, in Settings | ✓ | | | | not yet on Mac and Linux; browser |
 | `burn` | Burning a project onto a CD or DVD | ✓ | | | | not yet on Mac and Linux; browser |
-| `themes` | Themes in Settings → Appearance, with their own title bar | ✓ | ✓ | ✓ | | browser (by choice: the web keeps today's look) |
-| `quickAccess` | Explorer's Quick Access in the sidebar's Pinned | ✓ | | | | system |
+| `themes` | Themes in Settings → Appearance, with their own title bar (paused: an experiment, off to start with) | ✓ | ✓ | ✓ | | browser (by choice: the web keeps today's look) |
+| `menuBar` | A menu bar with every command and its key: the Mac's along the top of the screen, Linux's in the window, Windows' shown when Alt is tapped | ✓ | ✓ | ✓ | | browser (Alt and F10 belong to the browser) |
+| `appReset` | Settings → Troubleshooting's Clear cache and Reset jEditor clear the app's own browser caches and, for a reset, its own files (window place, last folder), then restart it | ✓ | ✓ | ✓ | reloads | browser (the web clears what the page keeps and reloads; it has no files of its own or a restart) |
 | `backdrop` | Mica or Acrylic behind the window | ✓ | | | | system |
+| `folderMove` | Changing the projects folder moves the projects there (copied, checked, then removed) | ✓ | ✓ | ✓ | | browser |
+| `cacheFolder` | Choosing where the cache is kept, in Settings → Projects | ✓ | | | | not yet on Mac and Linux (their cache is in the app's private storage); browser |
+| `systemFonts` | Paint's Text tool lists the fonts installed on the computer, each in its own typeface, with search and the recent ones first | ✓ | ✓ | ✓ | Chrome, Edge | browser (only Chrome and Edge can list them, after asking; other browsers get Paint's five fonts) |
 | `permissions` | The Mac's privacy settings jEditor needs, in one window | | ✓ | | | system |
+| `photosLibrary` | The Photos library in the sidebar (Locations): its albums open as the project, and edits are saved back into Photos on top of the current version | | ✓ | | | system |
+| `photosAdd` | Add to Photos library: a project's photos into Photos, in an album named after it | | ✓ | | | system |
+| `engine` | The app's own engine (Rust, `engine/`) makes JPEG and RAW thumbnails (a RAW's from the JPEG inside it), and the viewer's screen-sized picture of a RAW, from the file on disk, several times faster than the page; more of the heavy work moves there phase by phase (`docs/plans/fast-engine.md`) | ✓ | | | | not yet on Mac and Linux; browser (the web keeps today's code, or later a WebAssembly build) |
+| `engineHeic` | The engine does HEICs too, the grid's thumbnails and the viewer's picture (libheif and libde265, shipped as their own DLLs: LGPL), rather than the page's decoder | ✓ | | | | not yet on Mac (it will use the system's own decoder) and Linux; browser (the web keeps the page's decoder) |
 
-Linux updates cover the AppImage, the `.deb` and the Arch package. The Mac app also has the macOS 26 native toolbar (Liquid Glass, `mac/native/`), which is the Mac host's own and not a page feature.
+Linux updates cover the AppImage, the `.deb` and the Arch package. The Mac app also has the macOS 26 native toolbar (Liquid Glass, `mac/native/`), which is the Mac host's own and not a page feature. It's off for now (`JEDITOR_NATIVE_TOOLBAR=1` turns it on; the tests do): the Mac has the page's own top row, its sidebar's buttons beside the traffic lights, until the native toolbar can hold them there too.
 
 ## The same everywhere
 
 Settings → Glass → Liquid bends what's under the glass where the page's web engine can draw an SVG filter behind an element: Chromium, so the Windows app (WebView2), the Mac and Linux apps (Electron), Chrome and Edge. Safari and Firefox get the same glass unbent. It isn't an app feature, so it has no row: `app/liquid.js` asks the browser.
 
-These don't depend on the app, so every platform has them: viewing, rotating, cropping and Auto crop, flags, rename, move, duplicates, import from a card, Save edits when done, and export. Adjust and Paint, and the experiments in **Settings → Experimental**, are the same everywhere too.
+These don't depend on the app, so every platform has them: viewing, rotating, cropping and Auto crop, flags, rename, move, duplicates, import from a card, edits kept in jEditor with Write edits to file, and export. Adjust and Paint, and the experiments in **Settings → Experimental**, are the same everywhere too.
 
 Some things work everywhere but are kept in a different place:
 
 - **A project's data** (flags, edits, the thumbnail cache, Auto crop's originals): in the apps it's kept in jEditor's own storage (`dataDir`). In a browser it's kept in a `.jeditor` folder inside the project (`app/folder-cache.js`).
 - **Auto crop's test scans:** the app's storage, or the browser's private storage.
+
+## Checking the web
+
+The web is the lighter version, so it must never offer what only the apps have. `test/web.test.js` (part of `npm test`) clicks through the GitHub Pages build and `standalone.html`: the home page, Settings, What's new, the guide, a project and its right-click menus, the viewer, Crop, Adjust, Paint, Find anything and Export. It fails on a JS error, on anything that offers an app-only feature (Show in Explorer, Scan, Camera, windows, drives, burning, updates, the log), and on any `data-needs` element the web lacks that's still on screen.
+
+What the web says follows the same rule:
+
+- **What's new** marks a changelog line about an app-only feature "In the apps" on the web, and "Not in this app" in an app that lacks the feature. `CHANGELOG_NEEDS` in `app/changelog.js` lists those lines, by version, the start of the line and the feature. A line that names its system itself ("On the Mac, …") needs no mark. `test/parity.test.js` checks that every listed line exists, and that a new line about scanning, the camera, the sidebar's drives and pins, windows, the bin or updates is listed.
+- **Settings → Messages** lists Scanning and the camera only where the app scans or shoots. **Troubleshooting** says Clear and reload, and Reset doesn't speak of an install or of pins, where there's no `appReset` restart and no `places` sidebar.
+- **The guide**'s sidebar card describes the web's sidebar (the project's folders and flags) where there's no `places`.
+- **`standalone.html`** (one file, opened from disk) has What's new's pictures inside it. It can't load the codec worker (`Codec.ready()`), so Export offers only the formats the browser writes itself, and Convert says it needs the app or the web page.
 
 ## Only on the web
 
@@ -61,7 +80,7 @@ Each of these is exclusive only because nobody has built it for the other system
 |---|---|---|---|
 | `recycle` | Electron's `shell.trashItem` moves a photo to the Trash. Ctrl+Z also needs to find it there and put it back. | The same, to the desktop's trash (freedesktop). | small |
 | `log` | The Electron host writes a log file, and the page shows it as on Windows. | The same. | small |
-| Pinned from the system (like `quickAccess`) | Finder's sidebar favourites can't be read easily, so probably not. | GTK bookmarks (`~/.config/gtk-3.0/bookmarks`) | small (Linux) |
+| `cacheFolder` | The Electron host keeps the cache in Chromium's private storage. It would need the page's storage to come from a real folder (as on Windows), then the same move. | The same. | medium |
 | `burn` | `drutil` / `hdiutil burn` | `xorriso` / `growisofs` | medium |
 | `scan` | ImageCaptureCore, for scanners with a Mac (ICA) driver | SANE | large |
 | `camera` | gphoto2, or the camera maker's SDK | gphoto2 | large |

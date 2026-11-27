@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Builds the native toolbar for the Mac app's Electron: build/Release/
-// toolbar.node, for Apple silicon and Intel in one (lipo). Not on a Mac:
+// Builds the Mac app's native modules for its Electron: build/Release/
+// toolbar.node (the toolbar) and photos.node (the Photos library), each
+// for Apple silicon and Intel in one (lipo). Not on a Mac:
 // nothing to build (the app then keeps the page's own top row).
 //
 //   npm ci && node build.js            universal
@@ -19,16 +20,21 @@ const electron = require(path.join(__dirname, '..', 'node_modules', 'electron', 
 const gyp = require.resolve('node-gyp/bin/node-gyp.js');
 const i = process.argv.indexOf('--arch');
 const archs = i > 0 ? [process.argv[i + 1]] : ['arm64', 'x64'];
-const out = path.join(__dirname, 'build', 'Release', 'toolbar.node');
-const parts = [];
+const MODULES = ['toolbar', 'photos'];
+const out = (m) => path.join(__dirname, 'build', 'Release', `${m}.node`);
+const parts = Object.fromEntries(MODULES.map(m => [m, []]));
 
 for (const arch of archs) {
     execFileSync(process.execPath, [gyp, 'rebuild', `--target=${electron}`, `--arch=${arch}`,
         '--dist-url=https://electronjs.org/headers'], { cwd: __dirname, stdio: 'inherit' });
-    const part = path.join(__dirname, `toolbar-${arch}.node`);
-    fs.copyFileSync(out, part);
-    parts.push(part);
+    for (const m of MODULES) {
+        const part = path.join(__dirname, `${m}-${arch}.node`);
+        fs.copyFileSync(out(m), part);
+        parts[m].push(part);
+    }
 }
-execFileSync('lipo', ['-create', ...parts, '-output', out], { stdio: 'inherit' });
-parts.forEach(p => fs.rmSync(p));
-execFileSync('lipo', ['-info', out], { stdio: 'inherit' });
+for (const m of MODULES) {
+    execFileSync('lipo', ['-create', ...parts[m], '-output', out(m)], { stdio: 'inherit' });
+    parts[m].forEach(p => fs.rmSync(p));
+    execFileSync('lipo', ['-info', out(m)], { stdio: 'inherit' });
+}

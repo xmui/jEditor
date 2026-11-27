@@ -5,12 +5,12 @@
 // folderPath, openPath, exists): the order's data is kept by the app, not
 // in a .jeditor folder (folder-cache.js). The rest are features, and each
 // app lists the ones it has (JEditorNative.features). The UI asks for the
-// one it needs, so an app without it never shows it:
+// one it needs, so an app without it never shows it (and the web, which
+// has none of them: test/web.test.js clicks through it to check):
 //
 //   recycle      deleted photos to the system's bin, and back (Ctrl+Z)
 //   reveal       show a folder in Explorer / Finder
 //   places       the sidebar: projects, pinned folders, drives
-//   quickAccess  Explorer's Quick Access in the sidebar's Pinned
 //   windows      several windows, Split, moving photos between them
 //   scan         scanning into the project
 //   camera       tethered shooting
@@ -19,7 +19,46 @@
 //   updates      looking for a new version and installing it
 //   permissions  the Mac's privacy settings jEditor needs, in one window
 //   burn         burning a project onto a CD or DVD (disc.js)
-//   themes       Settings → Appearance's themes, with their own title bar (themes.js)
+//   folderMove   a new projects folder can take the projects along: each
+//                copied, checked and only then removed (folder-move.js)
+//   cacheFolder  Settings → Projects: where the cache is kept (folder-move.js)
+//   themes       Settings → Appearance's themes, with their own title bar (themes.js);
+//                paused, under Settings → Experimental (experiments.js)
+//   photosLibrary  the Mac's Photos library in the sidebar (places.js): its albums
+//                open as the project (photosAlbum: a folder handle); an edit is
+//                saved back as a Photos edit on the photo as it is now, and
+//                nothing is added, renamed or removed (app.fixedFiles)
+//   photosAdd    Add to Photos library: a project's photos into Photos, in an
+//                album named after it (script.js: addToPhotos)
+//   engine       the app's own engine (engine/, Rust; docs/plans/fast-engine.md):
+//                JPEG and RAW grid thumbnails (a RAW's from the JPEG inside
+//                it), and the viewer's screen-sized picture of a RAW, made
+//                from the file on disk, much faster than decoding the whole
+//                photo in the page (script.js: engineThumbnail and
+//                enginePreview; JEditorNative.engineThumb and enginePreview).
+//                Today's code is the fallback, for the web and for whatever
+//                the engine can't do
+//   menuBar      a menu bar with every command and its key (menubar.js): the
+//                Mac's along the top of the screen, Linux's in the window
+//                (Alt shows it), and on Windows one the page draws, shown
+//                when Alt is tapped
+//   systemFonts  Paint's Text tool lists the fonts installed on the computer
+//                (JEditorNative.fonts), in its Font picker; the web asks the
+//                browser (queryLocalFonts, Chrome and Edge) and else has
+//                Paint's five (paint-editor.js: loadFonts)
+//   appReset     Settings → Troubleshooting (reset.js): after the page has
+//                cleared what it keeps, the app clears its browser caches
+//                and, for Reset jEditor, its own files (window place, last
+//                folder: src/AppReset.cs, mac/main.js RESET_FILES), then
+//                restarts (JEditorNative.resetApp). The web reloads instead
+//   engineHeic   the engine does HEICs too, grid thumbnails and the viewer's
+//                picture (libheif, with libde265; its DLLs beside the
+//                engine's), natively and on every core, rather than the
+//                page's decoder (the fallback)
+//
+// Files: an app may give the page folder handles of its own (mac/handles.js,
+// for web views without File System Access). Those say a file's size and
+// date without reading it: Host.stat(handle). Elsewhere it's getFile().
 //
 // Wording that names the system's own things comes from here too: in a
 // text, {files} is Explorer, Finder or Files, {computer} this PC or this Mac, and
@@ -41,6 +80,13 @@ const Host = {
     has(feature) {
         const n = this.get();
         return !!n && Array.isArray(n.features) && n.features.includes(feature);
+    },
+
+    // A file's size and date → { size, lastModified }, without reading it
+    // where the handle can say (the app's own handles: stat()); else from
+    // getFile(), which with Chromium's handles doesn't read the file either
+    stat(handle) {
+        return typeof handle.stat === 'function' ? handle.stat() : handle.getFile();
     },
 
     mac() {

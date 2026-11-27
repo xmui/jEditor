@@ -14,20 +14,58 @@
 // are, so a crop later doesn't move them and any size of the photo (a
 // thumbnail, the preview, the full photo) gets the same result.
 //
-//   spots: [{ t: 'heal'|'clone', x, y, r, sx, sy, f, o, d }]
+//   spots: [{ t: 'heal'|'clone'|'eye'|'line', x, y, r, sx, sy, f, o, d, pts }]
 //     x, y: the spot; sx, sy: where it's copied from; r: its radius;
 //     f: feather (0–1 of the radius); o: opacity (0–1); d: found by the
-//     dust finder (so they can be cleared together)
+//     dust or scratch finder (so they can be cleared together)
+//     line: a scratch or crease, along pts ([x, y, x, y, …], 2 to 64
+//     points), r half its width: each pixel on it is filled from the two
+//     sides of the line straight across it, so what crosses the scratch
+//     (an edge, a horizon) carries on through it (x, y: its first point,
+//     and sx, sy the same: it has no source)
+//
+// The scratch finder looks for scratches and creases: thin, long lines
+// much lighter or darker than what's either side of them (a ridge, not
+// the edge of something, which is lighter one side than the other), and
+// puts a line on each.
 //
 // The dust finder looks for specks on scans: small dots much darker or
 // lighter than what's round them, on smooth parts of the photo (not on
 // edges or texture), and puts a heal spot on each, its source picked from
 // the surroundings that match best.
+//
+// Perspective (Adjust's Geometry) is done here too, first of all: the
+// photo is warped, then the spots are done on the warped photo (so their
+// places, and masks', are on the photo as it's straightened up).
+//
+//   persp: { v, h }  -100–100 each
+//     v: vertical keystone. Below 0 the top is spread out (buildings shot
+//        from below stop leaning back); above 0, the bottom is.
+//     h: horizontal. Below 0 the left side is made taller; above 0, the
+//        right side.
+//   The photo keeps its size: the part of it the warp keeps is spread out
+//   to fill it, so no empty corners ever show, as straightening's crop
+//   keeps none.
+//
+// Lens fixes (Geometry's Lens) are done in the same pass, before the
+// perspective, as a lens's faults are the photo's own:
+//
+//   lens: { dist, fringe, vig }  -100–100 each
+//     dist:   distortion. Above 0 straightens lines that bow out (barrel,
+//             wide lenses); below 0, lines that bow in (pincushion).
+//     fringe: colour fringes on edges toward the corners (lateral
+//             chromatic aberration): red and blue are made a touch bigger
+//             or smaller than green, to sit on it again. Above 0 makes red
+//             bigger and blue smaller; below 0 the other way.
+//     vig:    dark corners. Above 0 brightens the corners (up to 2 stops),
+//             in linear light, as the lens darkened them; below 0 darkens.
+//   As with perspective, nothing empty ever shows at the edges.
 
 const Retouch = {
     MAX_SPOTS: 500,
     MIN_R: 0.0008,
     MAX_R: 0.25,
+    LINE_POINTS: 64,
 
     // ---- Settings ----
 
@@ -41,16 +79,24 @@ const Retouch = {
             if (out.length >= this.MAX_SPOTS) break;
             if (!s || typeof s !== 'object' || ![s.x, s.y, s.r, s.sx, s.sy].every(num)) continue;
             const c = {
-                t: s.t === 'clone' ? 'clone' : 'heal',
+                t: s.t === 'clone' ? 'clone' : s.t === 'eye' ? 'eye' : 'heal',
                 x: r5(clamp(s.x, -0.5, 1.5)), y: r5(clamp(s.y, -0.5, 1.5)),
                 r: r5(clamp(s.r, this.MIN_R, this.MAX_R)),
                 sx: r5(clamp(s.sx, -0.5, 1.5)), sy: r5(clamp(s.sy, -0.5, 1.5)),
                 f: r5(clamp(num(s.f) ? s.f : 0.5, 0, 1)),
                 o: r5(clamp(num(s.o) ? s.o : 1, 0.05, 1))
             };
+            if (s.t === 'line') {
+                const p = Array.isArray(s.pts) ? s.pts : [];
+                if (p.length < 4 || p.length % 2 || !p.every(num)) continue;
+                c.t = 'line';
+                c.pts = p.slice(0, this.LINE_POINTS * 2).map(v => r5(clamp(v, -0.5, 1.5)));
+                c.x = c.sx = c.pts[0];
+                c.y = c.sy = c.pts[1];
+            }
             if (s.d) c.d = 1;
             // Copied from itself: nothing to do
-            if (Math.abs(c.x - c.sx) < 1e-5 && Math.abs(c.y - c.sy) < 1e-5) continue;
+            if (c.t !== 'eye' && c.t !== 'line' && Math.abs(c.x - c.sx) < 1e-5 && Math.abs(c.y - c.sy) < 1e-5) continue;
             out.push(c);
         }
         return out.length ? out : null;
@@ -62,23 +108,381 @@ const Retouch = {
         return (adj && Array.isArray(adj.spots) && adj.spots.length) ? adj.spots : null;
     },
 
-    // Anything to do to the photo before it's cropped (its spots)
+    // Anything to do to the photo before it's cropped (its perspective
+    // and its spots)
     needed(edit) {
-        return !!this.spotsOf(edit);
+        return !!(this.spotsOf(edit) || this.perspOf(edit) || this.lensOf(edit));
     },
 
-    // The whole photo (an ImageBitmap or canvas, as on disk) with its
-    // spots: a canvas, or `src` itself when there's nothing to do
+    // The whole photo (an ImageBitmap or canvas, as on disk) warped and
+    // with its spots: a canvas, or `src` itself when there's nothing to do
     async retouched(src, edit) {
         if (!this.needed(edit)) return src;
-        const c = document.createElement('canvas');
-        c.width = src.width;
-        c.height = src.height;
-        const ctx = c.getContext('2d', { willReadFrequently: true });
-        ctx.drawImage(src, 0, 0);
+        const persp = this.perspOf(edit), lens = this.lensOf(edit);
+        const c = persp || lens ? this.warp(src, persp, lens) : document.createElement('canvas');
+        if (!persp && !lens) {
+            c.width = src.width;
+            c.height = src.height;
+            c.getContext('2d', { willReadFrequently: true }).drawImage(src, 0, 0);
+        }
         const spots = this.spotsOf(edit);
-        if (spots) this.applySpots(ctx, c.width, c.height, spots);
+        if (spots) this.applySpots(c.getContext('2d', { willReadFrequently: true }), c.width, c.height, spots);
         return c;
+    },
+
+    // ---- Perspective ----
+
+    PERSP_MAX: 100,
+    // How far in a side's ends come at ±100 (a part of the photo's width
+    // or height, each end)
+    PERSP_K: 0.2,
+
+    cleanPersp(p) {
+        if (!p || typeof p !== 'object') return null;
+        const out = {};
+        for (const k of ['v', 'h']) {
+            const x = p[k];
+            if (typeof x !== 'number' || !isFinite(x)) continue;
+            const r = Math.round(Math.min(this.PERSP_MAX, Math.max(-this.PERSP_MAX, x)));
+            if (r) out[k] = r;
+        }
+        return Object.keys(out).length ? out : null;
+    },
+
+    // An edit's (or adjustments') perspective, or null
+    perspOf(e) {
+        const adj = e && (e.adj !== undefined ? e.adj : e);
+        return adj ? this.cleanPersp(adj.persp) : null;
+    },
+
+    // ---- Lens ----
+
+    LENS_MAX: 100,
+    // At ±100: distortion's k (r' = r (1 + k r²), r 1 at the corners),
+    // fringes' part of the radius red and blue are moved by, and the
+    // corners' stops of light
+    LENS_K: 0.25,
+    LENS_F: 0.004,
+    LENS_STOPS: 2,
+
+    cleanLens(l) {
+        if (!l || typeof l !== 'object') return null;
+        const out = {};
+        for (const k of ['dist', 'fringe', 'vig']) {
+            const x = l[k];
+            if (typeof x !== 'number' || !isFinite(x)) continue;
+            const r = Math.round(Math.min(this.LENS_MAX, Math.max(-this.LENS_MAX, x)));
+            if (r) out[k] = r;
+        }
+        return Object.keys(out).length ? out : null;
+    },
+
+    lensOf(e) {
+        const adj = e && (e.adj !== undefined ? e.adj : e);
+        return adj ? this.cleanLens(adj.lens) : null;
+    },
+
+    // Where the warped photo's corners come from on the photo (0–1):
+    // top left, top right, bottom right, bottom left
+    perspQuad(p) {
+        const k = this.PERSP_K / this.PERSP_MAX;
+        const v = (p && p.v) || 0, h = (p && p.h) || 0;
+        const top = Math.max(0, -v) * k, bottom = Math.max(0, v) * k;
+        const left = Math.max(0, -h) * k, right = Math.max(0, h) * k;
+        return [
+            [top, left], [1 - top, right],
+            [1 - bottom, 1 - right], [bottom, 1 - left]
+        ];
+    },
+
+    // The map from the warped photo (u, v: 0–1) to the photo (0–1): a
+    // homography from the unit square to perspQuad (Heckbert's), as
+    // [a, b, c, d, e, f, g, h]: x = (a u + b v + c) / (g u + h v + 1),
+    // y = (d u + e v + f) / (g u + h v + 1)
+    perspMap(p) {
+        const [[x0, y0], [x1, y1], [x2, y2], [x3, y3]] = this.perspQuad(p);
+        const dx3 = x0 - x1 + x2 - x3, dy3 = y0 - y1 + y2 - y3;
+        if (Math.abs(dx3) < 1e-12 && Math.abs(dy3) < 1e-12) {
+            return [x1 - x0, x2 - x1, x0, y1 - y0, y2 - y1, y0, 0, 0];
+        }
+        const dx1 = x1 - x2, dx2 = x3 - x2, dy1 = y1 - y2, dy2 = y3 - y2;
+        const det = dx1 * dy2 - dx2 * dy1;
+        const g = (dx3 * dy2 - dx2 * dy3) / det;
+        const h = (dx1 * dy3 - dx3 * dy1) / det;
+        return [x1 - x0 + g * x1, x3 - x0 + h * x3, x0, y1 - y0 + g * y1, y3 - y0 + h * y3, y0, g, h];
+    },
+
+    // A point on the warped photo (0–1) to where it is on the photo
+    perspPoint(M, u, v) {
+        const w = M[6] * u + M[7] * v + 1;
+        return [(M[0] * u + M[1] * v + M[2]) / w, (M[3] * u + M[4] * v + M[5]) / w];
+    },
+
+    // The whole photo (W × H) warped, its lens fixed first (lens may be
+    // null): a canvas the same size, each pixel read (bilinear) from where
+    // perspMap, then the lens, put it
+    warp(src, persp, lens) {
+        const W = src.width, H = src.height;
+        const s = document.createElement('canvas');
+        s.width = W;
+        s.height = H;
+        const sg = s.getContext('2d', { willReadFrequently: true });
+        sg.drawImage(src, 0, 0);
+        const from = sg.getImageData(0, 0, W, H).data;
+        const out = sg.createImageData(W, H);
+        const to = out.data;
+        const M = this.perspMap(persp || null);
+        const [a, b, c, d, e, f, g, h] = M;
+        lens = this.cleanLens(lens);
+        const k = lens ? -(lens.dist || 0) / this.LENS_MAX * this.LENS_K : 0;
+        const fr = lens ? (lens.fringe || 0) / this.LENS_MAX * this.LENS_F : 0;
+        // Lines that bow in, and fringes: the corners would come from
+        // outside the photo, so it's all shrunk to keep them on it
+        const norm = (k > 0 ? 1 / (1 + k) : 1) / (1 + Math.abs(fr));
+        const stops = lens ? (lens.vig || 0) / this.LENS_MAX * this.LENS_STOPS : 0;
+        const D2 = (W * W + H * H) / 4;
+        // Dark corners: in linear light
+        let lin = null, back = null;
+        if (stops) {
+            lin = new Float32Array(256);
+            for (let i = 0; i < 256; i++) { const v = i / 255; lin[i] = v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+            back = new Uint8ClampedArray(4097);
+            for (let i = 0; i <= 4096; i++) { const v = i / 4096; back[i] = 255 * (v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055) + 0.5; }
+        }
+        // One channel (ch, or all four when ch < 0) read at (fx, fy), pixels
+        const read = (fx, fy, ch, o) => {
+            if (fx < 0) fx = 0; else if (fx > W - 1) fx = W - 1;
+            if (fy < 0) fy = 0; else if (fy > H - 1) fy = H - 1;
+            const ix = fx | 0, iy = fy | 0;
+            const tx = fx - ix, ty = fy - iy;
+            const ix1 = ix + 1 < W ? ix + 1 : ix, iy1 = iy + 1 < H ? iy + 1 : iy;
+            const p00 = (iy * W + ix) * 4, p10 = (iy * W + ix1) * 4, p01 = (iy1 * W + ix) * 4, p11 = (iy1 * W + ix1) * 4;
+            const w00 = (1 - tx) * (1 - ty), w10 = tx * (1 - ty), w01 = (1 - tx) * ty, w11 = tx * ty;
+            if (ch >= 0) {
+                to[o + ch] = from[p00 + ch] * w00 + from[p10 + ch] * w10 + from[p01 + ch] * w01 + from[p11 + ch] * w11;
+                return;
+            }
+            for (let q = 0; q < 4; q++) to[o + q] = from[p00 + q] * w00 + from[p10 + q] * w10 + from[p01 + q] * w01 + from[p11 + q] * w11;
+        };
+        let o = 0;
+        for (let y = 0; y < H; y++) {
+            const v = (y + 0.5) / H;
+            const bx = b * v + c, by = e * v + f, bw = h * v + 1;
+            for (let x = 0; x < W; x++, o += 4) {
+                const u = (x + 0.5) / W;
+                const w = g * u + bw;
+                let px = (a * u + bx) / w, py = (d * u + by) / w;
+                if (!lens) {
+                    read(px * W - 0.5, py * H - 0.5, -1, o);
+                    continue;
+                }
+                const dx = (px - 0.5) * W, dy = (py - 0.5) * H;
+                const r2 = (dx * dx + dy * dy) / D2;
+                const sc = (1 + k * r2) * norm;
+                const cx = W / 2 - 0.5, cy = H / 2 - 0.5;
+                read(cx + dx * sc, cy + dy * sc, -1, o);
+                if (fr) {
+                    read(cx + dx * sc * (1 - fr), cy + dy * sc * (1 - fr), 0, o);
+                    read(cx + dx * sc * (1 + fr), cy + dy * sc * (1 + fr), 2, o);
+                }
+                if (stops) {
+                    const gain = Math.pow(2, stops * r2 * sc * sc);
+                    for (let q = 0; q < 3; q++) {
+                        const l = lin[to[o + q]] * gain;
+                        to[o + q] = back[l >= 1 ? 4096 : (l * 4096 + 0.5) | 0];
+                    }
+                }
+            }
+        }
+        sg.putImageData(out, 0, 0);
+        return s;
+    },
+
+    // The inverse of perspMap: a point on the photo (0–1) to where it is
+    // on the warped photo
+    perspInverse(M) {
+        const [a, b, c, d, e, f, g, h] = M;
+        const A = e - f * h, B = c * h - b, C = b * f - c * e;
+        const D = f * g - d, E = a - c * g, F = c * d - a * f;
+        const G = d * h - e * g, Hh = b * g - a * h, I = a * e - b * d;
+        return [A / I, B / I, C / I, D / I, E / I, F / I, G / I, Hh / I];
+    },
+
+    // ---- Auto perspective ----
+
+    // The photo's long straight lines, from a small copy: the near upright
+    // ones (within 30° of it) and the near level ones, each as its two
+    // ends (0–1) and its length (its weight). An edge pixel votes for the
+    // lines along its edge (a Hough transform, steered by the edge's
+    // direction), and the strongest lines are taken, each to where its
+    // pixels end
+    findLines(src, size = 480) {
+        const sc = Math.min(1, size / Math.max(src.width, src.height));
+        const W = Math.max(8, Math.round(src.width * sc)), H = Math.max(8, Math.round(src.height * sc));
+        const c = document.createElement('canvas');
+        c.width = W;
+        c.height = H;
+        const g = c.getContext('2d', { willReadFrequently: true });
+        g.drawImage(src, 0, 0, W, H);
+        const d = g.getImageData(0, 0, W, H).data;
+        c.width = c.height = 0;
+        const Y = new Float32Array(W * H);
+        for (let i = 0, o = 0; i < Y.length; i++, o += 4) Y[i] = 0.299 * d[o] + 0.587 * d[o + 1] + 0.114 * d[o + 2];
+        // Edges (Sobel): the strongest tenth, and strong enough to be one
+        const mag = new Float32Array(W * H), dir = new Float32Array(W * H);
+        for (let y = 1; y < H - 1; y++) {
+            for (let x = 1; x < W - 1; x++) {
+                const i = y * W + x;
+                const gx = Y[i - W + 1] + 2 * Y[i + 1] + Y[i + W + 1] - Y[i - W - 1] - 2 * Y[i - 1] - Y[i + W - 1];
+                const gy = Y[i + W - 1] + 2 * Y[i + W] + Y[i + W + 1] - Y[i - W - 1] - 2 * Y[i - W] - Y[i - W + 1];
+                mag[i] = Math.hypot(gx, gy);
+                dir[i] = Math.atan2(gy, gx);
+            }
+        }
+        const sorted = Float32Array.from(mag).sort();
+        const cut = Math.max(40, sorted[Math.floor(sorted.length * 0.9)]);
+        const px = [], py = [], pa = [];
+        for (let i = 0; i < mag.length; i++) {
+            if (mag[i] < cut) continue;
+            // The edge's normal, folded to -90°–90°
+            let t = dir[i];
+            if (t >= Math.PI / 2) t -= Math.PI; else if (t < -Math.PI / 2) t += Math.PI;
+            px.push(i % W - W / 2);
+            py.push(((i / W) | 0) - H / 2);
+            pa.push(t);
+        }
+        const deg = Math.PI / 180, step = 0.5 * deg, spread = 3 * deg, span = 30 * deg;
+        const R = Math.ceil(Math.hypot(W, H) / 2) + 1, nr = 2 * R + 1, nt = Math.round(2 * span / step) + 1;
+        const family = (upright) => {
+            // A line's normal at θ from the family's own: across for the
+            // upright ones, down for the level ones
+            const base = upright ? 0 : Math.PI / 2;
+            const acc = new Float32Array(nt * nr);
+            const mine = [];
+            for (let k = 0; k < pa.length; k++) {
+                let t = pa[k] - base;
+                if (t >= Math.PI / 2) t -= Math.PI; else if (t < -Math.PI / 2) t += Math.PI;
+                if (Math.abs(t) > span) continue;
+                mine.push(k);
+                const j0 = Math.max(0, Math.round((t - spread + span) / step));
+                const j1 = Math.min(nt - 1, Math.round((t + spread + span) / step));
+                for (let j = j0; j <= j1; j++) {
+                    const th = base + j * step - span;
+                    const r = Math.round(px[k] * Math.cos(th) + py[k] * Math.sin(th)) + R;
+                    acc[j * nr + r]++;
+                }
+            }
+            const lines = [];
+            const least = 0.15 * (upright ? H : W);
+            // A line's pixels, once found, aren't another's
+            const used = new Uint8Array(pa.length);
+            for (let n = 0; n < 40 && lines.length < 16; n++) {
+                let best = 0, at = -1;
+                for (let i = 0; i < acc.length; i++) if (acc[i] > best) { best = acc[i]; at = i; }
+                if (best < least) break;
+                const j = (at / nr) | 0, r = at % nr - R;
+                // Not again, nor its near neighbours
+                for (let jj = Math.max(0, j - 6); jj <= Math.min(nt - 1, j + 6); jj++) {
+                    for (let rr = Math.max(0, r + R - 6); rr <= Math.min(nr - 1, r + R + 6); rr++) acc[jj * nr + rr] = 0;
+                }
+                // Its own pixels (on it, and edges along it), and the line
+                // through them that fits best, twice: finer than the votes
+                let th = base + j * step - span, rho = r, mx = 0, my = 0, lo = 0, hi = 0, count = 0;
+                for (let pass = 0; pass < 2; pass++) {
+                    const cs = Math.cos(th), sn = Math.sin(th);
+                    const on = [];
+                    for (const k of mine) {
+                        if (used[k] || Math.abs(px[k] * cs + py[k] * sn - rho) > 1.5) continue;
+                        let dt = pa[k] - th;
+                        while (dt > Math.PI / 2) dt -= Math.PI;
+                        while (dt < -Math.PI / 2) dt += Math.PI;
+                        if (Math.abs(dt) <= 2 * spread) on.push(k);
+                    }
+                    count = on.length;
+                    if (count < least) break;
+                    mx = 0; my = 0;
+                    for (const k of on) { mx += px[k]; my += py[k]; }
+                    mx /= count; my /= count;
+                    let sxx = 0, syy = 0, sxy = 0;
+                    for (const k of on) {
+                        const dx = px[k] - mx, dy = py[k] - my;
+                        sxx += dx * dx; syy += dy * dy; sxy += dx * dy;
+                    }
+                    // The normal: the direction the pixels spread least
+                    let t = 0.5 * Math.atan2(2 * sxy, sxx - syy) + Math.PI / 2;
+                    if (Math.cos(t - th) < 0) t -= Math.PI;
+                    th = t;
+                    rho = mx * Math.cos(th) + my * Math.sin(th);
+                    lo = Infinity; hi = -Infinity;
+                    for (const k of on) {
+                        const s = -px[k] * Math.sin(th) + py[k] * Math.cos(th);
+                        if (s < lo) lo = s;
+                        if (s > hi) hi = s;
+                    }
+                }
+                if (count < least || hi - lo < least) continue;
+                const cs = Math.cos(th), sn = Math.sin(th);
+                // Its pixels, and the stroke's other edge beside them
+                for (const k of mine) if (Math.abs(px[k] * cs + py[k] * sn - rho) <= 3) used[k] = 1;
+                const end = (s) => [(rho * cs - s * sn + W / 2) / W, (rho * sn + s * cs + H / 2) / H];
+                const [x0, y0] = end(lo), [x1, y1] = end(hi);
+                lines.push({ x0, y0, x1, y1, w: count });
+            }
+            return lines;
+        };
+        return { W, H, upright: family(true), level: family(false) };
+    },
+
+    // The Vertical and Horizontal that make the photo's upright lines
+    // parallel, and its level ones: {v, h}, or null when there aren't
+    // lines enough to go by (two at least, of a set, well apart). A set
+    // left parallel can still lean, all together: Straighten's for that
+    autoPersp(src) {
+        const { W, H, upright, level } = this.findLines(src);
+        // Lines well apart across (the upright ones) or down (the level)
+        const apart = (ls, up) => {
+            if (ls.length < 2) return false;
+            const at = ls.map(l => up ? (l.x0 + l.x1) / 2 : (l.y0 + l.y1) / 2);
+            return Math.max(...at) - Math.min(...at) > 0.2;
+        };
+        const useV = apart(upright, true), useH = apart(level, false);
+        if (!useV && !useH) return null;
+        // How far a set's lines are from parallel, once warped: the spread
+        // of their angles (each line weighted by its length)
+        const spread = (ls, up, Mi) => {
+            let sw = 0, s1 = 0, s2 = 0;
+            for (const l of ls) {
+                const [u0, v0] = this.perspPoint(Mi, l.x0, l.y0), [u1, v1] = this.perspPoint(Mi, l.x1, l.y1);
+                let dx = (u1 - u0) * W, dy = (v1 - v0) * H;
+                if (!up) [dx, dy] = [dy, -dx];
+                if (dy < 0) { dx = -dx; dy = -dy; }
+                const a = Math.atan2(dx, dy);
+                sw += l.w; s1 += l.w * a; s2 += l.w * a * a;
+            }
+            const m = s1 / sw;
+            return s2 / sw - m * m;
+        };
+        const cost = (v, h) => {
+            const Mi = this.perspInverse(this.perspMap({ v, h }));
+            return (useV ? spread(upright, true, Mi) : 0) + (useH ? spread(level, false, Mi) : 0);
+        };
+        // Every tenth, then each step round the best
+        let best = { v: 0, h: 0, c: cost(0, 0) };
+        const search = (v0, h0, reach, by) => {
+            const c0 = best;
+            for (let v = v0 - reach; v <= v0 + reach; v += by) {
+                if (Math.abs(v) > this.PERSP_MAX || (!useV && v)) continue;
+                for (let h = h0 - reach; h <= h0 + reach; h += by) {
+                    if (Math.abs(h) > this.PERSP_MAX || (!useH && h)) continue;
+                    const c = cost(v, h);
+                    if (c < best.c - 1e-12) best = { v, h, c };
+                }
+            }
+            return best !== c0;
+        };
+        search(0, 0, this.PERSP_MAX, 10);
+        search(best.v, best.h, 9, 1);
+        return { v: best.v, h: best.h };
     },
 
     // ---- Doing them ----
@@ -100,6 +504,7 @@ const Retouch = {
     },
 
     applySpot(ctx, W, H, s) {
+        if (s.t === 'line') { this.applyLine(ctx, W, H, s); return; }
         const b = this.spotBoxes(W, H, s);
         // The spot's box on the canvas
         const bx0 = Math.max(0, b.x0), by0 = Math.max(0, b.y0), bx1 = Math.min(W, b.x1), by1 = Math.min(H, b.y1);
@@ -138,6 +543,26 @@ const Retouch = {
         };
         // Heal: the difference (photo − source) round the edge, spread
         // smoothly over the inside
+        // Red-eye: in the circle, a pixel as red as a flash makes it takes
+        // the eye's own dark (its green and blue), the more the redder
+        if (s.t === 'eye') {
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const k = weight(bx0 + x, by0 + y) * s.o;
+                    if (k <= 0) continue;
+                    const i = (y * w + x) * 4;
+                    const r = D[i], g = D[i + 1], bl = D[i + 2], gb = (g + bl) / 2;
+                    // (a brown iris or skin is under 1.9 times as red)
+                    if (r < 50 || r < gb * 1.9) continue;
+                    const red = Math.min(1, (r / Math.max(1, gb) - 1.9) / 1.1);
+                    const to = Math.min(g, bl) * 0.9;
+                    D[i] = Math.round(r + (to - r) * k * red);
+                    D[i + 1] = Math.round(g + (g * 0.9 - g) * k * red);
+                    D[i + 2] = Math.round(bl + (bl * 0.9 - bl) * k * red);
+                }
+            }
+            return;
+        }
         let field = null;
         if (s.t === 'heal') field = this.membrane(dst, bx0, by0, S, sAt, b);
         for (let y = 0; y < h; y++) {
@@ -153,6 +578,309 @@ const Retouch = {
                 }
             }
         }
+    },
+
+    // ---- Scratches and creases (lines) ----
+
+    // A line's points in pixels of a W × H picture, and its box (with room
+    // either side for what it's filled from)
+    lineBox(W, H, s) {
+        const R = Math.max(0.75, s.r * H), P = [];
+        for (let i = 0; i + 1 < s.pts.length; i += 2) P.push([s.pts[i] * W, s.pts[i + 1] * H]);
+        const m = 2 * R + 4;
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        for (const [x, y] of P) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+        return { R, P, x0: Math.floor(x0 - m), y0: Math.floor(y0 - m), x1: Math.ceil(x1 + m), y1: Math.ceil(y1 + m) };
+    },
+
+    applyLine(ctx, W, H, s) {
+        const b = this.lineBox(W, H, s);
+        const bx0 = Math.max(0, b.x0), by0 = Math.max(0, b.y0), bx1 = Math.min(W, b.x1), by1 = Math.min(H, b.y1);
+        if (bx1 <= bx0 || by1 <= by0) return;
+        const img = ctx.getImageData(bx0, by0, bx1 - bx0, by1 - by0);
+        this.linePixels(img, bx0, by0, b, s);
+        ctx.putImageData(img, bx0, by0);
+    },
+
+    // The work on pixels: img (an ImageData at bx0, by0 on the photo) with
+    // the line filled. Each pixel near the line takes its nearest place on
+    // it; it's filled from the two sides, straight across the line there
+    // (just past its edge, a little along it averaged in), mixed by how
+    // far across it is.
+    linePixels(img, bx0, by0, b, s) {
+        const w = img.width, h = img.height, D = img.data, S = new Uint8ClampedArray(D);
+        const R = b.R, Ri = R * (1 - s.f), out = R + 1.5;
+        const n = w * h;
+        const dist = new Float32Array(n).fill(Infinity), seg = new Int16Array(n).fill(-1), foot = new Float32Array(n * 2), off = new Float32Array(n);
+        const segs = [];
+        for (let k = 0; k + 1 < b.P.length; k++) {
+            const [ax, ay] = b.P[k], [cx, cy] = b.P[k + 1];
+            const dx = cx - ax, dy = cy - ay, len = Math.hypot(dx, dy);
+            if (len < 1e-6) continue;
+            const tx = dx / len, ty = dy / len;
+            segs.push([ax, ay, tx, ty, len]);
+            const si = segs.length - 1;
+            const x0 = Math.max(0, Math.floor(Math.min(ax, cx) - R - 1) - bx0), x1 = Math.min(w, Math.ceil(Math.max(ax, cx) + R + 1) - bx0);
+            const y0 = Math.max(0, Math.floor(Math.min(ay, cy) - R - 1) - by0), y1 = Math.min(h, Math.ceil(Math.max(ay, cy) + R + 1) - by0);
+            for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+                const px = bx0 + x + 0.5 - ax, py = by0 + y + 0.5 - ay;
+                const along = Math.min(len, Math.max(0, px * tx + py * ty));
+                const fx = ax + tx * along, fy = ay + ty * along;
+                const d = Math.hypot(bx0 + x + 0.5 - fx, by0 + y + 0.5 - fy);
+                const i = y * w + x;
+                if (d < dist[i]) { dist[i] = d; seg[i] = si; foot[i * 2] = fx; foot[i * 2 + 1] = fy; off[i] = px * -ty + py * tx; }
+            }
+        }
+        // Bilinear, from the picture as it was (edges repeated)
+        const at = (X, Y, c) => {
+            let u = X - bx0 - 0.5, v = Y - by0 - 0.5;
+            u = u < 0 ? 0 : u > w - 1 ? w - 1 : u;
+            v = v < 0 ? 0 : v > h - 1 ? h - 1 : v;
+            const i0 = Math.floor(u), j0 = Math.floor(v), i1 = Math.min(w - 1, i0 + 1), j1 = Math.min(h - 1, j0 + 1);
+            const fu = u - i0, fv = v - j0;
+            const p = (i, j) => S[(j * w + i) * 4 + c];
+            return (p(i0, j0) * (1 - fu) + p(i1, j0) * fu) * (1 - fv) + (p(i0, j1) * (1 - fu) + p(i1, j1) * fu) * fv;
+        };
+        const spread = Math.max(1, Math.min(3, R));
+        for (let i = 0; i < n; i++) {
+            const d = dist[i];
+            if (d >= R) continue;
+            const k = (d <= Ri ? 1 : (() => { const t = (R - d) / Math.max(1e-6, R - Ri); return t * t * (3 - 2 * t); })()) * s.o;
+            if (k <= 0) continue;
+            const [, , tx, ty] = segs[seg[i]];
+            const nx = -ty, ny = tx, fx = foot[i * 2], fy = foot[i * 2 + 1];
+            const t = Math.max(0, Math.min(1, (off[i] + out) / (2 * out)));
+            for (let c = 0; c < 3; c++) {
+                let a = 0, z = 0;
+                for (const q of [-spread, 0, spread]) {
+                    const qx = fx + tx * q, qy = fy + ty * q;
+                    a += at(qx - nx * out, qy - ny * out, c);
+                    z += at(qx + nx * out, qy + ny * out, c);
+                }
+                const v = (a * (1 - t) + z * t) / 3;
+                D[i * 4 + c] = Math.round(D[i * 4 + c] + (v - D[i * 4 + c]) * k);
+            }
+        }
+    },
+
+    // Half the width (photo heights) of the scratch a drag went along
+    // (pts, photo units): how far either side the pixels stay much lighter
+    // or darker than further out, across the line at points along it;
+    // null when there's no scratch there
+    fitLine(Y, W, H, pts, most = 0.01) {
+        const P = [];
+        for (let i = 0; i + 1 < pts.length; i += 2) P.push([pts[i] * W, pts[i + 1] * H]);
+        const lim = Math.max(3, most * H);
+        const at = (x, y) => Y[Math.min(H - 1, Math.max(0, Math.round(y - 0.5))) * W + Math.min(W - 1, Math.max(0, Math.round(x - 0.5)))];
+        const widths = [];
+        for (let k = 0; k + 1 < P.length; k++) {
+            const [ax, ay] = P[k], [bx, by] = P[k + 1], len = Math.hypot(bx - ax, by - ay);
+            if (len < 1) continue;
+            const tx = (bx - ax) / len, ty = (by - ay) / len, nx = -ty, ny = tx;
+            for (let q = 0; q < len; q += 3) {
+                const cx = ax + tx * q, cy = ay + ty * q;
+                // the profile across, the line's middle its oddest pixel
+                const prof = [];
+                for (let o = -Math.ceil(lim * 1.6); o <= Math.ceil(lim * 1.6); o++) prof.push(at(cx + nx * o, cy + ny * o));
+                const mid = prof.length >> 1, edge = [...prof.slice(0, 3), ...prof.slice(-3)].sort((a, b) => a - b);
+                const bg = (edge[2] + edge[3]) / 2;
+                let best = mid;
+                for (let o = mid - 2; o <= mid + 2; o++) if (Math.abs(prof[o] - bg) > Math.abs(prof[best] - bg)) best = o;
+                const peak = prof[best] - bg;
+                if (Math.abs(peak) < 0.05) continue;
+                let lo = best, hi = best;
+                while (lo > 0 && (prof[lo - 1] - bg) * Math.sign(peak) > Math.abs(peak) * 0.35) lo--;
+                while (hi < prof.length - 1 && (prof[hi + 1] - bg) * Math.sign(peak) > Math.abs(peak) * 0.35) hi++;
+                if (lo === 0 || hi === prof.length - 1) continue;
+                widths.push(Math.max(Math.abs(lo - mid), Math.abs(hi - mid)) + 0.5);
+            }
+        }
+        if (widths.length < 2) return null;
+        widths.sort((a, b) => a - b);
+        const half = widths[Math.floor(widths.length * 0.75)] + 1;
+        return half <= lim ? half / H : null;
+    },
+
+    // Scratches and creases on a picture (ImageData of the whole photo):
+    // lines for them. sensitivity 0–100; widest: the widest looked for
+    // and shortest, in heights of the photo.
+    // Each is traced: from the strongest ridge pixel not yet on a line,
+    // along the ridge's own direction (from the pixels round it), a few
+    // pixels a step, centred again across it each step, over short gaps
+    // (where it crosses something as light as itself); then kept if it's
+    // long, thin and a ridge.
+    findScratches(img, { sensitivity = 50, widest = 0.006, shortest = 0.04, max = 60, keep = [] } = {}) {
+        const W = img.width, H = img.height, n = W * H;
+        const Y = this.luma(img);
+        const maxW = Math.max(5, widest * H), minLen = Math.max(24, shortest * H);
+        const r = Math.max(3, Math.round(maxW * 1.5));
+        const B = this.blur(Y, W, H, r);
+        const D = new Float32Array(n);
+        for (let i = 0; i < n; i++) D[i] = Y[i] - B[i];
+        const sens = Math.min(100, Math.max(0, sensitivity)) / 100;
+        const thr = 0.09 - 0.06 * sens;
+        const at = (x, y) => {
+            const ix = Math.round(x - 0.5), iy = Math.round(y - 0.5);
+            return ix < 0 || iy < 0 || ix >= W || iy >= H ? 0 : D[iy * W + ix];
+        };
+        const used = new Uint8Array(n);
+        const seeds = [];
+        for (let i = 0; i < n; i++) if (Math.abs(D[i]) > thr * 1.5) seeds.push(i);
+        seeds.sort((p, q) => Math.abs(D[q]) - Math.abs(D[p]));
+        const step = 3, look = Math.max(2, Math.ceil(maxW / 2)), gaps = 4;
+        // The ridge's direction at (x, y): the long way of the like pixels round it
+        const direction = (x, y, sign) => {
+            let sxx = 0, syy = 0, sxy = 0, m = 0;
+            const R = Math.ceil(maxW * 1.5) + 3;
+            for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+                if (at(x + dx, y + dy) * sign < thr * 0.7) continue;
+                sxx += dx * dx; syy += dy * dy; sxy += dx * dy; m++;
+            }
+            if (m < 4) return null;
+            const ang = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+            const l1 = (sxx + syy) / 2 + Math.sqrt(((sxx - syy) / 2) ** 2 + sxy * sxy), l2 = (sxx + syy) / 2 - Math.sqrt(((sxx - syy) / 2) ** 2 + sxy * sxy);
+            if (l1 < 3 * Math.max(1e-6, l2)) return null;   // a blob, not a line
+            return [Math.cos(ang), Math.sin(ang)];
+        };
+        const found = [];
+        let tried = 0;
+        for (const i0 of seeds) {
+            if (used[i0] || found.length >= max * 3 || tried > 4000) continue;
+            tried++;
+            const sign = D[i0] > 0 ? 1 : -1;
+            const x0 = i0 % W + 0.5, y0 = ((i0 / W) | 0) + 0.5;
+            const dir0 = direction(x0, y0, sign);
+            if (!dir0) { used[i0] = 1; continue; }
+            // Both ways from the seed
+            const half = (ux, uy) => {
+                const path = [];
+                let x = x0, y = y0, miss = 0;
+                for (let k = 0; k < 4000; k++) {
+                    const nx = x + ux * step, ny = y + uy * step;
+                    if (nx < 0 || ny < 0 || nx >= W || ny >= H) break;
+                    // across: the strongest like pixel near the line
+                    let best = 0, bo = 0;
+                    for (let o = -look; o <= look; o++) {
+                        const v = at(nx - uy * o, ny + ux * o) * sign;
+                        if (v > best || (v === best && Math.abs(o) < Math.abs(bo))) { best = v; bo = o; }
+                    }
+                    if (best > thr * 0.6) {
+                        const cx = nx - uy * bo, cy = ny + ux * bo;
+                        // the direction follows a gentle bend
+                        const dx = cx - x, dy = cy - y, l = Math.hypot(dx, dy) || 1;
+                        let vx = ux * 0.75 + dx / l * 0.25, vy = uy * 0.75 + dy / l * 0.25;
+                        const vl = Math.hypot(vx, vy);
+                        ux = vx / vl; uy = vy / vl;
+                        x = cx; y = cy;
+                        miss = 0;
+                        path.push([x, y, 1]);
+                    } else {
+                        if (++miss > gaps) break;
+                        x = nx; y = ny;
+                        path.push([x, y, 0]);
+                    }
+                }
+                while (path.length && !path[path.length - 1][2]) path.pop();
+                return path;
+            };
+            const fwd = half(dir0[0], dir0[1]), back = half(-dir0[0], -dir0[1]);
+            const path = back.reverse().concat([[x0, y0, 1]], fwd);
+            let len = 0;
+            for (let k = 1; k < path.length; k++) len += Math.hypot(path[k][0] - path[k - 1][0], path[k][1] - path[k - 1][1]);
+            // Marked as looked at, so it isn't traced again
+            for (const [x, y] of path) {
+                for (let dy = -look; dy <= look; dy++) for (let dx = -look; dx <= look; dx++) {
+                    const ix = Math.round(x - 0.5) + dx, iy = Math.round(y - 0.5) + dy;
+                    if (ix >= 0 && iy >= 0 && ix < W && iy < H) used[iy * W + ix] = 1;
+                }
+            }
+            if (len < minLen) continue;
+            // How wide (the like pixels either side of its middle), and a
+            // ridge, not an edge: either side of it is as the ground is
+            const widths = [];
+            let mid = 0, sideA = 0, sideB = 0, m = 0;
+            for (let k = 1; k < path.length; k++) {
+                if (!path[k][2]) continue;
+                const [x, y] = path[k], [px, py] = path[k - 1];
+                const l = Math.hypot(x - px, y - py) || 1, ux = (x - px) / l, uy = (y - py) / l;
+                // out to where it's under 40% of its middle (or the threshold)
+                const cut = Math.max(thr * 0.5, at(x, y) * sign * 0.4);
+                let lo = 0, hi = 0;
+                while (lo > -maxW * 1.5 && at(x + uy * (lo - 1), y - ux * (lo - 1)) * sign > cut) lo--;
+                while (hi < maxW * 1.5 && at(x + uy * (hi + 1), y - ux * (hi + 1)) * sign > cut) hi++;
+                widths.push(hi - lo + 1);
+                const o = (hi - lo + 1) / 2 + 2.5;
+                mid += at(x, y); sideA += at(x + uy * o, y - ux * o); sideB += at(x - uy * o, y + ux * o); m++;
+            }
+            if (m < 3) continue;
+            widths.sort((p, q) => p - q);
+            const width = widths[Math.floor(widths.length * 0.75)];
+            if (width > maxW) continue;
+            mid /= m; sideA /= m; sideB /= m;
+            if (mid * sign < thr) continue;
+            if (sideA * sign < -0.35 * Math.abs(mid) || sideB * sign < -0.35 * Math.abs(mid)) continue;
+            found.push({ pts: this.simplify(path.map(([x, y]) => [x, y]), 0.75, this.LINE_POINTS), half: width / 2 + 1, score: Math.abs(mid) * len });
+        }
+        found.sort((p, q) => q.score - p.score);
+        const out = [];
+        for (const f of found) {
+            if (out.length >= max) break;
+            const rr = Math.min(this.MAX_R, Math.max(this.MIN_R, f.half / H));
+            const p = f.pts.flatMap(([x, y]) => [x / W, y / H]);
+            // Mostly on a line already there (a stronger one, or one kept): left
+            const onLine = (s2) => {
+                if (s2.t !== 'line') return false;
+                const q = s2.pts, R2 = s2.r * H + rr * H + 2;
+                let on = 0, all = 0;
+                for (const [x, y] of this.along(f.pts, 2)) {
+                    all++;
+                    for (let k = 0; k + 3 < q.length; k += 2) {
+                        const ax = q[k] * W, ay = q[k + 1] * H, dx = q[k + 2] * W - ax, dy = q[k + 3] * H - ay, l2 = dx * dx + dy * dy || 1;
+                        const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2));
+                        if (Math.hypot(x - ax - dx * t, y - ay - dy * t) <= R2) { on++; break; }
+                    }
+                }
+                return on > all * 0.6;
+            };
+            if (keep.some(onLine) || out.some(onLine)) continue;
+            out.push({ t: 'line', x: p[0], y: p[1], sx: p[0], sy: p[1], r: rr, f: 0.3, o: 1, d: 1, pts: p });
+        }
+        return out;
+    },
+
+    // Points every `gap` pixels along a path ([[x, y], …])
+    along(path, gap) {
+        const out = [path[0]];
+        for (let k = 1; k < path.length; k++) {
+            const [ax, ay] = path[k - 1], [bx, by] = path[k], l = Math.hypot(bx - ax, by - ay);
+            for (let q = gap; q <= l; q += gap) out.push([ax + (bx - ax) * q / l, ay + (by - ay) * q / l]);
+        }
+        return out;
+    },
+
+    // A path ([[x, y], …]) with the points it doesn't need taken out
+    // (Douglas–Peucker, to within tol), at most `most` points
+    simplify(path, tol, most) {
+        if (path.length <= 2) return path.slice();
+        let t = tol, out;
+        do {
+            const keepIt = new Uint8Array(path.length);
+            keepIt[0] = keepIt[path.length - 1] = 1;
+            const st = [[0, path.length - 1]];
+            while (st.length) {
+                const [a, b] = st.pop();
+                const [ax, ay] = path[a], [bx, by] = path[b], dx = bx - ax, dy = by - ay, l = Math.hypot(dx, dy) || 1;
+                let far = -1, fd = t;
+                for (let k = a + 1; k < b; k++) {
+                    const d = Math.abs((path[k][0] - ax) * dy - (path[k][1] - ay) * dx) / l;
+                    if (d > fd) { fd = d; far = k; }
+                }
+                if (far >= 0) { keepIt[far] = 1; st.push([a, far], [far, b]); }
+            }
+            out = path.filter((p, k) => keepIt[k]);
+            t *= 1.5;
+        } while (out.length > most);
+        return out;
     },
 
     // The healing field: (x, y, channel) → what to add to the source there.

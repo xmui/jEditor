@@ -1,16 +1,22 @@
 // Photos, Adjust and Paint as modes, like Lightroom's modules: a place you
 // stay in, not a dialog. Where the switch is:
 //
-//   the sidebar open     Photos | Adjust | Paint along its top (#mode-seg)
-//   the sidebar closed   a chip naming the mode in the folder pill, with a
-//                        menu to switch (#mode-chip-bar)
-//   single view, Adjust  the same chip on its own, top left (#mode-float)
-//   and Paint
+//   the sidebar open     one row along its top (#mode-row): Photos ·
+//                        Adjust · Paint as icons at the left (#mode-seg),
+//                        the sidebar button and Find anything at the right
+//   the sidebar closed   the same row, in the same place, as a glass pill
+//                        (jEditor's own look; a theme keeps its switch in
+//                        the sidebar, and the chip below in the folder pill)
+//   Adjust and Paint     the sidebar beside them, as in Photos, and the row
+//                        with it; hidden, the row in their head's corner
+//                        (a theme: a chip naming the mode, #mode-float)
 //
 // Adjust and Paint have no Done bar: what's done is kept as you go, as in
 // Lightroom. The switch, Esc or Enter go back to Photos keeping it (and
-// Ctrl+Z there takes it off again); a film strip runs along the bottom
-// (#mode-strip), and another photo there opens in the same mode.
+// Ctrl+Z there takes it off again); the film strip runs along the bottom,
+// the same one as Photos' (#thumbnail-strip, moved in: its size, badges,
+// clicks and showing or hiding are the same everywhere), and another photo
+// there opens in the same mode.
 //
 // The landing page's Start in (Photos · Adjust · Paint, remembered) is
 // where a project opened from it lands; Paint there asks what to paint on
@@ -41,7 +47,22 @@ const Modes = {
             seg.className = 'mode-seg';
             seg.setAttribute('role', 'radiogroup');
             seg.setAttribute('aria-label', 'Mode');
-            rail.prepend(seg);
+            // The one row: the modes, then the sidebar button and Find
+            const row = document.createElement('div');
+            row.id = 'mode-row';
+            row.className = 'mode-row';
+            row.setAttribute('role', 'toolbar');
+            row.setAttribute('aria-label', 'Modes');
+            const gap = document.createElement('span');
+            gap.className = 'mode-row-gap';
+            gap.setAttribute('aria-hidden', 'true');
+            const side = this.rowButton('mode-row-side', '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/>');
+            side.setAttribute('aria-controls', 'folder-rail');
+            side.addEventListener('click', () => { if (typeof Folders !== 'undefined') Folders.toggleRail(); });
+            const find = this.rowButton('mode-row-find', '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>');
+            find.addEventListener('click', () => { if (typeof Palette !== 'undefined') Palette.open(); });
+            row.append(seg, gap, side, find);
+            rail.prepend(row);
         }
         // In a browser, leaving the page with something not kept asks too
         // (the apps ask in closing(); a held beforeunload there would just
@@ -49,6 +70,16 @@ const Modes = {
         addEventListener('beforeunload', (e) => {
             if (!Host.get() && this.unkept()) { e.preventDefault(); e.returnValue = ''; }
         });
+        // Reload in the apps, as a browser's (which has its own): Ctrl+R,
+        // ⌘R on the Mac (its menu's View → Reload sends it here too). Plain
+        // R stays Rescan folder.
+        addEventListener('keydown', (e) => {
+            if (Host.get() && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === 'KeyR') {
+                e.preventDefault();
+                e.stopPropagation();
+                this.reload();
+            }
+        }, true);
         // The chip, in the folder pill (after the sidebar button) and on its own
         const bar = this.el('folder-bar');
         if (bar) {
@@ -61,36 +92,27 @@ const Modes = {
         float.className = 'mode-float toolbar hidden';
         float.appendChild(this.makeChip('mode-chip-float'));
         document.body.appendChild(float);
-        // The strip in Adjust and Paint
-        const strip = document.createElement('div');
-        strip.id = 'mode-strip';
-        strip.className = 'mode-strip';
-        strip.setAttribute('aria-label', 'Photos: another one opens in this mode');
-        strip.addEventListener('wheel', (e) => {
-            if (e.ctrlKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
-            e.preventDefault();
-            strip.scrollLeft += Wheel.pixels(e, strip).y;
-        }, { passive: false });
-        this.strip = strip;
-        // Start in, on the landing page
-        const start = this.el('start-in');
-        if (start) {
-            for (const b of start.querySelectorAll('[data-mode]')) {
-                b.addEventListener('click', () => this.pickStart(b.dataset.mode));
-            }
+        // The film strip's place in Photos, to put it back when Adjust or
+        // Paint closes (placeStrip)
+        const strip = this.strip = app.elements.thumbnailStrip;
+        if (strip) {
+            this.stripHome = document.createComment('film strip');
+            (app.elements.stripResize || strip).before(this.stripHome);
         }
         const blank = this.el('start-blank');
-        if (blank) blank.addEventListener('click', () => this.paintStart());
-        // Convert photos…: any folder, without opening it (convert.js)
+        // New project: a folder for photos or a blank canvas (places.js asks which)
+        if (blank) blank.addEventListener('click', () => typeof Places !== 'undefined' ? Places.newProject() : this.paintStart());
+        // Convert photos: photos (converted on this page) or any folder,
+        // without opening it (convert.js)
         const convert = this.el('start-convert');
-        if (convert) convert.addEventListener('click', () => Convert.open({ choose: true }));
-        // A project opened from the landing page lands in Start in's mode
+        if (convert) convert.addEventListener('click', (e) => { e.stopPropagation(); Convert.startMenu(convert); });
+        // A project opened from the home page lands in Photos, unless a tile said otherwise
         const drop = app.elements.dropZone;
         if (drop) {
             let shown = !drop.classList.contains('hidden');
             new MutationObserver(() => {
                 const now = !drop.classList.contains('hidden');
-                if (shown && !now && !this.hold) this.pending = this.next || this.startIn();
+                if (shown && !now && !this.hold) this.pending = this.next || 'photos';
                 if (now) { this.pending = null; this.next = null; }
                 shown = now;
                 this.renderStart();
@@ -99,8 +121,19 @@ const Modes = {
         document.addEventListener('pointerdown', (e) => {
             if (this.menu && !this.menu.contains(e.target) && !e.target.closest('.mode-chip')) this.closeMenu();
         }, true);
-        addEventListener('resize', () => this.closeMenu());
+        addEventListener('resize', () => { this.closeMenu(); this.chipRoom(); });
+        // A theme on or off, full screen (the Mac's lights): the chip moves
+        new MutationObserver(() => this.chipRoom()).observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-skin', 'style'] });
         this.render();
+    },
+
+    rowButton(id, svg) {
+        const b = document.createElement('button');
+        b.id = id;
+        b.type = 'button';
+        b.className = 'tb-btn mode-row-btn';
+        b.innerHTML = this.icon(svg);
+        return b;
     },
 
     makeChip(id) {
@@ -162,6 +195,31 @@ const Modes = {
         if (this.current() !== mode && file && app.currentFile !== file) app.openSingle(file);
     },
 
+    // Switching modes, a short fade in of the one arriving (the owner's
+    // ask: sleek, at almost no cost): opacity only, which the GPU does
+    // without laying anything out, 180ms; nothing with motion off or in a
+    // theme (style.css: .mode-arrive). Not when the strip steps to another photo in the same
+    // mode, which closes and opens it again
+    arrive(el) {
+        if (!el) return;
+        // The sidebar as the mode arriving has it, from its first frame: it
+        // was set only once the mode had opened, so one kept closed there
+        // showed for a frame or two as it came in (Photos' left open)
+        const mode = this.current();
+        if (this._railFor !== mode && typeof Folders !== 'undefined' && Folders.app) {
+            this._railFor = mode;
+            Folders.render();
+        }
+        if (this._stepping) return;
+        const root = document.documentElement;
+        if (root.dataset.skin || root.dataset.motion === 'off') return;
+        el.classList.remove('mode-arrive');
+        void el.offsetWidth; // (to play it again)
+        el.classList.add('mode-arrive');
+        clearTimeout(el._arrived);
+        el._arrived = setTimeout(() => el.classList.remove('mode-arrive'), 400);
+    },
+
     async go(mode) {
         const app = this.app;
         this.closeMenu();
@@ -197,12 +255,14 @@ const Modes = {
         if (mode === 'photos') { app.openSingle(file); return; }
         if (file === (mode === 'adjust' ? Adjust.file : PaintEditor.file)) return;
         this._busy = true;
+        this._stepping = true;
         try {
             if (!(await this.leave(true))) return;
             await this.enter(mode, file);
         } finally {
             this._busy = false;
             this.render();
+            this._stepping = false;
         }
     },
 
@@ -218,19 +278,6 @@ const Modes = {
     },
 
     // ---- The landing page ----
-
-    startIn() {
-        const m = this.app.uiPrefs && this.app.uiPrefs.startIn;
-        return m && m !== 'photos' && this.on(m) ? m : 'photos';
-    },
-
-    pickStart(mode) {
-        const app = this.app;
-        app.uiPrefs.startIn = mode;
-        app.saveUiPrefs();
-        this.renderStart();
-        if (mode === 'paint') this.paintStart();
-    },
 
     // Paint from the landing page: what to paint on
     paintStart() {
@@ -264,7 +311,16 @@ const Modes = {
         const mode = this.current();
         const ui = app.elements.mainInterface;
         const open = !!ui && !ui.classList.contains('hidden');
+        // Back in Photos from Adjust or Paint: it comes in as they do (arrive)
+        if (mode === 'photos' && this._last && this._last !== 'photos') this.arrive(ui);
+        this._last = mode;
         document.documentElement.classList.toggle('modes-on', any);
+        // Into or out of an editing mode: the sidebar as that mode has it
+        // (folders.js: railOpen), which renders this again
+        if (this._railFor !== mode) {
+            this._railFor = mode;
+            if (typeof Folders !== 'undefined' && Folders.app) { Folders.render(); return; }
+        }
         // The sidebar's switch
         const seg = this.el('mode-seg');
         if (seg) {
@@ -278,6 +334,7 @@ const Modes = {
                 b.setAttribute('aria-checked', String(m === mode));
                 b.className = m === mode ? 'on' : '';
                 b.title = key ? `${label} (${key})` : label;
+                b.setAttribute('aria-label', label);
                 b.innerHTML = `${this.icon(svg)}<span>${label}</span>`;
                 b.addEventListener('click', () => this.go(m));
                 seg.appendChild(b);
@@ -285,26 +342,95 @@ const Modes = {
         }
         const railShown = this.visible('folder-rail');
         const barShown = this.visible('folder-bar');
-        // The chip in the folder pill: while the sidebar's closed
+        const own = !document.documentElement.dataset.skin;
+        // (Adjust and Paint are open inside the crop state: only Photos' crop counts)
+        const crop = app.cropState && app.cropState.active && mode === 'photos';
+        this.renderRow(own, railShown, any && open && !crop, mode !== 'photos');
+        // The chip in the folder pill: while the sidebar's closed, in a
+        // theme (in jEditor's own look the row stays, as a pill)
         const chipBar = this.el('mode-chip-bar');
         if (chipBar) {
-            chipBar.classList.toggle('hidden', !any || railShown);
+            chipBar.classList.toggle('hidden', !any || railShown || own);
             this.drawChip(chipBar, mode);
         }
         // The chip on its own: single view (no folder pill), Adjust, Paint
         const float = this.el('mode-float');
         if (float) {
             const editing = mode !== 'photos';
-            const crop = app.cropState && app.cropState.active && !editing;
-            const want = any && open && !crop && (editing || (!barShown && !railShown));
+            const want = any && open && !crop && (editing || (!own && !barShown && !railShown));
             float.classList.toggle('hidden', !want);
             float.classList.toggle('over-mode', editing);
             this.drawChip(float.firstElementChild, mode);
         }
+        this.chipRoom();
         this.placeStrip(mode);
         this.renderStart();
         // Closing the window asks first while in Adjust or Paint
         this.holdClose(mode !== 'photos');
+    },
+
+    // The row: along the sidebar's top while it's open; closed, the same
+    // row floats where it was, as a pill, and the folder pill moves over
+    // for it (--mode-row-w). In a theme it's only the switch, in the sidebar
+    renderRow(own, docked, want, editing) {
+        const row = this.el('mode-row');
+        const rail = this.el('folder-rail');
+        if (!row || !rail) return;
+        const float = own && !docked;
+        if (float ? row.parentElement !== document.body : row.parentElement !== rail) {
+            if (float) document.body.appendChild(row); else rail.prepend(row);
+        }
+        row.classList.toggle('float', float);
+        row.classList.toggle('toolbar', float);
+        row.classList.toggle('hidden', float && !want);
+        const over = float && editing;
+        if (row.classList.contains('over-mode') !== over) {
+            row.classList.toggle('over-mode', over);
+            // Their head moves as the sidebar goes (style.css: .mode-screen's
+            // left): its room for the row is measured again once it's there
+            clearTimeout(this.roomLater);
+            this.roomLater = setTimeout(() => this.chipRoom(), 320);
+        }
+        const side = this.el('mode-row-side');
+        const app = this.app;
+        const can = typeof Folders !== 'undefined' && Folders.enabled() && (app.viewMode === 'grid' || Folders.besideSingle());
+        side.classList.toggle('hidden', !can);
+        side.title = Host.keys(docked ? 'Hide the sidebar (Ctrl+B)' : 'Show the sidebar (Ctrl+B)');
+        side.setAttribute('aria-label', docked ? 'Hide the sidebar' : 'Show the sidebar');
+        side.setAttribute('aria-expanded', String(docked));
+        const keys = (app.keyBindings && app.keyBindings['app.palette']) || [];
+        const find = this.el('mode-row-find');
+        find.title = keys.length ? Host.keys(`Find anything (${keys[0]})`) : 'Find anything';
+        find.setAttribute('aria-label', 'Find anything');
+        find.classList.toggle('hidden', typeof Palette === 'undefined');
+        // At once, so the folder pill is never under it for a frame
+        const shown = float && !editing && !row.classList.contains('hidden');
+        document.documentElement.style.setProperty('--mode-row-w', shown ? `${Math.ceil(row.getBoundingClientRect().width)}px` : '0px');
+        if (shown && typeof Folders !== 'undefined' && Folders.fitBar) Folders.fitBar();
+    },
+
+    // Over Adjust and Paint the chip floats in their head's left corner, and
+    // their buttons on its right: the head keeps that much room each side,
+    // so its title (centred) never slides under them in a narrow window (on
+    // the Mac, the chip is after the traffic lights too)
+    chipRoom() {
+        cancelAnimationFrame(this.roomFrame);
+        this.roomFrame = requestAnimationFrame(() => {
+            const row = this.el('mode-row');
+            const float = row && row.classList.contains('over-mode') ? row : this.el('mode-float');
+            const on = float && float.classList.contains('over-mode') && !float.classList.contains('hidden') && float.getClientRects().length > 0;
+            const right = on ? float.getBoundingClientRect().right : 0;
+            for (const head of document.querySelectorAll('.adj-head, .paint-head')) {
+                const h = head.getBoundingClientRect();
+                const acts = head.querySelector('.mode-head-acts');
+                // In jEditor's own look the buttons are a pill at the
+                // right, over the photo: the file's pill keeps clear of them
+                const own = !document.documentElement.dataset.skin;
+                const a = (on || own) && acts && acts.getBoundingClientRect();
+                head.style.paddingLeft = right && h.width ? `${Math.ceil(right - h.left) + 12}px` : '';
+                head.style.paddingRight = a && a.width ? `${Math.ceil(h.right - a.left) + 12}px` : '';
+            }
+        });
     },
 
     holdClose(on) {
@@ -312,6 +438,17 @@ const Modes = {
         if (!n || !n.holdClose || this._held === on) return;
         this._held = on;
         n.holdClose(on ? () => this.closing() : null);
+    },
+
+    // The page again, asking first (as closing does) if something isn't kept
+    async reload() {
+        if (this.reloading) return;
+        this.reloading = true;
+        try {
+            if (await this.closing()) location.reload();
+        } finally {
+            this.reloading = false;
+        }
     },
 
     // Anything done in Adjust or Paint that isn't kept yet
@@ -376,6 +513,17 @@ const Modes = {
             b.addEventListener('click', () => this.go(m));
             menu.appendChild(b);
         }
+        // Find anything (palette.js), in each mode: the one menu every mode has
+        if (typeof Palette !== 'undefined') {
+            const keys = (this.app.keyBindings && this.app.keyBindings['app.palette']) || [];
+            const f = document.createElement('button');
+            f.type = 'button';
+            f.setAttribute('role', 'menuitem');
+            f.className = 'mode-mi mode-find';
+            f.innerHTML = `${this.icon('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>')}<span>Find anything…</span>${keys.length ? `<kbd>${this.app.formatCombo(keys[0]).replace(/ \+ /g, '+')}</kbd>` : ''}`;
+            f.addEventListener('click', () => { this.closeMenu(); Palette.open(); });
+            menu.appendChild(f);
+        }
         document.body.appendChild(menu);
         const r = chip.getBoundingClientRect();
         menu.style.left = `${Math.max(8, Math.min(innerWidth - menu.offsetWidth - 8, r.left))}px`;
@@ -406,38 +554,37 @@ const Modes = {
         this.menuChip = null;
     },
 
-    // ---- The strip in Adjust and Paint ----
+    // ---- The film strip, in every mode ----
 
+    // Photos' own film strip, at the bottom of Adjust or Paint while one
+    // is open, and back in its place in Photos after
     placeStrip(mode) {
         const app = this.app;
-        const strip = this.strip;
-        if (!strip) return;
-        const host = mode === 'adjust' ? this.el('adjust-editor') : mode === 'paint' ? this.el('paint-editor') : null;
-        const want = host && app.elements.thumbnailStrip && !app.elements.thumbnailStrip.classList.contains('hidden') && app.viewFiles().length > 1;
-        if (!want) {
-            if (strip.parentElement) strip.remove();
-            this._stripFor = null;
-            return;
+        const strip = app.elements.thumbnailStrip;
+        if (!strip || !this.stripHome) return;
+        const resize = app.elements.stripResize;
+        // (a blank canvas with no folder open: no photos, no strip)
+        const host = !app.viewFiles().length ? null : mode === 'adjust' ? this.el('adjust-editor') : mode === 'paint' ? this.el('paint-editor') : null;
+        const parts = resize ? [resize, strip] : [strip];
+        if (host) {
+            if (strip.parentElement !== host) host.append(...parts);
+        } else if (strip.parentElement !== this.stripHome.parentNode) {
+            this.stripHome.after(...parts);
         }
-        if (strip.parentElement !== host) host.appendChild(strip);
-        const files = app.viewFiles();
-        const current = mode === 'adjust' ? Adjust.file : PaintEditor.file;
-        // The same photos: kept as they are (their thumbnails loaded)
-        const same = this._stripFor && this._stripFor.length === files.length && files.every((f, i) => f === this._stripFor[i]);
-        if (!same || strip.childElementCount !== files.length) this.fillStrip(files);
-        for (const div of strip.children) {
-            div.classList.toggle('active', div._file === current);
-            div.classList.toggle('sel', mode === 'adjust' && div._file !== current && app.selection.has(div._file));
-        }
-        const on = [...strip.children].find(d => d._file === current);
-        if (on) {
-            const target = on.offsetLeft - (strip.clientWidth - on.offsetWidth) / 2;
-            if (Math.abs(strip.scrollLeft - target) > 1) strip.scrollLeft = target;
-        }
+        // Picked for Sync, in Adjust: a ring inside (the open one's outside)
+        const sel = mode === 'adjust' ? app.selection : null;
+        for (const div of strip.querySelectorAll('.thumb-item')) this.markStrip(div, sel);
+        if (host) app.updateActiveThumbnail();
     },
 
-    // In Adjust, Ctrl+click picks others too and Shift+click a run of
-    // them, for Sync (adjust-sync.js); a plain click opens that one alone
+    // One item's Sync ring (sel: the photos picked, in Adjust; else none)
+    markStrip(div, sel = this.current() === 'adjust' ? this.app.selection : null) {
+        div.classList.toggle('sel', !!sel && div._file !== this.app.currentFile && sel.has(div._file));
+    },
+
+    // A click on the film strip, in any mode: that photo, in this mode. In
+    // Adjust, Ctrl+click picks others too and Shift+click a run of them,
+    // for Sync (adjust-sync.js)
     stripClick(f, e) {
         const app = this.app;
         const cur = Adjust.file;
@@ -466,59 +613,34 @@ const Modes = {
         AdjustSync.selected();
     },
 
-    fillStrip(files) {
+    // A film strip photo being dragged (into Paint)
+    STRIP_TYPE: 'application/x-jeditor-strip',
+    dragging: null,
+
+    // What a film strip item does besides a click (script.js: makeStripItem):
+    // dragged into Paint, a layer; right-clicked in Adjust, Sync's menu
+    wireStripItem(div, f) {
         const app = this.app;
-        const strip = this.strip;
-        strip.textContent = '';
-        this._stripFor = files;
-        if (this._observer) this._observer.disconnect();
-        this._observer = new IntersectionObserver((entries) => {
-            for (const en of entries) {
-                if (!en.isIntersecting) continue;
-                const div = en.target;
-                this._observer.unobserve(div);
-                const img = document.createElement('img');
-                img.alt = '';
-                img.draggable = false;
-                div.appendChild(img);
-                app.loadImageThumbnail(div._file, img).catch(() => { /* the name shows */ });
-            }
-        }, { root: strip, rootMargin: '0px 400px' });
-        const frag = document.createDocumentFragment();
-        for (const f of files) {
-            const div = document.createElement('button');
-            div.type = 'button';
-            div.className = 'mode-thumb';
-            div.title = f.relPath || f.name;
-            div.setAttribute('aria-label', f.name);
-            div._file = f;
-            div.addEventListener('click', (e) => this.stripClick(f, e));
-            div.addEventListener('contextmenu', (e) => {
-                if (this.current() !== 'adjust') return;
-                e.preventDefault();
-                if (f !== Adjust.file && !app.selection.has(f)) this.stripSelect(new Set([...app.selection, Adjust.file, f]));
-                app.openContextMenu(AdjustSync.stripItems(), e.clientX, e.clientY);
-            });
-            frag.appendChild(div);
-            this._observer.observe(div);
-        }
-        strip.appendChild(frag);
+        div.draggable = true;
+        div.addEventListener('dragstart', (e) => {
+            if (this.current() !== 'paint' || f === PaintEditor.file) { e.preventDefault(); return; }
+            this.dragging = f;
+            e.dataTransfer.effectAllowed = 'copy';
+            e.dataTransfer.setData(this.STRIP_TYPE, f.name);
+        });
+        div.addEventListener('dragend', () => { this.dragging = null; });
+        div.addEventListener('contextmenu', (e) => {
+            if (this.current() !== 'adjust') return;
+            e.preventDefault();
+            if (f !== Adjust.file && !app.selection.has(f)) this.stripSelect(new Set([...app.selection, Adjust.file, f]));
+            app.openContextMenu(AdjustSync.stripItems(), e.clientX, e.clientY);
+        });
+        this.markStrip(div);
     },
 
-    // ---- Start in, on the landing page ----
+    // ---- The home page's tiles (start.js) ----
 
     renderStart() {
-        const start = this.el('start-in');
-        if (!start || !this.app || !this.app.uiPrefs) return;
-        const shown = this.shown();
-        start.classList.toggle('hidden', shown.length < 2);
-        const mode = this.startIn();
-        for (const b of start.querySelectorAll('[data-mode]')) {
-            b.classList.toggle('hidden', !this.on(b.dataset.mode));
-            b.classList.toggle('active', b.dataset.mode === mode);
-            b.setAttribute('aria-checked', String(b.dataset.mode === mode));
-        }
-        const blank = this.el('start-blank-wrap');
-        if (blank) blank.classList.toggle('hidden', !this.on('paint'));
+        if (typeof Start !== 'undefined' && Start.app) Start.tiles();
     }
 };

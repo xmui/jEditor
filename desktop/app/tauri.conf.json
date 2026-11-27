@@ -1,0 +1,28 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "jEditor Tauri",
+  "mainBinaryName": "jEditor Tauri",
+  "version": "0.0.0",
+  "identifier": "com.xmui.jeditor.tauri",
+  "app": {
+    "windows": [],
+    "macOSPrivateApi": true,
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "category": "Photography",
+    "icon": ["../../app/icon.png"],
+    "resources": {
+      "../../app/": "app/",
+      "../../mac/bridge.js": "host/bridge.js",
+      "../../mac/handles.js": "host/handles.js",
+      "host.js": "host/host.js"
+    },
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "signingIdentity": "-"
+    }
+  }
+}

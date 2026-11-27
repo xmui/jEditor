@@ -17,6 +17,11 @@ const Permissions = {
             text: 'To open photos on them and copy projects onto them.',
             icon: '<rect width="10" height="14" x="7" y="8" rx="2"/><path d="M9 8V3h6v5"/><path d="M10 5h1M13 5h1"/>'
         },
+        photos: {
+            title: 'Photos library',
+            text: 'To look through your albums from the sidebar (Locations → Photos library).',
+            icon: '<circle cx="12" cy="7.5" r="3.5"/><circle cx="12" cy="16.5" r="3.5"/><circle cx="7.5" cy="12" r="3.5"/><circle cx="16.5" cy="12" r="3.5"/>'
+        },
         full: {
             title: 'Full Disk Access',
             text: 'Optional: every folder opens without macOS asking, network drives too. Turn jEditor on in the list, then open jEditor again.',

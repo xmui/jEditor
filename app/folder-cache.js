@@ -5,6 +5,7 @@
 //   cache/thumbs/<hash>.img  grid / film-strip thumbnails
 //   cache/fingerprints.json  duplicate-finder data
 //   flags.json               flags (flags.js)
+//   sortkeys.json            each photo's date taken, for the sort (sort-keys.js)
 //   originals/               photos as they were before a batch Auto crop
 //
 // In the Windows app this is kept on the PC, not in the order: in jEditor's

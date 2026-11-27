@@ -356,6 +356,8 @@
 :root[data-skin="mac84"] .start-title { font: 24px var(--m-font); letter-spacing: 0; }
 :root[data-skin="mac84"] :is(.start-tagline, .drop-hint, .start-in-label) { color: #000; font: 12px var(--m-font); }
 :root[data-skin="mac84"] .start-open { height: 22px; }
+:root[data-skin="mac84"] .start-convert-run { border: 1px solid #000; border-radius: 0; background: #fff; box-shadow: 1px 1px 0 #000; backdrop-filter: none; -webkit-backdrop-filter: none; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .start-convert-run .scr-sub { color: #000; font-size: 12px; }
 :root[data-skin="mac84"] .start-foot .link-btn kbd { display: none; }
 :root[data-skin="mac84"] .start-dot { background: #000; }
 :root[data-skin="mac84"] .recent-list button { border-radius: 0; color: #000; }
@@ -446,3 +448,129 @@
 :root[data-skin="mac84"] .cv-dots i.f { background: repeating-linear-gradient(135deg, #000 0 1px, #fff 1px 3px) !important; }
 :root[data-skin="mac84"] .cv-dots i.now { box-shadow: inset 0 0 0 3px #000; }
 :root[data-skin="mac84"] .cv-run-row b { color: #000; font: 24px var(--m-font); }
+
+/* Find anything (palette.js): rows as the 1984 menus, black when picked */
+:root[data-skin="mac84"] .palette-field { border-bottom: 1px solid #000; }
+:root[data-skin="mac84"] .palette-field input { font: 12px var(--m-font); }
+:root[data-skin="mac84"] :is(.palette-for, .palette-head, .palette-row, .palette-sub, .palette-key, .palette-none) { font-family: var(--m-font); font-size: 12px; letter-spacing: 0; color: #000; }
+:root[data-skin="mac84"] .palette-row { min-height: 18px; border-radius: 0; }
+:root[data-skin="mac84"] .palette-row.on { background: #000; color: #fff; }
+:root[data-skin="mac84"] .palette-row.on :is(.palette-sub, .palette-key, .i) { color: #fff; }
+:root[data-skin="mac84"] .palette-row .i { shape-rendering: crispEdges; }
+:root[data-skin="mac84"] .palette-thumb { border-radius: 0; image-rendering: pixelated; }
+/* The guide (guide.js): the chosen topic and Watch the tour again, inverted */
+:root[data-skin="mac84"] .guide-topics button[aria-current="true"],
+:root[data-skin="mac84"] .guide-tour { background: #000; color: #fff; }
+:root[data-skin="mac84"] .guide-card { border-color: #000; }
+
+/* ---- The home page (start.js): the prints as one-bit snapshots, stacked
+   square on the desk, and the big tiles as round-rect buttons with an
+   icon on the pixel grid (16 px, drawn at twice the size) ---- */
+:root[data-skin="mac84"] .home-brand img { border-radius: 0; image-rendering: pixelated; filter: grayscale(1) contrast(3); }
+:root[data-skin="mac84"] .home-brand { font: 12px var(--m-font); }
+:root[data-skin="mac84"] .home-ver .app-version { color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .home-gear { width: 24px; min-width: 0; padding: 0; }
+:root[data-skin="mac84"] .home-gear > svg { display: none; }
+:root[data-skin="mac84"] .home-gear::before { content: ""; position: absolute; inset: 0; margin: auto; width: 16px; height: 16px; background: url(px/settings.png) no-repeat center; image-rendering: pixelated; }
+:root[data-skin="mac84"] .home-gear:active:not(:disabled)::before { filter: invert(1); }
+:root[data-skin="mac84"] .home-dot { background: #000; box-shadow: 0 0 0 1px #fff; }
+:root[data-skin="mac84"] .recent-list .recent-open,
+:root[data-skin="mac84"] .recent-list .recent-open:hover { background: none; color: #000; }
+:root[data-skin="mac84"] .recent-name { padding: 0 3px; font: 12px var(--m-font); }
+/* Pointed at or chosen: the name inverted, as the Finder's icons are */
+:root[data-skin="mac84"] .recent-open:is(:hover, :focus-visible) .recent-name { background: #000; color: #fff; box-shadow: none; }
+:root[data-skin="mac84"] :is(.recent-sub, .recent-when, .recent-meta, .home-empty p) { color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .recent-print { border: 1px solid #000; border-radius: 0; box-shadow: 1px 1px 0 #000; transition: none; }
+:root[data-skin="mac84"] :is(.recent-print img, img.oc-pic) { image-rendering: pixelated; }
+:root[data-skin="mac84"][data-ts-thumbs="grey"] :is(.recent-print img, img.oc-pic) { filter: grayscale(1) contrast(1.08); }
+/* No turning on the pixel grid: the prints lie square, each a little down and left */
+:root[data-skin="mac84"] .recent-list li:is(:hover, :not(:hover)) .recent-print:nth-child(1) { transform: translate(-9px, 9px); }
+:root[data-skin="mac84"] .recent-list li:is(:hover, :not(:hover)) .recent-print:nth-child(2) { transform: translate(-6px, 6px); }
+:root[data-skin="mac84"] .recent-list li:is(:hover, :not(:hover)) .recent-print:nth-child(3) { transform: translate(-3px, 3px); }
+:root[data-skin="mac84"] .recent-list li:is(:hover, :not(:hover)) .recent-print:nth-child(4) { transform: none; box-shadow: 1px 1px 0 #000; }
+:root[data-skin="mac84"] .recent-list li.single:is(:hover, :not(:hover)) .recent-print:nth-child(1) { transform: none; box-shadow: 1px 1px 0 #000; }
+:root[data-skin="mac84"] .home-empty li.ghost-first:is(:hover, :not(:hover)) .recent-print.first { transform: none; }
+:root[data-skin="mac84"] .recent-print.ghost { border: 1px dotted #000; background: #fff; box-shadow: none; }
+:root[data-skin="mac84"] .recent-print.ghost.first { border: 2px dashed #000; background: #fff; color: #000; }
+:root[data-skin="mac84"] .home-empty li:is(:nth-child(3), :nth-child(4)) { opacity: 1; }
+/* Take it off the table: a close box */
+:root[data-skin="mac84"] .recent-remove { width: 13px; height: 13px; border: 1px solid #000; border-radius: 0; background: #fff; color: transparent; font-size: 0; }
+:root[data-skin="mac84"] .recent-remove:active { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' shape-rendering='crispEdges'%3E%3Cpath d='M5.5 0v3M5.5 8v3M0 5.5h3M8 5.5h3M1.5 1.5l2 2M9.5 1.5l-2 2M1.5 9.5l2-2M9.5 9.5l-2-2' stroke='%23000'/%3E%3C/svg%3E") no-repeat center, #fff; }
+:root[data-skin="mac84"] .home-tile {
+    width: 150px;
+    border: 1px solid #000;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    color: #000;
+    font: 12px var(--m-font);
+    transition: none;
+}
+:root[data-skin="mac84"] .home-tile > svg { display: none; }
+:root[data-skin="mac84"] .home-tile::before { content: ""; width: 32px; height: 32px; background: var(--px) no-repeat center / 32px; image-rendering: pixelated; }
+:root[data-skin="mac84"] #btn-browse-folder { --px: url(icons/folder.png); }
+:root[data-skin="mac84"] #start-capture { --px: url(px/scan.png); }
+:root[data-skin="mac84"] #start-blank { --px: url(icons/image.png); }
+:root[data-skin="mac84"] #start-convert { --px: url(px/convert.png); }
+:root[data-skin="mac84"] #start-adjust { --px: url(px/adjust.png); }
+:root[data-skin="mac84"] #start-paint { --px: url(px/paint.png); }
+:root[data-skin="mac84"] .home-tile-text { min-width: 0; max-width: 100%; }
+:root[data-skin="mac84"] :is(.home-tile-name, .home-tile-sub) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root[data-skin="mac84"] .home-tile-sub { margin-top: 0; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .home-tile:hover { transform: none; box-shadow: none; }
+:root[data-skin="mac84"] .home-tile:active { background: #000; color: #fff; }
+:root[data-skin="mac84"] .home-tile:active .home-tile-sub { color: #fff; }
+:root[data-skin="mac84"] .home-tile:active::before { filter: invert(1); }
+:root[data-skin="mac84"] .home-tile:focus-visible { box-shadow: none; outline: 1px dotted #000; outline-offset: -4px; }
+/* The one to start with: the default button's thick ring */
+:root[data-skin="mac84"] .home-tile.primary,
+:root[data-skin="mac84"] .home-tile.card { border: 3px solid #000; background: #fff; color: #000; }
+:root[data-skin="mac84"] .home-tile:is(.primary, .card) .home-tile-sub { color: #000; }
+:root[data-skin="mac84"] .home-tile.primary:active { background: #000; color: #fff; }
+:root[data-skin="mac84"] .home-tile.primary:active .home-tile-sub { color: #fff; }
+:root[data-skin="mac84"] .home-places { border: 1px solid #000; border-radius: 0; background: #fff; box-shadow: 1px 1px 0 #000; color: #000; }
+:root[data-skin="mac84"] .home-places-head { border-bottom: 1px solid #000; font: 12px var(--m-font); }
+
+/* ---- Open a folder (open-card.js) and the first-time questions (first-open.js) ---- */
+:root[data-skin="mac84"] .oc-top { border-bottom-color: #000; }
+:root[data-skin="mac84"] .oc-search { height: 22px; padding: 0 4px; border: 1px solid #000; border-radius: 0; background: #fff; color: #000; }
+:root[data-skin="mac84"] .dialog .oc-search input:is([type="search"], :focus, :hover) { height: auto; padding: 0; border: 0; outline: none; background: none; box-shadow: none; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .oc-drop { border: 1px dotted #000; border-radius: 0; background: #fff; }
+:root[data-skin="mac84"] .oc-drop.over { border-style: solid; background: var(--m-grey); }
+:root[data-skin="mac84"] .oc-drop-icon > svg { display: none; }
+:root[data-skin="mac84"] .oc-drop-icon::before { content: ""; width: 32px; height: 32px; background: url(icons/folder.png) no-repeat center / 32px; image-rendering: pixelated; }
+:root[data-skin="mac84"] :is(.oc-drop-name, .oc-drop-sub, .oc-sub, .oc-name, .oc-meta, .oc-empty, .oc-foot, .oc-foot-path, .fo-sub, .fo-help, .fo-note, .fo-dir, .fo-choice-name, .fo-choice small) { color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .oc-sub { text-decoration: underline; }
+:root[data-skin="mac84"] :is(.oc-recent, .oc-row) { border: 1px solid #000; border-radius: 0; background: #fff; }
+:root[data-skin="mac84"] .oc-row { border-color: transparent; }
+:root[data-skin="mac84"] :is(.oc-recent, .oc-row):hover { background: #000; color: #fff; }
+:root[data-skin="mac84"] :is(.oc-recent, .oc-row):hover :is(.oc-name, .oc-meta, .oc-icon) { color: #fff; }
+:root[data-skin="mac84"] .oc-pic { border-radius: 0; }
+:root[data-skin="mac84"] .oc-pic.ghost { border: 1px dotted #000; }
+:root[data-skin="mac84"] .oc-icon { color: #000; }
+:root[data-skin="mac84"] .oc-foot { border-top-color: #000; }
+:root[data-skin="mac84"] .fo-choice { border: 1px solid #000; border-radius: 0; background: #fff; color: #000; }
+/* The chosen one: a thick frame (the accent's tint is black here, so not filled) */
+:root[data-skin="mac84"] .fo-choice:has(input:checked) { border-width: 3px; padding: 8px 10px; background: #fff; }
+
+/* ---- The guide (guide.js): a window of its own, square, one bit ---- */
+:root[data-skin="mac84"] .guide-scrim { background: none; animation: none; }
+:root[data-skin="mac84"] .guide { border: 1px solid #000; border-radius: 0; background: #fff; box-shadow: 2px 2px 0 #000; color: #000; font: 12px var(--m-font); animation: none; }
+:root[data-skin="mac84"] .guide-nav { background: #fff; border-right: 1px solid #000; }
+:root[data-skin="mac84"] .guide-nav h2 { font: 12px var(--m-font); text-decoration: underline; }
+:root[data-skin="mac84"] .guide-topics button { border-radius: 0; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .guide-topics button:hover { background: none; color: #000; }
+:root[data-skin="mac84"] .guide-tour { border: 1px solid #000; border-radius: 8px; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .guide-tour:hover { filter: none; }
+:root[data-skin="mac84"] .guide-search { border: 1px solid #000; border-radius: 0; background: #fff; color: #000; }
+:root[data-skin="mac84"] .guide-search:focus-within { box-shadow: none; }
+:root[data-skin="mac84"] .guide-search input { color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .guide-x { width: 13px; height: 13px; border: 1px solid #000; border-radius: 0; background: #fff; color: transparent; font-size: 0; }
+:root[data-skin="mac84"] .guide-x:hover { background: #fff; }
+:root[data-skin="mac84"] .guide-card { border-radius: 0; background: #fff; box-shadow: 1px 1px 0 #000; }
+:root[data-skin="mac84"] .guide-card .gclip { border-bottom: 1px solid #000; filter: grayscale(1) contrast(1.6); }
+:root[data-skin="mac84"] :is(.guide-card h3, .guide-card p, .guide-keylist h3, .guide-keylist h4, .guide-none) { color: #000; font: 12px/16px var(--m-font); }
+:root[data-skin="mac84"] .guide-keyrow { border-top-color: #000; }
+:root[data-skin="mac84"] .guide-k { border: 1px solid #000; border-bottom-width: 2px; border-radius: 3px; background: #fff; box-shadow: none; color: #000; font: 12px/16px var(--m-font); }

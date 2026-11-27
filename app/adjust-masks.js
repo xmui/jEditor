@@ -216,19 +216,25 @@ const AdjustMasks = {
     place() {
         const ed = this.ed;
         if (!ed.ready) return;
-        const cr = ed.canvas.getBoundingClientRect(), sr = this.el('adj-stage').getBoundingClientRect();
+        // Over the part of the photo on the stage (zoomed in, the photo
+        // is far bigger): ox, oy where that part is on it
+        const o = ed.overlayRect();
         const dpr = window.devicePixelRatio || 1;
-        Object.assign(this.cv.style, { left: `${cr.left - sr.left}px`, top: `${cr.top - sr.top}px`, width: `${cr.width}px`, height: `${cr.height}px` });
-        const w = Math.max(1, Math.round(cr.width * dpr)), h = Math.max(1, Math.round(cr.height * dpr));
+        Object.assign(this.cv.style, { left: `${o.left}px`, top: `${o.top}px`, width: `${o.w}px`, height: `${o.h}px` });
+        const w = Math.max(1, Math.round(o.w * dpr)), h = Math.max(1, Math.round(o.h * dpr));
         if (this.cv.width !== w) this.cv.width = w;
         if (this.cv.height !== h) this.cv.height = h;
-        this.cssW = cr.width;
-        this.cssH = cr.height;
+        this.cssW = o.cw;
+        this.cssH = o.ch;
+        this.visW = o.w;
+        this.visH = o.h;
+        this.ox = o.ox;
+        this.oy = o.oy;
     },
 
     // On the photo (0–1 across and down, as on disk) from the overlay (css px)
     toPhoto(x, y) {
-        const m = this.ed.map.m, a = x / this.cssW, b = y / this.cssH;
+        const m = this.ed.map.m, a = (x + (this.ox || 0)) / this.cssW, b = (y + (this.oy || 0)) / this.cssH;
         return { u: m[0] * a + m[1] * b + m[2], v: m[3] * a + m[4] * b + m[5] };
     },
 
@@ -237,7 +243,7 @@ const AdjustMasks = {
         const det = m[0] * m[4] - m[1] * m[3];
         const du = u - m[2], dv = v - m[5];
         const a = (m[4] * du - m[1] * dv) / det, b = (-m[3] * du + m[0] * dv) / det;
-        return { x: a * this.cssW, y: b * this.cssH };
+        return { x: a * this.cssW - (this.ox || 0), y: b * this.cssH - (this.oy || 0) };
     },
 
     point(e) {
@@ -372,7 +378,7 @@ const AdjustMasks = {
     draw() {
         if (!this.cv || !this.active()) return;
         const ctx = this.cv.getContext('2d');
-        const dpr = this.cv.width / Math.max(1, this.cssW);
+        const dpr = this.cv.width / Math.max(1, this.visW);
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, this.cv.width, this.cv.height);
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -384,8 +390,8 @@ const AdjustMasks = {
                 const M = Develop.maskTables(one);
                 const brush = M.brushes ? Develop.brushMaps(M.list, asp) : null;
                 const e = M.list[0], cell = 4;
-                for (let y = 0; y < this.cssH; y += cell) {
-                    for (let x = 0; x < this.cssW; x += cell) {
+                for (let y = 0; y < this.visH; y += cell) {
+                    for (let x = 0; x < this.visW; x += cell) {
                         const q = this.toPhoto(x + cell / 2, y + cell / 2);
                         const w = Develop.maskWeight(e, q.u, q.v, asp, brush);
                         if (w > 0.01) {

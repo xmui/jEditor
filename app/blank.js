@@ -70,7 +70,7 @@ const Blank = {
     // A project open that can be written to
     can() {
         const app = this.app;
-        return !!(app && app.dirHandle && !app.readOnlyMode);
+        return !!(app && app.dirHandle && !app.fixedFiles);
     },
 
     get() {
@@ -415,7 +415,7 @@ const Blank = {
             } finally {
                 Modes.hold = false;
             }
-            if (!app.dirHandle || app.dirHandle === before || app.readOnlyMode) return null;
+            if (!app.dirHandle || app.dirHandle === before || app.fixedFiles) return null;
             folder = '';
         }
         return this.place(() => this.render(w, h, fill, dpi), name, folder);

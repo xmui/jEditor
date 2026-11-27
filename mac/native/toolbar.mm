@@ -6,7 +6,13 @@
 //   supported()                 → true from macOS 26 (glass), else false
 //   attach(handle, onAction)    → a toolbar for the window (handle: its
 //                                 getNativeWindowHandle()); onAction(id, value)
-//   update(handle, model)       → { title, subtitle, visible, items: [...] }
+//   update(handle, model)       → { title, subtitle, visible, titleAt,
+//                                   items: [...] }: titleAt, the points
+//                                   from the window's left where the title
+//                                   starts (a space item before it is made
+//                                   that wide: the sidebar's edge)
+//   customize(handle)           → Apple's Customize Toolbar sheet (as a
+//                                 right-click on the toolbar opens it)
 //   focusSearch(handle)         → the search field takes the keys
 //   describe(handle)            → what the toolbar shows (for the tests)
 //   click(handle, id, value)    → as if clicked (for the tests)
@@ -15,10 +21,18 @@
 //                                 first, by class (for the tests)
 //   detach(handle)
 //
-// An item: { id, kind: button | menu | segment | search | flexible,
+// The model can say { customize: true, customizable: [id], extra: [item] }:
+// people may add and take off the customizable items (and the extra ones,
+// which aren't shown), in Apple's sheet; when it closes, onAction
+// ('customized', 'id,id,…') says what's there, in order, for the page to
+// keep (Settings → Toolbar). The rest stay where they are.
+//
+// An item: { id, kind: button | menu | segment | search | flexible | space,
 //   symbol (an SF Symbol), label, tooltip, enabled, navigational,
+//   prominent (button: its label on an accent-coloured button, as Done),
 //   menu: [{ id, label, symbol, enabled, checked, separator }] (menu),
-//   segments: [label], selected (segment), value, placeholder (search) }
+//   segments: [label], symbols: [SF Symbol] (segment: icons, the labels
+//   their tooltips), selected (segment), value, placeholder (search) }
 
 #import <AppKit/AppKit.h>
 #include <napi.h>
@@ -112,7 +126,57 @@ static void RemoveDragView(NSWindow *w) {
 @property (nonatomic, assign) Napi::ThreadSafeFunction onAction;
 @property (nonatomic, assign) NSInteger generation;
 @property (nonatomic, strong) NSArray *observers;
+// The space before the title (kind space): its width, fitted to titleAt
+@property (nonatomic, strong) NSLayoutConstraint *spaceWidth;
+@property (nonatomic, assign) CGFloat titleAt;
+@property (nonatomic, assign) NSInteger fitting;
+// Customizing: which items may be added or taken off, what's changed in
+// the sheet, and a model the page sent meanwhile (applied when it closes)
+@property (nonatomic, copy) NSArray<NSString *> *customizable;
+@property (nonatomic, copy) NSArray<NSString *> *extraIds;
+@property (nonatomic, assign) BOOL customized;
+@property (nonatomic, assign) BOOL watching;
+@property (nonatomic, strong) NSDictionary *pending;
 @end
+
+// Where AppKit draws the window's title, in the page's points from its
+// top left ({} when it draws none): for the tests, which keep the page's
+// top row (the mode chip) clear of it
+static NSTextField *TitleField(NSView *v, NSString *title) {
+    for (NSView *sub in v.subviews) {
+        if ([sub isKindOfClass:[NSTextField class]] && !sub.hiddenOrHasHiddenAncestor && sub.alphaValue > 0
+            && [((NSTextField *)sub).stringValue isEqualToString:title]) return (NSTextField *)sub;
+        NSTextField *f = TitleField(sub, title);
+        if (f) return f;
+    }
+    return nil;
+}
+
+static NSDictionary *TitleBox(NSWindow *w) {
+    NSView *bar = [w standardWindowButton:NSWindowCloseButton].superview;
+    while (bar.superview && bar.superview != w.contentView.superview) bar = bar.superview;
+    if (!bar || !w.title.length || w.titleVisibility == NSWindowTitleHidden) return @{};
+    NSTextField *f = TitleField(bar, w.title);
+    if (!f) return @{};
+    NSRect r = [f convertRect:f.bounds toView:nil];
+    CGFloat h = w.contentView.frame.size.height;
+    return @{ @"left": @(r.origin.x), @"top": @(h - NSMaxY(r)), @"right": @(NSMaxX(r)), @"bottom": @(h - r.origin.y) };
+}
+
+// Where the traffic lights are, the close button's box from the window's
+// top left ({} when hidden): for the tests, that they're on the toolbar's row
+static NSDictionary *LightsBox(NSWindow *w) {
+    NSButton *b = [w standardWindowButton:NSWindowCloseButton];
+    if (!b || b.hiddenOrHasHiddenAncestor) return @{};
+    NSRect r = [b convertRect:b.bounds toView:nil];
+    CGFloat h = w.contentView.frame.size.height;
+    return @{ @"left": @(r.origin.x), @"top": @(h - NSMaxY(r)), @"right": @(NSMaxX(r)), @"bottom": @(h - r.origin.y) };
+}
+
+// The toolbar's band, from the window's top (the title bar with it)
+static CGFloat ToolbarHeight(NSWindow *w) {
+    return w.frame.size.height - w.contentLayoutRect.size.height;
+}
 
 static NSMapTable<NSWindow *, JEToolbar *> *controllers;
 
@@ -129,7 +193,51 @@ static void Send(JEToolbar *t, NSString *ident, id value) {
 @implementation JEToolbar
 
 - (NSArray<NSToolbarItemIdentifier> *)toolbarDefaultItemIdentifiers:(NSToolbar *)toolbar { return self.ids; }
-- (NSArray<NSToolbarItemIdentifier> *)toolbarAllowedItemIdentifiers:(NSToolbar *)toolbar { return self.ids; }
+- (NSArray<NSToolbarItemIdentifier> *)toolbarAllowedItemIdentifiers:(NSToolbar *)toolbar {
+    return [self.ids arrayByAddingObjectsFromArray:self.extraIds ?: @[]];
+}
+// All but the customizable stay put: the modes, the sidebar, ⋯, Done
+- (NSSet<NSToolbarItemIdentifier> *)toolbarImmovableItemIdentifiers:(NSToolbar *)toolbar {
+    NSMutableSet *fixed = [NSMutableSet setWithArray:self.ids ?: @[]];
+    [fixed minusSet:[NSSet setWithArray:self.customizable ?: @[]]];
+    return fixed;
+}
+
+// Something added or taken off in the sheet: said once it closes
+- (void)toolbarChanged:(NSNotification *)note {
+    if (note.object != self.toolbar || !self.toolbar.customizationPaletteIsRunning) return;
+    self.customized = YES;
+    [self watchSheet];
+}
+
+- (void)watchSheet {
+    if (self.watching) return;
+    self.watching = YES;
+    __weak JEToolbar *weak = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        JEToolbar *t = weak;
+        if (!t) return;
+        t.watching = NO;
+        if (t.toolbar.customizationPaletteIsRunning) { [t watchSheet]; return; }
+        if (t.customized) {
+            t.customized = NO;
+            NSMutableArray *now = [NSMutableArray array];
+            for (NSToolbarItem *it in t.toolbar.items) if (it.itemIdentifier && ![it.itemIdentifier hasPrefix:@"NSToolbar"]) [now addObject:it.itemIdentifier];
+            // What the toolbar has now is what the page's model will say
+            t.ids = [t.toolbar.items valueForKey:@"itemIdentifier"];
+            Send(t, @"customized", [now componentsJoinedByString:@","]);
+        }
+        NSDictionary *p = t.pending;
+        t.pending = nil;
+        if (p) [t update:p];
+    });
+}
+
+- (void)customize {
+    if (!self.toolbar || !self.toolbar.visible || !self.toolbar.allowsUserCustomization) return;
+    [self.toolbar runCustomizationPalette:nil];
+    [self watchSheet];
+}
 
 - (NSToolbarItem *)toolbar:(NSToolbar *)toolbar itemForItemIdentifier:(NSToolbarItemIdentifier)ident willBeInsertedIntoToolbar:(BOOL)flag {
     NSDictionary *m = self.model[ident];
@@ -142,14 +250,43 @@ static void Send(JEToolbar *t, NSString *ident, id value) {
         item = mi;
     } else if ([kind isEqualToString:@"segment"]) {
         NSArray *titles = [m[@"segments"] isKindOfClass:[NSArray class]] ? m[@"segments"] : @[];
-        NSToolbarItemGroup *g = [NSToolbarItemGroup groupWithItemIdentifier:ident titles:titles
-            selectionMode:NSToolbarItemGroupSelectionModeSelectOne labels:titles target:self action:@selector(segmentChosen:)];
+        NSArray *symbols = [m[@"symbols"] isKindOfClass:[NSArray class]] ? m[@"symbols"] : nil;
+        NSToolbarItemGroup *g = nil;
+        if (symbols.count && symbols.count == titles.count) {
+            NSMutableArray *images = [NSMutableArray array];
+            for (NSUInteger i = 0; i < symbols.count; i++) [images addObject:Symbol(symbols[i], titles[i]) ?: [NSImage new]];
+            g = [NSToolbarItemGroup groupWithItemIdentifier:ident images:images
+                selectionMode:NSToolbarItemGroupSelectionModeSelectOne labels:titles target:self action:@selector(segmentChosen:)];
+            for (NSUInteger i = 0; i < g.subitems.count && i < titles.count; i++) g.subitems[i].toolTip = titles[i];
+        } else {
+            g = [NSToolbarItemGroup groupWithItemIdentifier:ident titles:titles
+                selectionMode:NSToolbarItemGroupSelectionModeSelectOne labels:titles target:self action:@selector(segmentChosen:)];
+        }
         item = g;
+    } else if ([kind isEqualToString:@"space"]) {
+        // An empty view, as wide as fitTitle makes it
+        item = [[NSToolbarItem alloc] initWithItemIdentifier:ident];
+        NSView *v = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 1, 28)];
+        v.translatesAutoresizingMaskIntoConstraints = NO;
+        self.spaceWidth = [v.widthAnchor constraintEqualToConstant:1];
+        self.spaceWidth.active = YES;
+        [v.heightAnchor constraintEqualToConstant:28].active = YES;
+        item.view = v;
+        item.bordered = NO;
     } else if ([kind isEqualToString:@"search"]) {
         NSSearchToolbarItem *si = [[NSSearchToolbarItem alloc] initWithItemIdentifier:ident];
         si.searchField.delegate = self;
         si.searchField.sendsSearchStringImmediately = YES;
         item = si;
+    } else if (B(m, @"prominent", NO)) {
+        // Done: its word on the accent colour, as Done in Photos' edit view
+        item = [[NSToolbarItem alloc] initWithItemIdentifier:ident];
+        NSButton *b = [NSButton buttonWithTitle:S(m, @"label") target:self action:@selector(viewClicked:)];
+        b.bezelStyle = NSBezelStylePush;
+        b.controlSize = NSControlSizeLarge;
+        b.bezelColor = NSColor.controlAccentColor;
+        b.identifier = ident;
+        item.view = b;
     } else {
         item = [[NSToolbarItem alloc] initWithItemIdentifier:ident];
         item.target = self;
@@ -171,7 +308,12 @@ static void Send(JEToolbar *t, NSString *ident, id value) {
     item.toolTip = S(m, @"tooltip").length ? S(m, @"tooltip") : label;
     item.enabled = B(m, @"enabled", YES);
     item.navigational = B(m, @"navigational", NO);
-    if (![kind isEqualToString:@"segment"] && ![kind isEqualToString:@"search"]) item.image = Symbol(S(m, @"symbol"), label);
+    if ([item.view isKindOfClass:[NSButton class]]) {
+        NSButton *b = (NSButton *)item.view;
+        b.title = label;
+        b.enabled = item.enabled;
+        b.toolTip = item.toolTip;
+    } else if (![kind isEqualToString:@"segment"] && ![kind isEqualToString:@"search"] && ![kind isEqualToString:@"space"]) item.image = Symbol(S(m, @"symbol"), label);
     if ([kind isEqualToString:@"menu"]) {
         NSMenu *menu = [[NSMenu alloc] initWithTitle:label];
         menu.autoenablesItems = NO;
@@ -201,6 +343,7 @@ static void Send(JEToolbar *t, NSString *ident, id value) {
 }
 
 - (void)clicked:(NSToolbarItem *)sender { Send(self, sender.itemIdentifier, @""); }
+- (void)viewClicked:(NSButton *)sender { Send(self, sender.identifier, @""); }
 - (void)menuChosen:(NSMenuItem *)sender { NSArray *r = sender.representedObject; Send(self, r[0], r[1]); }
 - (void)segmentChosen:(NSToolbarItemGroup *)sender { Send(self, sender.itemIdentifier, @(sender.selectedIndex)); }
 - (void)controlTextDidChange:(NSNotification *)note {
@@ -216,6 +359,8 @@ static void Send(JEToolbar *t, NSString *ident, id value) {
 - (void)update:(NSDictionary *)model {
     NSWindow *w = self.window;
     if (!w) return;
+    // Not while the sheet's open: what's in the toolbar is being changed there
+    if (self.toolbar.customizationPaletteIsRunning) { self.pending = model; [self watchSheet]; return; }
     w.title = S(model, @"title");
     if (@available(macOS 11.0, *)) w.subtitle = S(model, @"subtitle");
     NSMutableArray<NSString *> *ids = [NSMutableArray array];
@@ -228,28 +373,80 @@ static void Send(JEToolbar *t, NSString *ident, id value) {
         [ids addObject:ident];
         byId[ident] = m;
     }
+    // Those that can be added in the sheet, not shown now
+    NSMutableArray<NSString *> *extraIds = [NSMutableArray array];
+    for (NSDictionary *m in ([model[@"extra"] isKindOfClass:[NSArray class]] ? model[@"extra"] : @[])) {
+        if (![m isKindOfClass:[NSDictionary class]]) continue;
+        NSString *ident = S(m, @"id");
+        if (!ident.length || byId[ident]) continue;
+        [extraIds addObject:ident];
+        byId[ident] = m;
+    }
+    BOOL customize = B(model, @"customize", NO);
+    NSArray *customizable = [model[@"customizable"] isKindOfClass:[NSArray class]] ? model[@"customizable"] : @[];
     // A segment's or a menu's kind of item can't change in place either
-    BOOL same = [ids isEqualToArray:self.ids ?: @[]];
+    BOOL same = [ids isEqualToArray:self.ids ?: @[]] && [extraIds isEqualToArray:self.extraIds ?: @[]] && customize == self.toolbar.allowsUserCustomization;
     for (NSString *ident in byId) if (same && ![S(byId[ident], @"kind") isEqualToString:S(self.model[ident], @"kind")]) same = NO;
-    for (NSString *ident in byId) if (same && [S(byId[ident], @"kind") isEqualToString:@"segment"] && ![byId[ident][@"segments"] isEqual:self.model[ident][@"segments"]]) same = NO;
+    for (NSString *ident in byId) if (same && [S(byId[ident], @"kind") isEqualToString:@"segment"] && (![byId[ident][@"segments"] isEqual:self.model[ident][@"segments"]] || ![(byId[ident][@"symbols"] ?: @[]) isEqual:(self.model[ident][@"symbols"] ?: @[])])) same = NO;
     self.model = byId;
+    self.extraIds = extraIds;
+    self.customizable = customizable;
     if (same && self.toolbar) {
         for (NSString *ident in byId) if (self.made[ident]) [self apply:byId[ident] to:self.made[ident]];
     } else {
         self.ids = ids;
         self.made = [NSMutableDictionary dictionary];
+        self.spaceWidth = nil;
         NSToolbar *t = [[NSToolbar alloc] initWithIdentifier:[NSString stringWithFormat:@"jeditor-%ld-%ld", (long)w.windowNumber, (long)++self.generation]];
         t.delegate = self;
         t.displayMode = NSToolbarDisplayModeIconOnly;
-        t.allowsUserCustomization = NO;
+        t.allowsUserCustomization = customize;
         t.autosavesConfiguration = NO;
+        if (self.toolbar) {
+            [NSNotificationCenter.defaultCenter removeObserver:self name:NSToolbarWillAddItemNotification object:self.toolbar];
+            [NSNotificationCenter.defaultCenter removeObserver:self name:NSToolbarDidRemoveItemNotification object:self.toolbar];
+        }
+        [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(toolbarChanged:) name:NSToolbarWillAddItemNotification object:t];
+        [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(toolbarChanged:) name:NSToolbarDidRemoveItemNotification object:t];
         self.toolbar = t;
         w.toolbar = t;
     }
     w.toolbarStyle = NSWindowToolbarStyleUnified;
-    w.titleVisibility = NSWindowTitleVisible;
-    self.toolbar.visible = B(model, @"visible", YES);
-    EnsureDragView(w);
+    // The title only with the toolbar: over Adjust and Paint the toolbar
+    // steps aside and their head is the top row, and AppKit still drew the
+    // title there, after the lights, through the mode chip (Needs fixing,
+    // 2026-11-01)
+    BOOL visible = B(model, @"visible", YES);
+    w.titleVisibility = visible ? NSWindowTitleVisible : NSWindowTitleHidden;
+    self.toolbar.visible = visible;
+    // Only under the toolbar: without it (Home) the page's own top row is
+    // there, and the view took the press on its buttons (Home's Settings
+    // didn't click where the title bar lies over it: the owner, beta 173)
+    if (visible) EnsureDragView(w); else RemoveDragView(w);
+    id at = model[@"titleAt"];
+    self.titleAt = [at isKindOfClass:[NSNumber class]] ? [at doubleValue] : 0;
+    self.fitting = 0;
+    [self fitTitle];
+}
+
+// The space before the title made as wide as puts the title at titleAt
+// (the sidebar's edge), once AppKit has laid the toolbar out: measured,
+// set, measured again (a few times at most: the title moves with it)
+- (void)fitTitle {
+    if (!self.spaceWidth || self.titleAt <= 0) return;
+    __weak JEToolbar *weak = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        JEToolbar *t = weak;
+        if (!t || !t.window || !t.spaceWidth) return;
+        [t.window.contentView.superview layoutSubtreeIfNeeded];
+        NSDictionary *box = TitleBox(t.window);
+        CGFloat now = [box[@"left"] isKindOfClass:[NSNumber class]] ? [box[@"left"] doubleValue] : -1;
+        if (now < 0) return;
+        CGFloat delta = t.titleAt - now;
+        if (fabs(delta) < 1 || ++t.fitting > 4) return;
+        t.spaceWidth.constant = MAX(1, t.spaceWidth.constant + delta);
+        [t fitTitle];
+    });
 }
 
 - (NSDictionary *)describe {
@@ -266,7 +463,10 @@ static void Send(JEToolbar *t, NSString *ident, id value) {
         [items addObject:d];
     }
     return @{ @"title": self.window.title ?: @"", @"subtitle": self.window.subtitle ?: @"", @"visible": @(self.toolbar.visible),
-              @"glass": @(NSProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26), @"items": items };
+              @"titleBox": TitleBox(self.window), @"toolbarHeight": @(self.toolbar.visible ? ToolbarHeight(self.window) : 0),
+              @"glass": @(NSProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26),
+              @"lights": LightsBox(self.window), @"spaceWidth": @(self.spaceWidth ? self.spaceWidth.constant : 0),
+              @"customize": @(self.toolbar.allowsUserCustomization), @"allowed": [self toolbarAllowedItemIdentifiers:self.toolbar] ?: @[], @"items": items };
 }
 @end
 
@@ -323,7 +523,8 @@ static Napi::Value Attach(const Napi::CallbackInfo &info) {
         __weak NSWindow *weak = w;
         for (NSNotificationName name in @[NSWindowDidEnterFullScreenNotification, NSWindowDidExitFullScreenNotification]) {
             [obs addObject:[NSNotificationCenter.defaultCenter addObserverForName:name object:w queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n) {
-                if (weak) EnsureDragView(weak);
+                JEToolbar *t = weak ? [controllers objectForKey:weak] : nil;
+                if (weak && t.toolbar.visible) EnsureDragView(weak);
             }]];
         }
         t.observers = obs;
@@ -351,6 +552,14 @@ static Napi::Value FocusSearch(const Napi::CallbackInfo &info) {
         }
     }
     return Napi::Boolean::New(info.Env(), false);
+}
+
+static Napi::Value Customize(const Napi::CallbackInfo &info) {
+    NSWindow *w = WindowOf(info[0]);
+    JEToolbar *t = w ? [controllers objectForKey:w] : nil;
+    if (!t || !t.toolbar.visible || !t.toolbar.allowsUserCustomization) return Napi::Boolean::New(info.Env(), false);
+    [t customize];
+    return Napi::Boolean::New(info.Env(), true);
 }
 
 static Napi::Value Describe(const Napi::CallbackInfo &info) {
@@ -394,6 +603,7 @@ static Napi::Value Detach(const Napi::CallbackInfo &info) {
     JEToolbar *t = w ? [controllers objectForKey:w] : nil;
     if (t) {
         for (id o in t.observers) [NSNotificationCenter.defaultCenter removeObserver:o];
+        [NSNotificationCenter.defaultCenter removeObserver:t];
         t.observers = nil;
         t.onAction.Release();
         w.toolbar = nil;
@@ -409,6 +619,7 @@ static Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("attach", Napi::Function::New(env, Attach));
     exports.Set("update", Napi::Function::New(env, Update));
     exports.Set("focusSearch", Napi::Function::New(env, FocusSearch));
+    exports.Set("customize", Napi::Function::New(env, Customize));
     exports.Set("describe", Napi::Function::New(env, Describe));
     exports.Set("click", Napi::Function::New(env, Click));
     exports.Set("hitAt", Napi::Function::New(env, HitAt));

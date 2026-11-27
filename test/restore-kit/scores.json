@@ -1,0 +1,20 @@
+{
+  "mean": 2.8,
+  "cases": {
+    "family/slideRed": 3.954,
+    "family/printCyan": 3.713,
+    "family/yellowStain": 2.909,
+    "family/fadedPrint": 3.03,
+    "family/unevenCyan": 4.995,
+    "beach/slideRed": 2.444,
+    "grass/printCyan": 1.558,
+    "interior/yellowStain": 3.477,
+    "family/none": 0.785,
+    "grass/none": 1.138,
+    "roll/printCyan": 2.672,
+    "roll/slideRed": 3.704,
+    "roll/yellowStain": 2.119,
+    "roll/fadedPrint": 2.648,
+    "roll/none": 1.16
+  }
+}

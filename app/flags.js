@@ -1,9 +1,12 @@
 // Flags and search: marking photos, and narrowing the grid down to some.
 //
-// A photo can have a star (a pick), a "needs rescan" flag (a bad scan to
-// redo) and one color label. P stars, X marks for rescan, 1–5 set a
-// colour (the same color again takes it off), U clears all three. In the
-// grid they apply to the selection, in single view to the photo shown.
+// A photo can be picked or rejected (one or the other), have a "needs
+// rescan" flag (a bad scan to redo) and one color label. P picks, X
+// rejects (the tile dims), Shift+X marks for rescan, 1–5 set a colour (the
+// same color again takes it off), U clears them all: the culling keys
+// pros know (the owner's pick at 2.0). A pick is kept as `star`, as it was
+// before 2.0. In the grid they apply to the selection, in single view to
+// the photo shown.
 //
 // Flags are saved with the order, in .jeditor/flags.json, keyed by each
 // photo's path. They live on the photo objects while the folder is open,
@@ -11,10 +14,11 @@
 // written again after any change. Flags of photos that aren't in the
 // folder any more are kept, in case they come back.
 //
-// The view filter is a flag (★, needs rescan, a color or "no flag")
-// and/or a search: words matched against each photo's name and folder,
-// all of them, in any order. `is:star`, `is:rescan`, `is:red` (and the
-// other colors), `is:flagged` and `is:unflagged` match flags in a search.
+// The view filter is a flag (picked, rejected, needs rescan, a color or
+// "no flag") and/or a search: words matched against each photo's name and
+// folder, all of them, in any order. `is:picked` (or `is:star`),
+// `is:rejected`, `is:rescan`, `is:red` (and the other colors), `is:flagged`
+// and `is:unflagged` match flags in a search.
 // Folders.viewFiles applies it, so the grid, film strip, arrow keys and
 // Ctrl+A all follow it.
 
@@ -23,13 +27,16 @@ const Flags = {
     COLORS: ['red', 'yellow', 'green', 'blue', 'purple'],
     COLOR_HEX: { red: '#f87171', yellow: '#facc15', green: '#4ade80', blue: '#60a5fa', purple: '#c084fc' },
 
-    filter: null, // null | 'star' | 'rescan' | 'none' | a color
+    filter: null, // null | 'star' (picked) | 'reject' | 'rescan' | 'none' | a color
     query: '',
     orphans: new Map(), // path → flags of photos not in the folder now
 
     ICONS: {
-        star: '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z"/></svg>',
-        rescan: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>',
+        // A pick: a flag, filled
+        star: '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M5 21V4h12l-2.5 4.5L17 13H5"/></svg>',
+        reject: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="m6.5 6.5 11 11"/></svg>',
+        // Needs a rescan: the Scan button's scanner, not Refresh's arrow
+        rescan: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13h18"/><path d="M6 13V4h8l4 4v5"/><rect x="3" y="17" width="18" height="4" rx="1"/></svg>',
         none: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7.5" stroke-dasharray="3 3"/></svg>',
         clear: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>'
     },
@@ -68,8 +75,6 @@ const Flags = {
         this.query = '';
         this.orphans = new Map();
         this._loadedFor = null;
-        const input = document.getElementById('fb-search');
-        if (input) input.value = '';
         this.syncSearchUI();
     },
 
@@ -79,21 +84,28 @@ const Flags = {
         return f && f._flags;
     },
     has(f, kind) {
+        // (not a flag: the photos with unsaved edits, unsaved.js)
+        if (kind === 'unsaved') return typeof Unsaved !== 'undefined' && Unsaved.is(f);
+        if (kind === 'exported') return typeof Unsaved !== 'undefined' && Unsaved.wasExported(f);
         const fl = f && f._flags;
-        if (kind === 'none') return !fl || (!fl.star && !fl.rescan && !fl.color);
+        if (kind === 'none') return !fl || (!fl.star && !fl.reject && !fl.rescan && !fl.color);
         if (!fl) return false;
         if (kind === 'star') return !!fl.star;
+        if (kind === 'reject') return !!fl.reject;
         if (kind === 'rescan') return !!fl.rescan;
-        if (kind === 'flagged') return !!(fl.star || fl.rescan || fl.color);
+        if (kind === 'flagged') return !!(fl.star || fl.reject || fl.rescan || fl.color);
         return fl.color === kind;
     },
     any(f) {
         return this.has(f, 'flagged');
     },
     label(kind) {
-        if (kind === 'star') return 'Starred';
+        if (kind === 'star') return 'Picked';
+        if (kind === 'reject') return 'Rejected';
         if (kind === 'rescan') return 'Needs rescan';
         if (kind === 'none') return 'No flag';
+        if (kind === 'unsaved') return 'Unsaved edits';
+        if (kind === 'exported') return 'Exported';
         return kind.charAt(0).toUpperCase() + kind.slice(1);
     },
 
@@ -129,6 +141,7 @@ const Flags = {
         if (!v || typeof v !== 'object') return null;
         const fl = {};
         if (v.star) fl.star = true;
+        else if (v.reject) fl.reject = true;
         if (v.rescan) fl.rescan = true;
         if (this.COLORS.includes(v.color)) fl.color = v.color;
         return Object.keys(fl).length ? fl : null;
@@ -237,9 +250,10 @@ const Flags = {
         return Folders.targets();
     },
 
-    // kind: 'star' | 'rescan' | a color | 'clear'. Stars and rescan
-    // flags toggle (all on, unless every photo already has it); a color
-    // replaces the old one, or comes off if every photo already has it.
+    // kind: 'star' (pick) | 'reject' | 'rescan' | a color | 'clear'. Picks,
+    // rejects and rescan flags toggle (all on, unless every photo already
+    // has it), and a pick takes a reject off and back; a color replaces
+    // the old one, or comes off if every photo already has it.
     apply(kind, files = this.targets()) {
         const app = this.app;
         files = files.filter(Boolean);
@@ -253,9 +267,13 @@ const Flags = {
         if (kind === 'clear') {
             on = false;
             files.forEach(f => { delete f._flags; });
-        } else if (kind === 'star' || kind === 'rescan') {
+        } else if (kind === 'star' || kind === 'reject' || kind === 'rescan') {
             on = !files.every(f => this.has(f, kind));
-            files.forEach(f => this.setOne(f, kind, on));
+            files.forEach(f => {
+                this.setOne(f, kind, on);
+                if (on && kind === 'star') this.setOne(f, 'reject', false);
+                if (on && kind === 'reject') this.setOne(f, 'star', false);
+            });
         } else {
             on = !files.every(f => this.has(f, kind));
             files.forEach(f => this.setOne(f, 'color', on ? kind : null));
@@ -265,7 +283,8 @@ const Flags = {
         const n = files.length;
         const what = n === 1 ? (files[0].name) : `${n.toLocaleString()} photos`;
         const msg = kind === 'clear' ? `Cleared flags on ${what}`
-            : kind === 'star' ? (on ? `Starred ${what}` : `Unstarred ${what}`)
+            : kind === 'star' ? (on ? `Picked ${what}` : `Unpicked ${what}`)
+                : kind === 'reject' ? (on ? `Rejected ${what}` : `Unrejected ${what}`)
                 : kind === 'rescan' ? (on ? `${what}: needs rescan` : `${what}: rescan flag off`)
                     : (on ? `${this.label(kind)} label on ${what}` : `${this.label(kind)} label off ${what}`);
         app.showToast(msg, 1600, 'flags', null, { type: 'info', icon: kind === 'star' ? 'star' : 'flag', kind: 'flags' });
@@ -320,6 +339,8 @@ const Flags = {
     decorate(el, f) {
         if (!this.any(f) && !el.classList.contains('has-flags')) return; // most tiles: nothing to do
         let b = el.querySelector(':scope > .tile-flags');
+        // A rejected photo's tile dims, as in the pro tools
+        el.classList.toggle('rejected', this.has(f, 'reject'));
         if (!this.any(f)) {
             if (b) b.remove();
             el.classList.remove('has-flags');
@@ -338,7 +359,8 @@ const Flags = {
         const fl = f._flags || {};
         let h = '';
         if (fl.color) h += `<i class="tf-dot" style="--c:${this.COLOR_HEX[fl.color]}" title="${this.label(fl.color)} label"></i>`;
-        if (fl.star) h += `<i class="tf-star" title="Starred">${this.ICONS.star}</i>`;
+        if (fl.star) h += `<i class="tf-star" title="Picked">${this.ICONS.star}</i>`;
+        if (fl.reject) h += `<i class="tf-reject" title="Rejected">${this.ICONS.reject}</i>`;
         if (fl.rescan) h += `<i class="tf-rescan" title="Needs rescan">${this.ICONS.rescan}</i>`;
         return h;
     },
@@ -380,7 +402,7 @@ const Flags = {
         for (const t of terms) {
             if (t.startsWith('is:') && t.length > 3) {
                 const k = t.slice(3);
-                const kind = k === 'starred' ? 'star' : k === 'unflagged' ? 'none' : k;
+                const kind = ['starred', 'picked', 'pick'].includes(k) ? 'star' : ['rejected', 'rejects'].includes(k) ? 'reject' : k === 'unflagged' ? 'none' : k;
                 if (!this.has(f, kind)) return false;
             } else if (!path.includes(t)) {
                 return false;
@@ -402,8 +424,6 @@ const Flags = {
     clearFilter(render = true) {
         this.filter = null;
         this.query = '';
-        const input = document.getElementById('fb-search');
-        if (input) input.value = '';
         this.syncSearchUI();
         if (render) this.refilter(true);
     },
@@ -447,12 +467,13 @@ const Flags = {
         const list = document.getElementById('flag-list');
         if (!list) return;
         const files = this.app.files;
-        const counts = { star: 0, rescan: 0, none: 0 };
+        const counts = { star: 0, reject: 0, rescan: 0, none: 0 };
         this.COLORS.forEach(c => { counts[c] = 0; });
         for (const f of files) {
             const fl = f._flags;
             if (!fl) { counts.none++; continue; }
             if (fl.star) counts.star++;
+            if (fl.reject) counts.reject++;
             if (fl.rescan) counts.rescan++;
             if (fl.color) counts[fl.color]++;
         }
@@ -473,6 +494,7 @@ const Flags = {
         };
         list.innerHTML = '<div class="fl-head">Flags</div>' +
             row('star', this.ICONS.star) +
+            row('reject', this.ICONS.reject) +
             row('rescan', this.ICONS.rescan) +
             this.COLORS.map(c => row(c, `<i class="tf-dot" style="--c:${this.COLOR_HEX[c]}"></i>`)).join('') +
             row('none', this.ICONS.none);
@@ -544,73 +566,23 @@ const Flags = {
         setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     },
 
-    // ---- Search (in the folder pill) ----
+    // ---- The flag filter's chip (in the folder pill). Searching names
+    // and folders is Find anything's (palette.js): Ctrl+F or / opens it ----
 
     initSearch() {
-        const box = document.getElementById('fb-search-box');
-        const input = document.getElementById('fb-search');
-        let timer = null;
-        box.addEventListener('click', (e) => {
-            if (e.target.closest('#fb-search-clear')) {
-                input.value = '';
-                clearTimeout(timer);
-                this.setQuery('');
-                input.blur();
-                return;
-            }
-            input.focus();
-        });
         document.getElementById('fb-filter-chip').addEventListener('click', () => this.setFilter(null));
-        input.addEventListener('input', () => {
-            clearTimeout(timer);
-            timer = setTimeout(() => this.setQuery(input.value.trim()), 120);
-            this.syncSearchUI(input.value);
-        });
-        input.addEventListener('focus', () => box.classList.add('open'));
-        input.addEventListener('blur', () => this.syncSearchUI());
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                e.preventDefault();
-                e.stopPropagation();
-                if (input.value) {
-                    input.value = '';
-                    clearTimeout(timer);
-                    this.setQuery('');
-                }
-                input.blur();
-            } else if (e.key === 'Enter' || e.key === 'ArrowDown') {
-                // Into the results: arrows and shortcuts work on the grid again
-                e.preventDefault();
-                clearTimeout(timer);
-                this.setQuery(input.value.trim());
-                input.blur();
-                this.app.elements.mainInterface.focus();
-            }
-        });
     },
 
-    // Ctrl+F or /: the grid, with the search box ready to type in
     focusSearch() {
-        const app = this.app;
-        if (!app.files.length || !app.dirHandle) return false;
-        if (app.viewMode !== 'grid') app.setView('grid');
-        const input = document.getElementById('fb-search');
-        input.focus();
-        input.select();
+        Palette.open();
     },
 
-    syncSearchUI(typed = null) {
-        const box = document.getElementById('fb-search-box');
-        const input = document.getElementById('fb-search');
-        if (!box || !input) return;
-        const value = typed !== null ? typed : input.value;
-        box.classList.toggle('open', document.activeElement === input || !!value);
-        box.classList.toggle('has-value', !!value);
+    syncSearchUI() {
         const chip = document.getElementById('fb-filter-chip');
         if (chip) {
             chip.classList.toggle('hidden', !this.filter);
             if (this.filter) {
-                const icon = this.filter === 'star' ? this.ICONS.star : this.filter === 'rescan' ? this.ICONS.rescan
+                const icon = this.filter === 'star' ? this.ICONS.star : this.filter === 'reject' ? this.ICONS.reject : this.filter === 'rescan' ? this.ICONS.rescan
                     : this.filter === 'none' ? this.ICONS.none : `<i class="tf-dot" style="--c:${this.COLOR_HEX[this.filter]}"></i>`;
                 chip.innerHTML = `<span class="fl-icon fl-${this.filter}">${icon}</span>${this.label(this.filter)}<span class="fc-x">${this.ICONS.clear}</span>`;
                 chip.title = `Showing only ${this.label(this.filter)} — click to show everything`;
@@ -620,15 +592,44 @@ const Flags = {
 
     // ---- Context menu row ----
 
-    // A row of flag buttons for the right-click menu
-    menuRow(files) {
+    // A row of flag buttons for the right-click menu and the Info panel.
+    // In the menu (opts.say), as Finder does its tags: a line under the
+    // symbols says what the one pointed at does, with its key
+    menuRow(files, opts = {}) {
         const row = document.createElement('div');
         row.className = 'ctx-flags';
-        const btn = (kind, html, title) => {
+        const keyOf = (id) => {
+            const k = (this.app.keyBindings && this.app.keyBindings[id]) || [];
+            return k.length ? this.app.formatCombo(k[0]) : '';
+        };
+        let say = null, sayWord = null, sayKey = null;
+        const IDLE = 'Flag and label';
+        if (opts.say) {
+            say = document.createElement('div');
+            say.className = 'ctx-flags-say';
+            sayWord = document.createElement('span');
+            sayKey = document.createElement('span');
+            sayKey.className = 'ctx-key';
+            say.append(sayWord, sayKey);
+            sayWord.textContent = IDLE;
+        }
+        const show = (word, key) => {
+            if (!say) return;
+            sayWord.textContent = word;
+            sayKey.textContent = key ? key.replace(/ \+ /g, '+') : '';
+        };
+        const btn = (kind, html, word, undo, id) => {
+            const on = kind !== 'clear' && files.length && files.every(f => this.has(f, kind));
             const b = document.createElement('button');
-            b.className = `ctx-flag fl-${kind}` + (kind !== 'clear' && files.length && files.every(f => this.has(f, kind)) ? ' on' : '');
+            b.className = `ctx-flag fl-${kind}` + (on ? ' on' : '');
             b.innerHTML = html;
-            b.title = title;
+            const label = on ? undo : word;
+            const key = keyOf(id);
+            b.setAttribute('aria-label', label + (key ? ` (${key})` : ''));
+            if (kind !== 'clear') b.setAttribute('aria-pressed', String(!!on));
+            // A tooltip only where there's no line to say it (the Info panel)
+            if (!say) b.title = label + (key ? ` (${key})` : '');
+            b.onmouseenter = b.onfocus = () => show(label, key);
             b.onclick = (ev) => {
                 ev.stopPropagation();
                 this.app.closeContextMenu();
@@ -636,14 +637,27 @@ const Flags = {
             };
             row.appendChild(b);
         };
-        const key = (id) => {
-            const k = (this.app.keyBindings && this.app.keyBindings[id]) || [];
-            return k.length ? ` (${this.app.formatCombo(k[0])})` : '';
-        };
-        btn('star', this.ICONS.star, 'Star' + key('flag.star'));
-        btn('rescan', this.ICONS.rescan, 'Needs rescan' + key('flag.rescan'));
-        this.COLORS.forEach((c, i) => btn(c, `<i class="tf-dot" style="--c:${this.COLOR_HEX[c]}"></i>`, `${this.label(c)} label` + key('flag.' + c)));
-        btn('clear', this.ICONS.clear, 'Clear flags' + key('flag.clear'));
-        return row;
+        btn('star', this.ICONS.star, 'Pick', 'Remove the pick', 'flag.star');
+        btn('reject', this.ICONS.reject, 'Reject', 'Remove the reject', 'flag.reject');
+        btn('rescan', this.ICONS.rescan, 'Needs rescan', 'Doesn\'t need a rescan', 'flag.rescan');
+        this.COLORS.forEach(c => btn(c, `<i class="tf-dot" style="--c:${this.COLOR_HEX[c]}"></i>`, `${this.label(c)} label`, `Remove the ${this.label(c).toLowerCase()} label`, 'flag.' + c));
+        btn('clear', this.ICONS.clear, 'Clear flags and labels', 'Clear flags and labels', 'flag.clear');
+        // Left and right move along the row; up and down leave it (menuKey)
+        row.addEventListener('keydown', (e) => {
+            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+            const all = [...row.children];
+            const i = all.indexOf(document.activeElement);
+            if (i < 0) return;
+            e.preventDefault();
+            e.stopPropagation();
+            all[(i + (e.key === 'ArrowRight' ? 1 : -1) + all.length) % all.length].focus();
+        });
+        if (!say) return row;
+        row.addEventListener('mouseleave', () => { if (!row.contains(document.activeElement)) show(IDLE); });
+        row.addEventListener('focusout', (e) => { if (!row.contains(e.relatedTarget)) show(IDLE); });
+        const box = document.createElement('div');
+        box.className = 'ctx-flagbox';
+        box.append(row, say);
+        return box;
     }
 };

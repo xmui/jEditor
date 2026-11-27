@@ -3,7 +3,12 @@ obj/
 dist/
 *.user
 .vs/
-node_modules/
+node_modules
 standalone.html
 _site/
 mac/native/build/
+engine/target/
+!engine/src/bin/
+desktop/core/target/
+desktop/app/target/
+desktop/app/gen/

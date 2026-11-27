@@ -77,7 +77,7 @@ const Import = {
     async scan(dir, rel = '', out = [], depth = 0) {
         if (depth > 6 || out.length > 20000) return out;
         for await (const [name, h] of dir.entries()) {
-            if (name.startsWith('.') || name.startsWith('$')) continue;
+            if (name.startsWith('.') || name.startsWith('$') || (h.kind === 'directory' && Watch.isLibrary(name))) continue;
             if (h.kind === 'directory') await this.scan(h, rel ? `${rel}/${name}` : name, out, depth + 1);
             else if (this.app.isImage(name)) {
                 const f = await h.getFile().catch(() => null);
@@ -138,7 +138,7 @@ const Import = {
         const span = first.toDateString() === last.toDateString() ? first.toLocaleDateString() : `${first.toLocaleDateString()} – ${last.toLocaleDateString()}`;
         this.el('import-summary').textContent = `${this.photos.length.toLocaleString()} photo${this.photos.length === 1 ? '' : 's'}, ${span}` +
             (this.fresh.length < this.photos.length ? ` — ${this.fresh.length.toLocaleString()} not imported before` : '');
-        const here = !!(app.dirHandle && !app.readOnlyMode);
+        const here = !!(app.dirHandle && !app.fixedFiles);
         const projects = Host.has('places') && Places.get(Places.KEY_DIR, null);
         this.el('import-to-here').disabled = !here;
         this.el('import-to-here-label').textContent = here ? `Into ${app.dirHandle.name}` : 'Into the open project';
@@ -147,7 +147,8 @@ const Import = {
         const day = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
         this.el('import-name').value = `${day(first)} ${d.name}`.replace(/[<>:"/\\|?*]/g, '_');
         (projects ? this.el('import-to-new') : here ? this.el('import-to-here') : this.el('import-to-pick')).checked = true;
-        this.el('import-eject-row').classList.toggle('hidden', !(d.path && this.native()));
+        // Ejecting is the sidebar's drives' (places.js: Places.eject)
+        this.el('import-eject-row').classList.toggle('hidden', !(d.path && Host.has('places')));
         this.el('import-new-only').checked = true;
         this.sync();
         panel.classList.remove('hidden');

@@ -95,6 +95,8 @@ sealed class MainForm : Form
     // A page that doesn't hear it (closeHeard) in a few seconds doesn't hold
     // the window: closing again closes.
     bool holdClose, closeOk, closeHeard;
+    // The page said it's ready since the last navigation (WatchReady)
+    int navigations, readyAt = -1;
     DateTime closeAsked;
 
     bool HoldClose(CloseReason why)
@@ -155,6 +157,13 @@ sealed class MainForm : Form
             Configure();
             await PrepareCacheAsync();
             if (options.Dev) await Core.AddScriptToExecuteOnDocumentCreatedAsync("window.__jeditorDev = true;");
+            // The engine (Engine.cs): the bridge lists `engine` (and `engineHeic`
+            // when it reads HEICs), the page asks it
+            if (Engine.Available)
+            {
+                await Core.AddScriptToExecuteOnDocumentCreatedAsync(Engine.Heic ? "window.__jeditorEngine = { heic: true };" : "window.__jeditorEngine = true;");
+                Engine.Serve(Core, "https://" + HostName);
+            }
             await Core.AddScriptToExecuteOnDocumentCreatedAsync(ReadBridge());
             Core.SetVirtualHostNameToFolderMapping(HostName, options.UiDir!, CoreWebView2HostResourceAccessKind.Allow);
             if (options.Dev) WatchUi();
@@ -297,7 +306,11 @@ sealed class MainForm : Form
         };
         Core.NavigationCompleted += (_, e) =>
         {
-            if (e.IsSuccess) return;
+            if (e.IsSuccess)
+            {
+                if (IsOurs(Core.Source)) WatchReady(++navigations);
+                return;
+            }
             Log.Write($"Page failed to load: {e.WebErrorStatus}");
             smoke?.Fail($"page failed to load ({e.WebErrorStatus})");
         };
@@ -310,6 +323,32 @@ sealed class MainForm : Form
             if (smoke is null && e.ProcessFailedKind == CoreWebView2ProcessFailedKind.RenderProcessExited)
                 BeginInvoke(() => { try { if (!IsDisposed) Core.Reload(); } catch (Exception ex) { Log.Write("Reload after crash: " + ex.Message); } });
         };
+    }
+
+    // The page loaded but hasn't said it's ready (bridge.js) after 10 s:
+    // what it has, in the log (the owner's beta 154: the home page drawn,
+    // nothing working, nothing logged). If it doesn't even answer, its
+    // main thread is stuck
+    async void WatchReady(int nav)
+    {
+        try
+        {
+            await Task.Delay(10000);
+            if (IsDisposed || readyAt >= nav || nav != navigations) return;
+            Log.Write("The page hasn't said it's ready after 10 s; asking it what it has");
+            var ask = Core.ExecuteScriptAsync(
+                "JSON.stringify({ state: document.readyState, app: typeof app, elements: typeof app !== 'undefined' && !!app.elements, " +
+                "native: typeof window.JEditorNative, scripts: [...document.scripts].map(s => s.src.split('/').pop()).filter(Boolean).length, " +
+                "loaded: performance.getEntriesByType('resource').filter(r => r.initiatorType === 'script').length, " +
+                "missing: [...document.scripts].map(s => s.src).filter(src => src && !performance.getEntriesByName(src).length).map(src => src.split('/').pop()) })");
+            var done = await Task.WhenAny(ask, Task.Delay(5000));
+            if (done != ask) { Log.Write("The page doesn't answer: its main thread is busy (stuck in a script)"); return; }
+            Log.Write("The page says: " + await ask);
+        }
+        catch (Exception e)
+        {
+            Log.Write("Asking the page what it has: " + e.Message);
+        }
     }
 
     static bool IsOurs(string? uri) =>
@@ -405,6 +444,7 @@ sealed class MainForm : Form
                 });
                 break;
             case "ready":
+                readyAt = navigations;
                 holdClose = closeHeard = false;
                 closeAsked = default;
                 Log.Write($"jEditor {Str(msg, "version")} ready");
@@ -456,12 +496,12 @@ sealed class MainForm : Form
             case "cameras":
             case "tether":
             case "places":
+            case "fonts":
             case "listDir":
             case "listProjects":
             case "makeFolder":
             case "renameFolder":
             case "countPhotos":
-            case "quickAccess":
             case "eject":
             case "reveal":
             case "pickPath":
@@ -475,6 +515,11 @@ sealed class MainForm : Form
             case "undoTransfer":
             case "burn":
             case "copyFolder":
+            case "folderSize":
+            case "moveFolder":
+            case "cacheDir":
+            case "setCacheDir":
+            case "resetApp":
                 var files = FilesOf(e);
                 BeginInvoke(async () => await HandleRequestAsync(msg, files));
                 break;
@@ -666,6 +711,17 @@ sealed class MainForm : Form
                     });
                     break;
                 }
+                case "fonts":
+                {
+                    // The installed families, as Paint's Text tool lists them
+                    var fonts = await Task.Run(() =>
+                    {
+                        using var installed = new System.Drawing.Text.InstalledFontCollection();
+                        return installed.Families.Select(f => f.Name).ToArray();
+                    });
+                    Reply(id, new { fonts });
+                    break;
+                }
                 case "listDir":
                 {
                     var path = Str(msg, "path") ?? "";
@@ -725,14 +781,6 @@ sealed class MainForm : Form
                     var counts = await Task.Run(() => paths.AsParallel().AsOrdered().WithDegreeOfParallelism(4)
                         .Select(p => Path.IsPathFullyQualified(p) ? Projects.Count(p) : -1).ToList());
                     Reply(id, new { counts, limit = Projects.Limit });
-                    break;
-                }
-                case "quickAccess":
-                {
-                    List<(string Name, string Path)> pins;
-                    try { pins = await Projects.QuickAccessAsync(); }
-                    catch (Exception e) { Log.Write("Quick Access: " + e.Message); pins = []; }
-                    Reply(id, new { folders = pins.Select(p => new { name = p.Name, path = p.Path }) });
                     break;
                 }
                 case "eject":
@@ -838,6 +886,89 @@ sealed class MainForm : Form
                         Reply(id, new { error = ex.Message });
                     }
                     finally { copies.Remove(id); }
+                    break;
+                }
+                case "folderSize":
+                {
+                    // What's in a folder that a move would take, and the
+                    // room where it would go (folderMove)
+                    var path = Str(msg, "path") ?? "";
+                    var dest = Str(msg, "dest");
+                    if (!Path.IsPathFullyQualified(path)) { Reply(id, new { error = "Not a folder" }); break; }
+                    var size = await Task.Run(() => FolderMove.Size(path));
+                    var room = dest is not null && Path.IsPathFullyQualified(dest) ? FolderMove.Space(dest, path) : null;
+                    var refused = dest is not null && Path.IsPathFullyQualified(dest) ? FolderMove.Refuse(path, dest) : null;
+                    Reply(id, new
+                    {
+                        folders = size.Folders, files = size.Files, bytes = size.Bytes,
+                        free = room?.Free, drive = room?.Drive, sameDrive = room?.SameDrive, refused
+                    });
+                    break;
+                }
+                case "moveFolder":
+                {
+                    // Everything in a folder into another: copied, checked
+                    // and only then removed ('moveProgress' as it goes)
+                    var from = Str(msg, "path") ?? "";
+                    var dest = Str(msg, "dest") ?? "";
+                    if (!Path.IsPathFullyQualified(from) || !Path.IsPathFullyQualified(dest)) { Reply(id, new { error = "Not a folder" }); break; }
+                    using var cancel = new CancellationTokenSource();
+                    copies[id] = cancel;
+                    try
+                    {
+                        var r = await Task.Run(() => FolderMove.Run(from, dest, (done, total, moved) =>
+                            BeginInvoke(() => Post(new { type = "copyProgress", copy = id, done, total, moved })), cancel.Token));
+                        Log.Write($"Moved {r.Moved} from {from} to {dest}{(r.Error is null ? "" : ": " + r.Error)}");
+                        Reply(id, new { moved = r.Moved, left = r.Left, error = r.Error, stopped = r.Stopped });
+                        AppWindows.PostAll(new { type = "drivesChanged" }); // free space
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Write($"Couldn't move {from} to {dest}: {ex.Message}");
+                        Reply(id, new { moved = 0, error = ex.Message });
+                    }
+                    finally { copies.Remove(id); }
+                    break;
+                }
+                case "cacheDir":
+                    Reply(id, new { path = Shell.OrdersDir, chosen = Shell.CacheDir is not null });
+                    break;
+                case "resetApp":
+                {
+                    // Settings → Troubleshooting (app/reset.js, AppReset.cs):
+                    // the browser's caches, for Reset jEditor this app's own
+                    // files, then jEditor again. The page's storage isn't
+                    // wiped here: the page has removed what goes
+                    var full = msg["full"]?.GetValue<bool>() ?? false;
+                    try
+                    {
+                        await Core.Profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.DiskCache
+                            | CoreWebView2BrowsingDataKinds.CacheStorage | CoreWebView2BrowsingDataKinds.ServiceWorkers);
+                    }
+                    catch (Exception ex) { Log.Write($"Reset: the browser's caches weren't cleared: {ex.Message}"); }
+                    if (full && smoke is null) AppReset.Forget();
+                    Log.Write(full ? "Reset jEditor: starting again" : "Cleared the cache: starting again");
+                    Reply(id, new { ok = smoke is null });
+                    if (smoke is null) AppReset.Restart();
+                    break;
+                }
+                case "setCacheDir":
+                {
+                    // The cache folder chosen in Settings → Projects: its
+                    // own "jEditor cache" folder inside it, from now on
+                    var chosen = Str(msg, "path");
+                    if (chosen is not null)
+                    {
+                        if (!Path.IsPathFullyQualified(chosen) || !Directory.Exists(chosen)) { Reply(id, new { error = "That folder isn't there" }); break; }
+                        // WebView2 won't let the page write there (Shell.StoreDir)
+                        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData).TrimEnd('\\');
+                        if (Path.GetFullPath(chosen).StartsWith(local, StringComparison.OrdinalIgnoreCase)) { Reply(id, new { error = "jEditor can't keep its cache in AppData\\Local. Choose another folder." }); break; }
+                    }
+                    Shell.CacheDir = chosen is null ? null : Shell.CacheIn(chosen);
+                    Shell.MakeOrdersDir();
+                    if (smoke is null) Settings.Update(s => s.CacheDir = Shell.CacheDir);
+                    Log.Write($"The cache folder is now {Shell.OrdersDir}");
+                    Reply(id, new { path = Shell.OrdersDir });
                     break;
                 }
                 case "undoTransfer":

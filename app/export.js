@@ -1,15 +1,20 @@
 // Export: one window for taking photos off this computer (the project
 // card's Export, ⋯ on the selection bar, a folder's right-click menu).
 //
-//   USB drive or card  the whole project copied onto one, its flags and
-//                      edits with it, and the drive ejected after if you
-//                      like (the apps: places.js's copyToDrive)
-//   CD or DVD          the whole project burnt onto a disc (the Windows
-//                      app: disc.js)
-//   Copies             copies of the photos (all, the selected ones or the
-//                      starred), full size or smaller, edits in them: into
-//                      "jEditor Export" in the project, onto a USB drive,
-//                      or into a folder chosen (app.exportCopies)
+//   USB drive or card  the whole project copied onto one, as it is on
+//                      disk (its flags and edits too only if asked: a
+//                      .jeditor folder in the copy), and the drive ejected
+//                      after if you like (the apps: places.js's copyToDrive)
+//   CD or DVD          the whole project burnt onto a disc, ejected after
+//                      if you like (the Windows app: disc.js)
+//   Copies             copies of the photos (all, the selected ones, the
+//                      starred or the edited), as set in sections that
+//                      open and close (where, file naming, format, size,
+//                      metadata, colour, after), edits in them, into a
+//                      folder named after the project ("Summer 2024
+//                      export"), in it, on a USB drive or in a folder
+//                      chosen (app.exportCopies); the settings can be
+//                      saved as a preset of your own
 //
 // Each says what goes and whether it fits before anything starts, and
 // follows drives and discs as they're put in.
@@ -17,9 +22,9 @@
 const Export = {
     KEY: 'jeditor.export', // the last choices: { tab, size, where }
     // As they are, or another format (AVIF and JPEG XL where the codecs load: codec.js)
-    FORMATS: [['same', 'As they are'], ['jpeg', 'JPEG'], ['png', 'PNG (lossless)'], ['tiff', 'TIFF (lossless, for print)'], ['webp', 'WebP'], ['avif', 'AVIF (smallest)'], ['jxl', 'JPEG XL']],
+    FORMATS: [['same', 'Original format'], ['jpeg', 'JPEG'], ['png', 'PNG (lossless)'], ['tiff', 'TIFF (lossless, for print)'], ['webp', 'WebP'], ['avif', 'AVIF (smallest)'], ['jxl', 'JPEG XL']],
     SIZES: [[0, 'Full size'], [4000, '4000 px'], [3000, '3000 px'], [2048, '2048 px (for the web)'], [1600, '1600 px'], [1080, '1080 px (social media)']],
-    TABS: [['usb', 'USB drive or card'], ['disc', 'CD or DVD'], ['copies', 'Copies']],
+    TABS: [['copies', 'Copies'], ['usb', 'USB drive or card'], ['disc', 'CD or DVD']],
 
     el(id) { return document.getElementById(id); },
     native() { return FolderCache.native(); },
@@ -46,7 +51,15 @@ const Export = {
         body.addEventListener('click', (e) => {
             const b = e.target.closest('[data-act]');
             if (!b) return;
-            if (b.dataset.act === 'burners') this.loadBurners();
+            const act = b.dataset.act;
+            if (act === 'burners') this.loadBurners();
+            // (its menu stays open: a click anywhere else closes menus)
+            else if (act === 'pill') { e.stopPropagation(); this.pillMenu(b); }
+            else if (act === 'sec') this.toggleSec(b.dataset.sec);
+            else if (act === 'token') this.addToken(b.dataset.token);
+            else if (act === 'save-preset') this.savePreset();
+            else if (act === 'drop-preset') this.dropPreset();
+            else if (act === 'preview') { this.preview = !this.preview; this.remember({ preview: this.preview }); this.render(); }
         });
         this.el('ex-go').addEventListener('click', () => this.go());
         // A drive plugged in or taken out while it's open
@@ -75,9 +88,10 @@ const Export = {
             : !!path && Host.has('burn'));
     },
 
-    // { path, files, tab, drive }: the project (its path, in an app), the
-    // photos chosen (Copies starts with them), the tab, a drive to pick
-    async open({ path = Host.has('places') ? Places.current() : null, files = null, tab = null, drive = null } = {}) {
+    // { path, files, tab, drive, where }: the project (its path, in an app),
+    // the photos chosen (Copies starts with them), the tab, a drive (or a
+    // disc's drive) to pick, where Copies go ('drive:' + a drive's path)
+    async open({ path = Host.has('places') ? Places.current() : null, files = null, tab = null, drive = null, where = null } = {}) {
         const app = this.app;
         if (!app.dirHandle && !path) {
             app.showToast('Open a project first', 3000);
@@ -85,23 +99,25 @@ const Export = {
         }
         this.path = path || null;
         this.files = files && files.length ? files.filter(Boolean) : null;
+        this.open_ = new Set();
         const saved = this.saved();
         this.which = this.files ? 'selected' : 'all';
-        this.size = saved.size || 0;
-        this.format = this.FORMATS.some(([v]) => v === saved.format) ? saved.format : 'same';
+        this.loadCopies(saved);
         Codec.ready().then(ok => { this.codecs = ok; if (this.isOpen() && this.tab === 'copies') this.render(); });
-        this.where = saved.where === 'project' || !saved.where ? 'project' : saved.where;
+        this.where = where || (saved.where === 'project' || !saved.where ? 'project' : saved.where);
         this.chosen = null;
         this.drive = drive;
         this.eject = saved.eject !== false;
+        this.withData = saved.withData === true; // off to start with
         this.saveFirst = true;
         this.label = Places.baseName(path || (app.dirHandle && app.dirHandle.name) || '').slice(0, 16);
         this.burnerList = null;
         const tabs = this.tabs().map(t => t[0]);
         if (!tabs.length) return;
-        this.tab = tabs.includes(tab) ? tab : this.files ? 'copies' : tabs.includes(saved.tab) ? saved.tab : tabs[0];
+        const usual = tabs;
+        this.tab = tabs.includes(tab) ? tab : this.files && tabs.includes('copies') ? 'copies' : usual.includes(saved.tab) ? saved.tab
+            : usual.includes('usb') ? 'usb' : usual[0] || tabs[0]; // (a project on disk: onto a drive, as before)
         this.el('export-panel').classList.remove('hidden');
-        this.el('ex-title').textContent = `Export ${this.files ? `${this.files.length.toLocaleString()} photo${this.files.length === 1 ? '' : 's'}` : this.name()}`;
         this.render();
         this.el('ex-go').focus();
         if (Host.has('places') && !Places.drives) Places.refresh().then(() => this.render()).catch(() => { });
@@ -110,6 +126,7 @@ const Export = {
 
     close() {
         this.el('export-panel').classList.add('hidden');
+        this.el('export-panel').classList.remove('ex-wide');
         this.files = null;
     },
 
@@ -149,6 +166,7 @@ const Export = {
         const files = this.app.files;
         if (this.which === 'selected' && this.files) return this.files;
         if (this.which === 'star') return files.filter(f => Flags.has(f, 'star'));
+        if (this.which === 'edited') return files.filter(f => f._edit);
         return files;
     },
 
@@ -177,16 +195,24 @@ const Export = {
         const body = this.el('ex-body');
         const keep = document.activeElement && body.contains(document.activeElement) ? document.activeElement.name || document.activeElement.id : null;
         const r = this.tab === 'usb' ? this.usbBody() : this.tab === 'disc' ? this.discBody() : this.copiesBody();
+        this.el('ex-title').textContent = `Export ${this.files ? `${this.files.length.toLocaleString()} photo${this.files.length === 1 ? '' : 's'}` : this.name()}`;
+        const scroll = body.scrollTop;
         body.innerHTML = r.html;
+        body.scrollTop = scroll;
+        // (wider with the preview beside the sections)
+        this.el('export-panel').classList.toggle('ex-wide', this.tab === 'copies' && !!this.preview);
         this.ready = r.ready;
         const go = this.el('ex-go');
         go.textContent = r.go;
         go.disabled = !r.ready;
-        this.el('ex-note').textContent = r.note || '';
+        // (Copies' summary has the folder's name in bold: built here, escaped)
+        if (this.tab === 'copies') this.el('ex-note').innerHTML = r.note || '';
+        else this.el('ex-note').textContent = r.note || '';
         if (keep) {
             const again = body.querySelector(`[name="${keep}"]:checked, #${CSS.escape(keep)}`);
             if (again && again.type !== 'radio') again.focus();
         }
+        if (this.tab === 'copies' && this.preview) this.drawPreview();
     },
 
     // ---- USB drive or card ----
@@ -200,7 +226,7 @@ const Export = {
             // The one with the most room, to start with
             this.drive = drives.slice().sort((a, b) => (b.free || 0) - (a.free || 0))[0].path;
         }
-        let html = `<p class="ex-lead">Copies ${this.esc(this.name())}${bytes ? ` (${n.toLocaleString()} photos, ${this.fmt(bytes)})` : ''} onto a USB drive or memory card, with its flags and edits, for opening in jEditor on another computer.</p>`;
+        let html = `<p class="ex-lead">Copies ${this.esc(this.name())}${bytes ? ` (${n.toLocaleString()} photos, ${this.fmt(bytes)})` : ''} onto a USB drive or memory card, as it is on disk.</p>`;
         if (!drives.length) {
             html += '<div class="ex-empty">Plug in a USB drive or a memory card: it shows up here.</div>';
             return { html, ready: false, go: 'Copy' };
@@ -215,14 +241,23 @@ const Export = {
             });
         }
         html += '</div>';
-        html += `<label class="ex-check"><input type="checkbox" id="ex-eject"${this.eject ? ' checked' : ''}> Eject it when it's done, ready to take out</label>`;
+        html += this.ejectBox();
+        // Its flags and kept edits: on this computer only, unless asked for
+        html += `<label class="ex-check"><input type="checkbox" id="ex-with-data"${this.withData ? ' checked' : ''}> Take its flags and edits too, for jEditor on another computer</label>`;
         const d = drives.find(x => Places.key(x.path) === Places.key(this.drive));
         const fits = !(need && d && d.free && need > d.free);
+        const kept = Edits.count();
         return {
             html, ready: !!d && fits,
             go: d ? `Copy to ${d.name}` : 'Copy',
-            note: d && !fits ? `${this.name()} needs ${this.fmt(need)}; ${d.name} has ${this.fmt(d.free)} free.` : ''
+            note: d && !fits ? `${this.name()} needs ${this.fmt(need)}; ${d.name} has ${this.fmt(d.free)} free.`
+                : kept && !this.withData ? `${kept.toLocaleString()} photo${kept === 1 ? ' has' : 's have'} edits kept in jEditor: copied without them.` : ''
         };
+    },
+
+    // Eject when done: one choice for a drive or a disc, remembered
+    ejectBox() {
+        return `<label class="ex-check"><input type="checkbox" id="ex-eject"${this.eject ? ' checked' : ''}> Eject when done</label>`;
     },
 
     // ---- CD or DVD ----
@@ -230,11 +265,14 @@ const Export = {
     discBody() {
         const bytes = this.projectBytes();
         const b = this.burnerList;
-        let html = `<p class="ex-lead">Burns ${this.esc(this.name())}${bytes ? ` (${this.fmt(bytes)})` : ''} onto a blank CD or DVD, as the photos are on disk. The disc comes out when it's done.</p>`;
+        let html = `<p class="ex-lead">Burns ${this.esc(this.name())}${bytes ? ` (${this.fmt(bytes)})` : ''} onto a blank CD or DVD, as the photos are on disk.</p>`;
         const again = `<button type="button" class="btn ghost sm" data-act="burners">Look again</button>`;
         if (b === 'loading' || b === null) return { html: html + '<div class="ex-empty">Looking for a disc burner…</div>', ready: false, go: 'Burn' };
         if (b.error) return { html: html + `<div class="ex-empty">Couldn't look for a disc burner: ${this.esc(b.error)} ${again}</div>`, ready: false, go: 'Burn' };
-        if (!b.length) return { html: html + `<div class="ex-empty">${this.esc(Host.say('{computer} has no drive that can burn CDs or DVDs.'))} Copy it to a USB drive instead.</div>`, ready: false, go: 'Burn' };
+        if (!b.length) return { html: html + `<div class="ex-empty">${this.esc(Host.say('{computer} has no drive that can burn CDs or DVDs.').replace(/^./, c => c.toUpperCase()))} Copy it to a USB drive instead.</div>`, ready: false, go: 'Burn' };
+        // The burner asked for (a disc's drive, right-clicked), or one with a blank disc
+        const asked = this.drive && b.find(x => x.drive && Places.key(x.drive) === Places.key(this.drive));
+        if (asked) { this.burner = asked.id; this.drive = null; }
         if (!b.some(x => x.id === this.burner)) this.burner = (b.find(x => x.canWrite) || b[0]).id;
         html += '<div class="ex-list" role="radiogroup" aria-label="Burner">';
         for (const x of b) {
@@ -248,7 +286,8 @@ const Export = {
         html += `</div><div class="ex-row">${again}</div>`;
         html += `<label class="ex-field">The disc's name <input id="ex-label" class="field" type="text" maxlength="16" spellcheck="false" value="${this.esc(this.label)}"></label>`;
         const n = Edits.count();
-        if (n) html += `<label class="ex-check"><input type="checkbox" id="ex-save-first"${this.saveFirst ? ' checked' : ''}> Save the edits into ${n.toLocaleString()} photo${n === 1 ? '' : 's'} first (else the disc gets them without)</label>`;
+        if (n) html += `<label class="ex-check"><input type="checkbox" id="ex-save-first"${this.saveFirst ? ' checked' : ''}> Write edits to file${n === 1 ? '' : 's'} for the ${n.toLocaleString()} edited photo${n === 1 ? '' : 's'} first (else the disc gets them as they are)</label>`;
+        html += this.ejectBox();
         const pick = b.find(x => x.id === this.burner);
         const fits = !(pick && pick.canWrite && bytes && bytes > pick.free);
         return {
@@ -259,49 +298,351 @@ const Export = {
     },
 
     // ---- Copies ----
+    //
+    // Sections that open and close, each saying what it's set to while
+    // it's closed, so the whole export can be read without opening one:
+    // Photos, Where, File naming, Format, Size, Metadata, Colour, After
+    // export. No presets come with it; the settings as they stand can be
+    // saved as one of your own, and picked again. A preview of the first
+    // photo can be shown beside them (off to start with). The line by the
+    // buttons says how many photos, about how big, and where they go.
+
+    // What the built-in presets set, before there were only your own: the
+    // one last used is carried over as the settings (loadCopies)
+    OLD_PRESETS: {
+        full: { format: 'same', quality: 92, size: 0, meta: 'all', colour: 'keep' },
+        email: { format: 'jpeg', quality: 80, size: 2048, meta: 'nogps', colour: 'srgb' },
+        web: { format: 'jpeg', quality: 90, size: 3000, meta: 'nogps', colour: 'srgb' },
+        social: { format: 'jpeg', quality: 85, size: 1080, meta: 'nogps', colour: 'srgb' },
+        print: { format: 'jpeg', quality: 95, size: 0, meta: 'all', colour: 'keep' },
+        archive: { format: 'tiff', quality: 92, size: 0, meta: 'all', colour: 'keep' }
+    },
+    QUALITIES: [100, 95, 90, 85, 80, 70, 60],
+    METAS: [['all', 'All metadata'], ['nogps', 'All except location'], ['none', 'None']],
+    COLOURS: [['keep', 'Same as the photo (its own profile)'], ['srgb', 'sRGB (screens and the web)']],
+    CLASHES: [['ask', 'Ask what to do'], ['both', 'Choose a new name (keep both)'], ['replace', 'Overwrite'], ['skip', 'Skip']],
+    // The pieces a name is made of (script.js exportName fills them in)
+    TOKENS: [['name', 'Name'], ['project', 'Project'], ['date', 'Date'], ['n', 'Number']],
+    // Named and ordered as in the export windows people know (Lightroom's,
+    // Capture One's, Photoshop's Export As): where, the name, the file, its
+    // size, its metadata, what happens after
+    SECS: [['which', 'Photos'], ['where', 'Export location'], ['naming', 'File naming'], ['format', 'File settings'], ['size', 'Image sizing'], ['meta', 'Metadata'], ['after', 'After export']],
+    // The settings a preset keeps
+    SET: ['format', 'quality', 'size', 'meta', 'colour', 'pattern', 'clash'],
+    DEFAULTS: { format: 'same', quality: 90, size: 0, meta: 'all', colour: 'keep', pattern: '{name}', clash: 'ask' },
+
+    // Copies' settings, from what was saved (open)
+    loadCopies(saved) {
+        const old = this.OLD_PRESETS[saved.preset];
+        this.custom = { ...this.DEFAULTS, ...(saved.custom || {}), ...(old || {}) };
+        // (before it could ask, a new name was what it started with: now it asks, once carried over)
+        if (!saved.asks) { this.custom.clash = 'ask'; this.remember({ asks: true }); }
+        // (before presets: the size and format chosen)
+        if (!saved.preset && !saved.custom && (saved.size || (saved.format && saved.format !== 'same'))) Object.assign(this.custom, { size: saved.size || 0, format: saved.format || 'same' });
+        // (names were kept or numbered after the folder)
+        if (saved.names === 'number' && !(saved.custom && saved.custom.pattern)) this.custom.pattern = '{project} {n}';
+        this.presets = Array.isArray(saved.presets) ? saved.presets.filter(p => p && typeof p.name === 'string' && p.set) : [];
+        this.preset = this.presets.some(p => p.name === saved.mine) ? saved.mine : null;
+        // (a quality the list has: 92, the old Full quality's, is shown as 90)
+        if (!this.QUALITIES.includes(this.custom.quality)) this.custom.quality = this.QUALITIES.reduce((a, b) => Math.abs(b - this.custom.quality) < Math.abs(a - this.custom.quality) ? b : a);
+        for (const k of this.SET) this[k] = this.custom[k];
+        if (this.codecs === false && Codec.of('x.' + this.format)) this.format = 'png';
+        this.leaveOut = saved.leaveOut !== false;
+        this.reveal = saved.reveal === true;
+        this.preview = saved.preview === true; // off to start with
+        this.folder = null; // named after the project (or the preset) until it's typed
+    },
+
+    // One of your presets picked: its settings
+    applyPreset(name) {
+        const p = this.presets.find(x => x.name === name);
+        if (!p) return;
+        for (const k of this.SET) this[k] = k in p.set ? p.set[k] : this.DEFAULTS[k];
+        // (TIFF without the codecs: PNG, lossless too)
+        if (this.codecs === false && Codec.of('x.' + this.format)) this.format = 'png';
+        this.preset = name;
+        for (const k of this.SET) this.custom[k] = this[k];
+        this.remember({ mine: name, custom: this.custom, preset: null });
+    },
+
+    // A setting changed: remembered, and no longer a preset as it was saved
+    setCopy(k, v) {
+        this[k] = v;
+        if (this.SET.includes(k)) {
+            this.preset = null;
+            for (const x of this.SET) this.custom[x] = this[x];
+            this.remember({ mine: null, custom: this.custom, preset: null });
+        }
+    },
+
+    // The settings as they stand, kept under a name of your own
+    async savePreset() {
+        const name = await UI.prompt({ title: 'Save as preset', message: 'These settings (format, size, metadata, color and file naming) are kept under this name, to pick again.', input: { label: 'Name', placeholder: 'Client proofs', value: this.preset || '' }, ok: 'Save' });
+        const n = typeof name === 'string' ? name.trim().slice(0, 40) : '';
+        if (!n) return;
+        const set = {};
+        for (const k of this.SET) set[k] = this[k];
+        this.presets = this.presets.filter(p => p.name.toLowerCase() !== n.toLowerCase()).concat([{ name: n, set }]);
+        this.preset = n;
+        this.remember({ presets: this.presets, mine: n });
+        if (this.isOpen()) this.render();
+    },
+
+    dropPreset() {
+        const n = this.preset;
+        if (!n) return;
+        this.presets = this.presets.filter(p => p.name !== n);
+        this.preset = null;
+        this.remember({ presets: this.presets, mine: null });
+        this.render();
+        this.app.showToast(`Removed the preset ${n}`, 3000);
+    },
+
+    folderName() {
+        if (this.folder !== null) return this.folder;
+        const name = this.name() || 'Photos';
+        return this.preset ? `${name} – ${this.preset}` : `${name} export`;
+    },
+
+    lossy(v = this.format) { return ['jpeg', 'webp', 'avif', 'jxl'].includes(v); },
+
+    whereLabel() {
+        if (this.where === 'chosen' && this.chosen) return this.chosen.label.split(/[\\/]/).filter(Boolean).pop() || this.chosen.label;
+        const d = this.where.startsWith('drive:') && this.usb().find(x => 'drive:' + x.path === this.where);
+        return d ? d.name : 'In this project';
+    },
+
+    toggleSec(k) {
+        if (this.open_.has(k)) this.open_.delete(k); else this.open_.add(k);
+        this.render();
+        const head = this.el('ex-body').querySelector(`[data-sec="${k}"]`);
+        if (head) head.focus();
+    },
+
+    // A piece put at the end of the name
+    addToken(t) {
+        const p = this.pattern || '';
+        this.setCopy('pattern', (p && !/[\s\-_]$/.test(p) ? p + ' ' : p) + `{${t}}`);
+        this.render();
+    },
+
+    // What a photo will be called (as script.js exportName makes it; the
+    // extension is its own unless the format changes it)
+    exampleName(f, i, total) {
+        const app = this.app;
+        const ext = this.format === 'same' ? (Raw.is(f.name) || Codec.isHeif(f.name) ? '.jpg' : (f.name.match(/\.[^.]+$/) || [''])[0]) : '.' + Codec.ext(this.format);
+        const own = f.name.replace(/\.[^.]+$/, '') + ext;
+        return app.exportName(this.pattern, { own, i, total, project: this.name(), date: f.lastModified || Date.now() });
+    },
+
+    patternProblem() {
+        const p = (this.pattern || '').trim();
+        if (!p) return 'Give the copies a name: add a piece, such as Name.';
+        if (/[\\/:*?"<>|\u0000-\u001f]/.test(p.replace(/\{(name|project|date|n)\}/g, ''))) return 'A file name can\'t contain \\ / : * ? " < > |';
+        return '';
+    },
+
+    // What each section is set to, said in a few words (shown while it's closed)
+    says(k, { n, starred, edited }) {
+        const files = this.app.files;
+        if (k === 'which') return this.which === 'selected' ? `${n.toLocaleString()} selected` : this.which === 'star' ? `The ${starred.toLocaleString()} picked`
+            : this.which === 'edited' ? `The ${edited.toLocaleString()} edited` : `All ${files.length.toLocaleString()}`;
+        if (k === 'where') return `${this.folderName()}, ${this.where === 'project' ? 'in this project' : this.where === 'chosen' ? `in ${this.whereLabel()}` : `on ${this.whereLabel()}`}`;
+        if (k === 'naming') {
+            const first = this.copies()[0];
+            const eg = first && !this.patternProblem() ? this.exampleName(first, 0, n) : '';
+            return (this.pattern === '{name}' ? 'Original names' : 'Renamed') + (eg ? ` · ${eg}` : '');
+        }
+        if (k === 'format') {
+            const f = this.FORMATS.find(([x]) => x === this.format);
+            const label = (f ? f[1] : this.format).replace(/ \(.*\)$/, '');
+            const srgb = this.colour === 'srgb' ? ', sRGB' : '';
+            return (this.format === 'same' ? 'Original format' : this.lossy() ? `${label}, ${this.quality}%` : `${label}, lossless`) + srgb;
+        }
+        if (k === 'size') return this.size ? `Long edge ${this.size.toLocaleString()} px, not enlarged` : 'Full size';
+        if (k === 'meta') return this.meta === 'all' ? 'All metadata' : this.meta === 'nogps' ? 'All except location' : 'None';
+        if (k === 'after') {
+            const a = [];
+            if (this.reveal && this.canReveal()) a.push(Host.say('Show the folder in {files}'));
+            if (this.where.startsWith('drive:') && this.eject) a.push('Eject the drive');
+            return a.join(', ') || 'Do nothing';
+        }
+        return '';
+    },
+
+    // The folder can be shown after: an app that can, and a place it knows the path of
+    canReveal() {
+        return Host.has('reveal') && Host.has('places');
+    },
+
+    secBody(k, { formats, starred, edited }) {
+        const sel = (id, label, opts, v) => `<label class="ex-row"><span>${label}</span><select id="${id}" class="field">` +
+            opts.map(([x, l]) => `<option value="${x}"${String(x) === String(v) ? ' selected' : ''}>${this.esc(l)}</option>`).join('') + '</select></label>';
+        const pill = (key, label, title) => `<button type="button" class="btn secondary ex-pill" data-act="pill" data-pill="${key}" aria-haspopup="menu" title="${title}">${this.esc(label)}<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>`;
+        if (k === 'which') {
+            const files = this.app.files;
+            const opt = (v, label) => `<label class="ex-opt"><input type="radio" name="ex-which" value="${v}"${this.which === v ? ' checked' : ''}> ${this.esc(label)}</label>`;
+            return '<div class="ex-opts">' + (this.files ? opt('selected', `The ${this.files.length === 1 ? 'photo' : `${this.files.length.toLocaleString()} photos`} selected`) : '') +
+                opt('all', `All ${files.length.toLocaleString()} in the project`) + (starred ? opt('star', `The ${starred.toLocaleString()} picked`) : '') +
+                (edited ? opt('edited', `The ${edited.toLocaleString()} edited`) : '') + '</div>';
+        }
+        if (k === 'where') {
+            return `<div class="ex-row"><span>Export to</span>${pill('where', this.whereLabel(), 'Where, and whether the project lists them')}</div>` +
+                `<label class="ex-row"><span>Subfolder</span><input id="ex-folder" class="field" type="text" spellcheck="false" maxlength="200" value="${this.esc(this.folderName())}"></label>` +
+                sel('ex-clash', 'Existing files', this.CLASHES, this.clash);
+        }
+        if (k === 'naming') {
+            const list = this.copies();
+            const eg = list.slice(0, 2).map((f, i) => `<code>${this.esc(this.exampleName(f, i, list.length))}</code>`).join(', ');
+            return `<input id="ex-pattern" class="field" type="text" spellcheck="false" maxlength="120" value="${this.esc(this.pattern)}" aria-label="File name, in pieces">` +
+                '<div class="ex-tokens">' + this.TOKENS.map(([t, l]) => `<button type="button" class="btn secondary sm" data-act="token" data-token="${t}" title="Add {${t}} to the name">+ ${l}</button>`).join('') + '</div>' +
+                `<p class="ex-eg">${this.patternProblem() ? this.esc(this.patternProblem()) : `For example ${eg}${list.length > 2 ? ' …' : ''}`}</p>`;
+        }
+        if (k === 'format') return sel('ex-format', 'Image format', formats, this.format) + (this.lossy() ? sel('ex-quality', 'Quality', this.QUALITIES.map(q => [q, `${q}%`]), this.quality) : '') +
+            sel('ex-colour', 'Color space', this.COLOURS, this.colour);
+        if (k === 'size') {
+            const sizes = this.SIZES.some(([v]) => v === this.size) ? this.SIZES : this.SIZES.concat([[this.size, `${this.size.toLocaleString()} px`]]);
+            return sel('ex-size', 'Resize to fit', sizes.map(([v, l]) => [v, v ? `Long edge: ${l}` : l]).concat([['other', 'Long edge: other…']]), this.size) + '<p class="ex-eg">Not enlarged: a photo smaller than this is left at its own size.</p>';
+        }
+        if (k === 'meta') return sel('ex-meta', 'Include', this.METAS, this.meta);
+        if (k === 'after') {
+            return (this.canReveal() ? `<label class="ex-check"><input type="checkbox" id="ex-reveal"${this.reveal ? ' checked' : ''}> ${Host.say('Show the folder in {files}')}</label>` : '') +
+                (this.where.startsWith('drive:') ? this.ejectBox() : '') +
+                (!this.canReveal() && !this.where.startsWith('drive:') ? '<p class="ex-eg">Nothing to do after here: a drive can be ejected, and the apps can show the folder.</p>' : '');
+        }
+        return '';
+    },
 
     copiesBody() {
         const files = this.app.files;
         const starred = files.filter(f => Flags.has(f, 'star')).length;
+        const edited = files.filter(f => f._edit).length;
         if (this.which === 'star' && !starred) this.which = 'all';
-        const list = this.copies();
-        const radio = (name, value, label, checked, sub = '') =>
-            `<label class="ex-opt"><input type="radio" name="${name}" value="${this.esc(value)}"${checked ? ' checked' : ''}><span>${label}${sub ? `<small>${sub}</small>` : ''}</span></label>`;
-        let html = '<div class="ex-field">Which photos<div class="ex-opts" role="radiogroup">';
-        if (this.files) html += radio('ex-which', 'selected', `The ${this.files.length === 1 ? 'photo' : `${this.files.length.toLocaleString()} photos`} selected`, this.which === 'selected');
-        html += radio('ex-which', 'all', `All ${files.length.toLocaleString()} in the project`, this.which === 'all');
-        if (starred) html += radio('ex-which', 'star', `The ${starred.toLocaleString()} starred`, this.which === 'star');
-        html += '</div></div>';
-        const custom = !this.SIZES.some(([v]) => v === this.size);
-        html += `<label class="ex-field">Size <span class="ex-row"><select id="ex-size" class="field">` +
-            this.SIZES.map(([v, label]) => `<option value="${v}"${v === this.size && !custom ? ' selected' : ''}>${label}${v ? ' on the longest side' : ''}</option>`).join('') +
-            `<option value="custom"${custom ? ' selected' : ''}>Other…</option></select>` +
-            (custom ? `<input id="ex-size-px" class="field ex-px" type="number" min="100" step="1" value="${this.size || 2000}" aria-label="Longest side in pixels"> px` : '') + '</span></label>';
+        if (this.which === 'edited' && !edited) this.which = 'all';
         const formats = this.FORMATS.filter(([v]) => this.codecs !== false || !Codec.of('x.' + v));
-        if (!formats.some(([v]) => v === this.format)) this.format = 'same';
-        html += `<label class="ex-field">Format <span class="ex-row"><select id="ex-format" class="field">` +
-            formats.map(([v, label]) => `<option value="${v}"${v === this.format ? ' selected' : ''}>${label}</option>`).join('') + '</select></span></label>';
-        // Where: the project's own export folder, a USB drive, or one chosen
-        html += '<div class="ex-field">Where<div class="ex-opts" role="radiogroup">';
-        html += radio('ex-where', 'project', '"jEditor Export", in this project', this.where === 'project');
+        if (!formats.some(([v]) => v === this.format)) this.format = this.codecs === false && Codec.of('x.' + this.format) ? 'png' : 'same';
         const drives = this.usb();
-        if (!drives.some(d => 'drive:' + d.path === this.where) && this.where.startsWith('drive:')) this.where = 'project';
-        for (const d of drives) html += radio('ex-where', 'drive:' + d.path, `${this.esc(d.name)}`, this.where === 'drive:' + d.path, `in "jEditor Export"${d.free ? ` · ${this.fmt(d.free)} free` : ''}`);
-        const canChoose = Host.has('places') || typeof window.showDirectoryPicker === 'function';
-        if (canChoose) html += radio('ex-where', 'chosen', this.chosen ? this.esc(this.chosen.label) : 'A folder you choose…', this.where === 'chosen' && !!this.chosen, this.chosen ? 'chosen' : '');
+        if (this.where.startsWith('drive:') && !drives.some(d => 'drive:' + d.path === this.where)) this.where = 'project';
         if (this.where === 'chosen' && !this.chosen) this.where = 'project';
-        html += '</div></div>';
+        const list = this.copies();
         const n = list.length;
-        const edited = list.filter(f => f._edit).length;
+        const ctx = { n, starred, edited, formats };
+        const chev = '<svg class="i sm ex-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
+        // Your presets (none: only the way to save one), and the preview's switch
+        let html = '<div class="ex-top">';
+        if (this.presets.length) {
+            html += '<div class="ex-presets" role="radiogroup" aria-label="Your presets">' +
+                this.presets.map(p => `<label title="Use these settings"><input type="radio" name="ex-preset" value="${this.esc(p.name)}"${p.name === this.preset ? ' checked' : ''}><span>${this.esc(p.name)}</span></label>`).join('') + '</div>';
+        }
+        html += `<button type="button" class="btn ghost sm" data-act="save-preset" title="Keep these settings under a name, to pick again">Save as preset…</button>` +
+            (this.preset ? `<button type="button" class="btn ghost sm" data-act="drop-preset" title="Remove the preset ${this.esc(this.preset)}">Remove preset</button>` : '') +
+            `<button type="button" class="btn ghost sm ex-prev-btn" data-act="preview" aria-pressed="${!!this.preview}" title="A preview of the first photo beside the settings">${this.preview ? 'Hide preview' : 'Show preview'}</button></div>`;
+        html += '<div class="ex-cols"><div class="ex-secs">';
+        for (const [k, label] of this.SECS) {
+            const open = this.open_.has(k);
+            html += `<div class="ex-sec${open ? ' open' : ''}"><button type="button" class="ex-sec-head" data-act="sec" data-sec="${k}" aria-expanded="${open}">${chev}<b>${label}</b><em>${open ? '' : this.esc(this.says(k, ctx))}</em></button>` +
+                (open ? `<div class="ex-sec-body">${this.secBody(k, ctx)}</div>` : '') + '</div>';
+        }
+        html += '</div>';
+        if (this.preview) {
+            html += '<div class="ex-prev"><div class="ex-prev-pic"><img id="ex-prev-img" alt=""></div><div id="ex-prev-name" class="ex-prev-name"></div><small id="ex-prev-size"></small></div>';
+        }
+        html += '</div>';
+        // How many, about how big, and where: the line by the buttons
+        const bytes = this.format === 'same' && !this.size ? list.reduce((t, f) => t + (f.size || 0), 0) : 0;
+        const into = this.where === 'project' ? ' in this project' : this.where === 'chosen' ? ` in ${this.esc(this.whereLabel())}` : ` on ${this.esc(this.whereLabel())}`;
+        const problem = this.folderProblem() || this.patternProblem();
+        const edits = list.filter(f => f._edit).length;
         const raws = list.filter(f => Raw.is(f.name)).length;
         const notes = [];
-        if (edited) notes.push(`${edited.toLocaleString()} with edits not saved yet: exported with them`);
+        if (edits) notes.push(`${edits.toLocaleString()} edited: exported with their edits`);
         if (raws && (this.format === 'same' || this.format === 'jpeg')) notes.push(`${raws.toLocaleString()} RAW as JPEG`);
+        this.copiesNote = `<span class="ex-sum"><b>${n.toLocaleString()} photo${n === 1 ? '' : 's'}</b>${bytes ? `, about ${this.fmt(bytes)}` : ''}, into <b class="ex-sum-folder">${this.esc(this.folderName())}</b>${into}.</span> ` +
+            this.esc((notes.length ? notes.join(' · ') + '. ' : '') + 'The originals aren\'t changed.');
         return {
-            html, ready: n > 0,
-            go: `Export ${n.toLocaleString()} cop${n === 1 ? 'y' : 'ies'}`,
-            note: (notes.length ? notes.join(' · ') + '. ' : '') + 'The originals aren\'t changed.'
+            html, ready: n > 0 && !problem,
+            go: `Export ${n.toLocaleString()} photo${n === 1 ? '' : 's'}`,
+            note: problem ? this.esc(problem) : this.copiesNote
         };
+    },
+
+    // The preview: the first photo, what it'll be called and how big
+    drawPreview() {
+        const list = this.copies(), f = list[0];
+        const img = this.el('ex-prev-img');
+        if (!img) return;
+        if (!f) { img.removeAttribute('src'); this.el('ex-prev-name').textContent = 'No photos'; this.el('ex-prev-size').textContent = ''; return; }
+        if (f.thumbnailUrl) img.src = f.thumbnailUrl; else img.removeAttribute('src');
+        this.el('ex-prev-name').textContent = this.patternProblem() ? f.name : this.exampleName(f, 0, list.length);
+        const d = f._dims;
+        let size = '';
+        if (d && d.w && d.h) {
+            const k = this.size ? Math.min(1, this.size / Math.max(d.w, d.h)) : 1;
+            size = `${Math.round(d.w * k).toLocaleString()} × ${Math.round(d.h * k).toLocaleString()} px`;
+        }
+        this.el('ex-prev-size').textContent = [size, list.length > 1 ? `1 of ${list.length.toLocaleString()}` : ''].filter(Boolean).join(' · ');
+    },
+
+    folderProblem() {
+        const name = this.folderName().trim();
+        if (!name) return 'Give the folder a name.';
+        if (/[\\/:*?"<>|\u0000-\u001f]/.test(name) || /^\.+$/.test(name)) return 'A folder name can\'t contain \\ / : * ? " < > |';
+        if (name.toLowerCase() === FolderCache.DIR.toLowerCase()) return 'That name is jEditor\'s own.';
+        return '';
+    },
+
+    // Copies' folders in a project, left out of it: not listed when it's
+    // opened or rescanned, as "jEditor Export" never was. Kept per project
+    // (its path in an app, its name in a browser), by name.
+    LEFT_OUT: 'jeditor-export-left-out',
+    projectKey() {
+        const app = this.app;
+        return (Host.has('places') && Places.current() ? Places.key(Places.current()) : app && app.dirHandle && app.dirHandle.name) || '';
+    },
+    leftOut() {
+        try { return JSON.parse(localStorage.getItem(this.LEFT_OUT) || '{}') || {}; } catch (e) { return {}; }
+    },
+    setLeftOut(folder, on) {
+        const all = this.leftOut(), k = this.projectKey(), name = folder.toLowerCase();
+        const names = new Set(all[k] || []);
+        if (on) names.add(name); else names.delete(name);
+        if (names.size) all[k] = [...names]; else delete all[k];
+        try { localStorage.setItem(this.LEFT_OUT, JSON.stringify(all)); } catch (e) { /* private */ }
+        this._leftOut = null;
+    },
+    // (asked for each folder listed: from a copy, read once per project)
+    isLeftOut(name) {
+        if (!this.app) return false;
+        const k = this.projectKey();
+        if (!this._leftOut || this._leftOut.k !== k) this._leftOut = { k, names: new Set(this.leftOut()[k] || []) };
+        return this._leftOut.names.size > 0 && this._leftOut.names.has(name.toLowerCase());
+    },
+
+    // A pill's menu, under it
+    pillMenu(b) {
+        const k = b.dataset.pill, app = this.app;
+        const tick = (on, label) => (on ? '✓ ' : '') + label;
+        let items = [];
+        if (k === 'where') {
+            const where = (v) => () => { this.where = v; this.remember({ where: v.startsWith('drive:') ? 'project' : v }); this.render(); };
+            items.push([tick(this.where === 'project', 'In this project'), where('project')]);
+            for (const d of this.usb()) items.push([tick(this.where === 'drive:' + d.path, `${d.name}${d.free ? ` — ${this.fmt(d.free)} free` : ''}`), where('drive:' + d.path)]);
+            if (Host.has('places') || typeof window.showDirectoryPicker === 'function') {
+                if (this.chosen) items.push([tick(this.where === 'chosen', this.chosen.label), where('chosen')]);
+                items.push(['A folder you choose…', async () => {
+                    const chosen = await this.chooseFolder();
+                    if (chosen) { this.chosen = chosen; this.where = 'chosen'; }
+                    this.render();
+                }]);
+            }
+            // Copies in the project: listed in it, or not (Rescan doesn't list them)
+            if (this.where === 'project') {
+                items.push(['—']);
+                items.push([tick(this.leaveOut, 'Leave them out of the project (Rescan doesn\'t list them)'), () => { this.leaveOut = !this.leaveOut; this.remember({ leaveOut: this.leaveOut }); }]);
+            }
+        }
+        const r = b.getBoundingClientRect();
+        app.openContextMenu(items, r.left, r.bottom + 4);
     },
 
     // ---- Choices ----
@@ -310,26 +651,40 @@ const Export = {
         if (t.name === 'ex-drive') this.drive = t.value;
         else if (t.name === 'ex-burner') this.burner = t.value;
         else if (t.id === 'ex-eject') { this.eject = t.checked; this.remember({ eject: t.checked }); return; }
+        else if (t.id === 'ex-with-data') { this.withData = t.checked; this.remember({ withData: t.checked }); }
         else if (t.id === 'ex-save-first') { this.saveFirst = t.checked; return; }
         else if (t.id === 'ex-label') { this.label = t.value; return; }
+        else if (t.id === 'ex-reveal') { this.reveal = t.checked; this.remember({ reveal: t.checked }); return; }
+        else if (t.name === 'ex-preset') this.applyPreset(t.value);
         else if (t.name === 'ex-which') this.which = t.value;
-        else if (t.id === 'ex-format') { this.format = t.value; this.remember({ format: t.value }); }
-        else if (t.id === 'ex-size') {
-            this.size = t.value === 'custom' ? (this.size || 2000) : +t.value;
-            if (t.value === 'custom' && this.SIZES.some(([v]) => v === this.size)) this.size = 2000;
-            this.remember({ size: this.size });
-        } else if (t.id === 'ex-size-px') {
-            this.size = Math.max(0, parseInt(t.value, 10) || 0);
-            this.remember({ size: this.size });
+        else if (t.id === 'ex-clash') this.setCopy('clash', t.value);
+        else if (t.id === 'ex-folder' || t.id === 'ex-pattern') {
+            if (t.id === 'ex-folder') this.folder = t.value;
+            else this.setCopy('pattern', t.value);
+            // Only the line by the buttons and the example change: the field keeps its caret
+            const problem = this.folderProblem() || this.patternProblem();
+            this.copiesBody(); // (the line again, with the name as typed)
+            this.ready = this.copies().length > 0 && !problem;
+            this.el('ex-go').disabled = !this.ready;
+            this.el('ex-note').innerHTML = problem ? this.esc(problem) : this.copiesNote;
+            if (t.id === 'ex-pattern') {
+                const list = this.copies(), eg = this.el('ex-body').querySelector('.ex-eg');
+                if (eg) eg.innerHTML = this.patternProblem() ? this.esc(this.patternProblem())
+                    : 'For example ' + list.slice(0, 2).map((f, i) => `<code>${this.esc(this.exampleName(f, i, list.length))}</code>`).join(', ') + (list.length > 2 ? ' …' : '');
+                if (this.preview) this.drawPreview();
+            }
             return;
-        } else if (t.name === 'ex-where') {
-            if (t.value === 'chosen') {
-                const chosen = await this.chooseFolder();
-                if (chosen) this.chosen = chosen;
-                this.where = chosen || this.chosen ? 'chosen' : this.where;
-            } else {
-                this.where = t.value;
-                this.remember({ where: t.value.startsWith('drive:') ? 'project' : t.value });
+        }
+        else if (t.id === 'ex-meta') this.setCopy('meta', t.value);
+        else if (t.id === 'ex-colour') this.setCopy('colour', t.value);
+        else if (t.id === 'ex-format') this.setCopy('format', t.value);
+        else if (t.id === 'ex-quality') this.setCopy('quality', +t.value);
+        else if (t.id === 'ex-size') {
+            if (t.value !== 'other') this.setCopy('size', +t.value);
+            else {
+                const v = await UI.prompt({ title: 'Size', input: { label: 'Longest side in pixels', value: String(this.size || 2000), inputMode: 'numeric' }, ok: 'Use' });
+                const px = parseInt(v, 10);
+                if (px >= 16) this.setCopy('size', px);
             }
         }
         this.render();
@@ -359,32 +714,45 @@ const Export = {
             const drive = this.usb().find(d => Places.key(d.path) === Places.key(this.drive));
             const path = this.path;
             this.close();
-            if (drive) await Places.copyToDrive(path, { drive, eject: this.eject });
+            if (drive) await Places.copyToDrive(path, { drive, eject: this.eject, withData: this.withData });
         } else if (this.tab === 'disc') {
             const pick = Array.isArray(this.burnerList) && this.burnerList.find(x => x.id === this.burner);
-            const path = this.path, label = this.label, saveEdits = this.saveFirst;
+            const path = this.path, label = this.label, saveEdits = this.saveFirst, eject = this.eject;
             this.close();
-            if (pick) await Disc.burn(pick, path, label, { saveEdits });
+            if (pick) await Disc.burn(pick, path, label, { saveEdits, eject });
         } else {
             const list = this.copies();
-            const maxEdge = this.size || 0;
-            let dir = null, where = '"jEditor Export"';
+            const folder = this.folderName().trim();
+            let dir = null, where = `"${folder}"`, drive = null;
             try {
+                let root;
                 if (this.where === 'chosen' && this.chosen) {
-                    dir = this.chosen.handle;
-                    where = this.chosen.label;
+                    root = this.chosen.handle;
+                    where = `"${folder}" in ${this.chosen.label}`;
                 } else if (this.where.startsWith('drive:')) {
-                    const drive = this.usb().find(d => 'drive:' + d.path === this.where);
-                    const root = await this.native().folderHandle(drive.path);
-                    dir = await (await root.getDirectoryHandle('jEditor Export', { create: true })).getDirectoryHandle(this.name() || 'Photos', { create: true });
-                    where = `${drive.name}, "jEditor Export"`;
+                    drive = this.usb().find(d => 'drive:' + d.path === this.where);
+                    root = await this.native().folderHandle(drive.path);
+                    where = `${drive.name}, "${folder}"`;
+                } else {
+                    root = app.dirHandle;
+                    // Left out of the project (Rescan doesn't list them), or not
+                    Export.setLeftOut(folder, this.leaveOut);
                 }
+                dir = await root.getDirectoryHandle(folder, { create: true });
             } catch (e) {
                 UI.alert({ title: 'Couldn\'t export there', message: e.message });
                 return;
             }
+            const eject = this.eject;
+            const opts = { maxEdge: this.size || 0, dir, where, format: this.format, quality: this.quality, meta: this.meta, colour: this.colour,
+                pattern: this.pattern, project: this.name(), clash: this.clash };
+            // Shown after, where the app knows the folder's path
+            const show = this.reveal && this.canReveal() ? await this.native().folderPath(dir).catch(() => null) : null;
             this.close();
-            await app.exportCopies(list, { maxEdge, dir, where, format: this.format });
+            const r = await app.exportCopies(list, opts);
+            // Onto a drive, ejected after if asked (not when some failed: it's left to look at)
+            if (drive && eject && r && r.done && !r.failed) await Places.eject(drive.path, drive.name);
+            else if (show && r && r.done) this.native().reveal(show);
         }
     }
 };

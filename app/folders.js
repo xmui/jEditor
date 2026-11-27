@@ -20,7 +20,7 @@ const Folders = {
     scope: null,
     lastScope: '',
     map: new Map(), // path → { handle } ('' is the opened folder)
-    collapsed: new Set(),
+    opened: new Set(), // folders opened out in the tree; the rest are folded (the owner: folded to start with)
     lastDest: null,
     dragging: null,
     CONCURRENCY: 4,
@@ -42,6 +42,12 @@ const Folders = {
         const center = document.querySelector('.file-info');
         if (center && typeof ResizeObserver === 'function') new ResizeObserver(() => this.fitBar()).observe(center);
         window.addEventListener('resize', () => this.fitBar());
+        // Narrow enough that the sidebar would cover the photo, or wide again
+        if (window.matchMedia) {
+            const narrow = matchMedia('(max-width: 767px)');
+            const again = () => { if (this.app && this.app.viewMode === 'single') this.render(); };
+            if (narrow.addEventListener) narrow.addEventListener('change', again);
+        }
     },
 
     // A new folder was opened: forget the old one's folders
@@ -49,7 +55,7 @@ const Folders = {
         this.map = new Map();
         this.scope = null;
         this.lastScope = '';
-        this.collapsed = new Set();
+        this.opened = new Set();
         this.lastDest = null;
     },
 
@@ -156,7 +162,7 @@ const Folders = {
     },
 
     canEdit() {
-        if (!this.app.ensureWritable()) return false;
+        if (!this.app.ensureWritable({ files: true })) return false;
         if (!this.app.dirHandle) {
             this.app.showToast('Folders need a folder opened with Open folder');
             return false;
@@ -167,12 +173,14 @@ const Folders = {
     // The photos the grid, film strip and arrow keys go through
     // (narrowed further by a flag filter or search, see flags.js)
     viewFiles() {
+        if (Dupes.inGrid) return Dupes.gridFiles();
         const files = this.app.files;
         if (this.scope === null || !this.enabled()) return Flags.narrow(files);
         return Flags.narrow(files.filter(f => this.dirOf(f) === this.scope));
     },
 
     inView(file) {
+        if (Dupes.inGrid) return !!file && Dupes.inGridView(file);
         return !!file && (this.scope === null || !this.enabled() || this.dirOf(file) === this.scope) &&
             (!Flags.active() || Flags.passes(file));
     },
@@ -185,7 +193,7 @@ const Folders = {
         if (path !== null) {
             this.lastScope = path;
             // Opening a folder unfolds the tree down to it
-            for (let p = this.parentOf(path); p; p = this.parentOf(p)) this.collapsed.delete(p);
+            for (let p = this.parentOf(path); p; p = this.parentOf(p)) this.opened.add(p);
         }
         const changed = path !== this.scope;
         this.scope = path;
@@ -217,37 +225,80 @@ const Folders = {
 
     // ---- Layout: rail, top bar, folder tiles, folder chips ----
 
+    // The single view keeps the sidebar: in jEditor's own look (a theme lays
+    // out its own), on a window wide enough for it and the photo
+    besideSingle() {
+        return !document.documentElement.dataset.skin && !(window.matchMedia && matchMedia('(max-width: 767px)').matches);
+    },
+
+    // Adjust and Paint start with it folded away, so the photo gets the
+    // room (2.0, audit C1); Ctrl+B there opens it, and each mode remembers
+    // its own (uiPrefs.railIn). Photos keeps folderRail
     railOpen() {
-        const pref = this.app.uiPrefs && this.app.uiPrefs.folderRail;
+        // Full screen: stepped aside for now (script.js: syncFullscreen)
+        if (this.aside) return false;
+        const p = this.app.uiPrefs || {};
+        const mode = typeof Modes !== 'undefined' && Modes.current ? Modes.current() : 'photos';
+        if (mode !== 'photos') return !!(p.railIn && p.railIn[mode]);
+        const pref = p.folderRail;
         return typeof pref === 'boolean' ? pref : this.hasSubfolders();
     },
 
     toggleRail() {
-        this.app.uiPrefs.folderRail = !this.railOpen();
+        this.setRail(!this.railOpen());
+    },
+
+    // Shown or hidden, and remembered: by Ctrl+B, the button, or its edge
+    // dragged in until it snaps hidden (script.js: SIDE_HIDES)
+    setRail(on) {
+        // Brought back in full screen (Ctrl+B, the button): as it was
+        if (this.aside) {
+            this.aside = false;
+            if (on === this.railOpen()) {
+                this.render();
+                if (on) this.app.slideSide(this.el('folder-rail'), true);
+                return;
+            }
+        }
+        if (on === this.railOpen()) return;
+        const mode = typeof Modes !== 'undefined' && Modes.current ? Modes.current() : 'photos';
+        if (mode !== 'photos') this.app.uiPrefs.railIn = { ...(this.app.uiPrefs.railIn || {}), [mode]: on };
+        else this.app.uiPrefs.folderRail = on;
         this.app.saveUiPrefs();
+        const was = !this.el('folder-rail').classList.contains('hidden');
         this.render();
+        const now = !this.el('folder-rail').classList.contains('hidden');
+        if (was !== now) this.app.slideSide(this.el('folder-rail'), now);
     },
 
     render() {
         if (!this.app) return;
         const ui = this.app.elements.mainInterface;
         const on = this.enabled() && this.app.viewMode === 'grid';
-        const rail = on && this.railOpen();
+        // The sidebar stays open in the single view too, the photo beside it
+        // (jEditor's own look, docked: style.css), where there's room for both
+        const beside = !on && this.enabled() && this.app.viewMode === 'single' && this.besideSingle();
+        const rail = (on || beside) && this.railOpen();
         ui.classList.toggle('folders-on', on);
         ui.classList.toggle('rail-open', rail);
         this.el('folder-bar').classList.toggle('hidden', !on);
         this.el('folder-rail').classList.toggle('hidden', !rail);
+        // Hidden where it would show: the line at the window's edge that
+        // drags it back out (script.js: initSidebarResize)
+        // (Adjust and Paint have their own, over them)
+        for (const e of document.querySelectorAll('.side-edge[data-side="rail"]')) e.classList.toggle('hidden', !(on || beside) || rail);
         // What this window shows, for the others' Move to: in any view, not
         // just the grid's (a project left in single view was missing there)
         if (typeof Windows !== 'undefined') Windows.publish();
         if (typeof Modes !== 'undefined') Modes.render();
-        if (!on) return;
+        if (!on && !rail) return;
         const counts = this.counts();
         if (rail) {
             this.renderRail(counts);
             Flags.renderList();
             if (typeof Places !== 'undefined') Places.apply();
         }
+        if (!on) return;
         this.renderBar(counts);
         Flags.syncSearchUI();
         this.fitBar();
@@ -281,8 +332,8 @@ const Folders = {
             if (!row) return;
             if (e.target.closest('.fr-caret')) {
                 const p = row.dataset.folderPath;
-                if (this.collapsed.has(p)) this.collapsed.delete(p);
-                else this.collapsed.add(p);
+                if (this.opened.has(p)) this.opened.delete(p);
+                else this.opened.add(p);
                 this.render();
                 return;
             }
@@ -314,7 +365,7 @@ const Folders = {
         const walk = (p, depth) => {
             const kids = this.children(p);
             const n = counts.get(p) || 0;
-            const open = p === '' || !this.collapsed.has(p);
+            const open = p === '' || this.opened.has(p);
             let inside = 0, insideBytes = 0;
             for (const [d, c] of counts) if (d !== p && this.within(d, p)) { inside += c; insideBytes += sizes.get(d) || 0; }
             const bytes = sizes.get(p) || 0;
@@ -331,14 +382,20 @@ const Folders = {
             if (open) kids.forEach(k => walk(k, depth + 1));
         };
         if (this.map.has('')) walk('', 0);
-        tree.innerHTML = rows.join('');
+        // Only when it's changed: this runs on every change of view, and
+        // building the same rows again was most of the wait going back to the grid
+        const html = rows.join('');
+        const same = tree._html === html && tree.childElementCount > 0;
+        if (!same) tree.innerHTML = tree._html = html;
         // The total at the bottom: what's being shown (the whole order in All photos)
         const scopeFiles = this.scope === null ? this.app.files : this.app.files.filter(f => this.within(this.dirOf(f), this.scope));
         let bytes = 0;
         for (const f of scopeFiles) bytes += f.size || 0;
         const totalEl = this.el('fr-total');
-        totalEl.textContent = `${scopeFiles.length.toLocaleString()} photo${scopeFiles.length === 1 ? '' : 's'} · ${fmt(bytes)}`;
+        const totalText = `${scopeFiles.length.toLocaleString()} photo${scopeFiles.length === 1 ? '' : 's'} · ${fmt(bytes)}`;
+        if (totalEl.textContent !== totalText) totalEl.textContent = totalText;
         totalEl.title = (this.scope === null ? 'The whole project' : `${this.label(this.scope)}, including subfolders`) + ' — click for details';
+        if (same) return; // and the list stays where it was scrolled to
         const active = tree.querySelector('.fr-row.active');
         if (active && (active.offsetTop < tree.scrollTop || active.offsetTop > tree.scrollTop + tree.clientHeight - 30)) {
             tree.scrollTop = active.offsetTop - tree.clientHeight / 2;
@@ -512,7 +569,7 @@ const Folders = {
 
     forget(path) {
         for (const k of [...this.map.keys()]) if (k && this.within(k, path)) this.map.delete(k);
-        for (const k of [...this.collapsed]) if (this.within(k, path)) this.collapsed.delete(k);
+        for (const k of [...this.opened]) if (this.within(k, path)) this.opened.delete(k);
         if (this.lastDest !== null && this.within(this.lastDest, path)) this.lastDest = null;
         if (this.within(this.lastScope, path)) this.lastScope = this.parentOf(path);
         if (this.scope !== null && this.within(this.scope, path)) this.scope = this.parentOf(path);
@@ -540,7 +597,7 @@ const Folders = {
         try {
             const { path, created } = await this.createPath(parent, name);
             if (created.length) this.app.pushUndo({ type: 'folder-create', paths: created });
-            this.collapsed.delete(parent);
+            if (parent) this.opened.add(parent);
             this.afterChange();
             this.flash(path);
             this.app.showToast(`Made “${this.baseName(path)}”`, 2000, null, null, { kind: 'move' });
@@ -638,7 +695,7 @@ const Folders = {
         const recs = [...this.map.keys()].filter(k => k && this.within(k, path));
         recs.forEach(k => this.map.delete(k));
         recs.forEach(k => this.map.set(remap(k), { handle: null }));
-        this.collapsed = new Set([...this.collapsed].map(k => this.within(k, path) ? remap(k) : k));
+        this.opened = new Set([...this.opened].map(k => this.within(k, path) ? remap(k) : k));
         if (this.scope !== null && this.within(this.scope, path)) this.scope = remap(this.scope);
         if (this.within(this.lastScope, path) && this.lastScope) this.lastScope = remap(this.lastScope);
         if (this.lastDest !== null && this.within(this.lastDest, path)) this.lastDest = remap(this.lastDest);
@@ -655,7 +712,6 @@ const Folders = {
             }
             this.carryCaches(from, { rel: f.relPath, size: f.size, mtime: f.lastModified }, true);
         }
-        if (inside.includes(app.currentFile)) app.updateStatusBar();
         return newPath;
     },
 
@@ -731,7 +787,7 @@ const Folders = {
         Flags.orphans.delete(f.relPath);
         if (Edits.orphans) Edits.orphans.delete(f.relPath);
         try {
-            const d = await f.handle.getFile();
+            const d = await Host.stat(f.handle);
             f.size = d.size;
             f.lastModified = d.lastModified;
         } catch (e) { /* keep the old numbers */ }
@@ -899,7 +955,7 @@ const Folders = {
                     if (copy) {
                         const c = await this.copyOne(p.f, destDir, dest, p.name);
                         copies.push(c);
-                        items.push({ file: c });
+                        items.push({ file: c, src: p.f }); // (the photo copied: Redo copies it again)
                     } else {
                         const fromDir = this.dirOf(p.f), fromName = p.f.name;
                         await this.moveOne(p.f, destDir, dest, p.name);
@@ -1044,6 +1100,18 @@ const Folders = {
             await this.createPath('', entry.path);
             this.afterChange();
             app.showToast(`Folder “${this.baseName(entry.path)}” is back`, 3000, null, null, { kind: 'undo' });
+        } else if (entry.type === 'folder-make') {
+            // Redo of a new folder: made again (what it made, for its undo)
+            const made = [];
+            for (const p of entry.paths) made.push(...(await this.createPath('', p)).created);
+            this.afterChange();
+            return made;
+        } else if (entry.type === 'folder-remove') {
+            // Redo of deleting a folder: only while it's still empty
+            if (app.files.some(f => this.within(this.dirOf(f), entry.path)) || !(await this.removeIfEmpty(entry.path))) {
+                throw new Error(`“${this.baseName(entry.path)}” has things in it now`);
+            }
+            this.afterChange();
         }
     },
 
@@ -1108,8 +1176,18 @@ const Folders = {
         items.push(['—'], ['New folder inside…', () => this.newFolder(path)]);
         if (Blank.can()) items.push(['New blank image…', () => Blank.open(path)]);
         if (app.files.some(f => this.within(this.dirOf(f), path))) items.push(['Convert…', () => Convert.open({ folder: path })]);
+        if (path) items.push(['Rename folder…', () => this.renameFolder(path)]);
+        // Where it is on disk, as a drive's or the project's menu has it
+        const root = typeof Places !== 'undefined' && Places.current();
+        if (typeof root === 'string' && root && path) {
+            const sep = root.includes('\\') ? '\\' : '/';
+            const abs = root.replace(/[\\/]$/, '') + sep + path.split('/').join(sep);
+            items.push(['—']);
+            if (Host.has('reveal')) items.push([Host.say('Show in {files}'), () => Host.get().reveal(abs)]);
+            const pinned = Places.isPinned(abs);
+            items.push([pinned ? 'Unpin' : 'Pin to the sidebar', () => pinned ? Places.unpin(abs) : Places.pin(abs, path.split('/').pop())]);
+        }
         if (path) {
-            items.push(['Rename folder…', () => this.renameFolder(path)]);
             const empty = !app.files.some(f => this.within(this.dirOf(f), path)) && !this.children(path).length;
             if (empty) items.push(['—'], ['Delete folder', () => this.deleteFolder(path), true]);
         }
@@ -1559,11 +1637,16 @@ const Folders = {
     // A browser: into a folder chosen with its own picker. Ctrl+Z puts
     // them back (or removes the copies)
     async sendToHandle(dir) {
-        const app = this.app;
         const files = this.pickerFiles;
         const copy = this.pickerMode === 'copy';
         if (!files) return;
         this.closePicker();
+        return this.sendFiles(dir, files, copy);
+    },
+
+    // (Redo too: the same photos into the same folder)
+    async sendFiles(dir, files, copy) {
+        const app = this.app;
         const inside = await app.dirHandle.resolve(dir).catch(() => null);
         if (inside) {
             const known = this.find(inside.join('/'));
@@ -1664,7 +1747,7 @@ const Folders = {
             this.el('fc-old-cap').textContent = `Already there · ${fmt(existing)}`;
         }
         this.el('fc-keep').title = `The ${copy ? 'copy' : 'moved photo'} is named “${keepName}”`;
-        this.el('fc-keep-note').textContent = `as “${keepName}”`;
+        this.el('fc-keep-note').textContent = `Keep both saves this one as “${keepName}”.`;
         const replace = this.el('fc-replace');
         replace.classList.toggle('hidden', !canReplace);
         replace.title = Host.say('The photo that\'s there now goes to the trash (Ctrl+Z brings it back)');
@@ -1730,7 +1813,7 @@ const Folders = {
 
     dragStart(e, file) {
         const app = this.app;
-        if (!this.enabled() || app.readOnlyMode) {
+        if (!this.enabled() || app.fixedFiles) {
             e.preventDefault();
             return;
         }
@@ -1813,12 +1896,12 @@ const Folders = {
             e.preventDefault();
             e.dataTransfer.dropEffect = ok ? (copy ? 'copy' : 'move') : 'none';
             // Hovering a folded folder unfolds it
-            if (ok && t.classList.contains('fr-row') && this.collapsed.has(t.dataset.folderPath)) {
+            if (ok && t.classList.contains('fr-row') && !this.opened.has(t.dataset.folderPath) && this.children(t.dataset.folderPath).length) {
                 if (this._unfoldFor !== t.dataset.folderPath) {
                     clearTimeout(this._unfoldTimer);
                     this._unfoldFor = t.dataset.folderPath;
                     this._unfoldTimer = setTimeout(() => {
-                        this.collapsed.delete(this._unfoldFor);
+                        this.opened.add(this._unfoldFor);
                         this.render();
                     }, 700);
                 }

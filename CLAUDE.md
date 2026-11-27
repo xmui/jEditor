@@ -36,6 +36,11 @@ asking first, since both publish (`.github/workflows/release.yml`).
 
 ## Platforms
 
+**The desktop apps (Windows, Mac, Linux) always come first.** They get
+the best version of every feature, and they keep parity with each other.
+The web is a lighter version: it may use a different engine and doesn't
+need full parity (mark what it lacks, as below).
+
 Every feature is for Windows, Mac, Linux and the web unless there's a
 reason it can't be. Before building one, decide which platforms it's for
 and say so in the pull request. If it's only for some:
@@ -57,16 +62,21 @@ another platform, give its row a ✓ there.
 The owner runs one chat per job. Each job is a file in `.claude/agents/`:
 `photos`, `adjust`, `paint` and `bugs`, plus `wrangler` (manages: who's
 doing what; builds nothing), `franky` (tells off an agent that screwed
-up, when the owner names it) and `t-max` (checks where usage is going,
-when asked). When the owner says "be the Photos agent" (or names any of
+up, when the owner names it), `t-max` (checks where usage is going,
+when asked) and `design` (the outside design firm for the 2.0 polish
+pass). When the owner says "be the Photos agent" (or names any of
 them), read that file and work as it says. With no role given, work as
 usual.
 
 **Theming is secondary.** The themes and look agent (`theming`) helps
 the others when asked about the look; it doesn't own a mode and doesn't
-hold up anyone's PR. Themes were released in 1.50.0: they're part of
-jEditor in the Windows, Mac and Linux apps, no longer an experiment, and
-the theming agent's file is on `main` with them.
+hold up anyone's PR. **Themes are paused** and experimental until the
+2.0 UI refinement is done: they're back under Settings → Experimental,
+off to start with (betas too), and frozen. Then they come back, dressed
+to match the refined look. Until then, no theming work unless the owner
+asks for it: a new part of jEditor needs
+to look right in jEditor's own look, not in each theme, and a test that
+uses a theme turns the experiment on first.
 
 - Each agent stays in its own files (listed in its file). Files every
   mode shares (`app/index.html`, `app/style.css`, `app/host.js`,

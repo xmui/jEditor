@@ -85,6 +85,8 @@ const Updates = {
             const r = await FolderCache.native().checkUpdate({ beta: this.beta() });
             try { localStorage.setItem(this.KEY, String(Date.now())); } catch (e) { /* private */ }
             this.latest = r;
+            // A dot on the home page's Settings (start.js)
+            if (typeof Start !== 'undefined' && Start.setUpdate) Start.setUpdate(r);
             if (r.newer) {
                 const name = this.label(r.tag);
                 this.status(`jEditor ${name} is available`);
